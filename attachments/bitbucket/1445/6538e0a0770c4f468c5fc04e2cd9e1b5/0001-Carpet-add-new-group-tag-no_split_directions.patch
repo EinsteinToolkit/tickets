@@ -1,0 +1,119 @@
+From da6e6a6cca2b5510fd26b8534d1fecb410969fdb Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Sat, 14 Sep 2013 14:53:58 -0700
+Subject: [PATCH] Carpet: add new group tag no_split_directions
+
+---
+ Carpet/Carpet/src/Recompose.cc | 10 ++++++----
+ Carpet/Carpet/src/SetupGH.cc   | 24 +++++++++++++++++++++++-
+ Carpet/Carpet/src/functions.hh |  6 ++++--
+ 3 files changed, 33 insertions(+), 7 deletions(-)
+
+diff --git a/Carpet/Carpet/src/Recompose.cc b/Carpet/Carpet/src/Recompose.cc
+index 9654ece..6f18fb6 100644
+--- a/Carpet/Carpet/src/Recompose.cc
++++ b/Carpet/Carpet/src/Recompose.cc
+@@ -1165,12 +1165,13 @@ namespace Carpet {
+   void
+   SplitRegions_Automatic (cGH const * const cctkGH,
+                           vector<region_t> & superregs,
+-                          vector<region_t> & regs)
++                          vector<region_t> & regs,
++                          bvect const & no_split_dims)
+   {
+     assert (regs.empty());
+     vector<vector<region_t> > superregss (1, superregs);
+     vector<vector<region_t> > regss (1);
+-    SplitRegionsMaps_Automatic (cctkGH, superregss, regss);
++    SplitRegionsMaps_Automatic (cctkGH, superregss, regss, no_split_dims);
+     assert (superregss.size() == 1);
+     superregs = superregss.AT(0);
+     assert (regss.size() == 1);
+@@ -1595,7 +1596,8 @@ namespace Carpet {
+   void
+   SplitRegionsMaps_Automatic (cGH const * const cctkGH,
+                               vector<vector<region_t> > & superregss,
+-                              vector<vector<region_t> > & regss)
++                              vector<vector<region_t> > & regss,
++                              bvect const & no_split_dims)
+   {
+     DECLARE_CCTK_PARAMETERS;
+     
+@@ -1710,7 +1712,7 @@ namespace Carpet {
+     for (int r=0, p=0; r<nregs; p+=mynprocs.AT(r), ++r) {
+       if (recompose_verbose) cout << "SRMA superreg[" << r << "] " << superregs.AT(r) << endl;
+       // bvect const dims = false;
+-      bvect const dims = not split_components;
++      bvect const dims = not split_components || no_split_dims;
+       SplitRegionsMaps_Automatic_Recursively
+         (dims, p, mynprocs.AT(r), superregs.AT(r), newregs);
+     } // for r
+diff --git a/Carpet/Carpet/src/SetupGH.cc b/Carpet/Carpet/src/SetupGH.cc
+index f24d3f6..f995911 100644
+--- a/Carpet/Carpet/src/SetupGH.cc
++++ b/Carpet/Carpet/src/SetupGH.cc
+@@ -1249,7 +1249,16 @@ namespace Carpet {
+     // Split it into components, one for each processor
+     switch (gdata.disttype) {
+     case CCTK_DISTRIB_DEFAULT: {
+-      SplitRegions_Automatic (cctkGH, superregs, regs);
++      CCTK_INT no_split_directions[dim];
++      bvect no_split_dims(false);
++      int const nvals =
++        Util_TableGetIntArray(gdata.tagstable, dim, no_split_directions,
++                              "no_split_directions");
++      assert((0 <= nvals && nvals <= dim) || nvals == UTIL_ERROR_TABLE_NO_SUCH_KEY);
++      for(int i=0;i<nvals;++i) {
++        no_split_dims[i] = true;
++      }
++      SplitRegions_Automatic (cctkGH, superregs, regs, no_split_dims);
+       break;
+     }
+     case CCTK_DISTRIB_CONSTANT: {
+@@ -2819,6 +2828,19 @@ namespace Carpet {
+       free (groupname);
+     }
+ #endif
++
++    if (gdata.grouptype == CCTK_GF) {
++      int const have_no_split_directions =
++        Util_TableQueryValueInfo (gdata.tagstable, NULL, NULL,
++                                  "no_split_directions");
++      if (have_no_split_directions) {
++        char * const groupname = CCTK_GroupName (group);
++        CCTK_VError (__LINE__, __FILE__, CCTK_THORNSTRING,
++                     "The group \"%s\" uses the \"no_split_directions\" tag. This tag is not supported for grid functions",
++                     groupname);
++        free (groupname);
++      }
++    }
+   }
+   
+   
+diff --git a/Carpet/Carpet/src/functions.hh b/Carpet/Carpet/src/functions.hh
+index 5a4c4fe..c9eabbe 100644
+--- a/Carpet/Carpet/src/functions.hh
++++ b/Carpet/Carpet/src/functions.hh
+@@ -181,7 +181,8 @@ namespace Carpet {
+   void
+   SplitRegions_Automatic (cGH const * cctkGH,
+                           vector<region_t> & superregs,
+-                          vector<region_t> & regs);
++                          vector<region_t> & regs,
++                          bvect const & no_split_dims = false);
+   void
+   SplitRegionsMaps_Recursively (cGH const * cctkGH,
+                                 vector<vector<region_t> > & superregss,
+@@ -194,7 +195,8 @@ namespace Carpet {
+   void
+   SplitRegionsMaps_Automatic (cGH const * cctkGH,
+                               vector<vector<region_t> > & superregss,
+-                              vector<vector<region_t> > & regss);
++                              vector<vector<region_t> > & regss,
++                              bvect const & no_split_dims = false);
+   void
+   SplitRegionsMaps_Recursively (cGH const * cctkGH,
+                                 vector<vector<region_t> > & superregss,
+-- 
+1.8.4.rc3
+

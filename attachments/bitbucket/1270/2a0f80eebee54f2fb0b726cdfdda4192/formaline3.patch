@@ -1,0 +1,70 @@
+Index: arrangements/CactusUtils/Formaline/src/make.configuration.deps
+===================================================================
+--- arrangements/CactusUtils/Formaline/src/make.configuration.deps	(revision 232)
++++ arrangements/CactusUtils/Formaline/src/make.configuration.deps	(working copy)
+@@ -139,24 +139,30 @@
+ 	$(RM) -f $(@:%.c=%-????.c)
+ 	$(FORMALINE_BIN_DIR)/makeblob.pl $(@:%.c=%) '' Cactus < $<
+ 
+-$(TARBALL_DIR)/flesh-Cactus.tar.gz: $(TARBALL_DIR)/flesh-Cactus.files
++CACTUS_CONFIGS_DIR ?= configs
++
++$(TARBALL_DIR)/flesh-Cactus.tar.gz: $(TARBALL_DIR)/flesh-Cactus.files $(TARBALL_DIR)/flesh-Cactus.files.2
+ 	cd $(CCTK_HOME) && \
+-	$(TAR) czf $@ -T $< || [ $$(( $$? / ($(IS_GNUTAR)+1) )) -eq 0 ]
++	$(TAR) -cf $(TARBALL_DIR)/flesh-Cactus.tar -T $(TARBALL_DIR)/flesh-Cactus.files || [ $$(( $$? / ($(IS_GNUTAR)+1) )) -eq 0 ]
++	$(TAR) -C $(TARBALL_DIR) -rf $(TARBALL_DIR)/flesh-Cactus.tar -T $(TARBALL_DIR)/flesh-Cactus.files.2 || [ $$(( $$? / ($(IS_GNUTAR)+1) )) -eq 0 ]
++	gzip $(TARBALL_DIR)/flesh-Cactus.tar
+ 
++CONFIG_FILES = $(wildcard \
++    $(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/OptionList \
++    $(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/properties.ini \
++    $(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/RunScript \
++    $(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/ScriptFile \
++    $(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/SubmitScript \
++    $(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/ThornList \
++    $(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/config-data \
++    $(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/config-info) 
++
+ # This dependency means that the tarball for a thorn is only updated
+ # if the thorn is actually recompiled.  This does not catch changes to
+ # files that do not influence the executable.
+ $(TARBALL_DIR)/flesh-Cactus.files: $(CCTK_LIBDIR)/$(LIBNAME_PREFIX)$(CCTK_LIBNAME_PREFIX)$(FLESHLIB)$(LIBNAME_SUFFIX) $(TARBALL_DIR)/flesh-Cactus.ccldeps
+ 	cd $(CCTK_HOME) && \
+ 	find CONTRIBUTORS COPYRIGHT Makefile lib/ src/ \
+-		`ls configs/$(notdir $(TOP))/OptionList 2> /dev/null` \
+-		`ls configs/$(notdir $(TOP))/properties.ini 2> /dev/null` \
+-		`ls configs/$(notdir $(TOP))/RunScript 2> /dev/null` \
+-		`ls configs/$(notdir $(TOP))/ScriptFile 2> /dev/null` \
+-		`ls configs/$(notdir $(TOP))/SubmitScript 2> /dev/null` \
+-		configs/$(notdir $(TOP))/ThornList \
+-		configs/$(notdir $(TOP))/config-data \
+-		configs/$(notdir $(TOP))/config-info \
+ 		-name 'CVS' -prune -o \
+ 		-name '_darcs' -prune -o \
+ 		-name '.git' -prune -o \
+@@ -168,6 +174,24 @@
+ 		-name '*~' -prune -o \
+ 		! -type d \
+ 		-print > $@
++# Potentially, these files are under a remote directory, but Foramline
++# wantes to see them as if the were in a local directory named configs.
++$(TARBALL_DIR)/flesh-Cactus.files.2: $(CCTK_LIBDIR)/$(LIBNAME_PREFIX)$(CCTK_LIBNAME_PREFIX)$(FLESHLIB)$(LIBNAME_SUFFIX) $(TARBALL_DIR)/flesh-Cactus.ccldeps
++	mkdir -p $(TARBALL_DIR)/configs/$(notdir $(TOP))
++	cp -r $(CONFIG_FILES) $(TARBALL_DIR)/configs/$(notdir $(TOP))
++	cd $(TARBALL_DIR) && \
++	find configs \
++		-name 'CVS' -prune -o \
++		-name '_darcs' -prune -o \
++		-name '.git' -prune -o \
++		-name '.hg' -prune -o \
++		-name '.svn' -prune -o \
++		-name '*.log' -prune -o \
++		-name '*.log.gz' -prune -o \
++		-name '.?*' -prune -o \
++		-name '*~' -prune -o \
++		! -type d \
++		-print > $@
+ 
+ -include $(TARBALL_DIR)/flesh-Cactus.ccldeps
+ # Make aborts if these dependencies vanish.  Therefore mention only files

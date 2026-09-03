@@ -1,0 +1,148 @@
+Index: src/edu/lsu/cct/mojave/DynamicMenu.java
+===================================================================
+--- src/edu/lsu/cct/mojave/DynamicMenu.java	(revision 219)
++++ src/edu/lsu/cct/mojave/DynamicMenu.java	(working copy)
+@@ -5,33 +5,21 @@
+ import java.io.PrintWriter;
+ import java.io.StringWriter;
+ import java.util.ArrayList;
+-import java.util.Date;
+ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+ 
+-import org.eclipse.core.runtime.jobs.Job;
+-
+ import javax.xml.parsers.DocumentBuilder;
+ import javax.xml.parsers.DocumentBuilderFactory;
+ import javax.xml.parsers.ParserConfigurationException;
+ 
+-import org.eclipse.cdt.core.dom.ast.gnu.cpp.GPPLanguage;
+-import org.eclipse.cdt.core.language.ProjectLanguageConfiguration;
+-import org.eclipse.cdt.core.model.CoreModel;
+-import org.eclipse.cdt.core.model.LanguageManager;
+-import org.eclipse.cdt.core.settings.model.ICConfigurationDescription;
+-import org.eclipse.cdt.core.settings.model.ICProjectDescription;
+-import org.eclipse.cdt.core.settings.model.ICProjectDescriptionManager;
+ import org.eclipse.core.resources.IFolder;
+ import org.eclipse.core.resources.IProject;
+ import org.eclipse.core.resources.IWorkspaceRoot;
+ import org.eclipse.core.resources.ResourcesPlugin;
+-import org.eclipse.core.runtime.CoreException;
+ import org.eclipse.core.runtime.IProgressMonitor;
+ import org.eclipse.core.runtime.IStatus;
+ import org.eclipse.core.runtime.Status;
+-import org.eclipse.core.runtime.content.IContentType;
+ import org.eclipse.core.runtime.jobs.Job;
+ import org.eclipse.jface.action.IContributionItem;
+ import org.eclipse.swt.SWT;
+@@ -126,13 +114,6 @@
+ 		}
+ 	}
+ 
+-	public static Map<String, String> mkVars(final File cactusDir) {
+-		final Map<String, String> vars = new HashMap<String, String>();
+-		vars.put("project.dir", cactusDir.getAbsolutePath());
+-		vars.put("home.dir", System.getProperty("user.home"));
+-		return vars;
+-	}
+-
+ 	public void createVariableEditor(final Menu menu, int index,
+ 			final SimfactoryDetails vars, final IProject project,
+ 			final Map<String, String> varstype) {
+@@ -243,6 +224,15 @@
+ 							MojaveCommand command = new MojaveCommand();
+ 							command.setProject(project);
+ 							String cdir = getValue(node.getAttributes(), "dir", null);
++							
++							// Determine whether this is the root of a disk project.
++							// If it is, change cdir to point at the real cactus root.
++							IFolder arrangements = project.getFolder("Cactus").getFolder("arrangements");
++							if(arrangements.isLinked()) {
++								File f = arrangements.getLocation().toFile();
++								cdir = f.getParent();
++							}
++							
+ 							command.setDirectory(cdir);
+ 							Node ifv = cmda.getNamedItem("if");
+ 							if (ifv != null) {
+Index: src/edu/lsu/cct/mojave/MojaveCommandRunner.java
+===================================================================
+--- src/edu/lsu/cct/mojave/MojaveCommandRunner.java	(revision 219)
++++ src/edu/lsu/cct/mojave/MojaveCommandRunner.java	(working copy)
+@@ -258,11 +258,6 @@
+ 							ps.println(command.input);
+ 							ps.close();
+ 
+-							final Reader in = new InputStreamReader(
+-									proc.getInputStream(), "UTF-8");
+-
+-							final Reader err = new InputStreamReader(
+-									proc.getErrorStream(), "UTF-8");
+ 							while (true) {
+ 								long before = System.currentTimeMillis();
+ 								if (!isRunning()) {
+Index: src/edu/lsu/cct/mojave/MojaveUtil.java
+===================================================================
+--- src/edu/lsu/cct/mojave/MojaveUtil.java	(revision 219)
++++ src/edu/lsu/cct/mojave/MojaveUtil.java	(working copy)
+@@ -88,10 +88,7 @@
+ 	public static File downloadFile(String urlStr, File file,
+ 			IProgressMonitor monitor) {
+ 		try {
+-
+-			Here.print("downloading file:");
+-			System.out.println("  source url: "+urlStr);
+-			System.out.println("  destination: "+file);
++			Here.print("downloading file: ("+urlStr+")=>("+file+")");
+ 			URL url = new URL(urlStr);
+ 			if (file.isDirectory()) {
+ 				int n = urlStr.lastIndexOf('/');
+@@ -209,11 +206,14 @@
+ 					if ("thornlist".equals(attrs.getNamedItem("name")
+ 							.getNodeValue())) {
+ 						File thornList = new File(cacpath + "/thornlists");
+-						for (String f : thornList.list()) {
++						String[] list = thornList.list();
++						if(list != null) {
++							for (String f : list) {
+ 
+-							if (f.endsWith(".th"))
+-								attrs.getNamedItem("value").setNodeValue(
+-										"thornlists/" + f);
++								if (f.endsWith(".th"))
++									attrs.getNamedItem("value").setNodeValue(
++											"thornlists/" + f);
++							}
+ 						}
+ 					}
+ 				}
+Index: src/edu/lsu/cct/mojave/ShowMessage.java
+===================================================================
+--- src/edu/lsu/cct/mojave/ShowMessage.java	(revision 217)
++++ src/edu/lsu/cct/mojave/ShowMessage.java	(working copy)
+@@ -23,6 +23,10 @@
+             {
+                 Shell shell=new Shell(d);
+                 shell.setText("Error");
++                String cn = e.getClass().getName();
++                int cnx = cn.lastIndexOf('.');
++                if(cnx >= 0)
++                	cn = cn.substring(cnx+1);
+                 Throwable x = e;
+                 String message = x.getMessage();
+                 while(message == null || message.trim().equals("")) {
+@@ -34,10 +38,9 @@
+                     message = x.getMessage();
+                 }
+                 if(message == null)
+-                    message = x.getClass().getName();
+-                
+-                if(msg != null)
+-                    message = msg + ":\n"+message;
++                    message = cn;
++                if(message.indexOf(cn) < 0)
++                	message = cn + ": " + message;
+ 
+                 System.out.println(message);
+                 e.printStackTrace();

@@ -1,0 +1,84 @@
+Index: src/main/Parameters.c
+===================================================================
+--- src/main/Parameters.c	(revision 5073)
++++ src/main/Parameters.c	(working copy)
+@@ -9,6 +9,7 @@
+  @@*/
+ 
+ #include <sys/types.h>
++#include <ctype.h>
+ #include <regex.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -2199,16 +2200,31 @@
+ 
+ static int ParameterSetInteger (t_param *param, const char *value)
+ {
+-  int inval, retval;
++  int inval, retval, all_space;
+   const t_range *range;
+   char *endptr;
+ 
+   retval = 0;
+ 
++  /* check the value string is not just whitespace since strtol returns 0 in
++   * that case */
++  all_space = 1;
++  for (unsigned int p = 0; value[p]; p++)
++  {
++    if (!isspace(value[p]))
++    {
++      all_space = 0;
++      break;
++    }
++  }
++  if (all_space)
++    retval = -6;
++
+   /* try parsing as number */
+-  inval = strtol (value, &endptr, 0);
++  if (!retval)
++    inval = strtol (value, &endptr, 0);
+ 
+-  if (*endptr) /* if we could not parse as a number, try an expression */
++  if (!retval && *endptr) /* if we could not parse as a number, try an expression */
+   {
+     int type = PARAMETER_INT;
+     uExpressionValue val;
+@@ -2291,7 +2307,7 @@
+ 
+ static int ParameterSetReal (t_param *param, const char *value)
+ {
+-  int retval;
++  int retval, all_space;
+   const t_range *range;
+   double inval;
+   char *temp;
+@@ -2314,10 +2330,25 @@
+     }
+   }
+ 
++  /* check the value string is not just whitespace since strtol returns 0 in
++   * that case */
++  all_space = 1;
++  for (unsigned int p = 0; temp[p]; p++)
++  {
++    if (!isspace(temp[p]))
++    {
++      all_space = 0;
++      break;
++    }
++  }
++  if (all_space)
++    retval = -6;
++
+   /* try parsing as number */
+-  inval = strtod (temp, &endptr);
++  if (!retval)
++    inval = strtod (temp, &endptr);
+ 
+-  if (*endptr) /* if we cannot parse as a number, try expression */
++  if (!retval && *endptr) /* if we cannot parse as a number, try expression */
+   {
+     int type = PARAMETER_REAL;
+     uExpressionValue val;

@@ -1,0 +1,24 @@
+From 1bfe90a44dcd34eca9ee5d92c9a520357db65bcf Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@aei.mpg.de>
+Date: Tue, 5 May 2015 14:36:48 +0200
+Subject: [PATCH] LocalInterp2: add compile rule to obtain standards conforming
+ code
+
+---
+ LocalInterp2/src/make.code.deps | 4 ++++
+ 1 file changed, 4 insertions(+)
+ create mode 100644 LocalInterp2/src/make.code.deps
+
+diff --git a/LocalInterp2/src/make.code.deps b/LocalInterp2/src/make.code.deps
+new file mode 100644
+index 0000000..929c0e5
+--- /dev/null
++++ b/LocalInterp2/src/make.code.deps
+@@ -0,0 +1,4 @@
++# icpc violates the C++ standard and rearranges terms in expressions which
++# foils the code crafted to preserve inversion symmetry
++Interpolate.cc.o: HAVE_ICPC := $(shell $(CC) -V 2>&1 | grep -i intel)
++Interpolate.cc.o: CXXFLAGS += $(if $(HAVE_ICPC),-fp-model precise)
+-- 
+2.6.2
+

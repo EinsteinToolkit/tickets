@@ -1,0 +1,38 @@
+From da1d078eb596dd21dd353cb09e96e4d205098083 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Tue, 6 Dec 2011 00:38:23 +0100
+Subject: [PATCH] Ignore comments in test output files
+
+Previously the content of comment lines was ignored.  This commit
+causes comment lines to be ignored completely, allowing differing
+numbers of them to compare as "the same".
+---
+ lib/sbin/RunTestUtils.pl |   11 ++++++++---
+ 1 files changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/lib/sbin/RunTestUtils.pl b/lib/sbin/RunTestUtils.pl
+index 92c37d9..b85e83f 100644
+--- a/lib/sbin/RunTestUtils.pl
++++ b/lib/sbin/RunTestUtils.pl
+@@ -1107,10 +1107,15 @@ sub CompareTestFiles
+ 
+         while ($oline = <INORIG>)
+         {
+-          $nline = <INNEW>;
++          # ignore comment lines in old file
++          next if ($oline =~ /^\s*["\#]/);
+ 
+-          # ignore comment lines
+-          next if (($oline =~ /^\s*["\#]/) && ($nline =~ /^\s*["\#]/));
++          # ignore comment lines in new file
++          do
++          {
++              $nline = <INNEW>;
++          }
++          while ($nline =~ /^\s*["\#]/);
+ 
+           # Now lets see if they differ.
+           $numlines++;
+-- 
+1.7.4.4
+

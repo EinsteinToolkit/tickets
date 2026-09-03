@@ -1,0 +1,60 @@
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 281)
++++ param.ccl	(working copy)
+@@ -24,6 +24,15 @@
+   "exact" :: "Use shift from exact solution"
+ }
+ 
++EXTENDS KEYWORD dtlapse_evolution_method
++{
++  "exact" :: "Use lapse from exact solution"
++}
++EXTENDS KEYWORD dtshift_evolution_method
++{
++  "exact" :: "Use shift from exact solution"
++}
++
+ EXTENDS KEYWORD initial_lapse
+ {
+   "exact" :: "Initial lapse from exact solution"
+Index: src/gauge.F77
+===================================================================
+--- src/gauge.F77	(revision 281)
++++ src/gauge.F77	(working copy)
+@@ -82,8 +82,8 @@
+       if ( is_later_slice ) then
+          set_lapse   = CCTK_Equals(lapse_evolution_method, "exact").ne.0
+          set_shift   = CCTK_Equals(shift_evolution_method, "exact").ne.0
+-         set_dtlapse = .false.
+-         set_dtshift = .false.
++         set_dtlapse = CCTK_Equals(dtlapse_evolution_method, "exact").ne.0
++         set_dtshift = CCTK_Equals(dtshift_evolution_method, "exact").ne.0
+       end if
+ 
+       if ( set_lapse .or. set_shift .or. set_dtlapse .or. set_dtshift) then
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 281)
++++ schedule.ccl	(working copy)
+@@ -74,7 +74,7 @@
+ 
+ # During the evolution:
+ 
+-if ( (CCTK_Equals(lapse_evolution_method,"exact")) || (CCTK_Equals(shift_evolution_method,"exact")) )
++if ( (CCTK_Equals(lapse_evolution_method,"exact")) || (CCTK_Equals(shift_evolution_method,"exact")) || (CCTK_Equals(dtlapse_evolution_method,"exact")) || (CCTK_Equals(dtshift_evolution_method,"exact")) )
+ {
+   schedule Exact__RegisterSlicing at CCTK_STARTUP
+   {
+@@ -132,6 +132,11 @@
+   {
+     LANG: Fortran
+   } "Set data from exact solution on an exact slice"
++  # Necessary if MoL is used
++  schedule Exact__initialize in MoL_PostStep
++  {
++    LANG: Fortran
++  } "Set data from exact solution on an exact slice"
+ }
+ 
+ #######################################################################

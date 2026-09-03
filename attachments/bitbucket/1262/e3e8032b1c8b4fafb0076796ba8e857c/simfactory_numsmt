@@ -1,0 +1,16 @@
+Index: lib/simlib.py
+===================================================================
+--- lib/simlib.py	(revision 1990)
++++ lib/simlib.py	(working copy)
+@@ -831,7 +831,10 @@
+     num_smt = simenv.OptionsManager.GetOption('num-smt')
+     if num_smt == None:
+         if existingProperties != None:
+-            num_smt = existingProperties.numsmt
++            try:
++                num_smt = existingProperties.numsmt
++            except AttributeError:
++                num_smt = GetMachineOption('num-smt')
+         else:
+             num_smt = GetMachineOption('num-smt')
+     try:

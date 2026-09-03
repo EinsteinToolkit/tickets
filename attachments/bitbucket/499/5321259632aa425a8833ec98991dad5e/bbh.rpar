@@ -1,0 +1,694 @@
+#!/usr/bin/env python
+
+from math import *
+import sys
+import re
+from string import Template
+
+################################################################################
+# Code
+################################################################################
+
+# Choose evolution code from CTGamma and McLachlan
+evolution_code = "McLachlan"
+
+# Choose Weyl scalar code from Psiclops and WeylScal4
+weyl_code = "WeylScal4"
+
+# Choose the mode-decomposition code from Multipole and Psiclops
+# (Psiclops only if weyl_code == "Psiclops")
+mode_code = "Multipole"
+
+################################################################################
+# Initial data
+################################################################################
+
+D = 6.0 # Separation
+q = 1.0  # Mass ratio
+M = 1.0  # Total mass
+
+mp_bare = 0.4765346330240283756
+mm_bare = 0.4765346330240283756
+give_bare = "no"
+mp = M * 1/(1+q)           # Heavier, larger BH, AH1, SS 0
+mm = M * q/(1+q)           # Lighter, smaller BH, AH2, SS 1
+
+################################################################################
+# Grid structure
+################################################################################
+
+# Approximate eventual AH radii
+ahrp = mp * 1.0 
+ahrm = mm * 1.0
+
+# Number of cells across finest grid radius
+n = 20 
+
+# Coordinate size of finest boxes around each BH
+rp = ahrp * 1.2 * 2.0
+rm = ahrm * 1.2 * 2.0
+
+# Minimum acceptable coarse grid spacing
+h0min = 0.96*M
+
+# Smaller BH
+hfm = rm/n
+rlsm = int(round(log(h0min/hfm,2)))+1
+h0 = hfm * 2**(rlsm-1)
+levelsm = "\n".join(["CarpetRegrid2::radius_2[%d] = %f" %(l,rm*2**(rlsm-l-1)) for l in range(1,rlsm)])
+
+# Larger BH
+hfp = ceil(ahrp/ahrm) * hfm;
+rlsp = int(round(log(h0/hfp,2)))+1
+levelsp = "\n".join(["CarpetRegrid2::radius_1[%d] = %f" %(l,rp*2**(rlsp-l-1)) for l in range(1,rlsp)])
+
+sphere_inner_radius = 40.0
+expected_merger = 100.0
+time_after_merger = 300.0
+waveform_length = expected_merger + time_after_merger
+outermost_detector = 500.0
+final_time = waveform_length + outermost_detector
+sphere_outer_radius = sqrt(2) * (outermost_detector + final_time)        # The lapse velocity is sqrt(2)
+sphere_outer_radius = int(sphere_outer_radius / h0) * h0 + h0 # round up to a multiple of h_rad
+sphere_outer_radius = 80.0
+
+################################################################################
+
+nu = q/(1+q)**2            # Symmetric mass ratio
+mu = nu * M                # Reduced mass
+Pi = 3.1415926535897932385
+
+# 3 PN conservative circular tangential momentum (see Bruegmann et
+# al. 2008 Eq. 65)
+pt = mu * (sqrt(M/D) + 2 * (M/D)**(1.5) + 1.0/16.0 * (42.0-43.0*nu) *
+        (M/D)**(2.5)+1.0/128.0*(480.0+(163.0 * Pi**2.0-4556.0) * nu+104.0 * nu**2.0) * 
+        (M/D)**(3.5))
+
+# For equal mass, add the following from the Husa et al. 2008 Eq. 7
+if (q == 1.):
+    pt -= 35.0988/(D**(5.36702))
+    pr = -1.9188 * (1.76084 - 5.3029/sqrt(D) + 9.06417/D) * D**(-3.288)
+else:
+    print "Warning: Using a poor approximation for momenta in unequal mass case - you should provide better momentum parameters"
+
+xp     = D * mm
+xm     = -D * mp
+half_D = D/2.0
+
+center_offset = xp - half_D
+
+Ppx = pr
+Ppy = pt
+Ppz = 0.
+Pmx = -pr
+Pmy = -pt
+Pmz = 0.
+
+Spx = 0.
+Spy = 0.
+Spz = 0.
+Smx = 0.
+Smy = 0.
+Smz = 0.
+
+h0 = h0
+sphere_inner_radius2 = int(sphere_inner_radius/h0) * h0
+n_angular = 2*int(40*0.64/h0/2.0)+1 # Odd to ensure aligned with Cartesian axes
+
+maxrls = 9
+
+dtdx = 0.9*0.5;
+k = dtdx*h0/2.0
+it_k = k/2.0**(maxrls-2)
+find_cah = max(int((expected_merger - 200)/it_k), 0)
+wave_extract_every = 2**(maxrls-1) # Every other coarse grid step
+horizon_every = 1024
+out_every = 4096
+
+################################################################################
+# Evolution code
+################################################################################
+
+if (evolution_code == "CTGamma"):
+    evolution_thorns = """\
+      CTGBase
+      CTGEvolution
+      CTGGauge
+      CTGRadiativeBC"""
+    evolution_parameters = '''\
+      ADMBase::evolution_method               = "ctgamma"
+      ADMBase::lapse_evolution_method         = "1+log"
+      ADMBase::shift_evolution_method         = "gamma-driver"
+      CTGGauge::eta                           = 1
+      CTGBase::conformal_factor_type          = "w"
+      CTGEvolution::bc                        = "radiative"
+      CTGBase::timelevels                     = 3'''
+
+    evolved_groups = """\
+      CTGBase::conformal_factor
+      CTGBase::conformal_metric
+      CTGBase::curvature_scalar
+      CTGBase::curvature_tensor
+      CTGBase::Gamma
+      ADMBase::lapse
+      ADMBase::shift"""
+
+    conformal_factor = "CTGBase::conformal_factor"
+    extrinsic_curvature = "CTGBase::curvature_scalar"
+    outer_boundary_size = 1
+    poison = "yes"
+
+elif (evolution_code == "McLachlan"):
+    evolution_thorns = '''\
+      ML_BSSN_MP_O8
+      ML_BSSN_MP_O8_Helper
+      NewRad
+      GenericFD'''
+    outer_boundary_size = 5
+    evolution_parameters = '''\
+      GenericFD::jacobian_group = "Coordinates::jacobian"
+      GenericFD::jacobian_derivative_group = "Coordinates::jacobian2"
+      GenericFD::jacobian_identity_map = 0
+
+      ADMBase::evolution_method         = "ML_BSSN_MP_O8"
+      ADMBase::lapse_evolution_method   = "ML_BSSN_MP_O8"
+      ADMBase::shift_evolution_method   = "ML_BSSN_MP_O8"
+      ADMBase::dtlapse_evolution_method = "ML_BSSN_MP_O8"
+      ADMBase::dtshift_evolution_method = "ML_BSSN_MP_O8"
+
+      ML_BSSN_MP_O8::harmonicN           = 1      # 1+log
+      ML_BSSN_MP_O8::harmonicF           = 2.0    # 1+log
+      ML_BSSN_MP_O8::ShiftGammaCoeff     = 0.75
+      ML_BSSN_MP_O8::BetaDriver          = 1.0
+      ML_BSSN_MP_O8::LapseAdvectionCoeff = 1.0
+      ML_BSSN_MP_O8::ShiftAdvectionCoeff = 1.0
+
+      ML_BSSN_MP_O8::MinimumLapse        = 1.0e-8
+      ML_BSSN_MP_O8::conformalMethod     = 1 # 1 for W, 0 for phi
+      ML_BSSN_MP_O8::apply_dissipation   = never
+      ML_BSSN_MP_O8::dt_lapse_shift_method = "noLapseShiftAdvection"
+
+      ML_BSSN_MP_O8::my_initial_boundary_condition = "extrapolate-gammas"
+      ML_BSSN_MP_O8::my_rhs_boundary_condition     = "static"
+      Boundary::radpower                           = 2'''
+
+    evolved_groups = '''\
+      ML_BSSN_MP_O8::ML_log_confac
+      ML_BSSN_MP_O8::ML_metric
+      ML_BSSN_MP_O8::ML_trace_curv
+      ML_BSSN_MP_O8::ML_curv
+      ML_BSSN_MP_O8::ML_Gamma
+      ML_BSSN_MP_O8::ML_lapse
+      ML_BSSN_MP_O8::ML_shift
+      ML_BSSN_MP_O8::ML_dtlapse
+      ML_BSSN_MP_O8::ML_dtshift'''
+
+    conformal_factor = "ML_BSSN_MP_O8::ML_log_confac"
+    extrinsic_curvature = "ML_BSSN_MP_O8::ML_trace_curv"
+    poison = "no"    # Hack needed because Llama does not fill the
+                     # interpatch boundary points next to the outer
+                     # boundary
+else:
+    print("Unknown evolution_code '%s'" % evolution_code)
+
+################################################################################
+# Weyl Scalar code
+################################################################################
+
+if (weyl_code == "Psiclops"):
+    weyl_thorns = '''\
+      CTGBase
+      Psiclops'''
+    weyl_parameters = '''\
+      Psiclops::store_psi4             = yes
+      Psiclops::angular_grid_only      = yes'''
+
+    psi4r = "PsiClops::psi4_re"
+    psi4i = "PsiClops::psi4_im"
+
+elif (weyl_code == "WeylScal4"):
+    weyl_thorns = '''\
+      WeylScal4
+      GenericFD'''
+
+    weyl_parameters = '''\
+      WeylScal4::fd_order                  = "8th"'''
+
+    psi4r = "WeylScal4::Psi4r"
+    psi4i = "WeylScal4::Psi4i"
+
+else:
+    print("Unknown weyl_code '%s'" % weyl_code)
+
+################################################################################
+# Mode decomposition code
+################################################################################
+
+if (mode_code == "Multipole"):
+    mode_thorns = """\
+      Multipole"""
+    mode_parameters = '''\
+      # Radii are chosen to be evenly spaced in 1/r as that is the variable
+      # extrapolation is performed in
+      Multipole::nradii       = 1
+      Multipole::radius[0]    = 20
+      Multipole::ntheta       = 12
+      Multipole::nphi         = 24
+      Multipole::variables    = "WeylScal4::Psi4r{sw=-2 cmplx='WeylScal4::Psi4i' name='psi4'}"
+      Multipole::out_every    = ''' + str(wave_extract_every) + '''
+      Multipole::l_max        = 8
+      Multipole::output_hdf5  = yes
+      Multipole::output_ascii = no  # Avoid using a large number of inodes'''    
+    mode_vars = ""
+
+else:
+    print("Unknown mode_code '%s'" % mode_code)
+
+lines = """
+
+################################################################################
+# Active thorns
+################################################################################
+
+ActiveThorns = "
+  ADMBase
+  ADMConstraints
+  ADMCoupling
+  ADMDerivatives
+  ADMMacros
+  AEILocalInterp
+  AHFinderDirect
+  Boundary
+  Carpet
+  CarpetIOASCII
+  CarpetIOBasic
+  CarpetIOHDF5
+  CarpetIOScalar
+  CarpetInterp
+  CarpetInterp2
+  CarpetLib
+  CarpetReduce
+  CarpetRegrid2
+  CarpetTracker
+  CartGrid3D
+  CoordBase
+  CoordGauge
+  Coordinates
+  CTGBase
+  Formaline
+  GlobalDerivative
+  IOUtil
+  InitBase
+  Interpolate2
+  LocalInterp
+  LoopControl
+  ManualTermination
+  MoL
+  NaNChecker
+  PunctureTracker
+  Slab
+  SpaceMask
+  SphericalSurface
+  StaticConformal
+  SummationByParts
+  SymBase
+  SystemStatistics
+  Time
+  TimerReport
+  TmunuBase
+  TwoPunctures
+  Vectors
+$evolution_thorns
+$weyl_thorns
+$mode_thorns
+"
+
+################################################################################
+# Grid structure
+################################################################################
+
+Carpet::domain_from_multipatch          = yes
+CartGrid3D::type                        = "multipatch"
+CartGrid3D::set_coordinate_ranges_on    = "all maps"
+Coordinates::coordinate_system          = "Thornburg04"
+Coordinates::h_cartesian                = $h0
+Coordinates::h_radial                   = $h0
+
+Coordinates::sphere_inner_radius        = $sphere_inner_radius2
+Coordinates::sphere_outer_radius        = $sphere_outer_radius
+Coordinates::n_angular                  = $n_angular
+
+Driver::ghost_size                      = 5 
+Coordinates::patch_boundary_size        = 5
+Coordinates::additional_overlap_size    = 3
+Coordinates::outer_boundary_size        = $outer_boundary_size
+
+Time::timestep_method                   = "given"
+Time::timestep                          = $k
+Carpet::time_refinement_factors         = "[1,1,2,4,8,16,32,64,128,256]"
+
+################################################################################
+# Mesh refinement
+################################################################################
+
+Carpet::max_refinement_levels           = 9
+CarpetRegrid2::num_centres              = 2
+CarpetRegrid2::num_levels_1             = $rlsp
+CarpetRegrid2::position_x_1             = $xp
+$levelsp
+CarpetRegrid2::num_levels_2             = $rlsm
+CarpetRegrid2::position_x_2             = $xm
+$levelsm
+
+Carpet::use_buffer_zones                = yes
+Carpet::prolongation_order_space        = 5
+Carpet::prolongation_order_time         = 2
+
+CarpetRegrid2::regrid_every             = 128
+CarpetRegrid2::verbose                  = yes
+Carpet::grid_coordinates_filename       = "carpet-grid.asc"
+
+################################################################################
+# Initial data
+################################################################################
+
+ADMBase::initial_data                   = "twopunctures"
+ADMBase::initial_lapse                  = "twopunctures-averaged"
+ADMBase::initial_shift                  = "zero"
+ADMBase::initial_dtlapse                = "zero"
+ADMBase::initial_dtshift                = "zero"
+
+TwoPunctures::target_M_plus             = $mp
+TwoPunctures::target_M_minus            = $mm
+
+TwoPunctures::par_m_plus                = $mp_bare
+TwoPunctures::par_m_minus               = $mm_bare
+
+TwoPunctures::par_b                     = $half_D
+TwoPunctures::center_offset[0]          = $center_offset
+
+TwoPunctures::par_P_plus[0]             = $Ppx
+TwoPunctures::par_P_plus[1]             = $Ppy
+TwoPunctures::par_P_plus[2]             = $Ppz
+
+TwoPunctures::par_P_minus[0]            = $Pmx
+TwoPunctures::par_P_minus[1]            = $Pmy
+TwoPunctures::par_P_minus[2]            = $Pmz
+
+TwoPunctures::par_S_plus[0]             = $Spx
+TwoPunctures::par_S_plus[1]             = $Spy
+TwoPunctures::par_S_plus[2]             = $Spz
+
+TwoPunctures::par_S_minus[0]            = $Smx
+TwoPunctures::par_S_minus[1]            = $Smy
+TwoPunctures::par_S_minus[2]            = $Smz
+
+#TwoPunctures::grid_setup_method         = "evaluation"
+TwoPunctures::grid_setup_method         = "Taylor Expansion"
+TwoPunctures::give_bare_mass            = $give_bare
+TwoPunctures::TP_epsilon                = 1e-6
+Carpet::init_fill_timelevels            = yes
+InitBase::initial_data_setup_method     = "init_single_level"
+
+################################################################################
+# Evolution and boundary
+################################################################################
+
+$evolution_parameters
+
+################################################################################
+# BH tracking
+################################################################################
+
+CarpetTracker::surface                      [0] = 0
+CarpetTracker::surface                      [1] = 1
+PunctureTracker::track                      [0] = yes
+PunctureTracker::initial_x                  [0] = $xp
+PunctureTracker::which_surface_to_store_info[0] = 0
+PunctureTracker::track                      [1] = yes
+PunctureTracker::initial_x                  [1] = $xm
+PunctureTracker::which_surface_to_store_info[1] = 1
+
+################################################################################
+# Spatial finite differencing
+################################################################################
+
+SummationByParts::order                              = 8
+SummationByParts::sbp_upwind_deriv = no # Drop order instead, only for
+                                        # advection derivatives
+SummationByParts::sbp_1st_deriv                      = yes
+SummationByParts::sbp_2nd_deriv                      = no
+SummationByParts::onesided_interpatch_boundaries     = no
+SummationByParts::onesided_outer_boundaries          = yes
+SummationByParts::use_dissipation                    = no
+GlobalDerivative::use_dissipation                    = yes
+SummationByParts::scale_with_h                       = yes # ???
+SummationByParts::dissipation_type                   = "Kreiss-Oliger"
+SummationByParts::epsdis                             = 0.1
+GlobalDerivative::epsdis_for_level               [0] = 0.3
+SummationByParts::vars                               = "
+$evolved_groups
+"
+# _vars for dissipation
+
+################################################################################
+# Time integration
+################################################################################
+
+MoL::ODE_Method                         = "rk4"
+MoL::MoL_Intermediate_Steps             = 4
+MoL::MoL_Num_Scratch_Levels             = 1
+
+################################################################################
+# Interpolation
+################################################################################
+
+CarpetInterp::check_tree_search         = no
+CarpetInterp::tree_search               = yes
+Interpolate::interpolator_order         = 5 # Interpatch interpolation
+
+################################################################################
+# Psi4 computation
+################################################################################
+
+$weyl_parameters
+
+################################################################################
+# Psi4 mode decomposition
+################################################################################
+
+$mode_parameters
+
+################################################################################
+# Apparent Horizons
+################################################################################
+
+AHFinderDirect::N_horizons                               = 3
+AHFinderDirect::find_every                               = $horizon_every
+AHFinderDirect::output_h_every                           = 0
+AHFinderDirect::max_Newton_iterations__initial           = 50
+AHFinderDirect::max_Newton_iterations__subsequent        = 50
+AHFinderDirect::max_allowable_Theta_growth_iterations    = 10
+AHFinderDirect::max_allowable_Theta_nonshrink_iterations = 10
+AHFinderDirect::geometry_interpolator_name               = "Lagrange polynomial interpolation"
+AHFinderDirect::geometry_interpolator_pars               = "order=4"
+AHFinderDirect::surface_interpolator_name                = "Lagrange polynomial interpolation"
+AHFinderDirect::surface_interpolator_pars                = "order=4"
+AHFinderDirect::verbose_level                            = "physics details"
+AHFinderDirect::move_origins                             = yes
+
+AHFinderDirect::origin_x                             [1] = $xp
+AHFinderDirect::initial_guess__coord_sphere__x_center[1] = $xp
+AHFinderDirect::initial_guess__coord_sphere__radius  [1] = $rp
+AHFinderDirect::which_surface_to_store_info          [1] = 2 
+AHFinderDirect::set_mask_for_individual_horizon      [1] = no
+AHFinderDirect::reset_horizon_after_not_finding      [1] = no
+AHFinderDirect::track_origin_from_grid_scalar        [1] = yes
+AHFinderDirect::track_origin_source_x                [1] = "PunctureTracker::pt_loc_x[0]"
+AHFinderDirect::track_origin_source_y                [1] = "PunctureTracker::pt_loc_y[0]"
+AHFinderDirect::track_origin_source_z                [1] = "PunctureTracker::pt_loc_z[0]"
+AHFinderDirect::max_allowable_horizon_radius         [1] = 3
+
+AHFinderDirect::origin_x                             [2] = $xm
+AHFinderDirect::initial_guess__coord_sphere__x_center[2] = $xm
+AHFinderDirect::initial_guess__coord_sphere__radius  [2] = $rm
+AHFinderDirect::which_surface_to_store_info          [2] = 3 
+AHFinderDirect::set_mask_for_individual_horizon      [2] = no
+AHFinderDirect::reset_horizon_after_not_finding      [2] = no
+AHFinderDirect::track_origin_from_grid_scalar        [2] = yes
+AHFinderDirect::track_origin_source_x                [2] = "PunctureTracker::pt_loc_x[1]"
+AHFinderDirect::track_origin_source_y                [2] = "PunctureTracker::pt_loc_y[1]"
+AHFinderDirect::track_origin_source_z                [2] = "PunctureTracker::pt_loc_z[1]"
+AHFinderDirect::max_allowable_horizon_radius         [2] = 3
+
+AHFinderDirect::origin_x                             [3] = 0
+AHFinderDirect::find_after_individual                [3] = $find_cah
+AHFinderDirect::initial_guess__coord_sphere__x_center[3] = 0
+AHFinderDirect::initial_guess__coord_sphere__radius  [3] = 1.0
+AHFinderDirect::which_surface_to_store_info          [3] = 4 
+AHFinderDirect::set_mask_for_individual_horizon      [3] = no
+AHFinderDirect::max_allowable_horizon_radius         [3] = 6
+
+################################################################################
+# Spherical surfaces
+################################################################################
+
+SphericalSurface::nsurfaces             = 5
+SphericalSurface::maxntheta             = 66
+SphericalSurface::maxnphi               = 124
+SphericalSurface::verbose               = no
+
+# Surfaces 0 and 1 are used by PunctureTracker
+
+# Horizon 1
+SphericalSurface::ntheta            [2] = 41
+SphericalSurface::nphi              [2] = 80
+SphericalSurface::nghoststheta      [2] = 2
+SphericalSurface::nghostsphi        [2] = 2
+
+# Horizon 2
+SphericalSurface::ntheta            [3] = 41
+SphericalSurface::nphi              [3] = 80
+SphericalSurface::nghoststheta      [3] = 2
+SphericalSurface::nghostsphi        [3] = 2
+
+# Common horizon
+SphericalSurface::ntheta            [4] = 41
+SphericalSurface::nphi              [4] = 80
+SphericalSurface::nghoststheta      [4] = 2
+SphericalSurface::nghostsphi        [4] = 2
+
+################################################################################
+# Isolated Horizons
+################################################################################
+
+# IsolatedHorizon::verbose                = yes
+# IsolatedHorizon::veryverbose            = no
+# IsolatedHorizon::interpolator           = "Lagrange polynomial interpolation"
+# IsolatedHorizon::interpolator_options   = "order=4"
+# IsolatedHorizon::spatial_order          = 4
+# IsolatedHorizon::num_horizons           = 3
+# IsolatedHorizon::surface_index      [0] = 2
+# IsolatedHorizon::surface_index      [1] = 3
+# IsolatedHorizon::surface_index      [2] = 4
+
+################################################################################
+# Constraints
+################################################################################
+
+
+################################################################################
+# Correctness checking
+################################################################################
+
+Carpet::poison_new_timelevels           = $poison
+Carpet::check_for_poison                = no
+LoopControl::do_selftest                = yes
+NaNChecker::check_every                 = 256 # Allow time for the nans to appear in the output
+NanChecker::check_after                 = 0
+NaNChecker::report_max                  = 10
+NaNChecker::verbose                     = "all"
+NaNChecker::action_if_found             = terminate
+NaNChecker::out_NaNmask                 = yes
+NaNChecker::check_vars                  = "
+  $conformal_factor
+"
+
+################################################################################
+# Timers
+################################################################################
+
+Cactus::cctk_timer_output               = full
+TimerReport::out_every                  = $out_every
+TimerReport::n_top_timers               = 40
+TimerReport::output_all_timers_together = yes
+TimerReport::output_schedule_timers     = no
+
+################################################################################
+# Output
+################################################################################
+
+IO::out_dir                             = $$$$parfile
+IOScalar::one_file_per_group            = yes
+IOASCII::one_file_per_group             = yes
+
+IOBasic::outInfo_every                  = 1
+IOBasic::outInfo_reductions             = "minimum maximum"
+IOBasic::outInfo_vars                   = "
+  $conformal_factor
+  Carpet::physical_time_per_hour
+  SystemStatistics::maxrss_mb
+"
+
+IOScalar::outScalar_every               = 256
+IOScalar::outScalar_reductions          = "minimum maximum average"
+IOScalar::outScalar_vars                = "SystemStatistics::process_memory_mb"
+
+IOASCII::out0D_every                    = 256 
+IOASCII::out0D_vars                     = "
+  Carpet::timing
+  PunctureTracker::pt_loc
+"
+
+IOASCII::out1D_every                    = $out_every
+IOASCII::out1D_d                        = no
+IOASCII::out1D_x                        = yes
+IOASCII::out1D_y                        = no
+IOASCII::out1D_z                        = yes
+IOASCII::out1D_vars                     = "
+  $conformal_factor
+  $extrinsic_curvature
+  $psi4r
+"
+
+IOASCII::out2D_every                    = $wave_extract_every
+IOASCII::out2D_vars                     = "
+  $mode_vars
+"
+
+IOHDF5::out_every                       = $out_every
+IOHDF5::out_vars                        = "
+  Grid::Coordinates
+  $conformal_factor
+  $extrinsic_curvature
+  $psi4r
+"
+
+IOHDF5::out2D_every                     = $out_every
+IOHDF5::out2D_xz                        = no
+IOHDF5::out2D_yz                        = no
+IOHDF5::out2D_vars                      = "
+  $conformal_factor
+  $extrinsic_curvature
+  $psi4r
+"
+
+################################################################################
+# Checkpointing and recovery
+################################################################################
+
+CarpetIOHDF5::checkpoint                    = yes
+IO::checkpoint_ID                           = no
+IO::recover                                 = "autoprobe"
+IO::checkpoint_every_walltime_hours         = 3
+IO::out_proc_every                          = 2
+IO::checkpoint_keep                         = 1
+IO::checkpoint_on_terminate                 = yes
+IO::checkpoint_dir                          = "../checkpoints"
+IO::recover_dir                             = "../checkpoints"
+IO::abort_on_io_errors                      = yes
+CarpetIOHDF5::open_one_input_file_at_a_time = yes
+
+################################################################################
+# Run termination
+################################################################################
+
+ManualTermination::max_walltime                 = @WALLTIME_HOURS@   # hours
+ManualTermination::on_remaining_walltime        = 30 # minutes
+ManualTermination::output_remtime_every_minutes = 5
+Cactus::terminate                               = time
+Cactus::cctk_final_time                         = $final_time
+#Cactus::cctk_itlast                             = 256
+"""
+
+open(re.sub(r'(.*)\.rpar$', r'\1.par', sys.argv[0]), 'w').write(re.sub(r'\n *',r'\n',Template(Template(lines).substitute(locals())).substitute(locals())))

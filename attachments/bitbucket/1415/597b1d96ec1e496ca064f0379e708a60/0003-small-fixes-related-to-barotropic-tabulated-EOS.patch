@@ -1,0 +1,29 @@
+From 00fa8d21fb5448554a7a84dcb73ee4153e0da537 Mon Sep 17 00:00:00 2001
+From: Christian Ott <cott@tapir.caltech.edu>
+Date: Sat, 6 Jul 2013 15:38:38 -0700
+Subject: [PATCH 03/19] small fixes related to barotropic tabulated EOS
+
+---
+ src/GRHydro_Con2PrimHot.F90 |    6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/GRHydro_Con2PrimHot.F90 b/src/GRHydro_Con2PrimHot.F90
+index 7598e07..76f903c 100644
+--- a/src/GRHydro_Con2PrimHot.F90
++++ b/src/GRHydro_Con2PrimHot.F90
+@@ -344,6 +344,12 @@ subroutine Con2Prim_pt_hot3(cctk_iteration, myproc, ii,jj,kk,handle, dens, &
+      failinfomode = 2  
+   endif
+ 
++  if(con2prim_bitant_hack.ne.0.and.&
++       (z .lt. -1.0d-12)) then
++     failwarnmode = 2
++     failinfomode = 2  
++  endif
++
+ !!$  Undensitize the variables 
+   invsdet = 1.0d0/sdet
+   udens = dens * invsdet
+-- 
+1.7.10.4
+

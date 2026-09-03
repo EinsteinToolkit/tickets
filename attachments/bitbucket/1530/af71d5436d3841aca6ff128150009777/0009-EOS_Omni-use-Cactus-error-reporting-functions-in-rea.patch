@@ -1,0 +1,123 @@
+From 000479e1cb516bab735970878e6b4f52c2ec7c41 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Tue, 12 Nov 2013 18:01:31 -0800
+Subject: [PATCH 09/18] EOS_Omni: use Cactus error reporting functions in
+ readtable
+
+---
+ src/nuc_eos_cxx/readtable.cc | 44 ++++++++++++++++++++++----------------------
+ 1 file changed, 22 insertions(+), 22 deletions(-)
+
+diff --git a/src/nuc_eos_cxx/readtable.cc b/src/nuc_eos_cxx/readtable.cc
+index 1ef1715..880584d 100644
+--- a/src/nuc_eos_cxx/readtable.cc
++++ b/src/nuc_eos_cxx/readtable.cc
+@@ -9,11 +9,11 @@
+ #define HDF5_ERROR(fn_call)                                              \
+   do {                                                                   \
+     int _error_code = fn_call;                                           \
+-    if (_error_code < 0) {	       				\
+-      fprintf(stderr, \
++    if (_error_code < 0) {	       				         \
++      CCTK_VError(__LINE__, __FILE__, CCTK_THORNSTRING,                  \
+                   "HDF5 call '%s' returned error code %d",               \
+                   #fn_call, _error_code);                                \
+-      abort(); }							\
++    }                                                                    \
+   } while (0)
+ 
+ static int file_is_readable(const char* filename);
+@@ -67,6 +67,7 @@ namespace nuc_eos {
+ 
+ 
+ namespace nuc_eos {
++// TODO: replace with version in ET EOS_Omni. NOTE: table arrangement changed.
+ 
+ // Cactus calls this function. It reads in the table and calls a fortran
+ // function to setup values for the fortran eos module
+@@ -75,17 +76,16 @@ void nuc_eos_C_ReadTable(char* nuceos_table_name)
+ {
+   using namespace nuc_eos;
+ 
+-  fprintf(stdout,"*******************************\n");
+-  fprintf(stdout,"Reading nuc_eos table file:\n");
+-  fprintf(stdout,"%s\n",nuceos_table_name);
+-  fprintf(stdout,"*******************************\n");
++  CCTK_VInfo(CCTK_THORNSTRING,"*******************************");
++  CCTK_VInfo(CCTK_THORNSTRING,"Reading nuc_eos table file:");
++  CCTK_VInfo(CCTK_THORNSTRING,"%s",nuceos_table_name);
++  CCTK_VInfo(CCTK_THORNSTRING,"*******************************");
+ 
+   hid_t file;
+   if (!file_is_readable(nuceos_table_name)) {
+-    fprintf(stderr,
++    CCTK_VError(__LINE__, __FILE__, CCTK_THORNSTRING,
+                "Could not read nuceos_table_name %s \n",
+                nuceos_table_name);
+-    abort();
+   }
+   HDF5_ERROR(file = H5Fopen(nuceos_table_name, H5F_ACC_RDONLY, H5P_DEFAULT));
+ 
+@@ -103,7 +103,7 @@ void nuc_eos_C_ReadTable(char* nuceos_table_name)
+   do {                                                                   \
+     hsize_t offset[2]     = {OFF,0};                                     \
+     H5Sselect_hyperslab(mem3, H5S_SELECT_SET, offset, NULL, var3, NULL); \
+-    READ_EOS_HDF5(NAME,alltables_temp,H5T_NATIVE_DOUBLE,mem3);                \
++    READ_EOS_HDF5(NAME,alltables_temp,H5T_NATIVE_DOUBLE,mem3);           \
+   } while (0)
+ 
+   // Read size of tables
+@@ -115,20 +115,20 @@ void nuc_eos_C_ReadTable(char* nuceos_table_name)
+   // Allocate memory for tables
+   double* alltables_temp;
+   if (!(alltables_temp = (double*)malloc(nrho * ntemp * nye * NTABLES * sizeof(double)))) {
+-    fprintf(stderr, "Cannot allocate memory for EOS table\n");
+-    abort();
++    CCTK_VError(__LINE__, __FILE__, CCTK_THORNSTRING,
++                "Cannot allocate memory for EOS table");
+   }
+   if (!(logrho = (double*)malloc(nrho * sizeof(double)))) {
+-    fprintf(stderr, "Cannot allocate memory for EOS table\n");
+-    abort();
++    CCTK_VError(__LINE__, __FILE__, CCTK_THORNSTRING,
++                "Cannot allocate memory for EOS table");
+   }
+   if (!(logtemp = (double*)malloc(ntemp * sizeof(double)))) {
+-    fprintf(stderr, "Cannot allocate memory for EOS table\n");
+-    abort();
++    CCTK_VError(__LINE__, __FILE__, CCTK_THORNSTRING,
++                "Cannot allocate memory for EOS table");
+   }
+   if (!(yes = (double*)malloc(nye * sizeof(double)))) {
+-    fprintf(stderr, "Cannot allocate memory for EOS table\n");
+-    abort();
++    CCTK_VError(__LINE__, __FILE__, CCTK_THORNSTRING,
++                "Cannot allocate memory for EOS table");
+   }
+ 
+   // Prepare HDF5 to read hyperslabs into alltables_temp
+@@ -174,8 +174,8 @@ void nuc_eos_C_ReadTable(char* nuceos_table_name)
+   // the table kind is the fastest changing index
+   if (!(alltables = (double*)malloc(nrho * ntemp * nye * NTABLES 
+ 				    * sizeof(double)))) {
+-    fprintf(stderr, "Cannot allocate memory for EOS table\n");
+-    abort();
++    CCTK_VError(__LINE__, __FILE__, CCTK_THORNSTRING,
++                "Cannot allocate memory for EOS table");
+   }
+   for(int iv = 0;iv<NTABLES;iv++) 
+     for(int k = 0; k<nye;k++) 
+@@ -205,8 +205,8 @@ void nuc_eos_C_ReadTable(char* nuceos_table_name)
+   // that allows us to extrapolate to negative eps
+   if (!(epstable = (double*)malloc(nrho * ntemp * nye  
+ 				    * sizeof(double)))) {
+-    fprintf(stderr, "Cannot allocate memory for eps table\n");
+-    abort();
++    CCTK_VError(__LINE__, __FILE__, CCTK_THORNSTRING,
++                "Cannot allocate memory for eps table\n");
+   }
+ 
+   // convert units
+-- 
+1.8.5.3
+

@@ -1,0 +1,45 @@
+From 57494f36c15d9198439e520f9a8dbdb6bdce8889 Mon Sep 17 00:00:00 2001
+From: Bruno Coutinho Mundim <bcmsma@astro.rit.edu>
+Date: Fri, 26 Oct 2012 15:30:33 -0700
+Subject: [PATCH 1/8] GRHydro_InitData: output bsonic and psonicmag as well.
+
+---
+ src/GRHydro_BondiM_new.F90 |   12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/src/GRHydro_BondiM_new.F90 b/src/GRHydro_BondiM_new.F90
+index 9483385..6991bbc 100644
+--- a/src/GRHydro_BondiM_new.F90
++++ b/src/GRHydro_BondiM_new.F90
+@@ -66,7 +66,7 @@ subroutine GRHydro_BondiM_Iso(CCTK_ARGUMENTS)
+   CCTK_REAL :: drhodr, det, rhocheck, rhocheck2, riso, rnew, rsch, ucheck
+   CCTK_REAL :: uiso, uisocheck, vcheck, ucheck2, vcheck2, xhat,yhat, zhat, xp, yp, zp
+   CCTK_REAL :: f,df,ddf,a,b,c,rsm,roverm,dudr,uisocheck2,auiso,buiso
+-  CCTK_REAL :: bondi_bsmooth, bmag
++  CCTK_REAL :: bondi_bsmooth, bmag, bsonic, psonicmag
+ 
+   character(400) :: debug_message
+ 
+@@ -227,11 +227,17 @@ subroutine GRHydro_BondiM_Iso(CCTK_ARGUMENTS)
+  else
+   bmag = bondi_bmag
+  end if 
+- write(debug_message,'(a,2f22.14)')'Bondi pars: rs, psonic',rs, psonic
+- call CCTK_INFO(debug_message)
++ bsonic = bmag*(M/rs)**2 * sqrt(1.0d0-2.0d0*M/rs)
++ psonicmag = 0.5d0*bsonic**2
++
+  write(debug_message,'(a,2f22.14)')'Bondi pars: bondi_bmag,bondi_beta_sonicpt',&
+                                                 bmag,bondi_beta_sonicpt
+  call CCTK_INFO(debug_message)
++ write(debug_message,'(a,2f22.14)')'Bondi pars: rs,bsonic',rs,bsonic
++ call CCTK_INFO(debug_message)
++ write(debug_message,'(a,2f22.14)')'Bondi pars: psonic,psonicmag',&
++                                                psonic,psonicmag
++ call CCTK_INFO(debug_message)
+ 
+   do i=1,nx
+      do j=1,ny
+-- 
+1.7.10.4
+

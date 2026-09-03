@@ -1,0 +1,26 @@
+From 8c3c197c1f7d5fa8051bade2de782508ec7c1bd7 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Wed, 28 Mar 2012 20:49:31 -0700
+Subject: [PATCH 07/11] GRHydro: fix OpenMP data race condition in
+ UpdateCalculation for constraint transport
+
+---
+ src/GRHydro_CalcUpdate.F90 |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/src/GRHydro_CalcUpdate.F90 b/src/GRHydro_CalcUpdate.F90
+index 7d9408e..99cdfdb 100644
+--- a/src/GRHydro_CalcUpdate.F90
++++ b/src/GRHydro_CalcUpdate.F90
+@@ -47,7 +47,7 @@ subroutine UpdateCalculation(CCTK_ARGUMENTS)
+ 
+     if (use_weighted_fluxes == 0) then
+ 
+-      !$OMP PARALLEL DO PRIVATE(i,j,k,itracer,alp_l,alp_r,Bvec_l,Bvec_r)
++      !$OMP PARALLEL DO PRIVATE(i,j,k,itracer,alp_l,alp_r,alp_tmp,Bvec_l,Bvec_r)
+       do k = GRHydro_stencil + 1 - transport_constraints, cctk_lsh(3) - GRHydro_stencil ! we need to compute Evec on all faces/edges where the fluxes are defined
+         do j = GRHydro_stencil + 1 - transport_constraints, cctk_lsh(2) - GRHydro_stencil
+           do i = GRHydro_stencil + 1 - transport_constraints, cctk_lsh(1) - GRHydro_stencil
+-- 
+1.7.8
+

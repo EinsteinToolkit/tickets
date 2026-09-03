@@ -1,0 +1,68 @@
+From 0d8b601ccf57aed106eab2d0456ee9dd00e965d9 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Sat, 28 Apr 2012 13:50:48 +0200
+Subject: [PATCH 1/2] Add parameter sync_barriers to insert an MPI barrier
+ before every sync
+
+This causes each process to wait for all the others to reach this point in the execution.  This will happen anyway (for most of the processes) during the sync, and adding this barrier means that this time is not included in the sync timer.  Also add a new timer to time this barrier.
+---
+ Carpet/Carpet/param.ccl           |    4 ++++
+ Carpet/Carpet/src/CallFunction.cc |   27 +++++++++++++++++++++++++++
+ 2 files changed, 31 insertions(+), 0 deletions(-)
+
+diff --git a/Carpet/Carpet/param.ccl b/Carpet/Carpet/param.ccl
+index c681072..5970b68 100644
+--- a/Carpet/Carpet/param.ccl
++++ b/Carpet/Carpet/param.ccl
+@@ -353,6 +353,10 @@ BOOLEAN schedule_barriers "Insert barriers between scheduled items, so that time
+ {
+ } "no"
+ 
++BOOLEAN sync_barriers "Insert barriers before syncs, so that the sync timer is more reliable" STEERABLE=always
++{
++} "no"
++
+ BOOLEAN output_internal_data "Periodically print internal data to the screen for debugging purposes"
+ {
+ } "no"
+diff --git a/Carpet/Carpet/src/CallFunction.cc b/Carpet/Carpet/src/CallFunction.cc
+index 40e2ce0..fdb0bb7 100644
+--- a/Carpet/Carpet/src/CallFunction.cc
++++ b/Carpet/Carpet/src/CallFunction.cc
+@@ -417,6 +417,33 @@ namespace Carpet {
+                                   vector<int> const & sync_groups,
+                                   Timer & sync_timer)
+   {
++    DECLARE_CCTK_PARAMETERS;
++
++    if (sync_barriers) {
++      // Create an ID that is almost unique for this scheduled
++      // function call
++      stringstream buf;
++      buf << cctkGH->cctk_iteration << "\n";
++      buf << attribute->meta
++          << attribute->meta_early
++          << attribute->meta_late
++          << attribute->global
++          << attribute->global_early
++          << attribute->global_late
++          << attribute->level
++          << attribute->singlemap
++          << attribute->local << "\n";
++      buf << attribute->where << "\n";
++      buf << attribute->thorn << "\n";
++      buf << attribute->routine << " sync\n";
++      string const str = buf.str();
++      int const id = adler32(str.c_str(), str.length());
++      static Timer barrier_timer  ("sync_barrier");
++      barrier_timer.start();
++      Carpet::NamedBarrier (NULL, id, "Carpet::Sync");
++      barrier_timer.stop();
++    }
++
+     sync_timer.start();
+     SyncProlongateGroups (cctkGH, sync_groups);
+     sync_timer.stop();
+-- 
+1.7.5.4
+

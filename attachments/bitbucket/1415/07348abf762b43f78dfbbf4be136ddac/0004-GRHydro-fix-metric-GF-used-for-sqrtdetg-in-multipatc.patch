@@ -1,0 +1,87 @@
+From 93ca51a93cf593727894e66a59ba9a24e4b9be17 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Wed, 10 Jul 2013 06:16:46 -0700
+Subject: [PATCH 04/19] GRHydro: fix metric GF used for sqrtdetg in multipatch
+ runs
+
+fix some scheduling
+---
+ schedule.ccl  |    2 +-
+ src/Utils.F90 |   37 ++++++++++++++++++++++++++++++++-----
+ 2 files changed, 33 insertions(+), 6 deletions(-)
+
+diff --git a/schedule.ccl b/schedule.ccl
+index a3fbefb..3e53386 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -605,7 +605,7 @@ schedule GRHydro_SetupMask AT POSTREGRIDINITIAL BEFORE MoL_PostStep AFTER (MaskO
+ # Early atmosphere reset. This will not capture relative atmosphere settings (rho_rel_min) which
+ # is scheduled later. However, this will ensure that all time and refinement levels are handled
+ # correctly for rho_abs_min set.
+-schedule GRHydro_InitialAtmosphereReset AT CCTK_Initial AFTER HydroBase_Initial BEFORE HydroBase_Prim2ConInitial
++schedule GRHydro_InitialAtmosphereReset AT CCTK_Initial AFTER HydroBase_Initial BEFORE HydroBase_Prim2ConInitial AFTER GRHydro_SqrtSpatialDeterminant 
+ {
+   LANG: Fortran
+ } "Use mask to enforce atmosphere at initial time"
+diff --git a/src/Utils.F90 b/src/Utils.F90
+index 9f670e2..d6a4c45 100644
+--- a/src/Utils.F90
++++ b/src/Utils.F90
+@@ -74,10 +74,37 @@ end subroutine GRHydro_RefinementLevel
+ subroutine GRHydro_SqrtSpatialDeterminant(CCTK_ARGUMENTS)
+ 
+   implicit none
++
++  ! save memory when MP is not used
++  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
++  TARGET gaa, gab, gac, gbb, gbc, gcc
++  TARGET gxx, gxy, gxz, gyy, gyz, gzz
++
+   DECLARE_CCTK_ARGUMENTS
+   integer i,j,k
+   integer nx, ny, nz
+ 
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++
++  ! save memory when MP is not used
++  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++    g11 => gaa
++    g12 => gab
++    g13 => gac
++    g22 => gbb
++    g23 => gbc
++    g33 => gcc
++  else
++    g11 => gxx
++    g12 => gxy
++    g13 => gxz
++    g22 => gyy
++    g23 => gyz
++    g33 => gzz
++  end if
++
+   nx = cctk_lsh(1)
+   ny = cctk_lsh(2)
+   nz = cctk_lsh(3)
+@@ -86,11 +113,11 @@ subroutine GRHydro_SqrtSpatialDeterminant(CCTK_ARGUMENTS)
+   do k=1,nz
+      do j=1,ny
+         do i=1,nx
+-           sdetg(i,j,k) = -(gxz(i,j,k)**2)*gyy(i,j,k) + & 
+-                2.0d0*gxy(i,j,k)*gxz(i,j,k)*gyz(i,j,k) - &
+-                gxx(i,j,k)*(gyz(i,j,k)**2) - &
+-                (gxy(i,j,k)**2)*gzz(i,j,k)  + &
+-                (gxx(i,j,k)*gyy(i,j,k))*gzz(i,j,k)
++           sdetg(i,j,k) = -(g13(i,j,k)**2)*g22(i,j,k) + & 
++                2.0d0*g12(i,j,k)*g13(i,j,k)*g23(i,j,k) - &
++                g11(i,j,k)*(g23(i,j,k)**2) - &
++                (g12(i,j,k)**2)*g33(i,j,k)  + &
++                (g11(i,j,k)*g22(i,j,k))*g33(i,j,k)
+            sdetg(i,j,k) = sqrt(sdetg(i,j,k))
+         enddo
+      enddo
+-- 
+1.7.10.4
+

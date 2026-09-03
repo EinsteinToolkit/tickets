@@ -1,0 +1,169 @@
+From 3be5391707ced0ff2a4d31c8a6175d49eb996775 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Mon, 25 Jun 2012 21:03:35 -0700
+Subject: [PATCH] Carpet: ensure scheduling of global-early routines in
+ POSTREGRID
+
+these routines would not start since they were only checked for on rl==0
+which is never recomposed.
+---
+ Carpet/Carpet/src/Evolve.cc     |   22 +++++++++++++++++++-
+ Carpet/Carpet/src/Initialise.cc |   44 +++++++++++++++++++++++++++++++++++++--
+ 2 files changed, 63 insertions(+), 3 deletions(-)
+
+diff --git a/Carpet/Carpet/src/Evolve.cc b/Carpet/Carpet/src/Evolve.cc
+index 5fd1469..8a0d15a 100644
+--- a/Carpet/Carpet/src/Evolve.cc
++++ b/Carpet/Carpet/src/Evolve.cc
+@@ -291,6 +291,12 @@ namespace Carpet {
+     if (did_regrid) {
+       bool did_any_recompose = false;
+       BEGIN_META_MODE (cctkGH) {
++
++        bool have_done_global_mode = false;
++        bool have_done_early_global_mode = false;
++        bool have_done_late_global_mode = false;
++        bool have_done_anything = false;
++
+         for (int rl=0; rl<reflevels; ++rl) {
+           
+           bool const did_recompose = Recompose (cctkGH, rl, true);
+@@ -307,13 +313,22 @@ namespace Carpet {
+               ENTER_LEVEL_MODE (cctkGH, rl) {
+                 BeginTimingLevel (cctkGH);
+                 
+-                do_early_global_mode = reflevel==0;
++                do_early_global_mode = not have_done_early_global_mode;
+                 do_late_global_mode = reflevel==reflevels-1;
+                 do_early_meta_mode =
+                   do_early_global_mode and mglevel==mglevels-1;
+                 do_late_meta_mode = do_late_global_mode and mglevel==0;
+                 do_global_mode = do_late_global_mode;
+                 do_meta_mode = do_late_meta_mode;
++                assert (not (have_done_global_mode and do_global_mode));
++                assert (not (have_done_early_global_mode and
++                             do_early_global_mode));
++                assert (not (have_done_late_global_mode and
++                             do_late_global_mode));
++                have_done_global_mode |= do_global_mode;
++                have_done_early_global_mode |= do_early_global_mode;
++                have_done_late_global_mode |= do_late_global_mode;
++                have_done_anything = true;
+                 
+                 BEGIN_TIMELEVEL_LOOP(cctkGH) {
+                   
+@@ -341,6 +356,11 @@ namespace Carpet {
+           } // if did_recompose
+           
+         } // for rl
++
++        if (have_done_anything) assert (have_done_global_mode);
++        if (have_done_anything) assert (have_done_early_global_mode);
++        if (have_done_anything) assert (have_done_late_global_mode);
++        
+       } END_META_MODE;
+     } // if did_regrid
+     
+diff --git a/Carpet/Carpet/src/Initialise.cc b/Carpet/Carpet/src/Initialise.cc
+index c815fe4..7b316e8 100644
+--- a/Carpet/Carpet/src/Initialise.cc
++++ b/Carpet/Carpet/src/Initialise.cc
+@@ -917,6 +917,12 @@ namespace Carpet {
+     
+     if (did_regrid) {
+       BEGIN_META_MODE (cctkGH) {
++
++        bool have_done_global_mode = false;
++        bool have_done_early_global_mode = false;
++        bool have_done_late_global_mode = false;
++        bool have_done_anything = false;
++
+         for (int rl=0; rl<reflevels; ++rl) {
+           
+           bool did_recompose = false;
+@@ -929,12 +935,21 @@ namespace Carpet {
+               ENTER_LEVEL_MODE (cctkGH, rl) {
+                 BeginTimingLevel (cctkGH);
+                 
+-                do_early_global_mode = reflevel==0;
++                do_early_global_mode = not have_done_early_global_mode;
+                 do_late_global_mode = reflevel==reflevels-1;
+                 do_early_meta_mode = do_early_global_mode and mglevel==mglevels-1;
+                 do_late_meta_mode = do_late_global_mode and mglevel==0;
+                 do_global_mode = do_late_global_mode;
+                 do_meta_mode = do_late_meta_mode;
++                assert (not (have_done_global_mode and do_global_mode));
++                assert (not (have_done_early_global_mode and
++                             do_early_global_mode));
++                assert (not (have_done_late_global_mode and
++                             do_late_global_mode));
++                have_done_global_mode |= do_global_mode;
++                have_done_early_global_mode |= do_early_global_mode;
++                have_done_late_global_mode |= do_late_global_mode;
++                have_done_anything = true;
+                 
+                 BEGIN_TIMELEVEL_LOOP(cctkGH) {
+                   
+@@ -956,6 +971,11 @@ namespace Carpet {
+           } // if did_recompose
+           
+         } // for rl
++
++        if (have_done_anything) assert (have_done_global_mode);
++        if (have_done_anything) assert (have_done_early_global_mode);
++        if (have_done_anything) assert (have_done_late_global_mode);
++        
+       } END_META_MODE;
+     } // if did_regrid
+     
+@@ -1078,6 +1098,12 @@ namespace Carpet {
+     
+     if (did_regrid) {
+       BEGIN_META_MODE (cctkGH) {
++
++        bool have_done_global_mode = false;
++        bool have_done_early_global_mode = false;
++        bool have_done_late_global_mode = false;
++        bool have_done_anything = false;
++
+         for (int rl=0; rl<reflevels; ++rl) {
+           
+           bool did_recompose = false;
+@@ -1090,12 +1116,21 @@ namespace Carpet {
+               ENTER_LEVEL_MODE (cctkGH, rl) {
+                 BeginTimingLevel (cctkGH);
+                 
+-                do_early_global_mode = reflevel==0;
++                do_early_global_mode = not have_done_early_global_mode;
+                 do_late_global_mode = reflevel==reflevels-1;
+                 do_early_meta_mode = do_early_global_mode and mglevel==mglevels-1;
+                 do_late_meta_mode = do_late_global_mode and mglevel==0;
+                 do_global_mode = do_late_global_mode;
+                 do_meta_mode = do_late_meta_mode;
++                assert (not (have_done_global_mode and do_global_mode));
++                assert (not (have_done_early_global_mode and
++                             do_early_global_mode));
++                assert (not (have_done_late_global_mode and
++                             do_late_global_mode));
++                have_done_global_mode |= do_global_mode;
++                have_done_early_global_mode |= do_early_global_mode;
++                have_done_late_global_mode |= do_late_global_mode;
++                have_done_anything = true;
+                 
+                 Waypoint ("Postregridinitial at iteration %d time %g%s%s",
+                           cctkGH->cctk_iteration, (double)cctkGH->cctk_time,
+@@ -1129,6 +1164,11 @@ namespace Carpet {
+           } // if did_recompose
+           
+         } // for rl
++
++        if (have_done_anything) assert (have_done_global_mode);
++        if (have_done_anything) assert (have_done_early_global_mode);
++        if (have_done_anything) assert (have_done_late_global_mode);
++        
+       } END_META_MODE;
+     } // if did_regrid
+     
+-- 
+1.7.10
+

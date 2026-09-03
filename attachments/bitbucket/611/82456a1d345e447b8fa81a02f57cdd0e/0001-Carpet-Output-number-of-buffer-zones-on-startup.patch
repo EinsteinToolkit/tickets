@@ -1,0 +1,38 @@
+From 5a3430f689ec632bb99b307498a3805386e1d8b8 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Sun, 9 Oct 2011 11:23:30 +0200
+Subject: [PATCH] Carpet: Output number of buffer zones on startup
+
+---
+ Carpet/Carpet/src/SetupGH.cc |    3 +++
+ 1 files changed, 3 insertions(+), 0 deletions(-)
+
+diff --git a/Carpet/Carpet/src/SetupGH.cc b/Carpet/Carpet/src/SetupGH.cc
+index 9268483..c9817bc 100644
+--- a/Carpet/Carpet/src/SetupGH.cc
++++ b/Carpet/Carpet/src/SetupGH.cc
+@@ -4,6 +4,7 @@
+ #include <cstdlib>
+ #include <cstring>
+ #include <iostream>
++#include <iomanip>
+ #include <limits>
+ #include <sstream>
+ #include <stack>
+@@ -632,11 +633,13 @@ namespace Carpet {
+     }
+     
+     vector<i2vect> buffers (maxreflevels);
++    cout << "Level  Buffer zones (not including ghosts)" << endl;
+     for (int rl=0; rl<maxreflevels; ++rl) {
+       buffers.AT(rl) =
+         taper_factor * (buffer_factor * ghosts.AT(rl)
+                         + int (additional_buffer_zones))
+         - ghosts.AT(rl);
++      cout << fixed << setw(4) << rl << buffers.AT(rl) << endl;
+       assert (all (all (buffers.AT(rl) >= 0)));
+     }
+     
+-- 
+1.7.5.4
+

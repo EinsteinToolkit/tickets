@@ -1,0 +1,1514 @@
+# HG changeset patch
+# User Ian Hinder <ian.hinder@aei.mpg.de>
+# Date 2011-06-02 11:14:40 +0200
+# Node ID a1060f8f69694f0824c88dc40d48d61c071d3f0c
+# Parent  2916ade131f15ef523bfe7f3679e743272e3fdf4
+Make Carpet timers hierarchical
+
+This commit modifies the timer infrastructure in Carpet to generate a
+tree of timers where the hierarchy reflects the call-graph of the
+program.  This makes it much easier to interpret the timer output than
+with the previous flat structure, where it was not possible to see
+which timers "contained" which others.  More implementation details
+are given at the top of TimerNode.hh.
+
+Note that the Timer source and header files have been renamed as
+CactusTimer and a new Timer file and object has been created.  This is
+because the Timer object now only provides a wrapper around the Cactus
+timer mechanism which was contained in the old Timer object.
+
+diff --git a/Carpet/Carpet/param.ccl b/Carpet/Carpet/param.ccl
+--- a/Carpet/Carpet/param.ccl
++++ b/Carpet/Carpet/param.ccl
+@@ -519,3 +519,7 @@
+   0:* :: "Anything else than 0 turns unusedpoints_mask on"
+ } 0
+ 
++STRING timer_xml_clock "Which clock to use in the XML timer output file"
++{
++  ".*" :: "must be a legal clock name"
++} "gettimeofday"
+diff --git a/Carpet/Carpet/src/CactusTimer.cc b/Carpet/Carpet/src/CactusTimer.cc
+new file mode 100644
+--- /dev/null
++++ b/Carpet/Carpet/src/CactusTimer.cc
+@@ -0,0 +1,199 @@
++#include <cassert>
++#include <cstdio>
++#include <cstring>
++#include <list>
++#include <iomanip>
++
++#include <cctk.h>
++#include <cctk_Parameters.h>
++#include <util_String.h>
++
++#if HAVE_UNISTD_H
++#  include <fcntl.h>
++#  include <unistd.h>
++#endif
++
++#include <defs.hh>
++
++#include "CactusTimer.hh"
++#include "TimerSet.hh"
++
++namespace Carpet
++{
++  using namespace std;
++
++  // Create a new Cactus timer with the given name
++  CactusTimer::CactusTimer (const string &timername)
++    : running (false)
++  {
++//    cout << "CactusTimer::CactusTimer(): name = " << timername << endl;
++    handle = CCTK_TimerCreate (timername.c_str());
++    assert (handle >= 0);
++
++    timerSet.add (this);
++  }
++
++  // Destroy a timer
++  CactusTimer::~CactusTimer ()
++  {
++    timerSet.remove (this);
++    check (not CCTK_TimerDestroyI (handle));
++  }
++
++  // Start the timer
++  void CactusTimer::start ()
++  {
++    msgStart ();
++//    cout << "CactusTimer::start this = " << this << endl;
++    running = true;
++    CCTK_TimerStartI (handle);
++  }
++
++  // Stop the timer
++  void CactusTimer::stop ()
++  {
++    CCTK_TimerStopI (handle);
++    running = false;
++    msgStop ();
++  }
++
++  // Reset the timer
++  void CactusTimer::reset ()
++  {
++    CCTK_TimerResetI (handle);
++  }
++
++  // Timer name
++  string CactusTimer::name () const
++  {
++    char const * const timername = CCTK_TimerName (handle);
++    assert (timername);
++    return string(timername);
++  }
++
++  double CactusTimer::getTime()
++  {
++    DECLARE_CCTK_PARAMETERS;
++
++    bool const was_running = running;
++    if (was_running) stop();
++
++    static cTimerData * timer = 0;
++    if (not timer) timer = CCTK_TimerCreateData ();
++    assert (timer);
++    CCTK_TimerI (handle, timer);
++
++    double val = 0; // All these timers will be returned as doubles
++
++    const cTimerVal  *tv = CCTK_GetClockValue(timer_xml_clock, timer);
++
++    if (tv != NULL)
++    {
++      val = CCTK_TimerClockSeconds(tv);
++    }
++    else
++    {
++      CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++                 "Clock \"%s\" not found for timer #%d \"%s\"",
++                 timer_xml_clock, handle, CCTK_TimerName(handle));
++      val = -1;
++    }
++
++    // for (int i=0; i<timer->n_vals; ++i) {
++    //   switch (timer->vals[i].type) {
++    //   case val_int:
++    //     val = timer->vals[i].val.i;
++    //     break;
++    //   case val_long:
++    //     val = timer->vals[i].val.l;
++    //     break;
++    //   case val_double:
++    //     val = timer->vals[i].val.d;
++    //     break;
++    //   case val_none:
++    //     val = 0; // ??
++    //     break;
++    //   default:
++    //     assert (0);
++    //   }
++    // }
++
++    if (was_running) start();
++
++    return val;
++  }
++
++
++  // Print timer data
++  void CactusTimer::printData ()
++  {
++    bool const was_running = running;
++    if (was_running) stop();
++
++#if 0
++    check (not CCTK_TimerPrintDataI (handle, -1)); // -1 means: all clocks
++#endif
++
++    static cTimerData * timer = 0;
++    if (not timer) timer = CCTK_TimerCreateData ();
++    assert (timer);
++    CCTK_TimerI (handle, timer);
++
++    static bool firsttime = true;
++    if (firsttime) {
++      printf ("# 1: timer name");
++      for (int i=0; i<timer->n_vals; ++i) {
++        printf (" %d: %s [%s]",
++                i+2, timer->vals[i].heading, timer->vals[i].units);
++      }
++      printf ("\n");
++      firsttime = false;
++    }
++
++    printf ("%s:", name().c_str());
++    for (int i=0; i<timer->n_vals; ++i) {
++      switch (timer->vals[i].type) {
++      case val_int:
++        printf (" %d", timer->vals[i].val.i);
++        break;
++      case val_long:
++        printf (" %ld", timer->vals[i].val.l);
++        break;
++      case val_double:
++        printf (" %g", timer->vals[i].val.d);
++        break;
++      case val_none:
++        break;
++      default:
++        assert (0);
++      }
++    }
++    printf ("\n");
++
++    if (was_running) start();
++  }
++
++  // Output (debug) messages that a timer is starting or stopping
++  void CactusTimer::msgStart ()  const
++  {
++    DECLARE_CCTK_PARAMETERS;
++    if (timers_verbose) {
++      CCTK_VInfo (CCTK_THORNSTRING, "Timer \"%s\" starting", name().c_str());
++    }
++  }
++
++  void CactusTimer::msgStop () const
++  {
++    DECLARE_CCTK_PARAMETERS;
++    if (timers_verbose) {
++      CCTK_VInfo (CCTK_THORNSTRING, "Timer \"%s\" stopping", name().c_str());
++    }
++  }
++
++  ostream& CactusTimer::serialise(ostream &os)
++  {
++    os << scientific << setprecision(19) << getTime() << " " << name();
++    return os;
++  }
++
++}  // namespace Carpet
+diff --git a/Carpet/Carpet/src/CactusTimer.hh b/Carpet/Carpet/src/CactusTimer.hh
+new file mode 100644
+--- /dev/null
++++ b/Carpet/Carpet/src/CactusTimer.hh
+@@ -0,0 +1,64 @@
++
++#ifndef CACTUSTIMER_HH
++#define CACTUSTIMER_HH
++
++#include <iostream>
++#include <list>
++#include <string>
++#include <cctk.h>
++
++namespace Carpet {
++
++  using namespace std;
++
++/** The CactusTimer class wraps the Cactus timer mechanism.  All times
++    are returned as doubles for now. */
++
++  class CactusTimer
++  {
++    int handle;
++    bool running;
++
++  public:
++
++    /// Create a new Cactus timer with the given name
++    CactusTimer (const string &timername);
++
++    /// Destroy a timer
++    ~CactusTimer ();
++
++    /// Start the timer
++    void start ();
++
++    /// Stop the timer
++    void stop ();
++
++    /// Reset the timer
++    void reset ();
++
++    /// Timer name
++    string name () const;
++
++    /// Print timer data
++    void printData ();
++
++    /// Return the current time of the timer as a double
++    double getTime();
++
++    ostream& serialise(ostream &os);
++
++  private:
++
++    // Output (debug) messages that a timer is starting or stopping
++    void
++    msgStart ()
++      const;
++
++    void
++    msgStop ()
++      const;
++
++  };
++}  // namespace Carpet
++
++#endif // CACTUSTIMER_HH
+diff --git a/Carpet/Carpet/src/CarpetStartup.cc b/Carpet/Carpet/src/CarpetStartup.cc
+--- a/Carpet/Carpet/src/CarpetStartup.cc
++++ b/Carpet/Carpet/src/CarpetStartup.cc
+@@ -7,6 +7,7 @@
+ #include <dist.hh>
+ 
+ #include <carpet.hh>
++#include <TimerNode.hh>
+ 
+ 
+ 
+@@ -58,6 +59,9 @@
+     CCTK_OverloadQueryGroupStorageB (QueryGroupStorageB);
+     CCTK_OverloadGroupDynamicData (GroupDynamicData);
+     
++    // This must happen before any Timer objects are created
++    TimerNode::getRootTimer()->start();
++
+     return 0;
+   }
+   
+diff --git a/Carpet/Carpet/src/Evolve.cc b/Carpet/Carpet/src/Evolve.cc
+--- a/Carpet/Carpet/src/Evolve.cc
++++ b/Carpet/Carpet/src/Evolve.cc
+@@ -18,6 +18,7 @@
+ 
+ #include <carpet.hh>
+ #include <Timers.hh>
++#include <TimerSet.hh>
+ 
+ 
+ 
+@@ -82,7 +83,7 @@
+             cctkGH->cctk_iteration % output_timers_every == 0 and
+             cctkGH->cctk_iteration % do_every == 0)
+         {
+-          TimerSet::writeData (cctkGH, timer_file);
++          Carpet::TimerSet::writeData (cctkGH, timer_file);
+         }
+       }
+       
+@@ -630,6 +631,7 @@
+     timers_t & timers = * timersp;
+     
+     // Obtain timer, creating a new one if it does not yet exist
++    // This is no longer necessary with the new timer implementation
+     ostringstream timernamebuf;
+     timernamebuf << where << "::" << name;
+     string const timername = timernamebuf.str();
+diff --git a/Carpet/Carpet/src/Initialise.cc b/Carpet/Carpet/src/Initialise.cc
+--- a/Carpet/Carpet/src/Initialise.cc
++++ b/Carpet/Carpet/src/Initialise.cc
+@@ -13,6 +13,7 @@
+ 
+ #include <carpet.hh>
+ #include <Timers.hh>
++#include <TimerSet.hh>
+ 
+ 
+ 
+diff --git a/Carpet/Carpet/src/Shutdown.cc b/Carpet/Carpet/src/Shutdown.cc
+--- a/Carpet/Carpet/src/Shutdown.cc
++++ b/Carpet/Carpet/src/Shutdown.cc
+@@ -8,6 +8,8 @@
+ 
+ #include <carpet.hh>
+ #include <Timers.hh>
++#include <TimerNode.hh>
++#include <TimerSet.hh>
+ 
+ 
+ 
+@@ -77,6 +79,10 @@
+       
+     } END_REVERSE_MGLEVEL_LOOP;
+     
++
++    TimerNode *rt = TimerNode::getRootTimer();
++    rt->stop();
++
+     // earlier checkpoint before finalising MPI
+     Waypoint ("Done with shutdown");
+     
+diff --git a/Carpet/Carpet/src/TimerNode.cc b/Carpet/Carpet/src/TimerNode.cc
+new file mode 100644
+--- /dev/null
++++ b/Carpet/Carpet/src/TimerNode.cc
+@@ -0,0 +1,247 @@
++/*
++ *
++ * The MIT License
++ *
++ * Copyright (c) 1997-2010 Center for the Simulation of Accidental Fires and
++ * Explosions (CSAFE), and  Scientific Computing and Imaging Institute (SCI),
++ * University of Utah.
++ *
++ * License for the specific language governing rights and limitations under
++ * Permission is hereby granted, free of charge, to any person obtaining a
++ * copy of this software and associated documentation files (the "Software"),
++ * to deal in the Software without restriction, including without limitation
++ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
++ * and/or sell copies of the Software, and to permit persons to whom the
++ * Software is furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be included
++ * in all copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
++ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
++ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
++ * DEALINGS IN THE SOFTWARE.
++ *
++ * */
++
++#include <assert.h>
++#include <map>
++#include <string>
++#include <ostream>
++#include <iostream>
++#include <algorithm>
++#include <iomanip>
++
++#include "TimerNode.hh"
++
++namespace Carpet {
++
++  using namespace std;
++
++  TimerNode *TimerNode::d_current = 0;
++  TimerNode *TimerNode::root_timer = 0;
++
++  TimerNode::TimerNode(string name): d_name(name), d_parent(0),
++                                     d_running(false)
++  {
++    timer = 0;
++  }
++
++  TimerNode::~TimerNode()
++  {
++    for(map<string,TimerNode*>::iterator iter=d_children.begin();
++        iter!=d_children.end(); ++iter)
++    {
++      delete iter->second;
++    }
++    d_children.clear();
++    delete timer;
++  }
++
++  string TimerNode::pathName() const
++  {
++    if (d_parent)
++      return d_parent->pathName() + string("/") + getName();
++    else
++      return getName();
++  }
++
++  void TimerNode::start()
++  {
++    if(!d_running)
++    {
++      d_running = true;
++      d_parent = d_current;
++      d_current=this;
++      if (timer == 0)
++        timer = new CactusTimer(pathName());
++      assert(timer);
++      timer->start();
++    }
++    else
++    {
++      assert(0); // Timer is already running
++    }
++  }
++
++  void TimerNode::stop()
++  {
++    if(d_running)
++    {
++      // A timer can only be stopped if it is the current timer
++      assert(this==d_current);
++
++      timer->stop();
++
++      d_running=false;
++      d_current=d_parent;
++    }
++    else
++    {
++      assert(0); // Timer is not running
++    }
++  }
++
++  /// Get the name of the timer
++  string TimerNode::getName() const
++  {
++    assert(d_name.length() > 0);
++    return d_name;
++  }
++
++  /// Get the current timer
++  TimerNode* TimerNode::getCurrentTimer()
++  {
++    return d_current;
++  }
++
++  /// Get the root of the timer tree
++  TimerNode* TimerNode::getRootTimer()
++  {
++    if (root_timer == 0)
++      root_timer = new TimerNode("main");
++    return root_timer;
++  }
++
++  /// Find the child timer that matches the name provided.  If it is
++  /// not found then a new timer with that name is allocated.
++  TimerNode* TimerNode::getChildTimer(string name)
++  {
++    // Find child
++    TimerNode *child=d_children[name];
++
++    // If the pointer is null then allocate it
++    if(child == 0)
++      d_children[name] = child = new TimerNode(name);
++
++    return child;
++  }
++
++  /// Get the time measured by this timer
++  double TimerNode::getTime()
++  {
++    return timer->getTime();
++  }
++
++  /// Print this node and its children as an ASCII tree
++  void TimerNode::print(ostream& out, double total, int level,
++                        double threshold)
++  {
++    string space;
++
++    // Compute the level of indentation for this depth
++    for(int i=0;i<level-1;i++)
++      space += "| ";
++
++    if (level != 0)
++      space += "|_";
++
++    const double t = getTime();
++
++    if (level == 0)
++    {
++      out << "-----------------------" << endl;
++      out << "Percent   t/secs  Timer" << endl;
++      out << "-----------------------" << endl;
++    }
++
++    const int pcw = 6;
++    const int tw = 8;
++
++    // Print this timer value
++    out << fixed << setw(pcw) << setprecision(1) << 100.0 * t / total << "%"
++        << " " << fixed << setw(tw) << setprecision(1) << t
++        << "  " << space << d_name << endl;
++
++    double children_time = 0;
++
++    // Recursively print the children
++    for(map<string,TimerNode*>::iterator iter = d_children.begin();
++        iter != d_children.end(); iter++)
++    {
++      if (iter->second->getTime() * 100.0 / total > threshold)
++        iter->second->print(out,total,level+1,threshold);
++      children_time += iter->second->getTime();
++    }
++
++    if (d_children.size() > 0)
++    {
++      const double untimed = t - children_time;
++      
++      if (100.0 * untimed / total > threshold)
++      {
++        // Print the untimed portion
++        out << fixed << setw(pcw) << setprecision(1) << 100.0 * untimed / total << "%"
++            << " " << fixed << setw(tw) << setprecision(1) << untimed
++            << "  | " << space << "untimed" << endl;
++      }
++    }
++  }
++
++  /// Print this node and its children as an XML file
++  void TimerNode::printXML(ostream& out, int level)
++  {
++    string space;
++
++    // Compute the level of indentation for this node
++    for(int i=0;i<level;i++)
++      space=space+"  ";
++
++    out << space << "<timer name = " << "\"" << escapeForXML(d_name) << "\"> ";
++    out << getTime() << " ";
++
++    // For compactness, only use multiple lines if there are children
++    if (d_children.size() != 0)
++    {
++      out << endl;
++
++      // Recursively print the children
++      for(map<string,TimerNode*>::iterator iter=d_children.begin();iter!=d_children.end();++iter)
++        iter->second->printXML(out,level+1);
++      out << space;
++    }
++
++    out << "</timer>" << endl;
++  }
++
++  /// Make a string suitable for inclusion in an XML file
++  string TimerNode::escapeForXML(const string &s) const
++  {
++    // XML attributes cannot contain unescaped angle-brackets.  As a
++    // simple solution to this, replace them with | characters.
++
++    string s2(s);
++    using std::string;
++    using std::cout;
++    using std::endl;
++    using std::replace;
++
++    replace(s2.begin(), s2.end(), '<', '|');
++    replace(s2.begin(), s2.end(), '>', '|');
++
++    return s2;
++  }
++}
+diff --git a/Carpet/Carpet/src/TimerNode.hh b/Carpet/Carpet/src/TimerNode.hh
+new file mode 100644
+--- /dev/null
++++ b/Carpet/Carpet/src/TimerNode.hh
+@@ -0,0 +1,102 @@
++/*
++ *
++ * The MIT License
++ *
++ * Copyright (c) 1997-2010 Center for the Simulation of Accidental Fires and
++ * Explosions (CSAFE), and  Scientific Computing and Imaging Institute (SCI),
++ * University of Utah.
++ *
++ * License for the specific language governing rights and limitations under
++ * Permission is hereby granted, free of charge, to any person obtaining a
++ * copy of this software and associated documentation files (the "Software"),
++ * to deal in the Software without restriction, including without limitation
++ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
++ * and/or sell copies of the Software, and to permit persons to whom the
++ * Software is furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be included
++ * in all copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
++ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
++ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
++ * DEALINGS IN THE SOFTWARE.
++ *
++ * */
++
++/* This class was originally written by Justin Luitjens and
++   subsequently integrated with Cactus/Carpet by Ian Hinder and
++   heavily modified. */
++
++#ifndef TIMERNODE_HH
++#define TIMERNODE_HH
++
++#include <assert.h>
++#include <map>
++#include <string>
++#include <ostream>
++#include <iostream>
++
++#include "CactusTimer.hh"
++
++namespace Carpet {
++
++using namespace std;
++
++/**
++
++The TimerNode class implements a tree structure where each node
++represents a timer, implemented as a CactusTimer.  Each node of the
++tree can have zero of more children, where the names of the child
++nodes are unique within a single parent, but not necessarily unique
++within the entire tree.  A tree formed of TimerNode objects represents
++the execution profile of the program, inasmuch as it is instrumented
++by timers.
++
++Child nodes of a given name are accessed using the getChildTimer
++method, where a node is created with the given name if none exists
++already.  This ensures that the names of the child timers are unique.
++
++*/
++
++class TimerNode
++{
++public:
++  TimerNode(string name);
++  ~TimerNode();
++
++  void start();
++  void stop();
++
++  string getName() const;
++  string pathName() const;
++
++  static TimerNode* getCurrentTimer();
++
++  // Finds the child timer that matches the name provided.  If it is
++  // not found then that timer is allocated.
++  TimerNode* getChildTimer(string name);
++  static TimerNode* getRootTimer();
++
++  double getTime();
++
++  void print(ostream& out, double total, int level=0, double threshold=0.0);
++  void printXML(ostream& out, int level=0);
++
++private:
++  string escapeForXML(const string &s) const;
++
++  string d_name;
++  std::map<string,TimerNode*> d_children;
++  static TimerNode* d_current;
++  static TimerNode* root_timer;
++  TimerNode *d_parent;
++  bool d_running;
++  CactusTimer *timer;
++};
++}
++
++#endif // TIMERNODE_HH
+diff --git a/Carpet/Carpet/src/TimerSet.cc b/Carpet/Carpet/src/TimerSet.cc
+new file mode 100644
+--- /dev/null
++++ b/Carpet/Carpet/src/TimerSet.cc
+@@ -0,0 +1,183 @@
++#include <cassert>
++#include <cstdio>
++#include <cstring>
++#include <list>
++
++#include <cctk.h>
++#include <cctk_Parameters.h>
++#include <util_String.h>
++
++#if HAVE_UNISTD_H
++#  include <fcntl.h>
++#  include <unistd.h>
++#endif
++
++#include <defs.hh>
++
++#include <Timers.hh>
++#include <CactusTimer.hh>
++#include <TimerNode.hh>
++#include <TimerSet.hh>
++
++namespace Carpet {
++
++  using namespace std;
++
++  // A global timer set
++  TimerSet timerSet;
++
++  // Add a timer
++  void
++  TimerSet::add (CactusTimer * const timer)
++  {
++    timers.push_back (timer);
++  }
++
++  // Remove a timer
++  void
++  TimerSet::remove (CactusTimer * const timer)
++  {
++    timers.remove (timer);
++  }
++
++  // Print all timer names
++  void
++  TimerSet::printNames ()
++    const
++  {
++    printf ("Timer names:\n");
++    int n = 0;
++    for (list <CactusTimer *>::const_iterator
++           itimer = timers.begin(); itimer != timers.end(); ++ itimer)
++    {
++      printf ("   [%4d] %s\n", n, (* itimer)->name().c_str());
++      ++ n;
++    }
++  }
++
++  // Print all timer data
++  void
++  TimerSet::printData ()
++  {
++    for (list <CactusTimer *>::const_iterator
++           itimer = timers.begin(); itimer != timers.end(); ++ itimer)
++    {
++      (* itimer)->printData ();
++    }
++    printf ("\n");
++  }
++
++  // Print all timer data
++  void
++  TimerSet::writeData (cGH const * const cctkGH,
++                       char const * const filename)
++  {
++    int const oldfd = redirect (cctkGH, filename);
++#if 0
++    printf ("********************************************************************************\n");
++#endif
++    printf ("# Carpet timing information at iteration %d time %g:\n",
++            cctkGH->cctk_iteration, (double) cctkGH->cctk_time);
++    timerSet.printData ();
++    unredirect (oldfd);
++  }
++
++  // If filename is not empty, then redirect stdout to a file
++  int
++  TimerSet::redirect (cGH const * const cctkGH,
++                      char const * const filename)
++  {
++    DECLARE_CCTK_PARAMETERS;
++
++    if (CCTK_EQUALS (filename, "")) {
++      return -1;
++    }
++
++#ifndef HAVE_UNISTD_H
++    CCTK_WARN (1, "Cannot redirect timer output to a file; the operating system does not support this");
++    return -1;
++#else
++
++    int const myproc = CCTK_MyProc (cctkGH);
++    char fullname [10000];
++    Util_snprintf (fullname, sizeof fullname,
++                   "%s/%s.%04d.txt", out_dir, filename, myproc);
++
++    int flags = O_WRONLY | O_CREAT | O_APPEND; // append
++    static bool first_time = true;
++    if (first_time) {
++      first_time = false;
++      if (IO_TruncateOutputFiles (cctkGH)) {
++        flags = O_WRONLY | O_CREAT | O_TRUNC; // truncate
++      }
++    }
++
++    // Temporarily redirect stdout
++    fflush (stdout);
++    int const oldfd = dup (1);  // fd 1 is stdout
++    int const mode = 0644;      // rw-r--r--, or a+r u+w
++    int const fdfile = open (fullname, flags, mode);
++    if (fdfile < 0) {
++      CCTK_VWarn (1, __LINE__, __FILE__, CCTK_THORNSTRING,
++                  "Could not open timer output file \"%s\"", fullname);
++      close (oldfd);
++      return -1;
++    }
++    close (1);
++    dup (fdfile);               // dup to 1, i.e., stdout again
++    close (fdfile);
++    return oldfd;
++#endif
++  }
++
++  // Redirect stdout back
++  void
++  TimerSet::unredirect (int const oldfd)
++  {
++    if (oldfd < 0) return;
++
++#ifdef HAVE_UNISTD_H
++    fflush (stdout);
++    close (1);
++    dup (oldfd);
++    close (oldfd);
++#endif
++  }
++
++
++  /// Reduce each timers in the set across all processes and update
++  /// each timer with the reduction information.
++  void TimerSet::reduce()
++  {
++    // Collect timer names that each process has
++
++    // Construct union of all timer names, sort canonically and assign
++    // integer identifiers
++
++    // For each timer, identify which processes have that timer
++
++    // Reduce the timer across all those processes (return to root proc only)
++
++    serialise(cout);
++  }
++
++  ostream& TimerSet::serialise(ostream &os)
++  {
++    for (list <CactusTimer *>::const_iterator
++           itimer = timers.begin(); itimer != timers.end(); ++ itimer)
++    {
++      (*itimer)->serialise(os);
++      os << endl;
++    }
++    return os;
++  }
++
++/*
++
++
++Each process has a list of (string,real) pairs.  I want to return a
++list of these where the reals have been reduced using a reduction
++operator.  Not all processes have the same strings present.
++ */
++
++} // namespace Carpet
+diff --git a/Carpet/Carpet/src/TimerSet.hh b/Carpet/Carpet/src/TimerSet.hh
+new file mode 100644
+--- /dev/null
++++ b/Carpet/Carpet/src/TimerSet.hh
+@@ -0,0 +1,69 @@
++#ifndef TIMERSET_HH
++#define TIMERSET_HH
++
++#include <iostream>
++#include <list>
++
++#include <cctk.h>
++#include "CactusTimer.hh"
++
++//class Carpet::TimerSet;
++
++//ostream& operator <<(ostream &os, const Carpet::TimerSet &obj);
++
++namespace Carpet {
++
++  class TimerSet;
++  extern TimerSet timerSet;
++
++  using namespace std;
++
++  // A set of timers
++  class TimerSet {
++
++    list <CactusTimer *> timers;
++
++  public:
++
++    // Add a timer
++    void
++    add (CactusTimer * timer);
++
++    // Remove a timer
++    void
++    remove (CactusTimer * timer);
++
++    // Print all timer names
++    void
++    printNames ()
++      const;
++
++    // Print timer data
++    void
++    printData ();
++
++    // Write all timer data
++    static void writeData (cGH const * cctkGH, char const * filename);
++
++    void reduce();
++
++    ostream& serialise(ostream &os);
++
++  private:
++
++    // If filename is not empty, then redirect stdout to a file
++    static
++    int
++    redirect (cGH const * cctkGH,
++              char const * filename);
++
++    // Redirect stdout back
++    static
++    void
++    unredirect (int oldfd);
++
++  }; // class TimerSet
++
++} // namespace Carpet
++
++#endif // TIMERSET_HH
+diff --git a/Carpet/Carpet/src/Timers.cc b/Carpet/Carpet/src/Timers.cc
+--- a/Carpet/Carpet/src/Timers.cc
++++ b/Carpet/Carpet/src/Timers.cc
+@@ -15,258 +15,53 @@
+ #include <defs.hh>
+ 
+ #include <Timers.hh>
++#include <TimerNode.hh>
+ 
+ 
+ 
+ namespace Carpet {
+   
+   using namespace std;
+-  
+-  
+-  
+-  // A global timer set
+-  static
+-  TimerSet timerSet;
+-  
+-  
+-  
+-  // Add a timer
+-  void
+-  TimerSet::add (Timer * const timer)
++
++/*********************************************************************
++ Timer
++ *********************************************************************/
++
++  /// Create a timer with a given name, but do not start it, and do
++  /// not associate it with a point in the timer hierarchy.
++  Timer::Timer(const string &name_p) : d_name(name_p)
+   {
+-    timers.push_back (timer);
+   }
+-  
+-  
+-  
+-  // Remove a timer
+-  void
+-  TimerSet::remove (Timer * const timer)
+-  {
+-    timers.remove (timer);
+-  }
+-  
+-  
+-  
+-  // Print all timer names
+-  void
+-  TimerSet::printNames ()
+-    const
+-  {
+-    printf ("Timer names:\n");
+-    int n = 0;
+-    for (list <Timer *>::const_iterator
+-           itimer = timers.begin(); itimer != timers.end(); ++ itimer)
+-    {
+-      printf ("   [%4d] %s\n", n, (* itimer)->name());
+-      ++ n;
+-    }
+-  }
+-  
+-  
+-    
+-  // Print all timer data
+-  void
+-  TimerSet::printData ()
+-  {
+-    for (list <Timer *>::const_iterator
+-           itimer = timers.begin(); itimer != timers.end(); ++ itimer)
+-    {
+-      (* itimer)->printData ();
+-    }
+-    printf ("\n");
+-  }
+-  
+-  
+-    
+-  // Print all timer data
+-  void
+-  TimerSet::writeData (cGH const * const cctkGH,
+-                       char const * const filename)
+-  {
+-    int const oldfd = redirect (cctkGH, filename);
+-#if 0
+-    printf ("********************************************************************************\n");
+-#endif
+-    printf ("# Carpet timing information at iteration %d time %g:\n",
+-            cctkGH->cctk_iteration, (double) cctkGH->cctk_time);
+-    timerSet.printData ();
+-    unredirect (oldfd);
+-  }
+-  
+-  
+-  
+-  // If filename is not empty, then redirect stdout to a file
+-  int
+-  TimerSet::redirect (cGH const * const cctkGH,
+-                      char const * const filename)
+-  {
+-    DECLARE_CCTK_PARAMETERS;
+-    
+-    if (CCTK_EQUALS (filename, "")) {
+-      return -1;
+-    }
+-    
+-#ifndef HAVE_UNISTD_H
+-    CCTK_WARN (1, "Cannot redirect timer output to a file; the operating system does not support this");
+-    return -1;
+-#else
+-    
+-    int const myproc = CCTK_MyProc (cctkGH);
+-    char fullname [10000];
+-    Util_snprintf (fullname, sizeof fullname,
+-                   "%s/%s.%04d.txt", out_dir, filename, myproc);
+-    
+-    int flags = O_WRONLY | O_CREAT | O_APPEND; // append
+-    static bool first_time = true;
+-    if (first_time) {
+-      first_time = false;
+-      if (IO_TruncateOutputFiles (cctkGH)) {
+-        flags = O_WRONLY | O_CREAT | O_TRUNC; // truncate
+-      }
+-    }
+-    
+-    // Temporarily redirect stdout
+-    fflush (stdout);
+-    int const oldfd = dup (1);  // fd 1 is stdout
+-    int const mode = 0644;      // rw-r--r--, or a+r u+w
+-    int const fdfile = open (fullname, flags, mode);
+-    if (fdfile < 0) {
+-      CCTK_VWarn (1, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                  "Could not open timer output file \"%s\"", fullname);
+-      close (oldfd);
+-      return -1;
+-    }
+-    close (1);
+-    dup (fdfile);               // dup to 1, i.e., stdout again
+-    close (fdfile);
+-    return oldfd;
+-#endif
+-  }
+-  
+-  
+-  
+-  // Redirect stdout back
+-  void
+-  TimerSet::unredirect (int const oldfd)
+-  {
+-    if (oldfd < 0) return;
+-    
+-#ifdef HAVE_UNISTD_H
+-    fflush (stdout);
+-    close (1);
+-    dup (oldfd);
+-    close (oldfd);
+-#endif
+-  }
+-  
+-  
+-  
+-  // Create a new Cactus timer with the given name
+-  Timer::Timer (char const * const timername)
+-    : running (false)
+-  {
+-    assert (timername);
+-    handle = CCTK_TimerCreate (timername);
+-    assert (handle >= 0);
+-    
+-    timerSet.add (this);
+-  }
+-  
+-  
+-  
+-  // Destroy a timer
++
++  /// Destroy a timer
+   Timer::~Timer ()
+   {
+-    timerSet.remove (this);
+-    check (not CCTK_TimerDestroyI (handle));
+   }
+-  
+-  
+-  
+-  // Timer name
+-  char const *
+-  Timer::name ()
+-    const
++
++  /// Start the timer and insert it into the tree of timers as a child
++  /// of the most recently started timer that has not been stopped.
++  void Timer::start ()
+   {
+-    char const * const timername = CCTK_TimerName (handle);
+-    assert (timername);
+-    return timername;
++    TimerNode  *current_timer = TimerNode::getCurrentTimer();
++    assert(current_timer);
++    current_timer->getChildTimer(name())->start();
+   }
+-  
+-  
+-  
+-  // Print timer data
+-  void
+-  Timer::printData ()
++
++  /// Stop the timer - it must be the most recently started timer
++  void Timer::stop ()
+   {
+-    bool const was_running = running;
+-    if (was_running) stop();
+-    
+-#if 0
+-    check (not CCTK_TimerPrintDataI (handle, -1)); // -1 means: all clocks
+-#endif
+-    
+-    static cTimerData * timer = 0;
+-    if (not timer) timer = CCTK_TimerCreateData ();
+-    assert (timer);
+-    CCTK_TimerI (handle, timer);
+-    
+-    static bool firsttime = true;
+-    if (firsttime) {
+-      printf ("# 1: timer name");
+-      for (int i=0; i<timer->n_vals; ++i) {
+-        printf (" %d: %s [%s]",
+-                i+2, timer->vals[i].heading, timer->vals[i].units);
+-      }
+-      printf ("\n");
+-      firsttime = false;
+-    }
+-    
+-    printf ("%s:", name());
+-    for (int i=0; i<timer->n_vals; ++i) {
+-      switch (timer->vals[i].type) {
+-      case val_int:
+-        printf (" %d", timer->vals[i].val.i);
+-        break;
+-      case val_long:
+-        printf (" %ld", timer->vals[i].val.l);
+-        break;
+-      case val_double:
+-        printf (" %g", timer->vals[i].val.d);
+-        break;
+-      case val_none:
+-        break;
+-      default:
+-        assert (0);
+-      }
+-    }
+-    printf ("\n");
+-    
+-    if (was_running) start();
++    TimerNode::getCurrentTimer()->stop();
+   }
+-  
+-  
+-  
+-  // Output (debug) messages that a timer is starting or stopping
+-  void
+-  Timer::msgStart ()
+-    const
++
++  /// Return the name of the timer
++  string Timer::name () const
+   {
+-    DECLARE_CCTK_PARAMETERS;
+-    if (timers_verbose) {
+-      CCTK_VInfo (CCTK_THORNSTRING, "Timer \"%s\" starting", name());
+-    }
++    return d_name;
+   }
+-  
+-  void
+-  Timer::msgStop ()
+-    const
++
++  /// Return the current time of the timer as a double
++  double Timer::getTime()
+   {
+-    DECLARE_CCTK_PARAMETERS;
+-    if (timers_verbose) {
+-      CCTK_VInfo (CCTK_THORNSTRING, "Timer \"%s\" stopping", name());
+-    }
++    return TimerNode::getCurrentTimer()->getTime();
+   }
+-  
+ } // namespace Carpet
+diff --git a/Carpet/Carpet/src/Timers.hh b/Carpet/Carpet/src/Timers.hh
+--- a/Carpet/Carpet/src/Timers.hh
++++ b/Carpet/Carpet/src/Timers.hh
+@@ -1,3 +1,6 @@
++#ifndef TIMERS_HH
++#define TIMERS_HH
++
+ #include <iostream>
+ #include <list>
+ 
+@@ -6,136 +9,73 @@
+ 
+ 
+ namespace Carpet {
+-  
++
+   using namespace std;
+-  
+-  
+-  
+-  class Timer;
+-  
+-  
+-  
+-  // A set of timers
+-  class TimerSet {
+-    
+-    list <Timer *> timers;
+-    
++
++/**
++
++This class allows the user to instrument their code with named timers
++which can then be later queried to determine the amount of time spent
++in the code between "start" and "end" calls.  The sequence of start
++and end calls of different timers determines a dynamical hierarchical
++tree structure implemented by the TimerNode class.
++
++To use this class, create a timer object with a particular name:
++
++  Timer timer("MyTimer")
++
++Now wrap the code to be timed with start() and stop() calls:
++
++  timer.start()
++
++  some code
++
++  timer.stop()
++
++You can start and stop a timer multiple times.  The timer will be
++created as a child of whatever timer is current (i.e. has been started
++and not stopped) at the time of the first start() call.  Any timers
++which are started between the start() and stop(), whether or not they
++are in the same file, will be stored as children of this timer.
++
++Timer objects must be started and stopped in a non-overlapping manner.
++Specifically, a timer cannot be stopped if it is not the most recently
++started timer.  Doing so will generate an error.
++
++Timer objects can be allocated as "static" or not - it does not matter.
++
++*/
++
++  class Timer {
++
+   public:
+-    
+-    // Add a timer
+-    void
+-    add (Timer * timer);
+-    
+-    // Remove a timer
+-    void
+-    remove (Timer * timer);
+-    
+-    // Print all timer names
+-    void
+-    printNames ()
+-      const;
+-    
+-    // Print timer data
+-    void
+-    printData ();
+-    
+-    // Write all timer data
+-    static
+-    void
+-    writeData (cGH const * cctkGH,
+-               char const * filename);
+-    
++
++    Timer (const string &name);
++    ~Timer ();
++
++    void start ();
++    void stop ();
++    string name () const;
++    double getTime();
++
+   private:
+-    
+-    // If filename is not empty, then redirect stdout to a file
+-    static
+-    int
+-    redirect (cGH const * cctkGH,
+-              char const * filename);
+-    
+-    // Redirect stdout back
+-    static
+-    void
+-    unredirect (int oldfd);
+-    
+-  }; // class TimerSet
+-  
+-  
+-  
+-  // A timer, which is a wrapper around a Cactus timer
+-  class Timer {
+-    
+-    int handle;
+-    bool running;
+-    
+-  public:
+-    
+-    // Create a new Cactus timer with the given name
+-    Timer (char const * timername);
+-    
+-    // Destroy a timer
+-    ~Timer ();
+-    
+-    // Start the timer
+-    void
+-    start ()
+-    {
+-      msgStart ();
+-      running = true;
+-      CCTK_TimerStartI (handle);
+-    }
+-    
+-    // Stop the timer
+-    void
+-    stop ()
+-    {
+-      CCTK_TimerStopI (handle);
+-      running = false;
+-      msgStop ();
+-    }
+-    
+-    // Reset the timer
+-    void
+-    reset ()
+-    {
+-      CCTK_TimerResetI (handle);
+-    }
+-    
+-    // Timer name
+-    char const *
+-    name ()
+-      const;
+-    
+-    // Print timer data
+-    void
+-    printData ();
+-    
+-  private:
+-    
+-    // Output (debug) messages that a timer is starting or stopping
+-    void
+-    msgStart ()
+-      const;
+-    
+-    void
+-    msgStop ()
+-      const;
+-    
++
++    string d_name;
+   };
+-  
+-  
+-  
++
+   // Macros for using timers in a convenient manner
+-  
++
+ #define TIMING_BEGIN(name)                                \
+   {                                                       \
+     static Carpet::Timer timer (name);                    \
+     timer.start();                                        \
+     {
+-  
++
+ #define TIMING_END                              \
+   }                                             \
+     timer.stop();                               \
+ } while (0)
+-  
++
+ } // namespace Carpet
++
++#endif // TIMERS_HH
+diff --git a/Carpet/Carpet/src/make.code.defn b/Carpet/Carpet/src/make.code.defn
+--- a/Carpet/Carpet/src/make.code.defn
++++ b/Carpet/Carpet/src/make.code.defn
+@@ -21,6 +21,9 @@
+ 	Shutdown.cc				\
+ 	Storage.cc				\
+ 	Timers.cc				\
++    TimerNode.cc            \
++    CactusTimer.cc          \
++	TimerSet.cc             \
+ 	Timing.cc				\
+   UnusedMask.cc   \
+ 	helpers.cc				\

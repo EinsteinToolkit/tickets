@@ -1,0 +1,70 @@
+#==============================================================================
+
+ActiveThorns = "admbase boundary coordgauge time cartgrid3d CoordBase Slab LocalReduce Carpet CarpetInterp CarpetLib CarpetReduce CarpetSlab CarpetRegrid2 InitBase SymBase LoopControl GSL IOUtil MoL"
+
+
+# Grid
+
+mol::ode_method                        = "RK4"
+mol::mol_intermediate_steps            = 4
+mol::mol_num_scratch_levels            = 1
+
+
+
+CoordBase::domainsize       = "minmax"
+CoordBase::xmin             = -400
+CoordBase::ymin             = -400
+CoordBase::zmin             = -400
+CoordBase::xmax             = 400
+CoordBase::ymax             = 400
+CoordBase::zmax             = 400
+CoordBase::spacing          = "numcells"
+CoordBase::ncells_x         = 20
+CoordBase::ncells_y         = 20
+CoordBase::ncells_z         = 20
+CartGrid3D::type            = "coordbase"
+CartGrid3D::domain          = "full"
+
+CoordBase::boundary_size_x_lower        = 1
+CoordBase::boundary_size_y_lower        = 1
+CoordBase::boundary_size_z_lower        = 1
+
+CoordBase::boundary_size_x_upper        = 1
+CoordBase::boundary_size_y_upper        = 1
+CoordBase::boundary_size_z_upper        = 1
+
+driver::ghost_size                        = 4
+
+#---------------------------------------------------------------------------
+
+cactus::cctk_itlast                     = 2
+
+time::dtfac                        = 0.25
+Carpet::domain_from_coordbase       = yes
+Carpet::prolongation_order_space   = 5
+Carpet::prolongation_order_time    = 2
+Carpet::max_refinement_levels      = 9
+Carpet::use_buffer_zones = yes
+
+Carpet::init_3_timelevels = "yes"
+
+
+CarpetRegrid2::regrid_every = 32
+
+CarpetRegrid2::num_centres = 1
+
+CarpetRegrid2::num_levels_1 = 6
+CarpetRegrid2::position_x_1 = 0
+CarpetRegrid2::position_y_1 = 0
+CarpetRegrid2::position_z_1 = 0
+CarpetRegrid2::radius_1[ 1] = 200
+CarpetRegrid2::radius_1[ 2] = 100
+CarpetRegrid2::radius_1[ 3] = 50
+CarpetRegrid2::radius_1[ 4] = 25
+CarpetRegrid2::radius_1[ 5] = 12.5
+
+
+admbase::metric_type                    = "Physical"
+admbase::lapse_timelevels=3
+admbase::shift_timelevels=3
+admbase::metric_timelevels=3

@@ -1,0 +1,33 @@
+From 5deb46c17a06611a403f458be776e00502eccb81 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Sat, 3 Aug 2013 21:28:44 -0700
+Subject: [PATCH 2/4] CarpetIOHDF5: delay browsing of input files
+
+this means the BrowseDataSets is only called from one location
+---
+ Carpet/CarpetIOHDF5/src/Input.cc |    9 ---------
+ 1 file changed, 9 deletions(-)
+
+diff --git a/Carpet/CarpetIOHDF5/src/Input.cc b/Carpet/CarpetIOHDF5/src/Input.cc
+index a4690c3..1670808 100644
+--- a/Carpet/CarpetIOHDF5/src/Input.cc
++++ b/Carpet/CarpetIOHDF5/src/Input.cc
+@@ -962,15 +962,6 @@ static list<fileset_t>::iterator OpenFileSet (const cGH* const cctkGH,
+   // read all the metadata information
+   ReadMetadata (fileset, file.file);
+ 
+-  // first try to open a chunked file written on this processor
+-  // browse through all datasets contained in this file
+-
+-  // TODO: measure if it is actually beneficial to open the index file for this
+-  // file where we always read the metadata group
+-  HDF5_ERROR (H5Giterate (file.indexfile >= 0 ? file.indexfile : file.file,
+-                          "/", NULL, BrowseDatasets, &file));
+-  assert (file.patches.size() > 0);
+-
+   // recover parameters
+   if (called_from == CP_RECOVER_PARAMETERS) {
+     if (not CCTK_Equals (verbose, "none")) {
+-- 
+1.7.10.4
+

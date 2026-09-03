@@ -1,0 +1,328 @@
+Index: src/Hydro_InitExcision.c
+===================================================================
+--- src/Hydro_InitExcision.c	(revision 112)
++++ src/Hydro_InitExcision.c	(working copy)
+@@ -34,213 +34,143 @@
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+ 
+-  CCTK_INT  i,j,k, nx, ny, nz, point;
+-  CCTK_INT excised, normal;
+-  CCTK_REAL emask_excised, emask_normal;
+-  CCTK_REAL x_min, x_max, y_min, y_max, z_min, z_max;
+-  CCTK_REAL x_size, y_size, z_size;
+-  CCTK_REAL x_frac, y_frac, z_frac;
+-
+   if (hydro_initexcision)
+   {
+     CCTK_INFO("Setting up Hydro Initial Excision region.");
+   }
+ 
+-  nx = cctk_lsh[0];
+-  ny = cctk_lsh[1];
+-  nz = cctk_lsh[2];
+-
++  CCTK_REAL x_min, x_max, y_min, y_max, z_min, z_max;
+   CCTK_CoordRange(cctkGH, &x_min, &x_max, 1, NULL, "cart3d");
+   CCTK_CoordRange(cctkGH, &y_min, &y_max, 2, NULL, "cart3d");
+   CCTK_CoordRange(cctkGH, &z_min, &z_max, 3, NULL, "cart3d");
+-  x_size = x_max - x_min;
+-  y_size = y_max - y_min;
+-  z_size = z_max - z_min;
++  CCTK_REAL const x_size = x_max - x_min;
++  CCTK_REAL const y_size = y_max - y_min;
++  CCTK_REAL const z_size = z_max - z_min;
+ 
+-  excised=1;
+-  normal =0;
+-  emask_excised=0.0;
+-  emask_normal=1.0;
+-  if (hydro_initexcision_flip)
+-  {
+-    excised=0;
+-    normal =1;
+-    emask_excised=1.0;
+-    emask_normal=0.0;
+-  }
++  CCTK_INT  const excised       =  hydro_initexcision_flip;
++  CCTK_INT  const normal        = !hydro_initexcision_flip;
++  CCTK_REAL const emask_excised = !hydro_initexcision_flip;
++  CCTK_REAL const emask_normal  =  hydro_initexcision_flip;
+ 
+-  for (k=0 ; k<nz ; k++)
++  CCTK_LOOP3_ALL(Hydro_InitExcisionMask, cctkGH, i,j,k)
+   {
+-    for (j=0 ; j<ny ; j++)
+-    {
+-      for (i=0 ; i<nx; i++)
+-      { 
+-        point = CCTK_GFINDEX3D(cctkGH,i,j,k);
+-        x_frac = (x[point]-x_min) / x_size + 1.e-10;
+-        y_frac = (y[point]-y_min) / y_size + 1.e-10;
+-        z_frac = (z[point]-z_min) / z_size + 1.e-10;
++    int const point = CCTK_GFINDEX3D(cctkGH,i,j,k);
++    CCTK_REAL const x_frac = (x[point]-x_min) / x_size + 1.e-10;
++    CCTK_REAL const y_frac = (y[point]-y_min) / y_size + 1.e-10;
++    CCTK_REAL const z_frac = (z[point]-z_min) / z_size + 1.e-10;
++    CCTK_REAL const x_dist = fabs(x[point] - hydro_initexcision_position_x);
++    CCTK_REAL const y_dist = fabs(y[point] - hydro_initexcision_position_y);
++    CCTK_REAL const z_dist = fabs(z[point] - hydro_initexcision_position_z);
+ 
+-        if (hydro_initexcision)
++    /* Whether to excise this point */
++    int excise_this_point = 0;
++
++    if (hydro_initexcision)
++    {
++      if (CCTK_Equals(hydro_initexcision_type,"box"))
++      {
++        if (CCTK_Equals(domain,"full"))
+         {
+-          if (hydro_initexcision_old_mask)
+-            emask[point]=emask_normal;
+-          if (CCTK_Equals(hydro_initexcision_type,"box"))
++          if (hydro_initexcision_coordinate_length <= 0.0)
+           {
+-              if (CCTK_Equals(domain,"full"))
+-              {
+-                 if ( (hydro_initexcision_coordinate_length <= 0.0) &&
+-                      ( ( x_frac > 0.5 - hydro_initexcision_fraction) &&
+-                        ( x_frac < 0.5 + hydro_initexcision_fraction) &&
+-                        ( y_frac > 0.5 - hydro_initexcision_fraction) &&
+-                        ( y_frac < 0.5 + hydro_initexcision_fraction) &&
+-                        ( z_frac > 0.5 - hydro_initexcision_fraction) &&
+-                        ( z_frac < 0.5 + hydro_initexcision_fraction)
+-                      ) ||
+-                      ( (hydro_initexcision_coordinate_length > 0.0) &&
+-                        ( fabs(x[point]-hydro_initexcision_position_x) <=
+-                          hydro_initexcision_coordinate_length*0.5) &&
+-                        ( fabs(y[point]-hydro_initexcision_position_y) <=
+-                          hydro_initexcision_coordinate_length*0.5) &&
+-                        ( fabs(z[point]-hydro_initexcision_position_z) <=
+-                          hydro_initexcision_coordinate_length*0.5)
+-                      )
+-                    )
+-                 {
+-                    hydro_excision_mask[point] = excised;
+-                    if (hydro_initexcision_old_mask)
+-                      emask[point]=emask_excised;
+-                 }
+-                 else
+-                 {
+-                    hydro_excision_mask[point] = normal;
+-                 }
+-              }
+-              else if (CCTK_Equals(domain,"octant"))
+-              {
+-                 if ( ( (hydro_initexcision_coordinate_length <= 0.0) &&
+-                        ( x_frac < hydro_initexcision_fraction) &&
+-                        ( y_frac < hydro_initexcision_fraction) &&
+-                        ( z_frac < hydro_initexcision_fraction)
+-                      ) || 
+-                      ( (hydro_initexcision_coordinate_length > 0.0) &&
+-                        ( fabs(x[point]-hydro_initexcision_position_x) <=
+-                          hydro_initexcision_coordinate_length*0.5) &&
+-                        ( fabs(y[point]-hydro_initexcision_position_y) <=
+-                          hydro_initexcision_coordinate_length*0.5) &&
+-                        ( fabs(z[point]-hydro_initexcision_position_z) <=
+-                          hydro_initexcision_coordinate_length*0.5)
+-                      )
+-                    )
+-                 {
+-                    hydro_excision_mask[point] = excised;
+-                    if (hydro_initexcision_old_mask)
+-                      emask[point]=emask_excised;
+-                 }
+-                 else
+-                 {
+-                    hydro_excision_mask[point] = normal;
+-                 }
+-              }
++            excise_this_point =
++              fabs(x_frac - 0.5) < hydro_initexcision_fraction &&
++              fabs(y_frac - 0.5) < hydro_initexcision_fraction &&
++              fabs(z_frac - 0.5) < hydro_initexcision_fraction;
+           }
+-          else if (CCTK_Equals(hydro_initexcision_type,"x-axis"))
++          else
+           {
+-            if ( x_frac < 1.0-hydro_initexcision_fraction )
+-            {
+-              hydro_excision_mask[point] = normal;
+-            }
+-            else 
+-            {
+-              hydro_excision_mask[point] = excised;
+-              if (hydro_initexcision_old_mask)
+-                emask[point]=emask_excised;
+-            }
++            excise_this_point =
++              x_dist <= hydro_initexcision_coordinate_length*0.5 &&
++              y_dist <= hydro_initexcision_coordinate_length*0.5 &&
++              z_dist <= hydro_initexcision_coordinate_length*0.5;
+           }
+-          else if (CCTK_Equals(hydro_initexcision_type,"y-axis"))
++        }
++        else if (CCTK_Equals(domain,"octant"))
++        {
++          if (hydro_initexcision_coordinate_length <= 0.0)
+           {
+-            if ( y_frac < 1.0-hydro_initexcision_fraction )
+-            {
+-              hydro_excision_mask[point] = normal;
+-            }
+-            else 
+-            {
+-              hydro_excision_mask[point] = excised;
+-              if (hydro_initexcision_old_mask)
+-                emask[point]=emask_excised;
+-            }
++            excise_this_point =
++              x_frac < hydro_initexcision_fraction &&
++              y_frac < hydro_initexcision_fraction &&
++              z_frac < hydro_initexcision_fraction;
+           }
+-          else if (CCTK_Equals(hydro_initexcision_type,"z-axis"))
++          else
+           {
+-            if ( z_frac < 1.0-hydro_initexcision_fraction )
+-            {
+-              hydro_excision_mask[point] = normal;
+-            }
+-            else 
+-            {
+-              hydro_excision_mask[point] = excised;
+-              if (hydro_initexcision_old_mask)
+-                emask[point]=emask_excised;
+-            }
++            excise_this_point =
++              x_dist <= hydro_initexcision_coordinate_length*0.5 &&
++              y_dist <= hydro_initexcision_coordinate_length*0.5 &&
++              z_dist <= hydro_initexcision_coordinate_length*0.5;
+           }
+-          else if (CCTK_Equals(hydro_initexcision_type,"diagonal"))
+-          {
+-            if ( x_frac + y_frac + z_frac <
+-                 3.0*(1.0-hydro_initexcision_fraction) )
+-            {
+-              hydro_excision_mask[point] = normal;
+-            }
+-            else 
+-            {
+-              hydro_excision_mask[point] = excised;
+-              if (hydro_initexcision_old_mask)
+-                emask[point]=emask_excised;
+-            }
+-          }
+-          else if (CCTK_Equals(hydro_initexcision_type,"sphere"))
+-          {
+-            if ( (hydro_initexcision_coordinate_length <= 0.0) &&
+-                 ( ( (x[point]-hydro_initexcision_position_x) *
+-                     (x[point]-hydro_initexcision_position_x) +
+-                     (y[point]-hydro_initexcision_position_y) *
+-                     (y[point]-hydro_initexcision_position_y) +
+-                     (z[point]-hydro_initexcision_position_z) *
+-                     (z[point]-hydro_initexcision_position_z) ) * 4.0
+-                   > (hydro_initexcision_fraction * x_size *
+-                      hydro_initexcision_fraction * x_size) ) ||
+-                 ( (hydro_initexcision_coordinate_length > 0) &&
+-                   ( (hydro_initexcision_coordinate_length < 
+-                      cctkGH->cctk_delta_space[0]*
+-                      hydro_initexcision_min_points) ||
+-                       ( (x[point]-hydro_initexcision_position_x) *
+-                         (x[point]-hydro_initexcision_position_x) +
+-                         (y[point]-hydro_initexcision_position_y) *
+-                         (y[point]-hydro_initexcision_position_y) +
+-                         (z[point]-hydro_initexcision_position_z) *
+-                         (z[point]-hydro_initexcision_position_z)
+-                     > hydro_initexcision_coordinate_length*
+-                       hydro_initexcision_coordinate_length) ) ) )
+-            {
+-              hydro_excision_mask[point] = normal;
+-            }
+-            else 
+-            {
+-              hydro_excision_mask[point] = excised;
+-              if (hydro_initexcision_old_mask)
+-              {
+-                emask[point]=emask_excised;
+-              }
+-            }
+-          }
+         }
+         else
+         {
+-          hydro_excision_mask[point] = normal;
+-          if (hydro_initexcision_old_mask)
+-            emask[point]=emask_normal;
++          CCTK_WARN (CCTK_WARN_ABORT,
++                     "Parameter domain has illegal value");
+         }
+       }
++      else if (CCTK_Equals(hydro_initexcision_type,"x-axis"))
++      {
++        excise_this_point =
++          x_frac < 1.0-hydro_initexcision_fraction;
++      }
++      else if (CCTK_Equals(hydro_initexcision_type,"y-axis"))
++      {
++        excise_this_point =
++          y_frac < 1.0-hydro_initexcision_fraction;
++      }
++      else if (CCTK_Equals(hydro_initexcision_type,"z-axis"))
++      {
++        excise_this_point =
++          z_frac < 1.0-hydro_initexcision_fraction;
++      }
++      else if (CCTK_Equals(hydro_initexcision_type,"diagonal"))
++      {
++        excise_this_point =
++          x_frac + y_frac + z_frac < 3.0*(1.0-hydro_initexcision_fraction);
++      }
++      else if (CCTK_Equals(hydro_initexcision_type,"sphere"))
++      {
++        CCTK_REAL const radius2 =
++          pow(x[point]-hydro_initexcision_position_x,2) +
++          pow(y[point]-hydro_initexcision_position_y,2) +
++          pow(z[point]-hydro_initexcision_position_z,2);
++        if (hydro_initexcision_coordinate_length <= 0.0)
++        {
++          excise_this_point =
++            radius2*4.0 > pow(hydro_initexcision_fraction * x_size,2);
++        }
++        else
++        {
++          int const not_enough_points =
++            hydro_initexcision_coordinate_length <
++            cctk_delta_space[0]*hydro_initexcision_min_points;
++          excise_this_point =
++            not_enough_points ||
++            radius2 > pow(hydro_initexcision_coordinate_length,2);
++        }
++      }
++      else
++      {
++        CCTK_WARN (CCTK_WARN_ABORT,
++                   "Parameter hydro_initexcision_type has illegal value");
++      }
++    } /* if hydro_initexcision */
++
++    if (excise_this_point)
++    {
++      hydro_excision_mask[point] = normal;
++      if (hydro_initexcision_old_mask)
++        emask[point] = emask_normal;
+     }
+-  }
+-  return;
++    else 
++    {
++      hydro_excision_mask[point] = excised;
++      if (hydro_initexcision_old_mask)
++        emask[point] = emask_excised;
++    }
++
++  } CCTK_ENDLOOP3_ALL(Hydro_InitExcisionMask);
+ }
+ 
+ void Hydro_InitExcisionMask_poststep(CCTK_ARGUMENTS)

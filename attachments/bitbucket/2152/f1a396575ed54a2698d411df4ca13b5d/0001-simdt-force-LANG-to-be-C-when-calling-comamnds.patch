@@ -1,0 +1,27 @@
+From ead4f02ec3657ce17cef75e8a61d10423fc04593 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@ncsa.illinois.edu>
+Date: Sun, 13 May 2018 10:10:32 -0500
+Subject: [PATCH] simdt: force LANG to be C when calling comamnds
+
+this ensures that the output is in English and we can identify field
+names
+---
+ lib/simdt.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/lib/simdt.py b/lib/simdt.py
+index c5b793f..d531f4c 100644
+--- a/lib/simdt.py
++++ b/lib/simdt.py
+@@ -467,7 +467,7 @@ class DecisionTree:
+ 
+         # Code to check number of CPU cores 
+         cpu_info = dict()
+-        for l in [l.split(':') for l in os.popen(detect_cpu_cmd).readlines()]:
++        for l in [l.split(':') for l in os.popen("LANG=C "+detect_cpu_cmd).readlines()]:
+             cpu_info[l[0]] = l[1].strip('.\n ').strip('kB')
+         try:
+             # Throughout, we ignore hyperthreading.  That can be added later.
+-- 
+2.17.0
+

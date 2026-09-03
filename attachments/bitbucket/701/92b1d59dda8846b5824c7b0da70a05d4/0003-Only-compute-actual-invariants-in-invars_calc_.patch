@@ -1,0 +1,61 @@
+From 6d5e7a46fe74338515f8a3fc1ecec5fdc53aa66d Mon Sep 17 00:00:00 2001
+From: Barry Wardell <barry.wardell@gmail.com>
+Date: Sun, 17 Jul 2011 23:59:03 +0200
+Subject: [PATCH 3/4] Only compute actual invariants in invars_calc_*.
+
+Calculation of the psis is already handled by a separate calculation and we schedule the calculation of the invariants after this.
+---
+ m/WeylScal4.m |   18 ++++++++++++------
+ 1 files changed, 12 insertions(+), 6 deletions(-)
+
+diff --git a/m/WeylScal4.m b/m/WeylScal4.m
+index c6f8c91..c5300ea 100644
+--- a/m/WeylScal4.m
++++ b/m/WeylScal4.m
+@@ -235,7 +235,7 @@ otherPsiEqs = {
+ 		 + Rojo[la,lb] nn nn (rm[ua] im[ub] + im[ua] rm[ub])
+ };
+ 
+-invariantEqs := {
++invariantEqs = {
+   (* Scalar invariants I and J as defined in (2.2a) and (2.2b) of arXiv:gr-qc/0407013 *)
+   curvIr -> ComplexExpand[Re[3 (Psi2r+I Psi2i)^2 - 4 (Psi1r+I Psi1i) (Psi3r + I Psi3i) + (Psi4r + I Psi4i) (Psi0r + I Psi0i)]],
+   curvIi -> ComplexExpand[Im[3 (Psi2r+I Psi2i)^2 - 4 (Psi1r+I Psi1i) (Psi3r + I Psi3i) + (Psi4r + I Psi4i) (Psi0r + I Psi0i)]],
+@@ -309,9 +309,8 @@ InvariantsCalc[fdOrder_, PD_] :=
+   Name -> "invars_calc_" <> fdOrder,
+   Where -> Interior,
+   After -> "ADMBase_SetADMVars",
+-  ConditionalOnKeywords -> {{"fd_order", fdOrder}, {"calc_scalars", "psis_and_invariants"}},
+-  Shorthands -> shorthands,
+-  Equations -> Join[psi4Eqs[PD], otherPsiEqs, invariantEqs]
++  ConditionalOnKeywords -> {{"fd_order", fdOrder}, {"calc_scalars", "psis"}, {"calc_invariants", "always"}},
++  Equations -> invariantEqs
+ };
+ 
+ 
+@@ -329,13 +328,20 @@ fdOrderParam =
+ calcScalarsParam = {
+   Name -> "calc_scalars",
+   Description -> "Which scalars to calculate",
+-  AllowedValues -> {"psi4", "psis", "psis_and_invariants"},
++  AllowedValues -> {"psi4", "psis"},
+   Default -> "psi4"
+ };
+ 
++calcInvariantsParam = {
++  Name -> "calc_invariants",
++  Description -> "Compute invariants",
++  AllowedValues -> {"always", "never"},
++  Default -> "never"
++};
++
+ keywordParameters = 
+ {
+-  fdOrderParam, calcScalarsParam
++  fdOrderParam, calcScalarsParam, calcInvariantsParam
+ };
+ 
+ intParameters =
+-- 
+1.7.7.4
+

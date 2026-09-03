@@ -1,0 +1,141 @@
+From 7e8df716048ae5ca383cafb16b047ae3de37992e Mon Sep 17 00:00:00 2001
+From: Bruno Coutinho Mundim <bcmsma@astro.rit.edu>
+Date: Mon, 5 Nov 2012 08:12:28 -0800
+Subject: [PATCH 10/25] GRHydro: call polytrope EOS in a region dominated by
+ mag. field.
+
+---
+ param.ccl                 |    5 ++++
+ src/GRHydro_Con2PrimM.F90 |   72 +++++++++++++++++++++++++++++++++++++--------
+ 2 files changed, 65 insertions(+), 12 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index 6b808a2..1b43741 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -356,6 +356,11 @@ REAL sqrtdet_thr "Threshold to apply cons rescalings deep inside the horizon" ST
+  1.0:    :: "Larger values guarantees this sort of rescaling only deep inside the horizon"
+ } 30.0
+ 
++REAL max_magnetic_to_gas_pressure_ratio "consider pressure to be magnetically dominated if magnetic pressure to gas pressure ratio is higher than this" STEERABLE=ALWAYS
++{
++  (0:*  :: "any positive value, eg. 100."
++  -1.0  :: "disable"
++} -1.0
+ 
+ boolean c2p_reset_pressure "If the pressure guess is unphysical should we recompute it?"
+ {
+diff --git a/src/GRHydro_Con2PrimM.F90 b/src/GRHydro_Con2PrimM.F90
+index 9e4552e..2ceef13 100644
+--- a/src/GRHydro_Con2PrimM.F90
++++ b/src/GRHydro_Con2PrimM.F90
+@@ -93,6 +93,8 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+   CCTK_REAL :: velx_tmp, vely_tmp, velz_tmp, w_lorentz_tmp
+   CCTK_REAL :: Bvecx_tmp, Bvecy_tmp, Bvecz_tmp
+ 
++  CCTK_REAL :: bdotv, magpress
++
+   ! Assume 3-metric is positive definite. Check deep inside the horizon 
+   ! if this is actually satisfied and if it is not then cast the metric 
+   !as conformally flat only for con2prim inversion purposes.
+@@ -166,7 +168,7 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+   !$OMP sdet,d2,s2,oob,bscon,bxhat,byhat,bzhat, &
+   !$OMP bhatscon,Wm,Wm0,Wm_resid,Wmold,s2m,s2m0,s2m_resid,s2mold,s2max, &
+   !$OMP taum,niter,rho_tmp,press_tmp,eps_tmp,velx_tmp,vely_tmp,velz_tmp, &
+-  !$OMP w_lorentz_tmp,Bvecx_tmp,Bvecy_tmp,Bvecz_tmp)
++  !$OMP w_lorentz_tmp,Bvecx_tmp,Bvecy_tmp,Bvecz_tmp,bdotv,magpress)
+   do k = 1, nz 
+      do j = 1, ny 
+         do i = 1, nx
+@@ -345,6 +347,18 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+                    epsnegative,GRHydro_C2P_failed(i,j,k))
+ 
+               if(GRHydro_C2P_failed(i,j,k).ne.0) then
++              
++                xrho=1.0d0; xtemp=0.0d0; xeps=1.0d0
++                call EOS_Omni_press(GRHydro_polytrope_handle,keytemp,GRHydro_eos_rf_prec,n,&
++                     xrho,xeps,xtemp,xye,xpress,keyerr,anyerr)
++                local_K = xpress(1); 
++
++                xrho=10.0d0; xeps=1.0d0
++                call EOS_Omni_press(GRHydro_polytrope_handle,keytemp,GRHydro_eos_rf_prec,n,&
++                     xrho,xeps,xtemp,xye,xpress,keyerr,anyerr)
++                local_pgam=log(xpress(1)/local_K)/log(xrho(1))
++                sc = local_K*dens(i,j,k)
++
+                 if(sdet.ge.sqrtdet_thr) then
+                   GRHydro_C2P_failed(i,j,k) = 0
+ 
+@@ -358,17 +372,6 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+                   Bvecx_tmp = Bprim(i,j,k,1)
+                   Bvecy_tmp = Bprim(i,j,k,2)
+                   Bvecz_tmp = Bprim(i,j,k,3)
+-              
+-                  xrho=1.0d0; xtemp=0.0d0; xeps=1.0d0
+-                  call EOS_Omni_press(GRHydro_polytrope_handle,keytemp,GRHydro_eos_rf_prec,n,&
+-                       xrho,xeps,xtemp,xye,xpress,keyerr,anyerr)
+-                  local_K = xpress(1); 
+-
+-                  xrho=10.0d0; xeps=1.0d0
+-                  call EOS_Omni_press(GRHydro_polytrope_handle,keytemp,GRHydro_eos_rf_prec,n,&
+-                       xrho,xeps,xtemp,xye,xpress,keyerr,anyerr)
+-                  local_pgam=log(xpress(1)/local_K)/log(xrho(1))
+-                  sc = local_K*dens(i,j,k)
+ 
+                   call GRHydro_Con2PrimM_Polytype_pt(GRHydro_eos_handle, local_pgam, &
+                        dens(i,j,k),scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3), sc, &
+@@ -391,6 +394,51 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+                     cycle
+                   end if
+                 end if
++
++                bdotv=g11(i,j,k)*Bprim(i,j,k,1)*vup(i,j,k,1)+ &
++                      g22(i,j,k)*Bprim(i,j,k,2)*vup(i,j,k,2)+ &
++                      g33(i,j,k)*Bprim(i,j,k,3)*vup(i,j,k,3)+ &
++                 2.0*(g12(i,j,k)*Bprim(i,j,k,1)*vup(i,j,k,2)+ &
++                      g13(i,j,k)*Bprim(i,j,k,1)*vup(i,j,k,3)+ &
++                      g23(i,j,k)*Bprim(i,j,k,2)*vup(i,j,k,3))
++
++                magpress = 0.5d0*(b2/w_lorentz(i,j,k)**2+bdotv**2)
++
++                if(rho(i,j,k)*eps(i,j,k)*max_magnetic_to_gas_pressure_ratio.le.magpress) then
++                  GRHydro_C2P_failed(i,j,k) = 0
++
++                  rho_tmp = rho(i,j,k)
++                  press_tmp = press(i,j,k)
++                  eps_tmp = eps(i,j,k)
++                  velx_tmp = vup(i,j,k,1)
++                  vely_tmp = vup(i,j,k,2)
++                  velz_tmp = vup(i,j,k,3)
++                  w_lorentz_tmp = w_lorentz(i,j,k)
++                  Bvecx_tmp = Bprim(i,j,k,1)
++                  Bvecy_tmp = Bprim(i,j,k,2)
++                  Bvecz_tmp = Bprim(i,j,k,3)
++
++                  call GRHydro_Con2PrimM_Polytype_pt(GRHydro_eos_handle, local_pgam, &
++                       dens(i,j,k),scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3), sc, &
++                       Bcons(i,j,k,1), Bcons(i,j,k,2), Bcons(i,j,k,3),rho_tmp,&
++                       velx_tmp,vely_tmp,velz_tmp,eps_tmp,press_tmp,&
++                       Bvecx_tmp,Bvecy_tmp,Bvecz_tmp,b2,w_lorentz_tmp,&
++                       g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k), &
++                       uxx,uxy,uxz,uyy,uyz,uzz,det, &
++                       epsnegative,GRHydro_C2P_failed(i,j,k))
++
++                  rho(i,j,k) = rho_tmp 
++                  press(i,j,k) = press_tmp 
++                  eps(i,j,k) = eps_tmp 
++                  vup(i,j,k,1) = velx_tmp 
++                  vup(i,j,k,2) = vely_tmp 
++                  vup(i,j,k,3) = velz_tmp 
++                  w_lorentz(i,j,k) = w_lorentz_tmp 
++                  Bprim(i,j,k,1) = Bvecx_tmp 
++                  Bprim(i,j,k,2) = Bvecy_tmp 
++                  Bprim(i,j,k,3) = Bvecz_tmp 
++                  cycle
++                end if
+               end if
+ 
+            else    ! if(evolve_temper.eq.0) then
+-- 
+1.7.10.4
+

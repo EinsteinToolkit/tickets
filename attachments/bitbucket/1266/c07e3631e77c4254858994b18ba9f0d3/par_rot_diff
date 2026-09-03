@@ -1,0 +1,401 @@
+diff -u -r RotatingSymmetry180/configuration.ccl ParitySymmetry/configuration.ccl
+--- RotatingSymmetry180/configuration.ccl	2012-11-08 14:54:51.000000000 -0500
++++ ParitySymmetry/configuration.ccl	2013-02-12 13:46:28.000000000 -0500
+@@ -1,3 +1,3 @@
+-# Configuration definition for thorn RotatingSymmetry180
++# Configuration definition for thorn ParitySymmetry
+ 
+ REQUIRES THORNS: Slab
+Only in RotatingSymmetry180/doc: .svn
+diff -u -r RotatingSymmetry180/interface.ccl ParitySymmetry/interface.ccl
+--- RotatingSymmetry180/interface.ccl	2012-11-08 14:54:51.000000000 -0500
++++ ParitySymmetry/interface.ccl	2013-02-12 13:46:42.000000000 -0500
+@@ -1,6 +1,6 @@
+-# Interface definition for thorn RotatingSymmetry180
++# Interface definition for thorn ParitySymmetry
+ 
+-IMPLEMENTS: RotatingSymmetry180
++IMPLEMENTS: ParitySymmetry
+ 
+ USES INCLUDE HEADER: Slab.h
+ 
+diff -u -r RotatingSymmetry180/param.ccl ParitySymmetry/param.ccl
+--- RotatingSymmetry180/param.ccl	2012-11-08 14:54:51.000000000 -0500
++++ ParitySymmetry/param.ccl	2013-02-12 14:48:11.000000000 -0500
+@@ -1,4 +1,4 @@
+-# Parameter definitions for thorn RotatingSymmetry180
++# Parameter definitions for thorn ParitySymmetry
+ 
+ BOOLEAN verbose "Produce screen output while applying boundary conditions" STEERABLE=always
+ {
+@@ -28,6 +28,12 @@
+   *:* :: ""
+ } 0.0
+ 
++CCTK_REAL symmetry_boundary_z "z-coordinate of symmetry boundary (ignored if use_coordbase is set)"
++{
++  *:* :: ""
++} 0.0
++
++
+ 
+ 
+ BOOLEAN poison_boundaries "Fill the symmetry boundary with a poison value before the symmetry is applied" STEERABLE=always
+diff -u -r RotatingSymmetry180/schedule.ccl ParitySymmetry/schedule.ccl
+--- RotatingSymmetry180/schedule.ccl	2012-11-08 14:54:51.000000000 -0500
++++ ParitySymmetry/schedule.ccl	2013-02-12 13:47:20.000000000 -0500
+@@ -1,22 +1,22 @@
+-# Schedule definitions for thorn RotatingSymmetry180
++# Schedule definitions for thorn ParitySymmetry
+ 
+-SCHEDULE Rot180_CheckTensorTypes AT paramcheck
++SCHEDULE ParitySym_CheckTensorTypes AT paramcheck
+ {
+   LANG: C
+ } "Check tensor type definitions for consistency"
+ 
+-SCHEDULE Rot180_RegisterSymmetry IN SymmetryRegister
++SCHEDULE ParitySym_RegisterSymmetry IN SymmetryRegister
+ {
+   LANG: C
+ } "Register symmetry boundaries"
+ 
+-SCHEDULE Rot180_ComputeLevelExtent IN BoundaryConditions BEFORE Rot180_ApplyBC
++SCHEDULE ParitySym_ComputeLevelExtent IN BoundaryConditions BEFORE ParitySym_ApplyBC
+ {
+   LANG: C
+   OPTIONS: LEVEL
+ } "Compute extent of level"
+ 
+-SCHEDULE Rot180_ApplyBC IN BoundaryConditions
++SCHEDULE ParitySym_ApplyBC IN BoundaryConditions
+ {
+   LANG: C
+ } "Apply 180 degree rotational symmetry boundary condition"
+diff -u -r RotatingSymmetry180/src/interpolate.c ParitySymmetry/src/interpolate.c
+--- RotatingSymmetry180/src/interpolate.c	2012-11-08 14:54:51.000000000 -0500
++++ ParitySymmetry/src/interpolate.c	2013-02-14 11:11:53.259654211 -0500
+@@ -8,12 +8,12 @@
+ #include "util_ErrorCodes.h"
+ #include "util_Table.h"
+ 
+-#include "rotatingsymmetry180.h"
++#include "paritysymmetry.h"
+ 
+ 
+ 
+ void
+-Rot180_CheckTensorTypes (CCTK_ARGUMENTS)
++ParitySym_CheckTensorTypes (CCTK_ARGUMENTS)
+ {
+   int gi;
+   
+@@ -128,7 +128,7 @@
+ 
+ /* Symmetry interpolation */
+ CCTK_INT
+-Rot180_SymmetryInterpolate (CCTK_POINTER_TO_CONST const cctkGH_,
++ParitySym_SymmetryInterpolate (CCTK_POINTER_TO_CONST const cctkGH_,
+                             CCTK_INT const N_dims,
+                             CCTK_INT const local_interp_handle,
+                             CCTK_INT const param_table_handle,
+@@ -174,9 +174,9 @@
+   
+   
+   /* Claim faces */
+-  assert (faces & (1 << 0));
++  assert (faces & (1 << 4));
+   new_faces = faces;
+-  new_faces &= ~ (1 << 0);
++  new_faces &= ~ (1 << 4);
+   
+   /* Copy coordinates */
+   for (d=0; d<3; ++d) {
+@@ -189,10 +189,11 @@
+   /* Fold coordinates */
+   for (n=0; n<N_interp_points; ++n) {
+     /* Is the point outside the domain? */
+-    if (((CCTK_REAL *)new_interp_coords[0])[n] < 0) {
+-      /* Rotate the point by 180 degrees */
++    if (((CCTK_REAL *)new_interp_coords[2])[n] < 0) {
++      /* Invert Coordinates */
+       ((CCTK_REAL *)new_interp_coords[0])[n] *= -1;
+       ((CCTK_REAL *)new_interp_coords[1])[n] *= -1;
++      ((CCTK_REAL *)new_interp_coords[2])[n] *= -1;
+     }
+   }
+   
+@@ -411,7 +412,7 @@
+           }
+         }
+       } else if (CCTK_EQUALS (tensortypealias, "ManualCartesian")) {
+-	RotatingSymmetry180_GetManualParities(table, gi, parities);
++	ParitySymmetry_GetManualParities(table, gi, parities);
+       } else {
+         char * groupname = CCTK_GroupName(gi);
+         assert (groupname);
+@@ -442,11 +443,11 @@
+     
+     
+     /* Loop over all points and unfold */
+-    if (parities[0] * parities[1] == -1) {
++    if (parities[0] * parities[1] * parities[2] == -1) {
+       for (n=0; n<N_interp_points; ++n) {
+         /* Is the point outside the domain? */
+-        if (((const CCTK_REAL *)interp_coords[0])[n] < 0) {
+-          /* Rotate the tensor components back by 180 degrees */
++        if (((const CCTK_REAL *)interp_coords[2])[n] < 0) {
++          /* Parity on Tensor component  */
+           ((CCTK_REAL *)output_arrays[m])[n] *= -1;
+         }
+       }
+@@ -469,7 +470,7 @@
+   return iret;
+ }
+ 
+-void  RotatingSymmetry180_GetManualParities(int table, int gi, int *parities)
++void  ParitySymmetry_GetManualParities(int table, int gi, int *parities)
+ {
+   char cartsyms[100];
+   char *groupname = NULL;
+diff -u -r RotatingSymmetry180/src/make.code.defn ParitySymmetry/src/make.code.defn
+--- RotatingSymmetry180/src/make.code.defn	2012-11-08 14:54:51.000000000 -0500
++++ ParitySymmetry/src/make.code.defn	2013-02-12 14:08:25.000000000 -0500
+@@ -1,7 +1,7 @@
+-# Main make.code.defn file for thorn RotatingSymmetry180
++# Main make.code.defn file for thorn ParitySymmetry
+ 
+ # Source files in this directory
+-SRCS = interpolate.c rotatingsymmetry180.c registersymmetry.c
++SRCS = interpolate.c paritysymmetry.c registersymmetry.c
+ 
+ # Subdirectories containing source files
+ SUBDIRS = 
+diff -u -r RotatingSymmetry180/src/registersymmetry.c ParitySymmetry/src/registersymmetry.c
+--- RotatingSymmetry180/src/registersymmetry.c	2012-11-08 14:54:51.000000000 -0500
++++ ParitySymmetry/src/registersymmetry.c	2013-02-14 12:08:03.088757772 -0500
+@@ -2,11 +2,11 @@
+ #include "cctk_Arguments.h"
+ #include "cctk_Parameters.h"
+ 
+-#include "rotatingsymmetry180.h"
++#include "paritysymmetry.h"
+ 
+ 
+ 
+-void Rot180_RegisterSymmetry (CCTK_ARGUMENTS)
++void ParitySym_RegisterSymmetry (CCTK_ARGUMENTS)
+ {
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+@@ -35,10 +35,10 @@
+     width[f] = 0;
+   }
+   
+-  faces[0] = 1;
+-  width[0] = nboundaryzones[0];
++  faces[4] = 1;
++  width[4] = nboundaryzones[0];
+   
+-  handle = SymmetryRegister ("rotating_symmetry_180");
++  handle = SymmetryRegister ("parity_symmetry");
+   if (handle < 0) {
+     CCTK_WARN (0, "Could not register symmetry boundary condition");
+   }
+@@ -49,7 +49,7 @@
+   }
+   
+   ierr = SymmetryRegisterGridInterpolator
+-    (cctkGH, handle, Rot180_SymmetryInterpolate);
++    (cctkGH, handle, ParitySym_SymmetryInterpolate);
+   if (ierr < 0) {
+     CCTK_WARN (0, "Could not register the symmetry interpolator");
+   }
+--- RotatingSymmetry180/src/rotatingsymmetry180.c	2012-11-08 14:54:51.000000000 -0500
++++ ParitySymmetry/src/paritysymmetry.c	2013-02-12 15:30:28.000000000 -0500
+@@ -7,7 +7,7 @@
+ 
+ #include <Slab.h>
+ 
+-#include "rotatingsymmetry180.h"
++#include "paritysymmetry.h"
+ 
+ #include <assert.h>
+ #include <math.h>
+@@ -20,7 +20,7 @@
+ static int extent_valid_for_iteration = -1;
+ 
+ 
+-int BndRot180VI (cGH const * restrict const cctkGH,
++int BndParitySymVI (cGH const * restrict const cctkGH,
+                  int const nvars,
+                  CCTK_INT const * restrict const vis)
+ {
+@@ -48,9 +48,9 @@
+   
+   int var;
+   
+-  int alldirs[2];
++  int alldirs[3];
+   int dir;                      /* direction of the symmetry face */
+-  int otherdir;                 /* the other direction of the rotation */
++  int otherdirs[2];                 /* the other direction of the rotation */
+   int q;
+   int d;
+   int icnt;
+@@ -252,7 +252,7 @@
+         }
+       }
+     } else if (CCTK_EQUALS (tensortypealias, "ManualCartesian")) {
+-	RotatingSymmetry180_GetManualParities(table, gis[var], paritiess[var]);
++	ParitySymmetry_GetManualParities(table, gis[var], paritiess[var]);
+     } else {
+       char * groupname = CCTK_GroupName(gis[var]);
+       assert (groupname);
+@@ -279,6 +279,7 @@
+   /* directions */
+   alldirs[0] = 0;
+   alldirs[1] = 1;
++  alldirs[2] = 2;
+   
+   /* Find location of symmetry boundary */
+   if (use_coordbase) {
+@@ -302,11 +303,11 @@
+   } else {
+     symbnd[0] = symmetry_boundary_x;
+     symbnd[1] = symmetry_boundary_y;
+-    symbnd[2] = 0;              /* unused */
++    symbnd[2] = symmetry_boundary_z;
+   }
+   
+   /* Find grid point that corresponds to the origin */
+-  for (q=0; q<2; ++q) {
++  for (q=0; q<3; ++q) {
+     d = alldirs[q];
+     /* x0 + dx * origin == symbnd */
+     origin[d] = (symbnd[d] - x0[d]) / dx[d];
+@@ -324,20 +325,24 @@
+     offset[d] = avoid_origin[d] ? 0 : 1;
+   }
+   
+-  /* x direction */
+-  dir = 0;
+-  otherdir = 1;
++  /* z direction */
++  dir = 2;
++  otherdirs[0] = 0;
++  otherdirs[1] = 1;
+   
+   assert (data.nghostzones[dir] >= 0);
+   
+   if (global_bbox[2*dir]) {
+-    
+-    if (2*iorigin[otherdir] + offset[otherdir] != cctk_gsh[otherdir]) {
+-      CCTK_VWarn (0, __LINE__, __FILE__, CCTK_THORNSTRING,
++    int i;
++    for (i=0; i < 2; i++)
++    {
++      if (2*iorigin[otherdirs[i]] + offset[otherdirs[i]] != cctk_gsh[otherdirs[i]]) {
++        CCTK_VWarn (0, __LINE__, __FILE__, CCTK_THORNSTRING,
+                   "The coordinate origin in the %c-direction is not in the centre of the domain.  The boundary condition cannot be applied.",
+-                  "xyz"[otherdir]);
++                  "xyz"[otherdirs[i]]);
++      }
+     }
+-    
++ 
+     if (iorigin[dir] != data.nghostzones[dir]) {
+       assert (nvars > 0);
+       var = 0;
+@@ -428,7 +433,7 @@
+       xferinfo[d].dst.len         = data.gsh        [d];
+       
+       xferinfo[d].xpose = d;
+-      xferinfo[d].flip  = 0;
++      xferinfo[d].flip  = 1; /* all directions flipped */
+     }
+     
+     xferinfo[dir].src.off = data.nghostzones[dir] + offset[dir];
+@@ -436,9 +441,6 @@
+     xferinfo[dir].dst.off = 0;
+     xferinfo[dir].dst.len = data.nghostzones[dir];
+     
+-    xferinfo[     dir].flip = 1;
+-    xferinfo[otherdir].flip = 1;
+-    
+     if (CCTK_EQUALS (hyperslabber, "TAT/Slab")) {
+       
+       if (CCTK_IsFunctionAliased("GetLocalComponents")) {
+@@ -623,7 +625,7 @@
+       for (var=0; var<nvars; ++var) {
+         int parity;
+         
+-        parity = paritiess[var][0] * paritiess[var][1];
++        parity = paritiess[var][0] * paritiess[var][1] * paritiess[var][2];
+         assert (abs(parity) == 1);
+         if (parity == -1) {
+           int imin[3], imax[3];
+@@ -697,7 +699,7 @@
+ 
+ 
+ 
+-void Rot180_ComputeLevelExtent (CCTK_ARGUMENTS)
++void ParitySym_ComputeLevelExtent (CCTK_ARGUMENTS)
+ {
+   DECLARE_CCTK_ARGUMENTS;
+   
+@@ -762,7 +764,7 @@
+ 
+ 
+ 
+-void Rot180_ApplyBC (CCTK_ARGUMENTS)
++void ParitySym_ApplyBC (CCTK_ARGUMENTS)
+ {
+   DECLARE_CCTK_ARGUMENTS;
+   
+@@ -799,7 +801,7 @@
+     assert (widths[var] >= 0);
+   }
+   
+-  ierr = BndRot180VI (cctkGH, nvars, indices);
++  ierr = BndParitySymVI (cctkGH, nvars, indices);
+   assert (!ierr);
+   
+   free (indices);
+--- RotatingSymmetry180/src/rotatingsymmetry180.h	2012-11-08 14:54:51.000000000 -0500
++++ ParitySymmetry/src/paritysymmetry.h	2013-02-12 15:30:42.000000000 -0500
+@@ -1,19 +1,19 @@
+-#ifndef ROTATINGSYMMETRY180_H
+-#define ROTATINGSYMMETRY180_H
++#ifndef PARITYSYMMETRY_H
++#define PARITYSYMMETRY_H
+ 
+ #include "cctk.h"
+ #include "cctk_Arguments.h"
+ 
+-void Rot180_RegisterSymmetry (CCTK_ARGUMENTS);
++void ParitySym_RegisterSymmetry (CCTK_ARGUMENTS);
+ 
+-int BndRot180VI (cGH const * restrict const cctkGH,
++int BndParitySymVI (cGH const * restrict const cctkGH,
+                  int const nvars,
+                  CCTK_INT const * restrict const vis);
+ 
+-void Rot180_ApplyBC (CCTK_ARGUMENTS);
++void ParitySym_ApplyBC (CCTK_ARGUMENTS);
+ 
+ CCTK_INT
+-Rot180_SymmetryInterpolate (CCTK_POINTER_TO_CONST const cctkGH_,
++ParitySym_SymmetryInterpolate (CCTK_POINTER_TO_CONST const cctkGH_,
+                             CCTK_INT const N_dims,
+                             CCTK_INT const local_interp_handle,
+                             CCTK_INT const param_table_handle,
+@@ -29,6 +29,6 @@
+                             CCTK_INT const faces);
+ 
+ void 
+-RotatingSymmetry180_GetManualParities(int table, int gi, int *parities);
++ParitySymmetry_GetManualParities(int table, int gi, int *parities);
+ 
+-#endif /* ! defined ROTATINGSYMMETRY180_H */
++#endif /* ! defined PARITYSYMMETRY_H */

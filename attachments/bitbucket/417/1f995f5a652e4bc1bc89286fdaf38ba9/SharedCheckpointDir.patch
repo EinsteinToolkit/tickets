@@ -1,0 +1,39 @@
+Index: sim
+===================================================================
+--- sim	(revision 1328)
++++ sim	(working copy)
+@@ -2628,6 +2628,8 @@
+     my $maxiter;
+     my %files;
+     my $from_workdir;
++    my $dontlink = 0;
++
+     if ($recover != 0) {
+         # Format from id
+         $from_restart_id = sprintf '%04d', $from_restart_id;
+@@ -2651,6 +2653,16 @@
+         if (! $presubmit) {
+             # Find checkpoint files in the old directory
+             my $files1 = `cd $from_workdir && find . -name "*.chkpt.it_*.*"`;
++            if ($files1 eq "") {
++                write_log $log, "No checkpoints found under restart dir\n";
++                my $files2 = `cd $from_workdir/.. && find checkpoints -name "*.chkpt.it_*.*"`;
++                if (!($files2 eq "")) {
++                    $files1 = $files2;
++                    $dontlink = 1;
++                    write_log $log, "Found checkpoints from a simulation \"checkpoints\" directory.  Will not hardlink these.\n";
++                }
++            }
++
+             foreach my $file (split "\n", $files1) {
+                 # if ($file !~ /[.]tmp$/ &&
+                 #     $file =~ /[.]chkpt[.]it_([[:digit:]]+)[.]/)
+@@ -2896,7 +2908,7 @@
+     }
+     
+     if (! $presubmit) {
+-        if ($recover) {
++        if ($recover && $dontlink eq 0) {
+             # Link checkpoint files from the old to the new directory
+             foreach my $file (@{$files{$maxiter}}) {
+                 $file =~ m|((.*)/)?([^/]+)|;

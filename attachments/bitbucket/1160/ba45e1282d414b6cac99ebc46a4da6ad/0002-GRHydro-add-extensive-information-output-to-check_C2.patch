@@ -1,0 +1,121 @@
+From 2b978a1fc398914875ec8166c3f67fca49ed1629 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Fri, 12 Oct 2012 13:07:21 -0700
+Subject: [PATCH 2/9] GRHydro: add extensive information output to
+ check_C2P_failed
+
+---
+ src/GRHydro_Con2Prim.F90  |   72 ++++++++++++++++++++++++++++++++++-----------
+ src/GRHydro_Prim2ConM.F90 |    2 ++
+ 2 files changed, 57 insertions(+), 17 deletions(-)
+
+diff --git a/src/GRHydro_Con2Prim.F90 b/src/GRHydro_Con2Prim.F90
+index 5458320..cf726f0 100644
+--- a/src/GRHydro_Con2Prim.F90
++++ b/src/GRHydro_Con2Prim.F90
+@@ -2231,17 +2231,7 @@ subroutine check_GRHydro_C2P_failed(CCTK_ARGUMENTS)
+   DECLARE_CCTK_ARGUMENTS
+ 
+   integer :: i, j, k, nx, ny, nz
+-  character(len=100) warnline
+-
+-  ! save memory when MP is not used
+-  CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
+-
+-  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    vup => lvel
+-  else
+-    vup => vel
+-  end if
++  character(len=300) warnline
+ 
+ !  call CCTK_INFO("Checking the C2P failure mask.")
+ 
+@@ -2273,16 +2263,64 @@ subroutine check_GRHydro_C2P_failed(CCTK_ARGUMENTS)
+           !$OMP CRITICAL
+           call CCTK_WARN(1,'Con2Prim failed; stopping the code.')
+           call CCTK_WARN(1,'Even with mesh refinement, this point is not restricted from a finer level, so this is really an error')
+-          write(warnline,'(a28,i2)') 'on carpet reflevel: ',GRHydro_reflevel
++          write(warnline,'(a32,i2)') 'on carpet reflevel: ',GRHydro_reflevel
+           call CCTK_WARN(1,warnline)
+-          write(warnline,'(a20,3g16.7)') 'xyz location: ',&
++          write(warnline,'(a32,3g16.7)') 'xyz location: ',&
+                x(i,j,k),y(i,j,k),z(i,j,k)
+           call CCTK_WARN(1,warnline)
+-          write(warnline,'(a20,g16.7)') 'radius: ',r(i,j,k)
++          write(warnline,'(a32,g16.7)') 'radius: ',r(i,j,k)
++          call CCTK_WARN(1,warnline)
++          write(warnline,'(a32,i3,1g16.7)') 'hydro_excision_mask, C2Pfailed: ', hydro_excision_mask(i,j,k), GRHydro_C2P_failed(i,j,k)
++          call CCTK_WARN(1,warnline)
++          write(warnline,'(a32,4g16.7)') 'rho eps press w_lorentz: ',&
++               rho(i,j,k),eps(i,j,k),press(i,j,k),w_lorentz(i,j,k)
++          call CCTK_WARN(1,warnline)
++          write(warnline,'(a32,3g16.7)') 'velocities: ',&
++               vel(i,j,k,1),vel(i,j,k,2),vel(i,j,k,3)
++          call CCTK_WARN(1,warnline)
++          write(warnline,'(a32,2g16.7)') 'dens tau: ',&
++               dens(i,j,k),tau(i,j,k)
++          call CCTK_WARN(1,warnline)
++          write(warnline,'(a32,3g16.7)') 'scon: ',&
++               scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3)
++          call CCTK_WARN(1,warnline)
++          if (evolve_mhd.ne.0) then
++            write(warnline,'(a32,3g16.7)') 'magnetic field: ',&
++                 Bvec(i,j,k,1),Bvec(i,j,k,2),Bvec(i,j,k,3)
++            call CCTK_WARN(1,warnline)
++            write(warnline,'(a32,3g16.7)') 'cons magnetic field: ',&
++                 Bcons(i,j,k,1),Bcons(i,j,k,2),Bcons(i,j,k,3)
++            call CCTK_WARN(1,warnline)
++            if (calculate_bcom.ne.0) then
++              write(warnline,'(a32,6g16.7)') 'com magnetic field, b0, b^2: ', bcom(i,j,k,1), bcom(i,j,k,2), bcom(i,j,k,3), bcom0(i,j,k), bcom_sq(i,j,k)
++              call CCTK_WARN(1,warnline)
++            end if
++            if (clean_divergence.ne.0) then
++              write(warnline,'(a32,g16.7)') 'psidc: ',psidc(i,j,k)
++              call CCTK_WARN(1,warnline)
++            end if
++            if (track_divB.ne.0) then
++              write(warnline,'(a32,g16.7)') 'divB: ',divB(i,j,k)
++              call CCTK_WARN(1,warnline)
++            end if
++          end if
++          if (evolve_temper.ne.0) then
++            write(warnline,'(a32,2g16.7)') 'temperature, entropy: ',&
++                  temperature(i,j,k),entropy(i,j,k)
++            call CCTK_WARN(1,warnline)
++          end if
++          if (evolve_Y_e.ne.0) then
++            write(warnline,'(a32,2g16.7)') 'Y_e, Y_e_con: ',&
++                  Y_e(i,j,k),Y_e_con(i,j,k)
++            call CCTK_WARN(1,warnline)
++          end if
++          write(warnline,'(a32,6g16.7)') '3-metric: ',&
++               gxx(i,j,k),gxy(i,j,k),gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k)
++          call CCTK_WARN(1,warnline)
++          write(warnline,'(a32,4g16.7)') 'lapse, shift: ',&
++               alp(i,j,k),betax(i,j,k),betay(i,j,k),betaz(i,j,k)
+           call CCTK_WARN(1,warnline)
+-          write(warnline,'(a20,3g16.7)') 'velocities: ',&
+-               vup(i,j,k,1),vup(i,j,k,2),vup(i,j,k,3)
+-          call CCTK_WARN(0,warnline)
++          call CCTK_WARN(0,"Aborting.")
+           !$OMP END CRITICAL
+ 
+         end if
+diff --git a/src/GRHydro_Prim2ConM.F90 b/src/GRHydro_Prim2ConM.F90
+index da64604..5d702b1 100644
+--- a/src/GRHydro_Prim2ConM.F90
++++ b/src/GRHydro_Prim2ConM.F90
+@@ -386,6 +386,8 @@ subroutine prim2conM(handle, gxx, gxy, gxz, gyy, gyz, gzz, det, ddens, &
+ !!$ BEGIN: Check for NaN value
+   if (w .ne. w) then
+     !$OMP CRITICAL
++    write(NaN_WarnLine,'(a100,6g15.6)') 'NaN produced in sqrt(): (gxx,gxy,gxz,gyy,gyz,gzz)', gxx, gxy, gxz, gyy, gyz, gzz
++    call CCTK_WARN(GRHydro_NaN_verbose, NaN_WarnLine)
+     write(NaN_WarnLine,'(a100,3g15.6)') 'NaN produced in sqrt(): (dvelx,dvely,dvelz)', dvelx, dvely, dvelz
+     call CCTK_WARN(GRHydro_NaN_verbose, NaN_WarnLine)
+     !$OMP END CRITICAL
+-- 
+1.7.10.4
+

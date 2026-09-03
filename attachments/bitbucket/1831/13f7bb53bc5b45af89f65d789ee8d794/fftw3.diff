@@ -1,0 +1,91 @@
+Index: configuration.ccl
+===================================================================
+--- configuration.ccl	(revision 51)
++++ configuration.ccl	(working copy)
+@@ -1,10 +1,14 @@
+ # Configuration definitions for thorn FFTW3
+ 
++OPTIONAL MPI
++{
++}
++
+ PROVIDES FFTW3
+ {
+   SCRIPT src/detect.sh
+   LANG bash
+-  OPTIONS FFTW3_DIR FFTW3_INSTALL_DIR FFTW3_LIBS FFTW3_INC_DIRS FFTW3_LIB_DIRS
++  OPTIONS FFTW3_DIR FFTW3_INSTALL_DIR FFTW3_LIBS FFTW3_INC_DIRS FFTW3_LIB_DIRS MPI_DIR MPI_INC_DIRS MPI_LIB_DIRS MPI_LIBS
+ }
+ 
+ # Pass configuration options to build script
+Index: src/build.sh
+===================================================================
+--- src/build.sh	(revision 51)
++++ src/build.sh	(working copy)
+@@ -47,7 +47,14 @@
+ 
+ echo "FFTW3: Configuring..."
+ cd ${NAME}
+-./configure --prefix=${FFTW3_DIR}
++enable_mpi=''
++echo BEGIN ENV
++env | sort
++echo END ENV
++if [ -n "${MPI_DIR}" ]; then
++    enable_mpi='--enable-mpi'
++fi
++./configure --prefix=${FFTW3_DIR} ${enable_mpi}
+ 
+ echo "FFTW3: Building..."
+ ${MAKE}
+Index: src/detect.sh
+===================================================================
+--- src/detect.sh	(revision 51)
++++ src/detect.sh	(working copy)
+@@ -78,7 +78,7 @@
+     echo "BEGIN MESSAGE"
+     echo "Using bundled FFTW3..."
+     echo "END MESSAGE"
+-    
++
+     # Check for required tools. Do this here so that we don't require
+     # them when using the system library.
+     if [ "x$TAR" = x ] ; then
+@@ -126,6 +126,12 @@
+ # Pass configuration options to build script
+ echo "BEGIN MAKE_DEFINITION"
+ echo "FFTW3_INSTALL_DIR = ${FFTW3_INSTALL_DIR}"
++if [ -n "${MPI_DIR}" ]; then
++    echo "MPI_DIR      = ${MPI_DIR}"
++    echo "MPI_INC_DIRS = ${MPI_INC_DIRS}"
++    echo "MPI_LIB_DIRS = ${MPI_LIB_DIRS}"
++    echo "MPI_LIBS     = ${MPI_LIBS}"
++fi
+ echo "END MAKE_DEFINITION"
+ 
+ # Set options
+@@ -133,7 +139,11 @@
+     : ${FFTW3_INC_DIRS="${FFTW3_DIR}/include"}
+     : ${FFTW3_LIB_DIRS="${FFTW3_DIR}/lib"}
+ fi
+-: ${FFTW3_LIBS='fftw3'}
++if [ -n "${MPI_DIR}" ]; then
++    : ${FFTW3_LIBS='fftw3_mpi fftw3'}
++else
++    : ${FFTW3_LIBS='fftw3'}
++fi
+ 
+ FFTW3_INC_DIRS="$(${CCTK_HOME}/lib/sbin/strip-incdirs.sh ${FFTW3_INC_DIRS})"
+ FFTW3_LIB_DIRS="$(${CCTK_HOME}/lib/sbin/strip-libdirs.sh ${FFTW3_LIB_DIRS})"
+Index: src/make.code.deps
+===================================================================
+--- src/make.code.deps	(revision 51)
++++ src/make.code.deps	(working copy)
+@@ -1,6 +1,7 @@
+ # Main make.code.deps file for thorn FFTW3
+ 
+ export FFTW3_INSTALL_DIR
++export MPI_DIR MPI_INC_DIRS MPI_LIB_DIRS MPI_LIBS
+ 
+ $(CCTK_TARGET) $(OBJS) $(SRCS:%=%.d): $(SCRATCH_BUILD)/done/$(THORN)
+ $(SCRATCH_BUILD)/done/$(THORN): $(SRCDIR)/build.sh

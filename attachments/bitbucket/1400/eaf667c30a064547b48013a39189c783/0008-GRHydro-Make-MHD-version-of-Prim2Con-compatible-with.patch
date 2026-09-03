@@ -1,0 +1,469 @@
+From 53b8de9c838970e81930cdec1b89c58d76d24af6 Mon Sep 17 00:00:00 2001
+From: Christian Reisswig <reisswig@tapir.caltech.edu>
+Date: Thu, 9 May 2013 15:43:29 -0700
+Subject: [PATCH 08/24] GRHydro: Make MHD version of Prim2Con compatible with
+ multipatch.
+
+---
+ src/GRHydro_Prim2ConM.F90 |  310 +++++++++++++++++++++++++++++++--------------
+ 1 file changed, 214 insertions(+), 96 deletions(-)
+
+diff --git a/src/GRHydro_Prim2ConM.F90 b/src/GRHydro_Prim2ConM.F90
+index ac4a08c..7c6118f 100644
+--- a/src/GRHydro_Prim2ConM.F90
++++ b/src/GRHydro_Prim2ConM.F90
+@@ -13,15 +13,15 @@
+ #include "cctk_Functions.h"
+ #include "GRHydro_Macros.h"
+ 
+-#define velx(i,j,k) vel(i,j,k,1)
+-#define vely(i,j,k) vel(i,j,k,2)
+-#define velz(i,j,k) vel(i,j,k,3)
++#define velx(i,j,k) vup(i,j,k,1)
++#define vely(i,j,k) vup(i,j,k,2)
++#define velz(i,j,k) vup(i,j,k,3)
+ #define sx(i,j,k) scon(i,j,k,1)
+ #define sy(i,j,k) scon(i,j,k,2)
+ #define sz(i,j,k) scon(i,j,k,3)
+-#define Bvecx(i,j,k) Bvec(i,j,k,1)
+-#define Bvecy(i,j,k) Bvec(i,j,k,2)
+-#define Bvecz(i,j,k) Bvec(i,j,k,3)
++#define Bvecx(i,j,k) Bprim(i,j,k,1)
++#define Bvecy(i,j,k) Bprim(i,j,k,2)
++#define Bvecz(i,j,k) Bprim(i,j,k,3)
+ #define Bconsx(i,j,k) Bcons(i,j,k,1)
+ #define Bconsy(i,j,k) Bcons(i,j,k,2)
+ #define Bconsz(i,j,k) Bcons(i,j,k,3)
+@@ -50,56 +50,76 @@ subroutine primitive2conservativeM(CCTK_ARGUMENTS)
+ 
+   implicit none
+   
++  ! save memory when MP is not used
++  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
++  TARGET gaa, gab, gac, gbb, gbc, gcc
++  TARGET gxx, gxy, gxz, gyy, gyz, gzz
++  TARGET lvel, vel
++  TARGET lBvec, Bvec
++  
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+   integer :: i, j, k
+-  CCTK_REAL :: gxxl,gxyl,gxzl,gyyl,gyzl,gzzl,avg_detl,&
+-       gxxr,gxyr,gxzr,gyyr,gyzr,gzzr,avg_detr
+-  !CCTK_REAL :: g11l,g12l,g13l,g22l,g23l,g33l,&
+-  !     g11r,g12r,g13r,g22r,g23r,g33r
++  CCTK_REAL :: g11l,g12l,g13l,g22l,g23l,g33l,avg_detl,&
++       g11r,g12r,g13r,g22r,g23r,g33r,avg_detr
+   CCTK_REAL :: xtemp(1)
+   character(len=256) NaN_WarnLine
+-  !TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-
+-  !CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: Bprim
++
++  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++    g11 => gaa
++    g12 => gab
++    g13 => gac
++    g22 => gbb
++    g23 => gbc
++    g33 => gcc
++    vup => lvel
++    Bprim => lBvec
++  else
++    g11 => gxx
++    g12 => gxy
++    g13 => gxz
++    g22 => gyy
++    g23 => gyz
++    g33 => gzz
++    vup => vel
++    Bprim => Bvec
++  end if
+   
+-  !g11 => gxx
+-  !g12 => gxy
+-  !g13 => gxz
+-  !g22 => gyy
+-  !g23 => gyz
+-  !g33 => gzz
+-
+   ! constraint transport needs to be able to average fluxes in the directions
+   ! other that flux_direction, which in turn need the primitives on interfaces
+ 
+   if(evolve_temper.ne.1) then
+ 
+   !$OMP PARALLEL DO PRIVATE(k,j,i,avg_detl,avg_detr,&
+-  !$OMP                      gxxl,gxyl,gxzl,gyyl,gyzl,gzzl,&
+-  !$OMP                      gxxr,gxyr,gxzr,gyyr,gyzr,gzzr)
++  !$OMP                      g11l,g12l,g13l,g22l,g23l,g33l,&
++  !$OMP                      g11r,g12r,g13r,g22r,g23r,g33r)
+   do k = GRHydro_stencil, cctk_lsh(3)-GRHydro_stencil+1 + transport_constraints*(1-zoffset)
+     do j = GRHydro_stencil, cctk_lsh(2)-GRHydro_stencil+1 + transport_constraints*(1-yoffset)
+       do i = GRHydro_stencil, cctk_lsh(1)-GRHydro_stencil+1 + transport_constraints*(1-xoffset)
+         
+-        gxxl = 0.5d0 * (gxx(i,j,k) + gxx(i-xoffset,j-yoffset,k-zoffset))
+-        gxyl = 0.5d0 * (gxy(i,j,k) + gxy(i-xoffset,j-yoffset,k-zoffset))
+-        gxzl = 0.5d0 * (gxz(i,j,k) + gxz(i-xoffset,j-yoffset,k-zoffset))
+-        gyyl = 0.5d0 * (gyy(i,j,k) + gyy(i-xoffset,j-yoffset,k-zoffset))
+-        gyzl = 0.5d0 * (gyz(i,j,k) + gyz(i-xoffset,j-yoffset,k-zoffset))
+-        gzzl = 0.5d0 * (gzz(i,j,k) + gzz(i-xoffset,j-yoffset,k-zoffset))
+-        gxxr = 0.5d0 * (gxx(i,j,k) + gxx(i+xoffset,j+yoffset,k+zoffset))
+-        gxyr = 0.5d0 * (gxy(i,j,k) + gxy(i+xoffset,j+yoffset,k+zoffset))
+-        gxzr = 0.5d0 * (gxz(i,j,k) + gxz(i+xoffset,j+yoffset,k+zoffset))
+-        gyyr = 0.5d0 * (gyy(i,j,k) + gyy(i+xoffset,j+yoffset,k+zoffset))
+-        gyzr = 0.5d0 * (gyz(i,j,k) + gyz(i+xoffset,j+yoffset,k+zoffset))
+-        gzzr = 0.5d0 * (gzz(i,j,k) + gzz(i+xoffset,j+yoffset,k+zoffset))
+-
+-        avg_detl = SPATIAL_DETERMINANT(gxxl,gxyl,gxzl,gyyl, gyzl,gzzl)
+-        avg_detr = SPATIAL_DETERMINANT(gxxr,gxyr,gxzr,gyyr, gyzr,gzzr)
+-
+-        call prim2conM(GRHydro_eos_handle, gxxl,gxyl,gxzl,gyyl,gyzl,gzzl, &
++        g11l = 0.5d0 * (g11(i,j,k) + g11(i-xoffset,j-yoffset,k-zoffset))
++        g12l = 0.5d0 * (g12(i,j,k) + g12(i-xoffset,j-yoffset,k-zoffset))
++        g13l = 0.5d0 * (g13(i,j,k) + g13(i-xoffset,j-yoffset,k-zoffset))
++        g22l = 0.5d0 * (g22(i,j,k) + g22(i-xoffset,j-yoffset,k-zoffset))
++        g23l = 0.5d0 * (g23(i,j,k) + g23(i-xoffset,j-yoffset,k-zoffset))
++        g33l = 0.5d0 * (g33(i,j,k) + g33(i-xoffset,j-yoffset,k-zoffset))
++        g11r = 0.5d0 * (g11(i,j,k) + g11(i+xoffset,j+yoffset,k+zoffset))
++        g12r = 0.5d0 * (g12(i,j,k) + g12(i+xoffset,j+yoffset,k+zoffset))
++        g13r = 0.5d0 * (g13(i,j,k) + g13(i+xoffset,j+yoffset,k+zoffset))
++        g22r = 0.5d0 * (g22(i,j,k) + g22(i+xoffset,j+yoffset,k+zoffset))
++        g23r = 0.5d0 * (g23(i,j,k) + g23(i+xoffset,j+yoffset,k+zoffset))
++        g33r = 0.5d0 * (g33(i,j,k) + g33(i+xoffset,j+yoffset,k+zoffset))
++
++        avg_detl = SPATIAL_DETERMINANT(g11l,g12l,g13l,g22l, g23l,g33l)
++        avg_detr = SPATIAL_DETERMINANT(g11r,g12r,g13r,g22r, g23r,g33r)
++
++        call prim2conM(GRHydro_eos_handle, g11l,g12l,g13l,g22l,g23l,g33l, &
+              avg_detl,densminus(i,j,k),sxminus(i,j,k),&
+              syminus(i,j,k),szminus(i,j,k),tauminus(i,j,k),&
+              Bconsxminus(i,j,k),Bconsyminus(i,j,k),Bconszminus(i,j,k), rhominus(i,j,k), &
+@@ -107,7 +127,7 @@ subroutine primitive2conservativeM(CCTK_ARGUMENTS)
+              epsminus(i,j,k),pressminus(i,j,k),Bvecxminus(i,j,k), &
+              Bvecyminus(i,j,k), Bveczminus(i,j,k), w_lorentzminus(i, j, k))
+  
+-        call prim2conM(GRHydro_eos_handle, gxxr,gxyr,gxzr,gyyr,gyzr,gzzr, &
++        call prim2conM(GRHydro_eos_handle, g11r,g12r,g13r,g22r,g23r,g33r, &
+              avg_detr, densplus(i,j,k),sxplus(i,j,k),&
+              syplus(i,j,k),szplus(i,j ,k),tauplus(i,j,k),&
+              Bconsxplus(i,j,k),Bconsyplus(i,j,k),Bconszplus(i,j,k), &
+@@ -129,27 +149,27 @@ subroutine primitive2conservativeM(CCTK_ARGUMENTS)
+   else
+ 
+      !$OMP PARALLEL DO PRIVATE(i, j, k, avg_detl, avg_detr, xtemp,&
+-     !$OMP                      gxxl,gxyl,gxzl,gyyl,gyzl,gzzl, &
+-     !$OMP                      gxxr,gxyr,gxzr,gyyr,gyzr,gzzr)
++     !$OMP                      g11l,g12l,g13l,g22l,g23l,g33l, &
++     !$OMP                      g11r,g12r,g13r,g22r,g23r,g33r)
+      do k = GRHydro_stencil, cctk_lsh(3)-GRHydro_stencil+1 + transport_constraints*(1-zoffset)
+        do j = GRHydro_stencil, cctk_lsh(2)-GRHydro_stencil+1 + transport_constraints*(1-yoffset)
+          do i = GRHydro_stencil, cctk_lsh(1)-GRHydro_stencil+1 + transport_constraints*(1-xoffset)
+               
+-              gxxl = 0.5d0 * (gxx(i,j,k) + gxx(i-xoffset,j-yoffset,k-zoffset))
+-              gxyl = 0.5d0 * (gxy(i,j,k) + gxy(i-xoffset,j-yoffset,k-zoffset))
+-              gxzl = 0.5d0 * (gxz(i,j,k) + gxz(i-xoffset,j-yoffset,k-zoffset))
+-              gyyl = 0.5d0 * (gyy(i,j,k) + gyy(i-xoffset,j-yoffset,k-zoffset))
+-              gyzl = 0.5d0 * (gyz(i,j,k) + gyz(i-xoffset,j-yoffset,k-zoffset))
+-              gzzl = 0.5d0 * (gzz(i,j,k) + gzz(i-xoffset,j-yoffset,k-zoffset))
+-              gxxr = 0.5d0 * (gxx(i,j,k) + gxx(i+xoffset,j+yoffset,k+zoffset))
+-              gxyr = 0.5d0 * (gxy(i,j,k) + gxy(i+xoffset,j+yoffset,k+zoffset))
+-              gxzr = 0.5d0 * (gxz(i,j,k) + gxz(i+xoffset,j+yoffset,k+zoffset))
+-              gyyr = 0.5d0 * (gyy(i,j,k) + gyy(i+xoffset,j+yoffset,k+zoffset))
+-              gyzr = 0.5d0 * (gyz(i,j,k) + gyz(i+xoffset,j+yoffset,k+zoffset))
+-              gzzr = 0.5d0 * (gzz(i,j,k) + gzz(i+xoffset,j+yoffset,k+zoffset))
++              g11l = 0.5d0 * (g11(i,j,k) + g11(i-xoffset,j-yoffset,k-zoffset))
++              g12l = 0.5d0 * (g12(i,j,k) + g12(i-xoffset,j-yoffset,k-zoffset))
++              g13l = 0.5d0 * (g13(i,j,k) + g13(i-xoffset,j-yoffset,k-zoffset))
++              g22l = 0.5d0 * (g22(i,j,k) + g22(i-xoffset,j-yoffset,k-zoffset))
++              g23l = 0.5d0 * (g23(i,j,k) + g23(i-xoffset,j-yoffset,k-zoffset))
++              g33l = 0.5d0 * (g33(i,j,k) + g33(i-xoffset,j-yoffset,k-zoffset))
++              g11r = 0.5d0 * (g11(i,j,k) + g11(i+xoffset,j+yoffset,k+zoffset))
++              g12r = 0.5d0 * (g12(i,j,k) + g12(i+xoffset,j+yoffset,k+zoffset))
++              g13r = 0.5d0 * (g13(i,j,k) + g13(i+xoffset,j+yoffset,k+zoffset))
++              g22r = 0.5d0 * (g22(i,j,k) + g22(i+xoffset,j+yoffset,k+zoffset))
++              g23r = 0.5d0 * (g23(i,j,k) + g23(i+xoffset,j+yoffset,k+zoffset))
++              g33r = 0.5d0 * (g33(i,j,k) + g33(i+xoffset,j+yoffset,k+zoffset))
+               
+-              avg_detl = SPATIAL_DETERMINANT(gxxl,gxyl,gxzl,gyyl,gyzl,gzzl)
+-              avg_detr = SPATIAL_DETERMINANT(gxxr,gxyr,gxzr,gyyr,gyzr,gzzr)
++              avg_detl = SPATIAL_DETERMINANT(g11l,g12l,g13l,g22l,g23l,g33l)
++              avg_detr = SPATIAL_DETERMINANT(g11r,g12r,g13r,g22r,g23r,g33r)
+ 
+               ! we do not have plus/minus vars for temperature since
+               ! eps is reconstructed. Hence, we do not update the
+@@ -166,7 +186,7 @@ subroutine primitive2conservativeM(CCTK_ARGUMENTS)
+               !$OMP END CRITICAL
+               endif 
+               call prim2conM_hot(GRHydro_eos_handle, GRHydro_reflevel,&
+-                   i,j,k,x(i,j,k),y(i,j,k),z(i,j,k), gxxl,gxyl,gxzl,gyyl,gyzl,gzzl, &
++                   i,j,k,x(i,j,k),y(i,j,k),z(i,j,k), g11l,g12l,g13l,g22l,g23l,g33l, &
+                    avg_detl,densminus(i,j,k),sxminus(i,j,k),&
+                    syminus(i,j,k),szminus(i,j,k),tauminus(i,j,k),&
+                    Bconsxminus(i,j,k),Bconsyminus(i,j,k),Bconszminus(i,j,k), rhominus(i,j,k), &
+@@ -182,7 +202,7 @@ subroutine primitive2conservativeM(CCTK_ARGUMENTS)
+                    temperature(i+xoffset,j+yoffset,k+zoffset))
+   
+               call prim2conM_hot(GRHydro_eos_handle, GRHydro_reflevel,&
+-                   i,j,k,x(i,j,k),y(i,j,k),z(i,j,k), gxxr,gxyr,gxzr,gyyr,gyzr,gzzr, &
++                   i,j,k,x(i,j,k),y(i,j,k),z(i,j,k), g11r,g12r,g13r,g22r,g23r,g33r, &
+                    avg_detr, densplus(i,j,k),sxplus(i,j,k),&
+                    syplus(i,j,k),szplus(i,j,k),tauplus(i,j,k),&
+                    Bconsxplus(i,j,k),Bconsyplus(i,j,k),Bconszplus(i,j,k),&
+@@ -452,13 +472,46 @@ subroutine Primitive2ConservativeCellsM(CCTK_ARGUMENTS)
+ 
+   implicit none
+   
++  ! save memory when MP is not used
++  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
++  TARGET gaa, gab, gac, gbb, gbc, gcc
++  TARGET gxx, gxy, gxz, gyy, gyz, gzz
++  TARGET lvel, vel
++  TARGET lBvec, Bvec
++  
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+   CCTK_INT :: i, j, k
+   CCTK_REAL :: det
+   CCTK_REAL :: maxtau0
+-
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: Bprim
++
++  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++    g11 => gaa
++    g12 => gab
++    g13 => gac
++    g22 => gbb
++    g23 => gbc
++    g33 => gcc
++    vup => lvel
++    Bprim => lBvec
++  else
++    g11 => gxx
++    g12 => gxy
++    g13 => gxz
++    g22 => gyy
++    g23 => gyz
++    g33 => gzz
++    vup => vel
++    Bprim => Bvec
++  end if
++  
++  
+   maxtau0 = -1.0d60
+   
+   if(evolve_temper.ne.1) then
+@@ -468,12 +521,12 @@ subroutine Primitive2ConservativeCellsM(CCTK_ARGUMENTS)
+     do j = 1,cctk_lsh(2)
+       do i = 1,cctk_lsh(1)
+         
+-         det = SPATIAL_DETERMINANT(gxx(i,j,k),gxy(i,j,k),gxz(i,j,k), \
+-              gyy(i,j,k),gyz(i,j,k),gzz(i,j,k))
++         det = SPATIAL_DETERMINANT(g11(i,j,k),g12(i,j,k),g13(i,j,k), \
++              g22(i,j,k),g23(i,j,k),g33(i,j,k))
+ 
+-        call prim2conM(GRHydro_eos_handle,gxx(i,j,k),&
+-             gxy(i,j,k),gxz(i,j,k),&
+-             gyy(i,j,k),gyz(i,j,k),gzz(i,j,k),&
++        call prim2conM(GRHydro_eos_handle,g11(i,j,k),&
++             g12(i,j,k),g13(i,j,k),&
++             g22(i,j,k),g23(i,j,k),g33(i,j,k),&
+              det, dens(i,j,k),sx(i,j,k),sy(i,j,k),sz(i,j,k),&
+              tau(i,j,k),Bconsx(i,j,k),Bconsy(i,j,k),Bconsz(i,j,k),&
+              rho(i,j,k),velx(i,j,k),vely(i,j,k),velz(i,j,k),&
+@@ -509,13 +562,13 @@ subroutine Primitive2ConservativeCellsM(CCTK_ARGUMENTS)
+     do j = 1,cctk_lsh(2)
+       do i = 1,cctk_lsh(1)
+         
+-         det = SPATIAL_DETERMINANT(gxx(i,j,k),gxy(i,j,k),gxz(i,j,k), \
+-              gyy(i,j,k),gyz(i,j,k),gzz(i,j,k))
++         det = SPATIAL_DETERMINANT(g11(i,j,k),g12(i,j,k),g13(i,j,k), \
++              g22(i,j,k),g23(i,j,k),g33(i,j,k))
+ 
+          call prim2conM_hot(GRHydro_eos_handle,GRHydro_reflevel,&
+               i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),&
+-              gxx(i,j,k),gxy(i,j,k),gxz(i,j,k),&
+-              gyy(i,j,k),gyz(i,j,k),gzz(i,j,k),&
++              g11(i,j,k),g12(i,j,k),g13(i,j,k),&
++              g22(i,j,k),g23(i,j,k),g33(i,j,k),&
+               det, dens(i,j,k),sx(i,j,k),sy(i,j,k),sz(i,j,k),&
+               tau(i,j,k),Bconsx(i,j,k),Bconsy(i,j,k),Bconsz(i,j,k),&
+               rho(i,j,k),velx(i,j,k),vely(i,j,k),velz(i,j,k),&
+@@ -565,39 +618,72 @@ subroutine Prim2ConservativePolytypeM(CCTK_ARGUMENTS)
+ 
+   implicit none
+   
++  ! save memory when MP is not used
++  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
++  TARGET gaa, gab, gac, gbb, gbc, gcc
++  TARGET gxx, gxy, gxz, gyy, gyz, gzz
++  TARGET lvel, vel
++  TARGET lBvec, Bvec
++  
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+   integer :: i, j, k
+-  CCTK_REAL :: gxxl,gxyl,gxzl,gyyl,gyzl,gzzl,avg_detl,&
+-       gxxr,gxyr,gxzr,gyyr,gyzr,gzzr,avg_detr
++  CCTK_REAL :: g11l,g12l,g13l,g22l,g23l,g33l,avg_detl,&
++       g11r,g12r,g13r,g22r,g23r,g33r,avg_detr
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: Bprim
++
++  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++    g11 => gaa
++    g12 => gab
++    g13 => gac
++    g22 => gbb
++    g23 => gbc
++    g33 => gcc
++    vup => lvel
++    Bprim => lBvec
++  else
++    g11 => gxx
++    g12 => gxy
++    g13 => gxz
++    g22 => gyy
++    g23 => gyz
++    g33 => gzz
++    vup => vel
++    Bprim => Bvec
++  end if
++  
+   
+   ! constraint transport needs to be able to average fluxes in the directions
+   ! other that flux_direction, which in turn need the primitives on interfaces
+-  !$OMP PARALLEL DO PRIVATE(i, j, k, gxxl,gxyl,gxzl,gyyl,gyzl,gzzl,avg_detl,&
+-  !$OMP gxxr,gxyr,gxzr,gyyr,gyzr,gzzr,avg_detr)
++  !$OMP PARALLEL DO PRIVATE(i, j, k, g11l,g12l,g13l,g22l,g23l,g33l,avg_detl,&
++  !$OMP g11r,g12r,g13r,g22r,g23r,g33r,avg_detr)
+   do k = GRHydro_stencil, cctk_lsh(3)-GRHydro_stencil+1 + transport_constraints*(1-zoffset)
+     do j = GRHydro_stencil, cctk_lsh(2)-GRHydro_stencil+1 + transport_constraints*(1-yoffset)
+       do i = GRHydro_stencil, cctk_lsh(1)-GRHydro_stencil+1 + transport_constraints*(1-xoffset)
+         
+-        gxxl = 0.5d0 * (gxx(i,j,k) + gxx(i-xoffset,j-yoffset,k-zoffset))
+-        gxyl = 0.5d0 * (gxy(i,j,k) + gxy(i-xoffset,j-yoffset,k-zoffset))
+-        gxzl = 0.5d0 * (gxz(i,j,k) + gxz(i-xoffset,j-yoffset,k-zoffset))
+-        gyyl = 0.5d0 * (gyy(i,j,k) + gyy(i-xoffset,j-yoffset,k-zoffset))
+-        gyzl = 0.5d0 * (gyz(i,j,k) + gyz(i-xoffset,j-yoffset,k-zoffset))
+-        gzzl = 0.5d0 * (gzz(i,j,k) + gzz(i-xoffset,j-yoffset,k-zoffset))
+-        gxxr = 0.5d0 * (gxx(i,j,k) + gxx(i+xoffset,j+yoffset,k+zoffset))
+-        gxyr = 0.5d0 * (gxy(i,j,k) + gxy(i+xoffset,j+yoffset,k+zoffset))
+-        gxzr = 0.5d0 * (gxz(i,j,k) + gxz(i+xoffset,j+yoffset,k+zoffset))
+-        gyyr = 0.5d0 * (gyy(i,j,k) + gyy(i+xoffset,j+yoffset,k+zoffset))
+-        gyzr = 0.5d0 * (gyz(i,j,k) + gyz(i+xoffset,j+yoffset,k+zoffset))
+-        gzzr = 0.5d0 * (gzz(i,j,k) + gzz(i+xoffset,j+yoffset,k+zoffset))
+-
+-        avg_detl = SPATIAL_DETERMINANT(gxxl,gxyl,gxzl,gyyl, gyzl,gzzl)
+-        avg_detr = SPATIAL_DETERMINANT(gxxr,gxyr,gxzr,gyyr, gyzr,gzzr)
+-
+-        call prim2conpolytypeM(GRHydro_eos_handle, gxxl,gxyl,gxzl,&
+-             gyyl,gyzl,gzzl, &
++        g11l = 0.5d0 * (g11(i,j,k) + g11(i-xoffset,j-yoffset,k-zoffset))
++        g12l = 0.5d0 * (g12(i,j,k) + g12(i-xoffset,j-yoffset,k-zoffset))
++        g13l = 0.5d0 * (g13(i,j,k) + g13(i-xoffset,j-yoffset,k-zoffset))
++        g22l = 0.5d0 * (g22(i,j,k) + g22(i-xoffset,j-yoffset,k-zoffset))
++        g23l = 0.5d0 * (g23(i,j,k) + g23(i-xoffset,j-yoffset,k-zoffset))
++        g33l = 0.5d0 * (g33(i,j,k) + g33(i-xoffset,j-yoffset,k-zoffset))
++        g11r = 0.5d0 * (g11(i,j,k) + g11(i+xoffset,j+yoffset,k+zoffset))
++        g12r = 0.5d0 * (g12(i,j,k) + g12(i+xoffset,j+yoffset,k+zoffset))
++        g13r = 0.5d0 * (g13(i,j,k) + g13(i+xoffset,j+yoffset,k+zoffset))
++        g22r = 0.5d0 * (g22(i,j,k) + g22(i+xoffset,j+yoffset,k+zoffset))
++        g23r = 0.5d0 * (g23(i,j,k) + g23(i+xoffset,j+yoffset,k+zoffset))
++        g33r = 0.5d0 * (g33(i,j,k) + g33(i+xoffset,j+yoffset,k+zoffset))
++
++        avg_detl = SPATIAL_DETERMINANT(g11l,g12l,g13l,g22l, g23l,g33l)
++        avg_detr = SPATIAL_DETERMINANT(g11r,g12r,g13r,g22r, g23r,g33r)
++
++        call prim2conpolytypeM(GRHydro_eos_handle, g11l,g12l,g13l,&
++             g22l,g23l,g33l, &
+              avg_detl,densminus(i,j,k),sxminus(i,j,k),&
+              syminus(i,j,k),szminus(i,j,k),tauminus(i,j,k),&
+              Bconsxminus(i,j,k),Bconsyminus(i,j,k),Bconszminus(i,j,k),&
+@@ -606,8 +692,8 @@ subroutine Prim2ConservativePolytypeM(CCTK_ARGUMENTS)
+              epsminus(i,j,k),pressminus(i,j,k),Bvecxminus(i,j,k), &
+              Bvecyminus(i,j,k),Bveczminus(i,j,k),w_lorentzminus(i, j, k))
+  
+-        call prim2conpolytypeM(GRHydro_eos_handle, gxxr,gxyr,gxzr,&
+-             gyyr,gyzr,gzzr, &
++        call prim2conpolytypeM(GRHydro_eos_handle, g11r,g12r,g13r,&
++             g22r,g23r,g33r, &
+              avg_detr,densplus(i,j,k),sxplus(i,j,k),&
+              syplus(i,j,k),szplus(i,j,k),tauplus(i,j,k),&
+              Bconsxplus(i,j,k),Bconsyplus(i,j,k),Bconszplus(i,j,k),&
+@@ -740,22 +826,54 @@ subroutine Primitive2ConservativePolyCellsM(CCTK_ARGUMENTS)
+ 
+   implicit none
+   
++  ! save memory when MP is not used
++  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
++  TARGET gaa, gab, gac, gbb, gbc, gcc
++  TARGET gxx, gxy, gxz, gyy, gyz, gzz
++  TARGET lvel, vel
++  TARGET lBvec, Bvec
++  
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+   CCTK_INT :: i, j, k
+   CCTK_REAL :: det
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: Bprim
++
++  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++    g11 => gaa
++    g12 => gab
++    g13 => gac
++    g22 => gbb
++    g23 => gbc
++    g33 => gcc
++    vup => lvel
++    Bprim => lBvec
++  else
++    g11 => gxx
++    g12 => gxy
++    g13 => gxz
++    g22 => gyy
++    g23 => gyz
++    g33 => gzz
++    vup => vel
++    Bprim => Bvec
++  end if
+   
+   !$OMP PARALLEL DO PRIVATE(k,j,i,det)
+   do k = 1,cctk_lsh(3)
+     do j = 1,cctk_lsh(2)
+       do i = 1,cctk_lsh(1)
+         
+-        det = SPATIAL_DETERMINANT(gxx(i,j,k),gxy(i,j,k),gxz(i,j,k),\
+-             gyy(i,j,k),gyz(i,j,k),gzz(i,j,k))
++        det = SPATIAL_DETERMINANT(g11(i,j,k),g12(i,j,k),g13(i,j,k),\
++             g22(i,j,k),g23(i,j,k),g33(i,j,k))
+ 
+-        call prim2conpolytypeM(GRHydro_eos_handle,gxx(i,j,k),gxy(i,j,k),&
+-             gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k),&
++        call prim2conpolytypeM(GRHydro_eos_handle,g11(i,j,k),g12(i,j,k),&
++             g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k),&
+              det, dens(i,j,k),sx(i,j,k),sy(i,j,k),sz(i,j,k),&
+              tau(i,j,k),Bconsx(i,j,k),Bconsy(i,j,k),Bconsz(i,j,k),&
+              rho(i,j,k),velx(i,j,k),vely(i,j,k),velz(i,j,k),&
+-- 
+1.7.10.4
+

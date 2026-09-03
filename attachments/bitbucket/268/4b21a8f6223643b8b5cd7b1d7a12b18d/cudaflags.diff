@@ -1,0 +1,133 @@
+Index: Notes.tex
+===================================================================
+--- Notes.tex	(revision 4697)
++++ Notes.tex	(working copy)
+@@ -77,6 +77,17 @@
+ 
+ \noindent
+ If you are using any thorns containing routines
++written in CUDA (Compute Unified Device Architecture), a parallel 
++computing architecture developed by NVIDIA, you also need
++\begin{Lentry}
++\item[CUCC] CUDA compiler. For example, the NVIDIA C compiler. In many
++cases, you can compile your C and C++ code with a CUDA compiler without 
++encountering any problems, but you are advised to use a CUDA compiler exclusively
++for CUDA code.
++\end{Lentry}
++
++\noindent
++If you are using any thorns containing routines
+ written in Fortran you also need
+ \begin{Lentry}
+ \item[F90/F77] For routines written in Fortran 77, either a Fortran 90 or
+@@ -270,6 +281,7 @@
+ 
+ \begin{Lentry}
+ \item [\texttt{CC}]   * The C compiler.
++\item [\texttt{CUCC}] * The CUDA compiler.
+ \item [\texttt{CXX}]    The C++ compiler.
+ \item [\texttt{F90}]  * The Fortran 90 compiler.
+ \item [\texttt{F77}]  * The Fortran 77 compiler.
+@@ -292,6 +304,9 @@
+ \item [\texttt{CFLAGS}]
+ Flags for the C compiler.
+ 
++\item [\texttt{CUCCFLAGS}]
++Flags for the CUDA compiler.
++
+ \item [\texttt{CXXFLAGS}]
+ Flags for the C++ compiler.
+ 
+@@ -358,6 +373,10 @@
+ Debug flags for the C compiler, their use depends on the type of
+ debugging being used.
+ 
++\item [\texttt{CUCC\_DEBUG\_FLAGS}]
++Debug flags for the CUDA compiler, their use depends on the type of
++debugging being used.
++
+ \item [\texttt{CXX\_DEBUG\_FLAGS}]
+ Debug flags for the C++ compiler, their use depends on the type of
+ debugging being used.
+@@ -380,6 +399,10 @@
+ Optimisation flags for the C compiler, their use depends on the type of
+ optimisation being used.
+ 
++\item [\texttt{CUCC\_OPTIMISE\_FLAGS}]
++Optimisation flags for the C compiler, their use depends on the type of
++optimisation being used.
++
+ \item [\texttt{CXX\_OPTIMISE\_FLAGS}]
+ Optimisation flags for the C++ compiler, their use depends on the type of
+ optimisation being used.
+@@ -394,6 +417,8 @@
+ 
+ \item [\texttt{C\_NO\_OPTIMISE\_FLAGS}]
+ 
++\item [\texttt{CUCC\_NO\_OPTIMISE\_FLAGS}]
++
+ \item [\texttt{CXX\_NO\_OPTIMISE\_FLAGS}]
+ 
+ \item [\texttt{F90\_NO\_OPTIMISE\_FLAGS}]
+@@ -411,6 +436,10 @@
+   Profile flags for the C compiler, their use depends on the type of
+   profiling being used.
+ 
++\item [\texttt{CUCC\_PROFILE\_FLAGS}]
++  Profile flags for the CUDA compiler, their use depends on the type of
++  profiling being used.
++
+ \item [\texttt{CXX\_PROFILE\_FLAGS}]
+   Profile flags for the C++ compiler, their use depends on the type of
+   profiling being used.
+@@ -432,6 +461,10 @@
+ Warning flags for the C compiler, their use depends on the type of
+ warnings used during compilation (Section \ref{sec:gmopfobuco}).
+ 
++\item [\texttt{CUCC\_WARN\_FLAGS}]
++Warning flags for the CUCC compiler, their use depends on the type of
++warnings used during compilation (Section \ref{sec:gmopfobuco}).
++
+ \item [\texttt{CXX\_WARN\_FLAGS}]
+ Warning flags for the C++ compiler, their use depends on the type of
+ warnings used during compilation (Section \ref{sec:gmopfobuco}).
+Index: ApplicationThorns.tex
+===================================================================
+--- ApplicationThorns.tex	(revision 4697)
++++ ApplicationThorns.tex	(working copy)
+@@ -746,6 +746,7 @@
+ {\t .f77}           & Fortran 77 & fixed  & no  \\
+ {\t .c}             & C          & -      & yes \\
+ {\t .cc} or {\t .C} & C++        & -      & yes \\
++{\t .cu}            & CUDA       & -      & yes \\
+ \hline
+ \end{tabular}
+ \end{center}
+@@ -851,12 +852,14 @@
+   \texttt{CC}, and to \texttt{CXX}
+ \item \texttt{FPPFLAGS}: Flags which are passed to \texttt{FPP}
+ \item \texttt{CC}: The C compiler
++\item \texttt{CUDA}: The CUDA compiler
+ \item \texttt{CXX}: The C++ compiler
+ \item \texttt{F77}: The Fortran 77 compiler.  This is only used if
+   there is no Fortran 90 compiler
+ \item \texttt{F90}: The Fortran 90 compiler.  If this variable is
+   set, it is also used to compile Fortran 77 files
+ \item \texttt{CFLAGS}: Flags which are passed to \texttt{CC}
++\item \texttt{CUDAFLAGS}: Flags which are passed to \texttt{CUDA}
+ \item \texttt{CXXFLAGS}: Flags which are passed to \texttt{CXX}
+ \item \texttt{F77FLAGS}: Flags which are passed to \texttt{F77}
+ \item \texttt{F90FLAGS}: Flags which are passed to \texttt{F90}
+Index: Appendices.tex
+===================================================================
+--- Appendices.tex	(revision 4697)
++++ Appendices.tex	(working copy)
+@@ -60,7 +60,7 @@
+ \item[configuration]
+   The combination of a set of thorns, and all the Cactus configure
+   options which affect what binary will be produced when compiling
+-  Cactus.  For example, the choice of compilers (Cactus \verb|CC|,
++  Cactus.  For example, the choice of compilers (Cactus \verb|CC|, \verb|CUCC|,
+   \verb|CXX|, \verb|F77|, and \verb|F90| configure options) and the
+   compiler optimization settings (\verb|OPTIMISE|/\verb|OPTIMIZE| and
+   \verb|*_OPTIMISE_FLAGS| configure options) are part of a

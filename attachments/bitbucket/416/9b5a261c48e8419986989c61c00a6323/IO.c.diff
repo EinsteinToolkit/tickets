@@ -1,0 +1,45 @@
+Index: IO.c
+===================================================================
+--- IO.c	(revision 83)
++++ IO.c	(working copy)
+@@ -532,6 +532,40 @@
+       HTTP_Send( request, "</a></td>\n" );
+       HTTP_Send( request, "</tr>\n" );
+     }
++    if ( !CompareCString( file->mimetype, "image/png"))
++    {
++      if (!foundone)
++      {
++        HTTP_Send( request,
++               "<table class=\"files\" cellspacing=\"5\" cellpadding=\"5\" "
++               "rules=\"groups\" >\n"
++               "<thead>\n<tr><th>Variable<br />Slice</th>"
++               "<th>Description</th><th>Image</th></tr>\n</thead>\n");
++        foundone = 1;
++      }
++      HTTP_Send( request, "<tr>\n" );
++      HTTP_Send( request, "<td><span class=\"variable\">" );
++      HTTP_SendString( request, file->varname );
++      HTTP_Send( request, "</span><br />\n" );
++      HTTP_Send( request, "<span class=\"slice\">" );
++      HTTP_SendString( request, file->slice );
++      HTTP_Send( request, "</span>" );
++      HTTP_Send( request, "</td>\n" );
++      HTTP_Send( request, "<td><span class=\"desc\">" );
++      HTTP_SendString( request, file->description );
++      HTTP_Send( request, "</span></td>\n" );
++      HTTP_Send( request, "<td class=\"linkk\"><a href=\"/Output/" );
++      HTTP_SendString( request, file->linkname );
++      HTTP_Send( request, "\">" );
++      HTTP_Send( request, "<img width=\"100\" height=\"100\" src=\"" );
++      HTTP_SendString( request, file->linkname );
++      HTTP_Send( request, "\" alt=\"" );
++      HTTP_SendString( request, file->linkname );
++      HTTP_Send( request, "\"/>" );
++      HTTP_Send( request, "</a></td>\n" );
++      HTTP_Send( request, "</tr>\n" );
++    }
++
+   }
+ 
+   if( foundone)

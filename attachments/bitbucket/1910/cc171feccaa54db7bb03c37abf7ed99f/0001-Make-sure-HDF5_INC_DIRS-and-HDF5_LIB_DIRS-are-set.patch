@@ -1,0 +1,30 @@
+From 3227c95ff4549b319216e0817b475e4878aa4d7e Mon Sep 17 00:00:00 2001
+From: Barry Wardell <barry.wardell@gmail.com>
+Date: Tue, 7 Jun 2016 09:59:42 -0400
+Subject: [PATCH] Make sure HDF5_INC_DIRS and HDF5_LIB_DIRS are set
+
+Previously, they were not defined in the case where a system version of
+HDF5 was specified by setting HDF5_DIR (but not HDF5_INC_DIRS and
+HDF5_LIB_DIRS) in the optionlist.
+---
+ src/detect.sh | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/detect.sh b/src/detect.sh
+index f68b47e..78a5778 100755
+--- a/src/detect.sh
++++ b/src/detect.sh
+@@ -132,6 +132,10 @@ if [ -n "$HDF5_BUILD" -o -z "${HDF5_DIR}" ]; then
+     HDF5_LIB_DIRS="${HDF5_DIR}/lib"
+     HDF5_LIBS="${HDF5_CXX_LIBS} ${HDF5_FORTRAN_LIBS} ${HDF5_C_LIBS}"
+ else
++    # Set HDF5_INC_DIRS and HDF5_LIB_DIRS if they have not already been set
++    : ${HDF5_INC_DIRS:="${HDF5_DIR}/include"}
++    : ${HDF5_LIB_DIRS:="${HDF5_DIR}/lib"}
++
+     DONE_FILE=${SCRATCH_BUILD}/done/${THORN}
+     if [ ! -e ${DONE_FILE} ]; then
+         mkdir ${SCRATCH_BUILD}/done 2> /dev/null || true
+-- 
+2.8.3
+

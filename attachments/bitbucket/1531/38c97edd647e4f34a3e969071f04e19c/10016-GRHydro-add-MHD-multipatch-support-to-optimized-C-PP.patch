@@ -1,0 +1,72 @@
+From 7db2d4de037914e5de80e2f589cfdca926428f31 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Mon, 25 Nov 2013 21:09:04 -0800
+Subject: [PATCH 16/36] GRHydro: add MHD multipatch support to optimized C++
+ PPM
+
+---
+ src/GRHydro_PPMReconstruct_drv_opt.cc | 21 ++++++++++++---------
+ 1 file changed, 12 insertions(+), 9 deletions(-)
+
+diff --git a/src/GRHydro_PPMReconstruct_drv_opt.cc b/src/GRHydro_PPMReconstruct_drv_opt.cc
+index 69f2590..191fb17 100644
+--- a/src/GRHydro_PPMReconstruct_drv_opt.cc
++++ b/src/GRHydro_PPMReconstruct_drv_opt.cc
+@@ -54,12 +54,15 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+   DECLARE_CCTK_PARAMETERS;
+ 
+   CCTK_REAL * restrict vup;
++  CCTK_REAL * restrict Bprim;
+ 
+   //Multipatch related pointers
+   if(GRHydro_UseGeneralCoordinates(cctkGH)) {
+     vup=lvel;
++    Bprim=lBvec;
+   } else {
+     vup=vel;
++    Bprim=Bvec;
+   }
+ 
+   int nx=cctk_lsh[0];
+@@ -293,9 +296,9 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+         }
+         
+         if(Bvec!=NULL) {
+-          oned_slice(nx,nstart,       1,Bvec,Bvcx1d);
+-          oned_slice(nx,nstart+nxyz,  1,Bvec,Bvcy1d);
+-          oned_slice(nx,nstart+2*nxyz,1,Bvec,Bvcz1d);
++          oned_slice(nx,nstart,       1,Bprim,Bvcx1d);
++          oned_slice(nx,nstart+nxyz,  1,Bprim,Bvcy1d);
++          oned_slice(nx,nstart+2*nxyz,1,Bprim,Bvcz1d);
+           if(clean_divergence) {
+             oned_slice(nx,nstart,1,psidc,psidc1d);
+           }
+@@ -383,9 +386,9 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+         }
+         
+         if(Bvec!=NULL) {
+-          oned_slice(ny,nstart,       nx,Bvec,Bvcx1d);
+-          oned_slice(ny,nstart+nxyz,  nx,Bvec,Bvcy1d);
+-          oned_slice(ny,nstart+2*nxyz,nx,Bvec,Bvcz1d);
++          oned_slice(ny,nstart,       nx,Bprim,Bvcx1d);
++          oned_slice(ny,nstart+nxyz,  nx,Bprim,Bvcy1d);
++          oned_slice(ny,nstart+2*nxyz,nx,Bprim,Bvcz1d);
+           if(clean_divergence) {
+             oned_slice(ny,nstart,nx,psidc,psidc1d);
+           }
+@@ -475,9 +478,9 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+         }
+         
+         if(Bvec!=NULL) {
+-          oned_slice(nz,nstart,       nxy,Bvec,Bvcx1d);
+-          oned_slice(nz,nstart+nxyz,  nxy,Bvec,Bvcy1d);
+-          oned_slice(nz,nstart+2*nxyz,nxy,Bvec,Bvcz1d);
++          oned_slice(nz,nstart,       nxy,Bprim,Bvcx1d);
++          oned_slice(nz,nstart+nxyz,  nxy,Bprim,Bvcy1d);
++          oned_slice(nz,nstart+2*nxyz,nxy,Bprim,Bvcz1d);
+           if(clean_divergence) {
+             oned_slice(nz,nstart,nxy,psidc,psidc1d);
+           }
+-- 
+1.8.5.3
+

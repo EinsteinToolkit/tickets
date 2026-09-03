@@ -1,0 +1,174 @@
+Subject: Make ExternalLibraries *_DIR=BUILD options case insensitive
+From: Erik Schnetter <eschnetter@perimeterinstitute.ca>
+Date: 2011-10-27
+
+Make the *_DIR=BUILD check in ExternalLibraries case insensitive.
+
+
+Index: arrangements/ExternalLibraries/BLAS/BLAS.sh
+===================================================================
+--- BLAS.sh	(revision 21)
++++ BLAS.sh	(working copy)
+@@ -47,7 +47,9 @@
+ # Build
+ ################################################################################
+ 
+-if [ -z "${BLAS_DIR}" -o "${BLAS_DIR}" = 'BUILD' ]; then
++if [ -z "${BLAS_DIR}"                                                   \
++     -o "$(echo "${BLAS_DIR}" | tr '[a-z]' '[A-Z]')" = 'BUILD' ]
++then
+     echo "BEGIN MESSAGE"
+     echo "Building BLAS..."
+     echo "END MESSAGE"
+Index: arrangements/ExternalLibraries/FFTW3/FFTW3.sh
+===================================================================
+--- FFTW3.sh	(revision 5)
++++ FFTW3.sh	(working copy)
+@@ -51,7 +51,9 @@
+ # Build
+ ################################################################################
+ 
+-if [ -z "${FFTW3_DIR}" -o "${FFTW3_DIR}" = 'BUILD' ]; then
++if [ -z "${FFTW3_DIR}"                                                  \
++     -o "$(echo "${FFTW3_DIR}" | tr '[a-z]' '[A-Z]')" = 'BUILD' ]
++then
+     echo "BEGIN MESSAGE"
+     echo "Building FFTW3..."
+     echo "END MESSAGE"
+Index: arrangements/ExternalLibraries/GSL/GSL.sh
+===================================================================
+--- GSL.sh	(revision 22)
++++ GSL.sh	(working copy)
+@@ -51,7 +51,9 @@
+ # Build
+ ################################################################################
+ 
+-if [ -z "${GSL_DIR}" -o "${GSL_DIR}" = 'BUILD' ]; then
++if [ -z "${GSL_DIR}"                                            \
++     -o "$(echo "${GSL_DIR}" | tr '[a-z]' '[A-Z]')" = 'BUILD' ]
++then
+     echo "BEGIN MESSAGE"
+     echo "Building GSL..."
+     echo "END MESSAGE"
+Index: arrangements/ExternalLibraries/HDF5/HDF5.sh
+===================================================================
+--- HDF5.sh	(revision 43)
++++ HDF5.sh	(working copy)
+@@ -42,7 +42,9 @@
+ # Search
+ ################################################################################
+ 
+-if [ -z "${HDF5_DIR}" ]; then
++if [ -z "${HDF5_DIR}"                                                   \
++     -o "$(echo "${HDF5_DIR}" | tr '[a-z]' '[A-Z]')" = 'BUILD' ]
++then
+     echo "BEGIN MESSAGE"
+     echo "HDF5 selected, but HDF5_DIR not set. Checking some places..."
+     echo "END MESSAGE"
+Index: arrangements/ExternalLibraries/LAPACK/LAPACK.sh
+===================================================================
+--- LAPACK.sh	(revision 22)
++++ LAPACK.sh	(working copy)
+@@ -47,7 +47,9 @@
+ # Build
+ ################################################################################
+ 
+-if [ -z "${LAPACK_DIR}" -o "${LAPACK_DIR}" = 'BUILD' ]; then
++if [ -z "${LAPACK_DIR}"                                                 \
++     -o "$(echo "${LAPACK_DIR}" | tr '[a-z]' '[A-Z]')" = 'BUILD' ]
++then
+     echo "BEGIN MESSAGE"
+     echo "Building LAPACK..."
+     echo "END MESSAGE"
+Index: arrangements/ExternalLibraries/LORENE/LORENE.sh
+===================================================================
+--- LORENE.sh	(revision 31)
++++ LORENE.sh	(working copy)
+@@ -30,7 +30,9 @@
+ # Build
+ ################################################################################
+ 
+-if [ -z "${LORENE_DIR}"  -o "${LORENE_DIR}" = 'BUILD' ]; then
++if [ -z "${LORENE_DIR}"                                                 \
++     -o "$(echo "${LORENE_DIR}" | tr '[a-z]' '[A-Z]')" = 'BUILD' ]
++then
+     echo "BEGIN MESSAGE"
+     echo "Building LORENE..."
+     echo "END MESSAGE"
+@@ -42,14 +44,14 @@
+     BUILD_DIR=${SCRATCH_BUILD}/build/${THORN}
+     if [ -z "${LORENE_INSTALL_DIR}" ]; then
+         echo "BEGIN MESSAGE"
+-        echo "LORENE install directory, LORENE_INSTALL_DIR, not set. Installing in the default configuration location. "
++        echo "LORENE install directory, LORENE_INSTALL_DIR, not set. Installing in the default configuration location."
+         echo "END MESSAGE"
+-     INSTALL_DIR=${SCRATCH_BUILD}/external/${THORN}
++        INSTALL_DIR=${SCRATCH_BUILD}/external/${THORN}
+     else
+         echo "BEGIN MESSAGE"
+-        echo "LORENE install directory, LORENE_INSTALL_DIR, selected. Installing LORENE at ${LORENE_INSTALL_DIR} "
++        echo "LORENE install directory, LORENE_INSTALL_DIR, selected. Installing LORENE at ${LORENE_INSTALL_DIR}"
+         echo "END MESSAGE"
+-     INSTALL_DIR=${LORENE_INSTALL_DIR}
++        INSTALL_DIR=${LORENE_INSTALL_DIR}
+     fi
+     DONE_FILE=${SCRATCH_BUILD}/done/${THORN}
+     LORENE_DIR=${INSTALL_DIR}
+@@ -157,10 +159,10 @@
+         echo "LORENE: Installing..."
+         mv ${BUILD_DIR}/${NAME}/Lib                ${INSTALL_DIR}
+         mkdir ${INSTALL_DIR}/C++
+-        mv ${BUILD_DIR}/${NAME}/C++/Include        ${INSTALL_DIR}/C++/
++        mv ${BUILD_DIR}/${NAME}/C++/Include        ${INSTALL_DIR}/C++
+         mkdir ${INSTALL_DIR}/Export
+         mkdir ${INSTALL_DIR}/Export/C++
+-        mv ${BUILD_DIR}/${NAME}/Export/C++/Include ${INSTALL_DIR}/Export/C++/
++        mv ${BUILD_DIR}/${NAME}/Export/C++/Include ${INSTALL_DIR}/Export/C++
+         popd
+ 
+         echo "LORENE: Cleaning up..."
+Index: arrangements/ExternalLibraries/OpenSSL/OpenSSL.sh
+===================================================================
+--- OpenSSL.sh	(revision 22)
++++ OpenSSL.sh	(working copy)
+@@ -51,7 +51,9 @@
+ # Build
+ ################################################################################
+ 
+-if [ -z "${OPENSSL_DIR}" -o "${OPENSSL_DIR}" = 'BUILD' ]; then
++if [ -z "${OPENSSL_DIR}"                                                \
++     -o "$(echo "${OPENSSL_DIR}" | tr '[a-z]' '[A-Z]')" = 'BUILD' ]
++then
+     echo "BEGIN MESSAGE"
+     echo "Building OpenSSL..."
+     echo "END MESSAGE"
+Index: arrangements/ExternalLibraries/libjpeg/libjpeg.sh
+===================================================================
+--- libjpeg.sh	(revision 13)
++++ libjpeg.sh	(working copy)
+@@ -14,7 +14,9 @@
+ # Build
+ ################################################################################
+ 
+-if [ -z "${LIBJPEG_DIR}" -o "${LIBJPEG_DIR}" = 'BUILD' ]; then
++if [ -z "${LIBJPEG_DIR}"                                                \
++     -o "$(echo "${LIBJPEG_DIR}" | tr '[a-z]' '[A-Z]')" = 'BUILD' ]
++then
+     echo "BEGIN MESSAGE"
+     echo "Building libjpeg..."
+     echo "END MESSAGE"
+Index: arrangements/ExternalLibraries/zlib/zlib.sh
+===================================================================
+--- zlib.sh	(revision 8)
++++ zlib.sh	(working copy)
+@@ -51,7 +51,9 @@
+ # Build
+ ################################################################################
+ 
+-if [ -z "${ZLIB_DIR}" -o "${ZLIB_DIR}" = 'BUILD' ]; then
++if [ -z "${ZLIB_DIR}"                                                   \
++     -o "$(echo "${ZLIB_DIR}" | tr '[a-z]' '[A-Z]')" = 'BUILD' ]
++then
+     echo "BEGIN MESSAGE"
+     echo "Building zlib..."
+     echo "END MESSAGE"

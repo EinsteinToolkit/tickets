@@ -1,0 +1,48 @@
+From a2400901996cf1e5f6c379918c9e91dda0945810 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Sat, 11 Jun 2011 02:38:35 +0200
+Subject: [PATCH 1/2] Add harmonic shift
+
+Set the parameter harmonicShift to 1 to use harmonic shift and 0 to use Gamma-driver shift
+---
+ m/McLachlan_BSSN.m |   17 ++++++++++++++---
+ 1 files changed, 14 insertions(+), 3 deletions(-)
+
+diff --git a/m/McLachlan_BSSN.m b/m/McLachlan_BSSN.m
+index 21aa53f..5cc3b59 100644
+--- a/m/McLachlan_BSSN.m
++++ b/m/McLachlan_BSSN.m
+@@ -629,9 +629,13 @@ evolCalc =
+     
+     (* dot[beta[ua]] -> eta Xt[ua], *)
+     (* dot[beta[ua]] -> ShiftGammaCoeff alpha^ShiftAlphaPower B[ua], *)
+-    dot[beta[ua]] -> + theta ShiftGammaCoeff
+-                       (+ ShiftBCoeff        B[ua]
+-                        + (1 - ShiftBCoeff) (Xt[ua] - eta BetaDriver beta[ua])),
++    dot[beta[ua]] ->
++      IfThen[harmonicShift,
++        -1/2 gtu[ua,uj] phi alpha (-2 alpha PD[phi,lj] + 2 phi PD[alpha,lj]
++                                   + gtu[uk,ul] phi alpha (PD[gt[lk,ll],lj] - 2 PD[gt[lj,lk],ll])),
++        (* else *)
++         + theta ShiftGammaCoeff (ShiftBCoeff B[ua]
++                                  + (1 - ShiftBCoeff) (Xt[ua] - eta BetaDriver beta[ua]))],
+ 
+     dot[B[ua]]    -> + ShiftBCoeff (dotXt[ua] - eta BetaDriver B[ua])
+ 
+@@ -1140,6 +1144,13 @@ intParameters =
+     Name -> fdOrder,
+     Default -> derivOrder,
+     AllowedValues -> {2,4,6,8}
++  },
++  {
++    Name -> harmonicShift,
++    Description -> "Whether to use the harmonic shift",
++    AllowedValues -> {{Value -> "0", Description -> "Gamma driver shift"},
++                      {Value -> "1", Description -> "Harmonic shift"}},
++    Default -> 0
+   }
+ };
+ 
+-- 
+1.7.5.4
+

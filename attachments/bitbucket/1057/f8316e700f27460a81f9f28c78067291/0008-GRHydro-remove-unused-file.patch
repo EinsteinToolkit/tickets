@@ -1,0 +1,148 @@
+From a899ac27d5949c24c45e19820d6530525289ad0b Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Tue, 26 Jun 2012 08:25:33 -0700
+Subject: [PATCH 08/10] GRHydro: remove unused file
+
+---
+ src/GRHydro_RegisterVarsM.cc |  129 ------------------------------------------
+ 1 file changed, 129 deletions(-)
+ delete mode 100644 src/GRHydro_RegisterVarsM.cc
+
+diff --git a/src/GRHydro_RegisterVarsM.cc b/src/GRHydro_RegisterVarsM.cc
+deleted file mode 100644
+index 897ee28..0000000
+--- a/src/GRHydro_RegisterVarsM.cc
++++ /dev/null
+@@ -1,129 +0,0 @@
+-// GRHydro_RegisterVars.cc
+-//
+-// converted from F90 to improve readability and maintainability
+-//
+-// Frank Loeffler
+-
+-#include <cstdio>
+-#include <string>
+-
+-#include "cctk.h"
+-#include "cctk_Arguments.h"
+-#include "cctk_Parameters.h"
+-
+-using namespace std;
+-
+-// Utility functions to register variables with MoL
+-// Note: We could check for the return value here, but MoL issues a
+-//       level 0 warning in that case anyway. If that changes in the
+-//       future, a check can simply be inserted here.
+-static void register_evolved(string v1, string v2)
+-{
+-  MoLRegisterEvolvedGroup(CCTK_GroupIndex(v1.c_str()), CCTK_GroupIndex(v2.c_str()));
+-}
+-static void register_constrained(string v1)
+-{
+-  MoLRegisterConstrainedGroup(CCTK_GroupIndex(v1.c_str()));
+-}
+-static void register_saveandrestore(string v1)
+-{
+-  MoLRegisterSaveAndRestoreGroup(CCTK_GroupIndex(v1.c_str()));
+-}
+-
+-// Main function called by Cactus to register variables with MoL
+-
+-extern "C"void GRHydro_RegisterM(CCTK_ARGUMENTS)
+-{
+-  DECLARE_CCTK_ARGUMENTS;
+-  DECLARE_CCTK_PARAMETERS;
+-
+-  // We need some aliased functions, so we first check if they are available
+-  string needed_funs[5] = {"MoLRegisterEvolvedGroup",
+-                           "MoLRegisterConstrainedGroup",
+-                           "MoLRegisterSaveAndRestoreGroup",
+-                           "MoLRegisterEvolved",
+-                           "MoLRegisterConstrained"};
+-  for (int i = 0; i < 5; i++)
+-    if (!CCTK_IsFunctionAliased(needed_funs[i].c_str()))
+-      CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                 "The function \"%s\" has not been aliased!",
+-                 needed_funs[i].c_str());
+-
+-  // Now we can set which variables have to be registered as which type with MoL
+-  register_constrained("HydroBase::rho");
+-  register_constrained("HydroBase::press");
+-  register_constrained("HydroBase::eps");
+-  register_constrained("HydroBase::vel");
+-  register_constrained("HydroBase::w_lorentz");
+-
+-  if (CCTK_EQUALS(evolution_method, "GRHydro"))
+-  {
+-    // dens and scon
+-    register_evolved("GRHydro::dens", "GRHydro::densrhs");
+-    register_evolved("GRHydro::scon", "GRHydro::srhs");
+-    register_evolved("HydroBase::Bvec", "GRHydro::Bvecrhs");
+-
+-    // tau
+-    if (CCTK_EQUALS(GRHydro_eos_type, "General"))
+-      register_evolved("GRHydro::tau" , "GRHydro::taurhs");
+-    else if (CCTK_EQUALS(GRHydro_eos_type, "Polytype"))
+-      register_constrained("GRHydro::tau");
+-    else
+-      CCTK_WARN(0, "Don't recognize the type of EOS!");
+-
+-    if(clean_divergence) {
+-      register_evolved("GRHydro::psidc" , "GRHydro::psidcrhs");
+-    }
+-
+-    // lapse, metric, curv
+-    register_saveandrestore("admbase::lapse");
+-    register_saveandrestore("admbase::metric");
+-    register_saveandrestore("admbase::curv");
+-
+-    // shift
+-    if (!CCTK_EQUALS(initial_shift, "none"))
+-    {
+-      if (CCTK_EQUALS(shift_evolution_method, "Comoving"))
+-      {
+-        register_constrained("admbase::shift");
+-        register_evolved("GRHydro::GRHydro_coords", "GRHydro::GRHydro_coords_rhs");
+-      }
+-      else
+-        register_saveandrestore("admbase::shift");
+-    }
+-
+-    // tracer
+-    if (evolve_tracer != 0)
+-      register_evolved("GRHydro::GRHydro_cons_tracers", 
+-		       "GRHydro::GRHydro_tracer_rhs");
+-    
+-    // note that we set in pararamcheck
+-    // evolve_y_e and evolve_temper, but MoLRegister
+-    // happens before paramcheck...
+-    if (CCTK_EQUALS(Y_e_evolution_method,"GRHydro")) {
+-      register_constrained("HydroBase::Y_e");
+-      register_evolved("GRHydro::Y_e_con", 
+-		       "GRHydro::Y_e_con_rhs");
+-    }
+-
+-    if (CCTK_EQUALS(temperature_evolution_method,"GRHydro")) {
+-      register_constrained("HydroBase::temperature");
+-      register_constrained("HydroBase::entropy");
+-    }
+-    // particles
+-    if (number_of_particles > 0)
+-      register_evolved("GRHydro::particles", "GRHydro::particle_rhs");
+-  }
+-  else if (CCTK_EQUALS(evolution_method, "none"))
+-  {
+-    register_constrained("GRHydro::dens");
+-    register_constrained("GRHydro::scon");
+-    register_constrained("GRHydro::tau");
+-    register_constrained("HydroBase::Bvec");
+-    if(clean_divergence) {
+-      register_constrained("GRHydro::psidc");
+-    }
+-  }
+-}
+-
+-
+-- 
+1.7.10.4
+

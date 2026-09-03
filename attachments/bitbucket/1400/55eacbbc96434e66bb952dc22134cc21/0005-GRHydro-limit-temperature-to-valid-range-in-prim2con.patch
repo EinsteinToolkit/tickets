@@ -1,0 +1,93 @@
+From bb1e418f16c184f6e5412372f014136c87ecd84c Mon Sep 17 00:00:00 2001
+From: Christian David Ott <cott@zwicky-b.(none)>
+Date: Mon, 25 Mar 2013 23:04:05 -0700
+Subject: [PATCH 05/24] GRHydro: limit temperature to valid range in prim2con
+
+add some more error checking
+---
+ src/GRHydro_Prim2Con.F90 |   48 +++++++++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 45 insertions(+), 3 deletions(-)
+
+diff --git a/src/GRHydro_Prim2Con.F90 b/src/GRHydro_Prim2Con.F90
+index 7323cdf..80ce321 100644
+--- a/src/GRHydro_Prim2Con.F90
++++ b/src/GRHydro_Prim2Con.F90
+@@ -322,14 +322,56 @@ subroutine prim2con_hot(handle, keytemp, GRHydro_reflevel, cctk_iteration, ii, j
+        *dvelz*dvelz + 2*gxy*dvelx*dvely + 2*gxz*dvelx *dvelz + 2*gyz&
+        *dvely*dvelz))  
+ 
++  ! make sure Y_e and temperature within allowed range
+   ye = max(min(ye,GRHydro_Y_e_max),GRHydro_Y_e_min)
++  temp = max(GRHydro_hot_atmo_temp,min(temp,GRHydro_max_temp))
+ 
+   call EOS_Omni_press(handle,lkeytemp,GRHydro_eos_rf_prec,n,&
+        drho,deps,temp,ye,dpress,keyerr,anyerr)  
+   ! error handling
+   if(anyerr.ne.0) then
+      if(reconstruct_temper.ne.0) then
+-
++        if(keytemp.eq.1) then
++           !$OMP CRITICAL
++           call CCTK_WARN(1,"EOS error in prim2con_hot:")
++           write(warnline,"(i8,4i5,1P10E15.6)") cctk_iteration,GRHydro_Reflevel,ii,jj,kk,x,y,z,r
++           call CCTK_WARN(1,warnline)
++           write(warnline,"(1P10E15.6)") drho,deps,temp,ye
++           call CCTK_WARN(1,warnline)
++           write(warnline,"(A7,i8,A10,i8)") "keyerr: ",keyerr(1)," keytemp:",lkeytemp
++           call CCTK_WARN(0,warnline)
++           !$OMP END CRITICAL
++        else
++           if(keyerr(1).eq.668 .and. temp(1).lt.10.0d0) then
++              !$OMP CRITICAL
++              write(warnline,"(A18,i7,4i4,1P10E15.6)") "p2c resetting T: ",cctk_iteration, &
++                   GRHydro_reflevel,ii,jj,kk,drho,deps,temp,ye
++              call CCTK_WARN(1,warnline)
++              !$OMP END CRITICAL
++              temp = GRHydro_hot_atmo_temp
++              lkeytemp = 1
++              call EOS_Omni_press(handle,lkeytemp,GRHydro_eos_rf_prec,n,&
++                   drho,deps,temp,ye,dpress,keyerr,anyerr)  
++              lkeytemp = 0
++              if(anyerr.ne.0) then
++                 !$OMP CRITICAL
++                 write(warnline,"(A7,i8,A10,i8)") "keyerr: ",keyerr(1)," keytemp:",lkeytemp
++                 call CCTK_WARN(1,warnline)
++                 call CCTK_WARN(0,"Fatal EOS error in p2c!")
++                 !$OMP END CRITICAL
++              endif
++           else
++              !$OMP CRITICAL
++              call CCTK_WARN(1,"EOS error in prim2con_hot:")
++              write(warnline,"(i8,4i5,1P10E15.6)") cctk_iteration,GRHydro_Reflevel,ii,jj,kk,x,y,z,r
++              call CCTK_WARN(1,warnline)
++              write(warnline,"(1P10E15.6)") drho,deps,temp,ye
++              call CCTK_WARN(1,warnline)
++              write(warnline,"(A7,i8,A10,i8)") "keyerr: ",keyerr(1)," keytemp:",lkeytemp
++              call CCTK_WARN(0,warnline)
++              !$OMP END CRITICAL
++           endif
++        endif
+      else
+         if(GRHydro_reflevel.lt.GRHydro_c2p_warn_from_reflevel) then
+            ! in this case (coarse grid error that is hopefully restricted
+@@ -341,7 +383,7 @@ subroutine prim2con_hot(handle, keytemp, GRHydro_reflevel, cctk_iteration, ii, j
+            lkeytemp=0
+            if(anyerr.ne.0) then
+               !$OMP CRITICAL
+-              call CCTK_WARN(1,"EOS error in prim2con_hot: lev 2")
++              call CCTK_WARN(1,"EOS error in prim2con_hot:")
+               write(warnline,"(i8,3i5,1P10E15.6)") cctk_iteration,ii,jj,kk,x,y,z,r
+               call CCTK_WARN(1,warnline)
+               write(warnline,"(1P10E15.6)") drho,deps,temp,ye
+@@ -391,7 +433,7 @@ subroutine prim2con_hot(handle, keytemp, GRHydro_reflevel, cctk_iteration, ii, j
+         endif
+      endif
+   endif
+-
++  
+   vlowx = gxx*dvelx + gxy*dvely + gxz*dvelz
+   vlowy = gxy*dvelx + gyy*dvely + gyz*dvelz
+   vlowz = gxz*dvelx + gyz*dvely + gzz*dvelz
+-- 
+1.7.10.4
+

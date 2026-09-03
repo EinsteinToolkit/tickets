@@ -1,0 +1,33 @@
+Index: lib/simdt.py
+===================================================================
+--- lib/simdt.py	(revision 2079)
++++ lib/simdt.py	(working copy)
+@@ -448,6 +448,28 @@
+             io.Value = simlib.GetOptionList(False)
+             self.tParser.parser.WriteKey(mm, "optionlist", io)
+         
++        # ppn
++        if (simenv.OptionsManager.RawOptionDefined("ppn")):
++            io = self.tParser.GetOption(mm, "ppn")
++            io.Value = simenv.OptionsManager.GetOption('ppn')
++            self.tParser.parser.WriteKey(mm, "ppn", io)
++
++            # also set 'max-num-threads'
++            io = self.tParser.GetOption(mm, "max-num-threads")
++            io.Value = simenv.OptionsManager.GetOption('ppn')
++            self.tParser.parser.WriteKey(mm, "max-num-threads", io)
++        
++            # also enable parallel make
++            io = self.tParser.GetOption(mm, "make")
++            io.Value = "nice make -j%d" % simenv.OptionsManager.GetOption('ppn')
++            self.tParser.parser.WriteKey(mm, "make", io)
++
++        # num-threads
++        if (simenv.OptionsManager.RawOptionDefined("num-threads")):
++            io = self.tParser.GetOption(mm, "num-threads")
++            io.Value = simenv.OptionsManager.GetOption('num-threads')
++            self.tParser.parser.WriteKey(mm, "num-threads", io)
++        
+         simlib.WriteContents(dstPath, self.tParser.GetIniAsString())
+         return "machine %s [%s] created successfully" % (mm, dstPath)
+         

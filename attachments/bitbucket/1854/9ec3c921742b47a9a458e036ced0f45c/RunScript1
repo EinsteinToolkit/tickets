@@ -1,0 +1,30 @@
+#!/bin/bash
+
+echo "Preparing:"
+set -x                          # Output commands
+set -e                          # Abort on errors
+
+cd @RUNDIR@-active
+
+echo "Checking:"
+pwd
+hostname
+date
+cat /home/himanshu/Backup/Cactus/datanodes > SIMFACTORY/NODES
+
+echo "Environment:"
+export CACTUS_NUM_PROCS=60
+export CACTUS_NUM_THREADS=1
+export GMON_OUT_PREFIX=gmon.out
+export OMP_NUM_THREADS=1
+env | sort > SIMFACTORY/ENVIRONMENT
+
+echo "Starting: ModernFamily"
+export CACTUS_STARTTIME=$(date +%s)
+
+mpirun -np @NUM_PROCS@ -hostfile /home/himanshu/Backup/Cactus/datanodes @EXECUTABLE@ -L 3 @PARFILE@
+
+echo "Stopping:"
+date
+
+echo "Done."

@@ -1,0 +1,20 @@
+Index: OpenSSL.sh
+===================================================================
+--- OpenSSL.sh	(revision 16)
++++ OpenSSL.sh	(working copy)
+@@ -102,7 +102,14 @@
+         
+         echo "OpenSSL: Configuring..."
+         cd ${NAME}
+-        ./config --prefix=${OPENSSL_DIR}
++
++        if [ $CCTK_POINTER_SIZE -eq 8 ]; then
++            CONFIG_ARCH_FLAGS="darwin64-x86_64-cc"
++        else
++            CONFIG_ARCH_FLAGS=""
++        fi
++
++        ./config --prefix=${OPENSSL_DIR} ${CONFIG_ARCH_FLAGS}
+         
+         echo "OpenSSL: Building..."
+         ${MAKE}

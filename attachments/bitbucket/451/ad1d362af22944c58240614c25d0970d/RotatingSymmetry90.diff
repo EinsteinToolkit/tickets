@@ -1,0 +1,56 @@
+Index: src/interpolate.c
+===================================================================
+--- src/interpolate.c	(revision 63)
++++ src/interpolate.c	(working copy)
+@@ -355,7 +355,10 @@
+     {
+       /* 4-vector */
+       assert (numvars == DIM+1);
+-    } else if (CCTK_EQUALS (tensortypealias, "du")) {
++    } else if (CCTK_EQUALS (tensortypealias, "uu")
++               || CCTK_EQUALS (tensortypealias, "ud")
++               || CCTK_EQUALS (tensortypealias, "du")
++               || CCTK_EQUALS (tensortypealias, "dd")) {
+       /* tensor */
+       assert (numvars == DIM*DIM);
+     } else if (CCTK_EQUALS (tensortypealias, "uu_sym")
+@@ -718,7 +721,10 @@
+         basevar = firstvar + off;
+         var = vi - basevar;
+       }
+-    } else if (CCTK_EQUALS (tensortypealias, "du")) {
++    } else if (CCTK_EQUALS (tensortypealias, "uu")
++               || CCTK_EQUALS (tensortypealias, "ud")
++               || CCTK_EQUALS (tensortypealias, "du")
++               || CCTK_EQUALS (tensortypealias, "dd")) {
+       /* tensor */
+       assert (numvars == DIM*DIM);
+       tensortype = &tensor;
+Index: src/rotatingsymmetry90.c
+===================================================================
+--- src/rotatingsymmetry90.c	(revision 63)
++++ src/rotatingsymmetry90.c	(working copy)
+@@ -293,7 +293,10 @@
+                    || CCTK_EQUALS (tensortypealias, "4d")) {
+           /* 4-vector */
+           assert (numvars == DIM+1);
+-        } else if (CCTK_EQUALS (tensortypealias, "du")) {
++        } else if (CCTK_EQUALS (tensortypealias, "uu")
++                   || CCTK_EQUALS (tensortypealias, "ud")
++                   || CCTK_EQUALS (tensortypealias, "du")
++                   || CCTK_EQUALS (tensortypealias, "dd")) {
+           /* tensor */
+           assert (numvars == DIM*DIM);
+         } else if (CCTK_EQUALS (tensortypealias, "uu_sym")
+@@ -351,7 +354,10 @@
+             = off + convert_index (step, index-off, alldirs, &parities[var]);
+           srcvi = firstvar + srcindex;
+         }
+-      } else if (CCTK_EQUALS (tensortypealias, "du")) {
++      } else if (CCTK_EQUALS (tensortypealias, "uu")
++                 || CCTK_EQUALS (tensortypealias, "ud")
++                 || CCTK_EQUALS (tensortypealias, "du")
++                 || CCTK_EQUALS (tensortypealias, "dd")) {
+         /* tensor */
+         assert (numvars == DIM*DIM);
+         int index1, index2;

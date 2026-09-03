@@ -1,0 +1,119 @@
+#------------------------------------------------------------------------------
+# Cactus parameters:
+#------------------------------------------------------------------------------
+Cactus::cctk_run_title     = "Meudon BNS baiotti vertex lowres rk4"
+Cactus::cctk_full_warnings = "yes"
+Cactus::highlight_warning_messages = "no"
+
+Cactus::terminate        = "iteration"
+Cactus::cctk_itlast      = 0
+
+#------------------------------------------------------------------------------
+# Activate all necessary thorns:
+#------------------------------------------------------------------------------
+
+ActiveThorns = "Boundary CartGrid3D CoordBase Fortran InitBase IOUtil LocalReduce SymBase Time"
+ActiveThorns = "MoL Slab"
+ActiveThorns = "Carpet CarpetInterp CarpetInterp2 CarpetIOHDF5 CarpetLib CarpetIOBasic CarpetReduce CarpetRegrid2 CarpetSlab LoopControl"
+ActiveThorns = "Formaline"
+
+#------------------------------------------------------------------------------
+# Diagnostic parameters:
+#------------------------------------------------------------------------------
+
+Carpet::grid_structure_filename   = "carpet-grid-structure"
+Carpet::grid_coordinates_filename = "carpet-grid-coordinates"
+
+#------------------------------------------------------------------------------
+# Run parameters:
+#------------------------------------------------------------------------------
+
+#------
+# Grid:
+#------
+
+#Time::dtfac = 0.25   # This does not work with MP, have to specify timestep explicitly!
+MoL::ODE_Method             = "rk4"
+MoL::MoL_Intermediate_Steps = 4
+MoL::MoL_Num_Scratch_Levels = 1
+Time::timestep_method       = given
+Time::timestep              = 0.6
+
+Driver::ghost_size                      = 3
+Carpet::domain_from_coordbase           = yes
+CartGrid3D::type                        = coordbase
+
+CoordBase::xmin = -85.5
+CoordBase::ymin = -85.5
+CoordBase::zmin = -85.5
+CoordBase::xmax = +85.5
+CoordBase::ymax = +85.5
+CoordBase::zmax = +85.5
+CoordBase::dx = 85.5/12
+CoordBase::dy = 85.5/12
+CoordBase::dz = 85.5/12
+
+CoordBase::boundary_size_x_lower = Carpet::ghost_size
+CoordBase::boundary_size_y_lower = Carpet::ghost_size
+CoordBase::boundary_size_z_lower = Carpet::ghost_size
+CoordBase::boundary_size_x_upper = Carpet::ghost_size
+CoordBase::boundary_size_y_upper = Carpet::ghost_size
+CoordBase::boundary_size_z_upper = Carpet::ghost_size
+
+Carpet::use_buffer_zones         = "yes"
+
+Carpet::poison_new_timelevels    = "yes"
+
+Carpet::init_3_timelevels        = "no"
+Carpet::init_fill_timelevels     = "yes"
+
+CarpetLib::check_communication_schedule = "yes"
+CarpetLib::commstate_verbose = "yes"
+
+CarpetRegrid2::freeze_unaligned_levels = "yes"
+CarpetRegrid2::freeze_unaligned_parent_levels = "yes"
+CarpetRegrid2::ensure_proper_nesting   = "yes"
+CarpetRegrid2::snap_to_coarse          = "yes"
+
+Carpet::max_refinement_levels    = 9
+Carpet::prolongation_order_space = 5
+Carpet::prolongation_order_time  = 2
+
+CarpetRegrid2::regrid_every = 8
+CarpetRegrid2::num_centres  = 0
+
+CarpetRegrid2::num_levels_1 = 2
+CarpetRegrid2::position_x_1 = -5
+CarpetRegrid2::radius_1[1]  = 30
+
+CarpetRegrid2::num_levels_2 = 2
+CarpetRegrid2::position_x_2 = 5 
+CarpetRegrid2::radius_2[1]  = 30
+
+#------------------------------------------------------------------------------
+# Output:
+#------------------------------------------------------------------------------
+
+IO::out_dir = $parfile
+
+#CarpetIOHDF5::one_file_per_group             = "no"
+#CarpetIOHDF5::open_one_input_file_at_a_time  = "yes"
+#CarpetIOHDF5::out2D_every                    = 1536
+#CarpetIOHDF5::out2D_xy                       = "yes"
+#CarpetIOHDF5::out2D_xz                       = "no"
+#CarpetIOHDF5::out2D_yz                       = "no"
+#CarpetIOHDF5::out2D_xyplane_z                = 0.0
+#CarpetIOHDF5::out2D_vars      = "
+#  CarpetReduce::weight
+# "
+
+#ActiveThorns = CarpetIOASCII
+#IOASCII::out2D_every                    = 512
+#IOASCII::out2D_vars                     = "
+#  CarpetReduce::weight
+#"
+
+IOHDF5::out_every = 8192 # = 32*every_coarse
+IOHDF5::out_vars  = "
+ CarpetReduce::weight
+"

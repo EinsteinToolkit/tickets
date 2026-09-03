@@ -1,0 +1,1367 @@
+From 2f5bca7a29475a2c19594b6b53c09f345deadd0a Mon Sep 17 00:00:00 2001
+From: Christian David Ott <cott@zwicky-b.(none)>
+Date: Mon, 25 Mar 2013 23:02:14 -0700
+Subject: [PATCH 03/24] GRHydro: call dedicated HOT C2P routine in Con2Prim
+
+---
+ src/GRHydro_Con2Prim.F90    |  596 ++-------------------------------------
+ src/GRHydro_Con2PrimHot.F90 |  658 +++++++++++++++++++++++++++++++++++++++++++
+ src/make.code.defn          |    1 +
+ 3 files changed, 680 insertions(+), 575 deletions(-)
+ create mode 100644 src/GRHydro_Con2PrimHot.F90
+
+diff --git a/src/GRHydro_Con2Prim.F90 b/src/GRHydro_Con2Prim.F90
+index 3ff1247..9d33962 100644
+--- a/src/GRHydro_Con2Prim.F90
++++ b/src/GRHydro_Con2Prim.F90
+@@ -73,6 +73,12 @@ subroutine Conservative2Primitive(CCTK_ARGUMENTS)
+   xpress = 0.0d0;xeps = 0.0d0;xtemp = 0.0d0;xye = 0.0d0
+ ! end EOS Omni vars
+ 
++  if(evolve_temper.ne.0) then
++     call Conservative2PrimitiveHot(CCTK_PASS_FTOF)
++     return
++  endif
++
++
+   ! save memory when MP is not used
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+     g11 => gaa
+@@ -250,49 +256,15 @@ subroutine Conservative2Primitive(CCTK_ARGUMENTS)
+          end if
+ 
+          if(evolve_temper.eq.0) then
+-            call Con2Prim_pt(GRHydro_eos_handle, dens(i,j,k),scon(i,j,k,1),scon(i,j,k,2), &
++            call Con2Prim_pt(cctk_iteration,i,j,k,&
++                 GRHydro_eos_handle, dens(i,j,k),scon(i,j,k,1),scon(i,j,k,2), &
+                  scon(i,j,k,3),tau(i,j,k),rho(i,j,k),vup(i,j,k,1),vup(i,j,k,2), &
+                  vup(i,j,k,3),eps(i,j,k),press(i,j,k),w_lorentz(i,j,k), &
+                  uxx,uxy,uxz,uyy,uyz,uzz,det,x(i,j,k),y(i,j,k), &
+                  z(i,j,k),r(i,j,k),epsnegative,GRHydro_rho_min,pmin, epsmin, & 
+                  GRHydro_reflevel, GRHydro_C2P_failed(i,j,k))
+          else
+-            call Con2Prim_pt_hot(cctk_iteration,i,j,k,GRHydro_eos_handle, dens(i,j,k),scon(i,j,k,1),&
+-                 scon(i,j,k,2),scon(i,j,k,3),tau(i,j,k),Y_e_con(i,j,k),rho(i,j,k),vup(i,j,k,1),&
+-                 vup(i,j,k,2),vup(i,j,k,3),eps(i,j,k),temperature(i,j,k),y_e(i,j,k),&
+-                 press(i,j,k),w_lorentz(i,j,k), &
+-                 uxx,uxy,uxz,uyy,uyz,uzz,det,x(i,j,k),y(i,j,k), &
+-                 z(i,j,k),r(i,j,k),epsnegative,GRHydro_rho_min,pmin, epsmin, & 
+-                 GRHydro_reflevel, GRHydro_C2P_failed(i,j,k), GRHydro_perc_ptol)
+-            if(GRHydro_C2P_failed(i,j,k).eq.2) then
+-               ! this means c2p did not converge.
+-               ! In this case, we attempt to call c2p with a reduced
+-               ! accuracy requirement; if it fails again, we abort
+-               GRHydro_C2P_failed(i,j,k) = 0
+-               local_perc_ptol = GRHydro_perc_ptol*100.0d0
+-               call Con2Prim_pt_hot(cctk_iteration,i,j,k,GRHydro_eos_handle, dens(i,j,k),scon(i,j,k,1),&
+-                    scon(i,j,k,2),scon(i,j,k,3),tau(i,j,k),Y_e_con(i,j,k),rho(i,j,k),&
+-                    vup(i,j,k,1),vup(i,j,k,2), vup(i,j,k,3),eps(i,j,k),&
+-                    temperature(i,j,k),y_e(i,j,k),press(i,j,k),w_lorentz(i,j,k), &
+-                    uxx,uxy,uxz,uyy,uyz,uzz,det,x(i,j,k),y(i,j,k), &
+-                    z(i,j,k),r(i,j,k),epsnegative,GRHydro_rho_min,pmin, epsmin, & 
+-                    GRHydro_reflevel, GRHydro_C2P_failed(i,j,k), local_perc_ptol)
+-               if(GRHydro_C2P_failed(i,j,k).eq.2) then
+-                  !$OMP CRITICAL
+-                  if (GRHydro_reflevel.ge.GRHydro_c2p_warn_from_reflevel) then
+-                     call CCTK_WARN(1,"Convergence problem in c2p")
+-                     write(warnline,"(A10,i5)") "reflevel: ",GRHydro_reflevel
+-                     call CCTK_WARN(1,warnline)
+-                     write(warnline,"(3i5,1P10E15.6)") i,j,k,x(i,j,k),y(i,j,k),z(i,j,k)
+-                     call CCTK_WARN(1,warnline)
+-                     write(warnline,"(1P10E15.6)") rho(i,j,k),dens(i,j,k),eps(i,j,k),&
+-                          temperature(i,j,k),y_e(i,j,k)
+-                     call CCTK_WARN(1,warnline)
+-                     call CCTK_WARN(0,"Aborting!!!")
+-                  endif
+-                  !$OMP END CRITICAL
+-               endif
+-            endif
++            call CCTK_WARN(0,"Should never reach this point!")
+          endif
+ 
+ 
+@@ -354,38 +326,6 @@ subroutine Conservative2Primitive(CCTK_ARGUMENTS)
+         end if
+ 
+ 
+-#if 0
+-        ! cott, 2013/01/09: disabled this for the time being; should be taken
+-        ! care of by other fixed in C2P and reconstruction of temperature.
+-        !
+-        ! old justification:
+-        ! this is needed in the current implementation of refluxing -- in this implementation,
+-        ! the entire correction is applied to the coarse grid cell.
+-        ! This leads to the cell getting too cold.
+-        ! We work around this issue by enforcing that the temperature be
+-        ! above 1.2 MeV at a density above 3.0e11. If this is the case, we inject heat.
+-        if(evolve_temper.ne.0) then
+-           if(GRHydro_eos_hot_eps_fix.ne.0.and.&
+-                rho(i,j,k).gt.5.0d-7 .and. temperature(i,j,k).lt.1.2d0) then
+-              !$OMP CRITICAL
+-!              write(warnline,"(A40)") "Fixing temperature at:"
+-!              call CCTK_WARN(1,warnline)
+-              write(warnline,"(A10,4i6,1P3E15.6)") "fixtemp:", GRHydro_reflevel,i,j,k,&
+-                   x(i,j,k),y(i,j,k),z(i,j,k)
+-              call CCTK_WARN(1,warnline)
+-              !$OMP END CRITICAL
+-              keytemp = 1
+-              temperature(i,j,k) = 1.5d0
+-              call EOS_Omni_press(GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,n,&
+-                   rho(i,j,k),eps(i,j,k),temperature(i,j,k),y_e(i,j,k),press(i,j,k),keyerr,anyerr)
+-              tau(i,j,k)  = sqrt(det) * (rho(i,j,k)+rho(i,j,k)*eps(i,j,k) +press(i,j,k))&
+-                   * w_lorentz(i,j,k)**2 - dens(i,j,k) - sqrt(det)*press(i,j,k)
+-              keytemp = 0
+-
+-           endif
+-        endif
+-#endif
+-
+ !! Some debugging convenience output
+ # if 0
+          !$OMP CRITICAL
+@@ -450,7 +390,8 @@ a single point.
+ 
+ @@*/
+ 
+-subroutine Con2Prim_pt(handle, dens, sx, sy, sz, tau, rho, velx, vely, &
++subroutine Con2Prim_pt(cctk_iteration,ii,jj,kk,&
++     handle, dens, sx, sy, sz, tau, rho, velx, vely, &
+      velz, epsilon, press, w_lorentz, uxx, uxy, uxz, uyy, &
+      uyz, uzz, det, x, y, z, r, epsnegative, GRHydro_rho_min, pmin, epsmin, &
+      GRHydro_reflevel, GRHydro_C2P_failed)
+@@ -468,6 +409,8 @@ subroutine Con2Prim_pt(handle, dens, sx, sy, sz, tau, rho, velx, vely, &
+   CCTK_REAL GRHydro_C2P_failed, dummy1, dummy2
+   CCTK_REAL udens, usx, usy, usz, utau, pold, pnew, &
+             temp1, drhobydpress, depsbydpress, dpressbydeps, dpressbydrho, pmin, epsmin
++
++  CCTK_INT cctk_iteration,ii,jj,kk
+   character(len=200) warnline
+   logical epsnegative, mustbisect
+ 
+@@ -539,7 +482,7 @@ subroutine Con2Prim_pt(handle, dens, sx, sy, sz, tau, rho, velx, vely, &
+      ! Ok, this yielded nonsense, let's enforce bisection!
+      mustbisect = .true.
+   endif
+-
++  
+ !!$Find the root
+   
+   count = 0
+@@ -556,7 +499,9 @@ subroutine Con2Prim_pt(handle, dens, sx, sy, sz, tau, rho, velx, vely, &
+       call CCTK_WARN(1, 'count > GRHydro_countmax! ')
+       write(warnline,'(a28,i2)') 'on carpet reflevel: ',GRHydro_reflevel
+       call CCTK_WARN(1,warnline)
+-      write(warnline,'(a20,3g16.7)') 'xyz location: ',x,y,z
++      write(warnline,'(a28,i8)') 'cctk_iteration:', cctk_iteration
++      call CCTK_WARN(1,warnline)
++      write(warnline,'(a20,3i5,3g16.7)') 'ijk, xyz location: ',ii,jj,kk,x,y,z
+       call CCTK_WARN(1,warnline)
+       write(warnline,'(a20,g16.7)') 'radius: ',r
+       call CCTK_WARN(1,warnline)
+@@ -813,507 +758,6 @@ subroutine Con2Prim_pt(handle, dens, sx, sy, sz, tau, rho, velx, vely, &
+ 
+ end subroutine Con2Prim_pt
+ 
+-subroutine Con2Prim_pt_hot(cctk_iteration, ii,jj,kk,handle, dens, &
+-     sx, sy, sz, tau, ye_con, rho, velx, vely, &
+-     velz, epsilon, temp, ye, press, w_lorentz, uxx, uxy, uxz, uyy, &
+-     uyz, uzz, det, x, y, z, r, epsnegative, GRHydro_rho_min, pmin, epsmin, &
+-     GRHydro_reflevel, GRHydro_C2P_failed, local_perc_ptol)
+-  
+-  implicit none
+-  
+-  DECLARE_CCTK_PARAMETERS
+-
+-  CCTK_REAL dens, sx, sy, sz, tau, ye_con, rho, velx, vely, velz, epsilon, &
+-       press, uxx, uxy, uxz, uyy, uyz, uzz, det, w_lorentz, x, &
+-       y, z, r, GRHydro_rho_min
+-  CCTK_REAL temp, ye
+-  CCTK_REAL s2, f, df, vlowx, vlowy, vlowz
+-  CCTK_INT cctk_iteration, ii,jj,kk,count, i, handle, GRHydro_reflevel
+-  CCTK_REAL GRHydro_C2P_failed
+-  CCTK_REAL udens, usx, usy, usz, utau, pold, pnew, &
+-            temp1, drhobydpress, depsbydpress, dpressbydeps, dpressbydrho, pmin, epsmin
+-  CCTK_REAL epsminl,pminl,plow,tmp, dummy1, dummy2
+-  CCTK_REAL local_perc_ptol
+-
+-  character(len=256) warnline
+-  logical epsnegative, mustbisect
+-
+-  integer :: failwarnmode 
+-  integer :: failinfomode 
+-
+-! begin EOS Omni vars
+-  integer :: n,keytemp,anyerr,keyerr(1)
+-  real*8  :: xpress,temp0
+-  integer :: nfudgemax,nf
+-  n=1;keytemp=0;anyerr=0;keyerr(1)=0
+-  temp0 = 0.0d0;xpress = 0.0d0
+-  nf=0;nfudgemax=30
+-! end EOS Omni vars
+-
+-  mustbisect = .false.
+-
+-  failinfomode = 1
+-  failwarnmode = 0
+-
+-! set pmin and epsmin to something sensible:
+-  pminl = 1.0d-28
+-  epsminl = 1.0e-5
+-  
+-  if(con2prim_oct_hack.ne.0.and.&
+-       (x .lt. -1.0d-12 .or.&
+-        y .lt. -1.0d-12 .or.&
+-        z .lt. -1.0d-12)) then
+-     failwarnmode = 2
+-     failinfomode = 2  
+-  endif
+-
+-!!$  Undensitize the variables 
+-
+-  udens = dens /sqrt(det)
+-  usx = sx /sqrt(det)
+-  usy = sy /sqrt(det)
+-  usz = sz /sqrt(det)
+-  utau = tau /sqrt(det)
+-  s2 = usx*usx*uxx + usy*usy*uyy + usz*usz*uzz + 2.*usx*usy*uxy + &
+-       2.*usx*usz*uxz + 2.*usy*usz*uyz
+-
+-!!$  Set initial guess for pressure:
+-  temp0 = temp
+-  call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-                      rho,epsilon,temp,ye,xpress,keyerr,anyerr)
+-  !pold = max(1.d-15,xpress)
+-  ! This is the lowest admissible pressure, otherwise we are off the physical regime
+-  ! Sometimes, we may end up with bad initial guesses. In that case we need to start off with something
+-  ! reasonable at least
+-  plow = max(pminl, sqrt(s2) - utau - udens)
+-  ! Start out with some reasonable initial guess
+-  pold = max(plow+1.d-10,xpress)
+-  ! error handling
+-  if(anyerr.ne.0) then
+-     !$OMP CRITICAL
+-     if (GRHydro_reflevel.ge.GRHydro_c2p_warn_from_reflevel) then
+-        if(keyerr(1).eq.667.and.GRHydro_eos_hot_eps_fix.ne.0) then
+-           ! Handling of the case when no new temperature can be
+-           ! found for a given epsilon. The amount of times
+-           ! we get to this place should be monitored, as this
+-           ! 'failsafe' mode creates artificial heat.
+-           nf = 0
+-           do while(anyerr.ne.0.and.nf.le.nfudgemax)
+-              anyerr = 0
+-              utau = utau + rho*abs(epsilon)*0.05d0*w_lorentz**2
+-              tau = utau*sqrt(det)
+-              epsilon = epsilon + abs(epsilon)*0.05d0
+-              call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-                   rho,epsilon,temp,ye,xpress,keyerr,anyerr)
+-              nf = nf + 1
+-           enddo
+-           write(warnline,"(A30,i5)") "Iterations of heat injection: ",nf
+-           call CCTK_WARN(failinfomode,warnline)
+-           write(warnline,"(i8,4i5,1P10E15.6)") cctk_iteration,GRHydro_Reflevel,ii,jj,kk,x,y,z
+-           call CCTK_WARN(failinfomode,warnline)
+-           if(nf.gt.nfudgemax) then
+-              if(GRHydro_c2p_reset_eps_tau_hot_eos.ne.1) then
+-                 call CCTK_WARN(failinfomode,"EOS error in c2p 0: injected heat too many times")
+-                 write(warnline,"(i8,4i5,1P10E15.6)") cctk_iteration,GRHydro_reflevel,ii,jj,kk,x,y,z
+-                 call CCTK_WARN(failinfomode,warnline)
+-                 write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
+-                 call CCTK_WARN(failinfomode,warnline)
+-                 write(warnline,"(A7,i8)") "code: ",keyerr(1)
+-                 call CCTK_WARN(failinfomode,warnline)
+-                 write(warnline,"(A10,i5,i8)") "reflevel, iteration: ", GRHydro_reflevel, cctk_iteration
+-                 call CCTK_WARN(failinfomode,warnline)
+-                 call CCTK_WARN(failwarnmode,"Aborting!!!")
+-              else
+-                 call CCTK_WARN(failinfomode,"EOS error in c2p 0: LAST RESORT -- reset eps and tau based on old temp")
+-                 write(warnline,"(i8,4i5,1P10E15.6)") cctk_iteration,GRHydro_reflevel,ii,jj,kk,x,y,z
+-                 call CCTK_WARN(failinfomode,warnline)
+-                 write(warnline,"(1P10E15.6)") rho,epsilon,temp0,temp,ye
+-                 call CCTK_WARN(failinfomode,warnline)
+-                 keytemp = 1
+-                 temp = temp0
+-                 call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-                      rho,epsilon,temp,ye,xpress,keyerr,anyerr)
+-                 utau = ( (rho + rho*epsilon) + xpress ) * w_lorentz**2 - xpress - rho*w_lorentz
+-                 tau = utau*sqrt(det)
+-                 write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
+-                 call CCTK_WARN(failinfomode,warnline)
+-                 keytemp = 0
+-              endif
+-           endif
+-        else
+-           call CCTK_WARN(failinfomode,"EOS error in c2p 0")
+-           write(warnline,"(3i5,1P10E15.6)") ii,jj,kk,x,y,z
+-           call CCTK_WARN(failinfomode,warnline)
+-           write(warnline,"(1P10E15.6)") rho,dens,epsilon,temp,temp0,ye
+-           call CCTK_WARN(failinfomode,warnline)
+-           write(warnline,"(A7,i8)") "code: ",keyerr(1)
+-           call CCTK_WARN(failinfomode,warnline)
+-           write(warnline,"(A10,i5)") "reflevel: ", GRHydro_reflevel
+-           call CCTK_WARN(failinfomode,warnline)
+-           call CCTK_WARN(failwarnmode,"Aborting!!!")
+-        endif
+-     endif
+-     !$OMP END CRITICAL
+-     ! set pold to the 'corrected' value
+-     pold = max(plow+1.d-10,xpress)
+-  endif
+-
+-!!$  Check that the variables have a chance of being physical
+-
+-  if( (utau + pold + udens)**2 - s2 .le. 0.0d0) then
+-
+-    if (c2p_reset_pressure .ne. 0) then
+-      pold = sqrt(s2 + c2p_reset_pressure_to_value) - utau - udens
+-    else 
+-      !$OMP CRITICAL
+-!!!!      call CCTK_WARN(GRHydro_NaN_verbose, "c2p failed and being told not to reset the pressure")
+-      GRHydro_C2P_failed = 1
+-      !$OMP END CRITICAL
+-    endif
+-    
+-  endif
+-  
+-!!$  Calculate rho and epsilon 
+-
+-!define temporary variables to speed up
+-
+-  rho = udens * sqrt( (utau + pold + udens)**2 - s2)/(utau + pold + udens)
+-  w_lorentz = (utau + pold + udens) / sqrt( (utau + pold + udens)**2 - s2)
+-  epsilon = (sqrt( (utau + pold + udens)**2 - s2) - pold * w_lorentz - &
+-       udens)/udens
+-  
+-!!$  Calculate the function
+-
+-  call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-                      rho,epsilon,temp,ye,xpress,keyerr,anyerr)
+-  ! error handling
+-  if(anyerr.ne.0) then
+-     !$OMP CRITICAL
+-     if (GRHydro_reflevel.ge.GRHydro_c2p_warn_from_reflevel) then
+-        if(keyerr(1).eq.667.and.GRHydro_eos_hot_eps_fix.ne.0) then
+-           ! Handling of the case when no new temperature can be
+-           ! found for a given epsilon. The amount of times
+-           ! we get to this place should be monitored, as this
+-           ! 'failsafe' mode creates artificial heat.
+-           nf = 0
+-           do while(anyerr.ne.0.and.nf.le.nfudgemax)
+-              anyerr = 0
+-              utau = utau + rho*abs(epsilon)*0.05d0*w_lorentz**2
+-              tau = utau*sqrt(det)
+-              epsilon = epsilon + abs(epsilon)*0.05d0
+-              call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-                   rho,epsilon,temp,ye,xpress,keyerr,anyerr)
+-              nf = nf + 1
+-           enddo
+-           write(warnline,"(A30,i5)") "Iterations of heat injection: ",nf
+-           call CCTK_WARN(failinfomode,warnline)
+-           write(warnline,"(i8,4i5,1P10E15.6)") cctk_iteration,GRHydro_Reflevel,ii,jj,kk,x,y,z
+-           call CCTK_WARN(failinfomode,warnline)
+-           if(nf.gt.nfudgemax) then
+-              if(GRHydro_c2p_reset_eps_tau_hot_eos.ne.1) then
+-                 call CCTK_WARN(failinfomode,"EOS error in c2p 1: injected heat too many times")
+-                 write(warnline,"(i8,4i5,1P10E15.6)") cctk_iteration,GRHydro_reflevel,ii,jj,kk,x,y,z
+-                 call CCTK_WARN(failinfomode,warnline)
+-                 write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
+-                 call CCTK_WARN(failinfomode,warnline)
+-                 write(warnline,"(A7,i8)") "code: ",keyerr(1)
+-                 call CCTK_WARN(failinfomode,warnline)
+-                 write(warnline,"(A10,i5,i8)") "reflevel, iteration: ", GRHydro_reflevel, cctk_iteration
+-                 call CCTK_WARN(failinfomode,warnline)
+-                 call CCTK_WARN(failwarnmode,"Aborting!!!")
+-              else
+-                 call CCTK_WARN(failinfomode,"EOS error in c2p 1: LAST RESORT -- reset eps and tau based on old temp")
+-                 write(warnline,"(i8,4i5,1P10E15.6)") cctk_iteration,GRHydro_reflevel,ii,jj,kk,x,y,z
+-                 call CCTK_WARN(failinfomode,warnline)
+-                 write(warnline,"(1P10E15.6)") rho,epsilon,temp0,temp,ye
+-                 call CCTK_WARN(failinfomode,warnline)
+-                 keytemp = 1
+-                 temp = temp0
+-                 call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-                      rho,epsilon,temp,ye,xpress,keyerr,anyerr)
+-                 utau = ( (rho + rho*epsilon) + xpress ) * w_lorentz**2 - xpress - rho*w_lorentz
+-                 tau = utau*sqrt(det)
+-                 write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
+-                 call CCTK_WARN(failinfomode,warnline)
+-                 keytemp = 0
+-              endif
+-           endif
+-        else
+-           call CCTK_WARN(failinfomode,"EOS error in c2p 1")
+-           write(warnline,"(3i5,1P10E15.6)") ii,jj,kk,x,y,z
+-           call CCTK_WARN(failinfomode,warnline)
+-           write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
+-           call CCTK_WARN(failinfomode,warnline)
+-           write(warnline,"(A7,i8)") "code: ",keyerr(1)
+-           call CCTK_WARN(failinfomode,warnline)
+-           write(warnline,"(A10,i5)") "reflevel: ", GRHydro_reflevel
+-           call CCTK_WARN(failinfomode,warnline)
+-           call CCTK_WARN(failwarnmode,"Aborting!!!")
+-        endif
+-     endif
+-     !$OMP END CRITICAL
+-  endif
+-  f = pold - xpress
+-
+-  if (f .ne. f) then 
+-     ! Ok, this yielded nonsense, let's enforce bisection!
+-     mustbisect = .true.
+-  endif
+-
+-!!$Find the root
+-  
+-  count = 0
+-  pnew = pold
+-  do while ( ((abs(pnew - pold)/abs(pnew) .gt. local_perc_ptol) .and. &
+-       (abs(pnew - pold) .gt. GRHydro_del_ptol))  .or. &
+-       (count .lt. GRHydro_countmin))
+-    count = count + 1
+-
+-    if (count > GRHydro_countmax) then
+-      ! non-convergence is now handled outside of this
+-      ! routine
+-      GRHydro_C2P_failed = 2
+-      return
+-    end if
+-
+-    call EOS_Omni_DPressByDRho(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-         rho,epsilon,temp,ye,dpressbydrho,keyerr,anyerr)
+-
+-    call EOS_Omni_DPressByDEps(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-         rho,epsilon,temp,ye,dpressbydeps,keyerr,anyerr)
+-
+-    temp1 = (utau+udens+pnew)**2 - s2
+-    drhobydpress = udens * s2 / (sqrt(temp1)*(udens+utau+pnew)**2)
+-    depsbydpress = pnew * s2 / (rho * (udens + utau + pnew) * temp1)
+-    df = 1.0d0 - dpressbydrho*drhobydpress - &
+-         dpressbydeps*depsbydpress
+-
+-    pold = pnew
+-    
+-    ! Try to obtain new pressure via Newton-Raphson.
+-    
+-    pnew = pold - f/df
+-    
+-    ! Check if Newton-Raphson resulted in something reasonable!
+-    
+-    if (c2p_resort_to_bisection.ne.0) then 
+-    
+-      tmp = (utau + pnew + udens)**2 - s2
+-      plow = max(pminl, sqrt(s2) - utau - udens)
+-      
+-      if (pnew .lt. plow .or. tmp .le. 0.0d0 .or. mustbisect) then
+-      
+-         ! Ok, Newton-Raphson ended up finding something unphysical.
+-         ! Let's try to find our root via bisection (which converges slower but is more robust)
+-      
+-         pnew = (plow + pold) / 2
+-         tmp = (utau + pnew + udens)**2 - s2
+-         
+-         mustbisect = .false.
+-      end if
+-    
+-    else
+-      
+-      ! This is the standard algorithm without resorting to bisection.
+-    
+-      pnew = max(pminl, pnew)
+-      tmp = (utau + pnew + udens)**2 - s2
+-    
+-    endif
+-    
+-    ! Check if we are still in the physical range now.
+-    ! If not, we set the C2P failed mask, and set pnew = pold (which will exit the loop).
+-    
+-    if ((tmp .le. 0.0d0) .and. GRHydro_C2P_failed .eq. 0) then
+-      GRHydro_C2P_failed = 1
+-      pnew = pold
+-    endif
+-    
+-!!$    Recalculate primitive variables and function
+-       
+-    rho = udens * sqrt( (utau + pnew + udens)**2 - s2)/(utau + pnew + udens)
+-    w_lorentz = (utau + pnew + udens) / sqrt( (utau + pnew + udens)**2 - &
+-         s2)
+-    epsilon = (sqrt( (utau + pnew + udens)**2 - s2) - pnew * w_lorentz - &
+-         udens)/udens
+-
+-!    epsilon = (sqrt( (utau + pnew + udens)**2 - s2) - pnew * w_lorentz)/udens - &
+-!         1.0d0
+-
+-    call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-         rho,epsilon,temp,ye,xpress,keyerr,anyerr)
+-    ! error handling
+-    if(anyerr.ne.0) then
+-     !$OMP CRITICAL
+-       if (GRHydro_reflevel.ge.GRHydro_c2p_warn_from_reflevel) then
+-          if(keyerr(1).eq.667.and.GRHydro_eos_hot_eps_fix.ne.0) then
+-             ! Handling of the case when no new temperature can be
+-             ! found for a given epsilon. The amount of times
+-             ! we get to this place should be monitored, as this
+-             ! 'failsafe' mode creates artificial heat.
+-             nf = 0
+-             do while(anyerr.ne.0.and.nf.le.nfudgemax)
+-                anyerr = 0
+-                utau = utau + rho*abs(epsilon)*0.05d0*w_lorentz**2
+-                tau = utau*sqrt(det)
+-                epsilon = epsilon + abs(epsilon)*0.05d0
+-                call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-                     rho,epsilon,temp,ye,xpress,keyerr,anyerr)
+-                nf = nf + 1
+-             enddo
+-             write(warnline,"(A30,i5)") "Iterations of heat injection: ",nf
+-             call CCTK_WARN(failinfomode,warnline)
+-             write(warnline,"(i8,4i5,1P10E15.6)") cctk_iteration,GRHydro_Reflevel,ii,jj,kk,x,y,z
+-             call CCTK_WARN(failinfomode,warnline)
+-             if(nf.gt.nfudgemax) then
+-                if(GRHydro_c2p_reset_eps_tau_hot_eos.ne.1) then
+-                   call CCTK_WARN(failinfomode,"EOS error in c2p 2: injected heat too many times")
+-                   write(warnline,"(i8,4i5,1P10E15.6)") cctk_iteration,GRHydro_reflevel,ii,jj,kk,x,y,z
+-                   call CCTK_WARN(failinfomode,warnline)
+-                   write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
+-                   call CCTK_WARN(failinfomode,warnline)
+-                   write(warnline,"(A7,i8)") "code: ",keyerr(1)
+-                   call CCTK_WARN(failinfomode,warnline)
+-                   write(warnline,"(A10,i5,i8)") "reflevel, iteration: ", GRHydro_reflevel, cctk_iteration
+-                   call CCTK_WARN(failinfomode,warnline)
+-                   call CCTK_WARN(failwarnmode,"Aborting!!!")
+-                else
+-                   call CCTK_WARN(failinfomode,"EOS error in c2p 2: LAST RESORT -- reset eps and tau based on old temp")
+-                   write(warnline,"(i8,4i5,1P10E15.6)") cctk_iteration,GRHydro_reflevel,ii,jj,kk,x,y,z
+-                   call CCTK_WARN(failinfomode,warnline)
+-                   write(warnline,"(1P10E15.6)") rho,epsilon,temp0,ye
+-                   call CCTK_WARN(failinfomode,warnline)
+-                   keytemp = 1
+-                   temp = temp0
+-                   call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-                        rho,epsilon,temp,ye,xpress,keyerr,anyerr)
+-                   utau = ( (rho + rho*epsilon) + xpress ) * w_lorentz**2 - xpress - rho*w_lorentz
+-                   tau = utau*sqrt(det)
+-                   write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
+-                   call CCTK_WARN(failinfomode,warnline)
+-                   keytemp = 0
+-                endif
+-             endif
+-          else
+-             call CCTK_WARN(failinfomode,"EOS error in c2p 2")
+-             write(warnline,"(3i5,1P10E15.6)") ii,jj,kk,x,y,z
+-             call CCTK_WARN(failinfomode,warnline)
+-             write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
+-             call CCTK_WARN(failinfomode,warnline)
+-             write(warnline,"(A7,i8)") "code: ",keyerr(1)
+-             call CCTK_WARN(failinfomode,warnline)
+-             write(warnline,"(A10,i5)") "reflevel: ", GRHydro_reflevel
+-             call CCTK_WARN(failinfomode,warnline)
+-             call CCTK_WARN(failwarnmode,"Aborting!!!")
+-          endif
+-       endif
+-       !$OMP END CRITICAL
+-    endif
+-
+-    f = pnew - xpress
+-
+-    if (f .ne. f) then 
+-      ! Ok, this yielded nonsense, let's enforce bisection!
+-      mustbisect = .true.
+-    endif
+-
+-  enddo
+-
+-  
+-!!$  Polish the root
+-
+-  do i=1,GRHydro_polish
+-
+-    call EOS_Omni_DPressByDRho(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-         rho,epsilon,temp,ye,dpressbydrho,keyerr,anyerr)
+-
+-    call EOS_Omni_DPressByDEps(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-         rho,epsilon,temp,ye,dpressbydeps,keyerr,anyerr)
+-
+-    temp1 = (utau+udens+pnew)**2 - s2
+-    drhobydpress = udens * s2 / (sqrt(temp1)*(udens+utau+pnew)**2)
+-    depsbydpress = pnew * s2 / (rho * (udens + utau + pnew) * temp1)
+-    df = 1.0d0 - dpressbydrho*drhobydpress - &
+-         dpressbydeps*depsbydpress
+-    pold = pnew
+-    pnew = pold - f/df
+-    
+-!!$    Recalculate primitive variables and function
+-
+-    rho = udens * sqrt( (utau + pnew + udens)**2 - s2)/(utau + pnew + udens)
+-    w_lorentz = (utau + pnew + udens) / sqrt( (utau + pnew + udens)**2 - &
+-         s2)
+-    epsilon = (sqrt( (utau + pnew + udens)**2 - s2) - pnew * w_lorentz - &
+-         udens)/udens
+-
+-    call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n, &
+-         rho,epsilon,temp,ye,xpress,keyerr,anyerr)
+-
+-    ! error handling
+-    if(anyerr.ne.0) then
+-       !$OMP CRITICAL
+-       if (GRHydro_reflevel.ge.GRHydro_c2p_warn_from_reflevel) then
+-          call CCTK_WARN(failinfomode,"EOS error in c2p 3")
+-          write(warnline,"(3i5,1P10E15.6)") ii,jj,kk,x,y,z
+-          call CCTK_WARN(failinfomode,warnline)
+-          write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
+-          call CCTK_WARN(failinfomode,warnline)
+-          write(warnline,"(A7,i8)") "code: ",keyerr(1)
+-          call CCTK_WARN(failinfomode,warnline)
+-          write(warnline,"(A10,i5)") "reflevel: ", GRHydro_reflevel
+-          call CCTK_WARN(failinfomode,warnline)
+-          call CCTK_WARN(failwarnmode,"Aborting!!!")
+-       endif
+-       !$OMP END CRITICAL
+-    endif
+-    
+-    f = pold - xpress
+-
+-  enddo
+-
+-!!$  Calculate primitive variables from root
+-
+-  !if (rho .le. GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance) ) then
+-  IF_BELOW_ATMO(rho, GRHydro_rho_min, GRHydro_atmo_tolerance, r) then
+-    SET_ATMO_MIN(rho, GRHydro_rho_min, r) !GRHydro_rho_min
+-    udens = rho
+-    dens = sqrt(det) * rho
+-    temp = GRHydro_hot_atmo_temp
+-    ye = GRHydro_hot_atmo_Y_e
+-    ye_con = dens * ye
+-    keytemp=1
+-    call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n, &
+-         rho,epsilon,temp,ye,xpress,keyerr,anyerr)
+-    keytemp=0
+-    ! w_lorentz=1, so the expression for utau reduces to:
+-    utau  = rho + rho*epsilon - udens
+-    sx = 0.d0
+-    sy = 0.d0
+-    sz = 0.d0
+-    s2 = 0.d0
+-    usx = 0.d0
+-    usy = 0.d0
+-    usz = 0.d0
+-    w_lorentz = 1.d0
+-  end if
+-
+-  press = pnew
+-  vlowx = usx / ( (rho + rho*epsilon + press) * w_lorentz**2)
+-  vlowy = usy / ( (rho + rho*epsilon + press) * w_lorentz**2)
+-  vlowz = usz / ( (rho + rho*epsilon + press) * w_lorentz**2)
+-  velx = uxx * vlowx + uxy * vlowy + uxz * vlowz
+-  vely = uxy * vlowx + uyy * vlowy + uyz * vlowz
+-  velz = uxz * vlowx + uyz * vlowy + uzz * vlowz
+-  
+-!!$If all else fails, use the polytropic EoS
+-
+-!  eps may well be negative; we don't mess with this
+-!  if(epsilon .lt. 0.0d0) then
+-!    epsnegative = .true.
+-!  endif
+-
+-
+-end subroutine Con2Prim_pt_hot
+ 
+  /*@@
+    @routine    Conservative2PrimitiveBoundaries
+@@ -1455,7 +899,8 @@ subroutine Conservative2PrimitiveBounds(CCTK_ARGUMENTS)
+            Y_e(i,j,k) = Y_e_con(i,j,k) / dens(i,j,k)
+         endif
+ 
+-        call Con2Prim_pt(GRHydro_eos_handle, densminus(i,j,k),&
++        call Con2Prim_pt(cctk_iteration,i,j,k,&
++             GRHydro_eos_handle, densminus(i,j,k),&
+              sxminus(i,j,k),syminus(i,j,k),szminus(i,j,k),&
+              tauminus(i,j,k),rhominus(i,j,k),velxminus(i,j,k),&
+              velyminus(i,j,k),velzminus(i,j,k),epsminus(i,j,k),&
+@@ -1502,7 +947,8 @@ subroutine Conservative2PrimitiveBounds(CCTK_ARGUMENTS)
+         endif
+ 
+         epsnegative = .false.
+-        call Con2Prim_pt(GRHydro_eos_handle, densplus(i,j,k),&
++        call Con2Prim_pt(cctk_iteration,i,j,k,&
++             GRHydro_eos_handle, densplus(i,j,k),&
+              sxplus(i,j,k),syplus(i,j,k),szplus(i,j,k),&
+              tauplus(i,j,k),rhoplus(i,j,k),velxplus(i,j,k),&
+              velyplus(i,j,k),velzplus(i,j,k),epsplus(i,j,k),&
+diff --git a/src/GRHydro_Con2PrimHot.F90 b/src/GRHydro_Con2PrimHot.F90
+new file mode 100644
+index 0000000..58cfa29
+--- /dev/null
++++ b/src/GRHydro_Con2PrimHot.F90
+@@ -0,0 +1,658 @@
++#include "cctk.h"
++#include "cctk_Parameters.h"
++#include "cctk_Arguments.h"
++#include "cctk_Functions.h"
++#include "SpaceMask.h"
++#include "GRHydro_Macros.h"
++
++
++subroutine Conservative2PrimitiveHot(CCTK_ARGUMENTS)
++
++  implicit none
++  
++  ! save memory when MP is not used
++  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
++  TARGET gaa, gab, gac, gbb, gbc, gcc
++  TARGET gxx, gxy, gxz, gyy, gyz, gzz
++  TARGET lvel, vel
++
++  DECLARE_CCTK_ARGUMENTS
++  DECLARE_CCTK_PARAMETERS
++  DECLARE_CCTK_FUNCTIONS
++  
++  integer :: i, j, k, itracer, nx, ny, nz, myproc
++  CCTK_REAL :: uxx, uxy, uxz, uyy, uyz, uzz, det, pmin, epsmin, dummy1, dummy2
++  CCTK_REAL :: vlowx, vlowy, vlowz
++  logical :: epsnegative
++  character*512 :: warnline
++  
++  CCTK_REAL :: local_min_tracer
++  CCTK_REAL :: local_perc_ptol
++
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++
++! begin EOS Omni vars
++  integer :: n,keytemp,anyerr,keyerr(1)
++  real*8  :: xpress(1),xeps(1),xtemp(1),xye(1),xrho(1)
++  n = 1;keytemp = 0;anyerr = 0;keyerr(1) = 0
++  xpress = 0.0d0;xeps = 0.0d0;xtemp = 0.0d0;xye = 0.0d0
++! end EOS Omni vars
++
++  myproc = CCTK_MyProc(cctkGH)
++
++  ! save memory when MP is not used
++  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++    g11 => gaa
++    g12 => gab
++    g13 => gac
++    g22 => gbb
++    g23 => gbc
++    g33 => gcc
++    vup => lvel
++  else
++    g11 => gxx
++    g12 => gxy
++    g13 => gxz
++    g22 => gyy
++    g23 => gyz
++    g33 => gzz
++    vup => vel
++  end if
++
++  nx = cctk_lsh(1)
++  ny = cctk_lsh(2)
++  nz = cctk_lsh(3)
++  
++  if (use_min_tracer .ne. 0) then
++    local_min_tracer = min_tracer
++  else
++    local_min_tracer = 0.0d0
++  end if
++
++  ! this is a poly call
++  xrho(1) = GRHydro_rho_min
++  call EOS_Omni_press(GRHydro_polytrope_handle,keytemp,GRHydro_eos_rf_prec,n,&
++       xrho,xeps,xtemp,xye,xpress,keyerr,anyerr)
++  call EOS_Omni_EpsFromPress(GRHydro_polytrope_handle,keytemp,GRHydro_eos_rf_prec,n,&
++       xrho,xeps,xtemp,xye,xpress,xeps,keyerr,anyerr)
++  pmin = xpress(1)
++  epsmin = xeps(1)
++
++  !$OMP PARALLEL DO PRIVATE(i,j,k,itracer,&
++  !$OMP uxx, uxy, uxz, uyy, uyz, uzz, det, epsnegative, anyerr, keyerr, keytemp,&
++  !$OMP warnline, dummy1, dummy2)
++  do k = 1, nz 
++    do j = 1, ny 
++      do i = 1, nx
++
++
++        !do not compute if in atmosphere or in excised region
++        if ((atmosphere_mask(i,j,k) .ne. 0) .or. &
++            (hydro_excision_mask(i,j,k) .ne. 0)) cycle
++         
++        epsnegative = .false.
++
++        det = SPATIAL_DETERMINANT(g11(i,j,k),g12(i,j,k),g13(i,j,k), \
++              g22(i,j,k),g23(i,j,k),g33(i,j,k))
++        call UpperMetric(uxx,uxy,uxz,uyy,uyz,uzz,det,&
++             g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),&
++             g23(i,j,k),g33(i,j,k))        
++
++        if (evolve_tracer .ne. 0) then
++           do itracer=1,number_of_tracers
++              call Con2Prim_ptTracer(cons_tracer(i,j,k,itracer), tracer(i,j,k,itracer), &
++                   dens(i,j,k))
++
++              if (use_min_tracer .ne. 0) then
++                if (tracer(i,j,k,itracer) .le. local_min_tracer) then
++                  tracer(i,j,k,itracer) = local_min_tracer
++                end if
++              end if
++
++           enddo
++           
++        endif
++        
++        if(evolve_Y_e.ne.0) then
++           Y_e(i,j,k) = max(min(Y_e_con(i,j,k) / dens(i,j,k),GRHydro_Y_e_max),&
++                GRHydro_Y_e_min)
++        endif
++
++        IF_BELOW_ATMO(dens(i,j,k), sqrt(det)*GRHydro_rho_min, GRHydro_atmo_tolerance, r(i,j,k)) then
++
++           SET_ATMO_MIN(dens(i,j,k), sqrt(det)*GRHydro_rho_min, r(i,j,k)) 
++           SET_ATMO_MIN(rho(i,j,k), GRHydro_rho_min, r(i,j,k)) 
++           scon(i,j,k,:) = 0.d0
++           vup(i,j,k,:) = 0.d0
++           w_lorentz(i,j,k) = 1.d0
++
++           ! set hot atmosphere values
++           temperature(i,j,k) = grhydro_hot_atmo_temp
++           y_e(i,j,k) = grhydro_hot_atmo_Y_e
++           y_e_con(i,j,k) = y_e(i,j,k) * dens(i,j,k)
++           keytemp = 1
++           call EOS_Omni_press(GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,n,&
++                rho(i,j,k),eps(i,j,k),temperature(i,j,k),y_e(i,j,k),&
++                press(i,j,k),keyerr,anyerr)
++           keytemp = 0
++           ! w_lorentz=1, so the expression for tau reduces to:
++           tau(i,j,k)  = sqrt(det) * (rho(i,j,k)+rho(i,j,k)*eps(i,j,k)) - dens(i,j,k)
++           
++           cycle
++
++          end if
++
++          call Con2Prim_pt_hot3(cctk_iteration,myproc,i,j,k,GRHydro_eos_handle,&
++               dens(i,j,k),scon(i,j,k,1),&
++               scon(i,j,k,2),scon(i,j,k,3),tau(i,j,k),Y_e_con(i,j,k),rho(i,j,k),vup(i,j,k,1),&
++               vup(i,j,k,2),vup(i,j,k,3),eps(i,j,k),temperature(i,j,k),y_e(i,j,k),&
++               press(i,j,k),w_lorentz(i,j,k), &
++               uxx,uxy,uxz,uyy,uyz,uzz,det,x(i,j,k),y(i,j,k), &
++               z(i,j,k),r(i,j,k),epsnegative,GRHydro_rho_min,pmin, epsmin, & 
++               GRHydro_reflevel, GRHydro_C2P_failed(i,j,k), GRHydro_perc_ptol)
++
++          if(temperature(i,j,k).gt.GRHydro_max_temp) then
++             !$OMP CRITICAL
++             call CCTK_WARN(1,"C2P: Temperature too high")
++             write(warnline,"(i8)") cctk_iteration
++             call CCTK_WARN(1,warnline)
++             write(warnline,"(4i5,1P10E15.6)") GRHydro_Reflevel,i,j,k,x(i,j,k),y(i,j,k),z(i,j,k)
++             call CCTK_WARN(1,warnline)
++             write(warnline,"(1P10E15.6)") dens(i,j,k),scon(i,j,k,1:3),&
++                  tau(i,j,k),w_lorentz(i,j,k)
++             call CCTK_WARN(1,warnline)
++             write(warnline,"(1P10E15.6)") rho(i,j,k),eps(i,j,k),&
++                  temperature(i,j,k),Y_e(i,j,k)
++             call CCTK_WARN(1,warnline)
++             write(warnline,"(A7,i8)") "code: ",keyerr(1)
++             call CCTK_WARN(1,warnline)
++             write(warnline,"(A10,i5)") "reflevel: ", GRHydro_reflevel
++             call CCTK_WARN(1,warnline)
++             call CCTK_WARN(0,"Aborting!!!")
++             !$OMP END CRITICAL
++          endif
++
++
++          if( abs(GRHydro_C2P_failed(i,j,k)-2.0d0) .lt. 1.0d-10) then
++             ! this means c2p did not converge.
++             ! In this case, we attempt to call c2p with a reduced
++             ! accuracy requirement; if it fails again, we abort
++             GRHydro_C2P_failed(i,j,k) = 0
++             if(temperature(i,j,k) .gt. GRHydro_hot_atmo_temp) then
++                local_perc_ptol = GRHydro_perc_ptol*100.0d0
++             else
++                ! If we are in the extrapolation regime for the EOS,
++                ! we accept a larger c2p error, since we will be resetting
++                ! the temperature anyway. The error scale here is chosen 
++                ! somewhat arbitrarily to be 0.01% in pressnew/pressold.
++                local_perc_ptol = 1.0d-4
++             endif
++             call Con2Prim_pt_hot3(cctk_iteration,myproc,i,j,k,GRHydro_eos_handle,&
++                  dens(i,j,k),scon(i,j,k,1),&
++                  scon(i,j,k,2),scon(i,j,k,3),tau(i,j,k),Y_e_con(i,j,k),rho(i,j,k),&
++                  vup(i,j,k,1),vup(i,j,k,2), vup(i,j,k,3),eps(i,j,k),&
++                  temperature(i,j,k),y_e(i,j,k),press(i,j,k),w_lorentz(i,j,k), &
++                  uxx,uxy,uxz,uyy,uyz,uzz,det,x(i,j,k),y(i,j,k), &
++                  z(i,j,k),r(i,j,k),epsnegative,GRHydro_rho_min,pmin, epsmin, & 
++                  GRHydro_reflevel, GRHydro_C2P_failed(i,j,k), local_perc_ptol)
++             if( abs(GRHydro_C2P_failed(i,j,k)-2.0d0) .lt. 1.0d-10) then
++                !$OMP CRITICAL
++                if (GRHydro_reflevel.ge.GRHydro_c2p_warn_from_reflevel) then
++                   call CCTK_WARN(1,"Convergence problem in c2p")
++                   write(warnline,"(A10,i5)") "reflevel: ",GRHydro_reflevel
++                   call CCTK_WARN(1,warnline)
++                   write(warnline,"(A10,i10)") "iteration: ",cctk_iteration
++                   call CCTK_WARN(1,warnline)
++                   write(warnline,"(A10,F5.2)") "error: ", GRHydro_C2P_failed(i,j,k)
++                   call CCTK_WARN(1,warnline)
++                   write(warnline,"(3i5,1P10E15.6)") i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),r(i,j,k)
++                   call CCTK_WARN(1,warnline)
++                   write(warnline,"(1P10E15.6)") rho(i,j,k),dens(i,j,k),eps(i,j,k),&
++                        temperature(i,j,k),y_e(i,j,k)
++                   call CCTK_WARN(1,warnline)
++                   call CCTK_WARN(0,"Aborting!!!")
++                endif
++                !$OMP END CRITICAL
++             endif
++          endif
++
++          if( abs(GRHydro_C2P_failed(i,j,k)-3.0d0) .lt. 1.0d-10 .or. &
++               temperature(i,j,k).lt.GRHydro_hot_atmo_temp) then
++             ! dropped out off the EOS table in temperature or below
++             ! the temperature of the atmosphere.
++             ! Now reset this point to minimum temperature.
++             GRHydro_C2P_failed(i,j,k) = 0
++             !$OMP CRITICAL
++             write(warnline,"(A10,i7,4i3,1P10E15.6)") "reset T:",&
++                  cctk_iteration,GRHydro_Reflevel,&
++                  i,j,k,rho(i,j,k),&
++                  eps(i,j,k),temperature(i,j,k),y_e(i,j,k)
++             call CCTK_WARN(1,warnline)
++             !$OMP END CRITICAL
++             temperature(i,j,k) = GRHydro_hot_atmo_temp
++             keytemp = 1
++             call EOS_Omni_press(GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,n,&
++                  rho(i,j,k),eps(i,j,k),temperature(i,j,k),y_e(i,j,k),&
++                  press(i,j,k),keyerr,anyerr)
++             keytemp = 0
++             if(anyerr.ne.0) then
++                !$OMP CRITICAL
++                call CCTK_WARN(0,"EOS Problem in C2P hot!!!")
++                !$OMP END CRITICAL
++             endif
++             ! prim2con
++             w_lorentz(i,j,k) = &
++                  1.d0 / sqrt(1.d0 - (gxx(i,j,k)*vel(i,j,k,1)**2 &
++                  + gyy(i,j,k)*vel(i,j,k,2)**2 &
++                  + gzz(i,j,k) *vel(i,j,k,3)**2 &
++                  + 2.0d0*gxy(i,j,k)*vel(i,j,k,1)*vel(i,j,k,2) &
++                  + 2.0d0*gxz(i,j,k)*vel(i,j,k,1)*vel(i,j,k,3)  &
++                  + 2.0d0*gyz(i,j,k)*vel(i,j,k,2)*vel(i,j,k,3)))
++             vlowx = gxx(i,j,k)*vel(i,j,k,1) &
++                  + gxy(i,j,k)*vel(i,j,k,2)  &
++                  + gxz(i,j,k)*vel(i,j,k,3)
++             vlowy = gxy(i,j,k)*vel(i,j,k,1) &
++                  + gyy(i,j,k)*vel(i,j,k,2)  &
++                  + gyz(i,j,k)*vel(i,j,k,3)
++             vlowz = gxz(i,j,k)*vel(i,j,k,1) &
++                  + gyz(i,j,k)*vel(i,j,k,2)  &
++                  + gzz(i,j,k)*vel(i,j,k,3)
++             scon(i,j,k,1) = sqrt(det) * (rho(i,j,k)*(1.0d0+eps(i,j,k)) &
++                  + press(i,j,k))*w_lorentz(i,j,k)**2 * vlowx
++             scon(i,j,k,2) = sqrt(det) * (rho(i,j,k)*(1.0d0+eps(i,j,k)) &
++                  +press(i,j,k))*w_lorentz(i,j,k)**2 * vlowy
++             scon(i,j,k,3) = sqrt(det) * (rho(i,j,k)*(1.0d0+eps(i,j,k)) &
++                  + press(i,j,k))*w_lorentz(i,j,k)**2 * vlowz
++             tau(i,j,k) = sqrt(det) * ((rho(i,j,k)*(1.0d0+eps(i,j,k)) &
++                  + press(i,j,k))*w_lorentz(i,j,k)**2 - press(i,j,k)) &
++                  - dens(i,j,k)
++          endif
++
++      end do
++    end do
++  end do
++  !$OMP END PARALLEL DO
++
++  return
++  
++end subroutine Conservative2PrimitiveHot
++
++
++subroutine Con2Prim_pt_hot3(cctk_iteration, myproc, ii,jj,kk,handle, dens, &
++     sx, sy, sz, tau, ye_con, rho, velx, vely, &
++     velz, epsilon, temp, ye, press, w_lorentz, uxx, uxy, uxz, uyy, &
++     uyz, uzz, det, x, y, z, r, epsnegative, GRHydro_rho_min, pmin, epsmin, &
++     GRHydro_reflevel, GRHydro_C2P_failed, local_perc_ptol)
++  
++  implicit none
++  
++  DECLARE_CCTK_PARAMETERS
++
++  CCTK_REAL dens, sx, sy, sz, tau, ye_con, rho, velx, vely, velz, epsilon, &
++       press, uxx, uxy, uxz, uyy, uyz, uzz, det, w_lorentz, x, &
++       y, z, r, GRHydro_rho_min
++  CCTK_REAL temp, ye
++  CCTK_REAL s2, f, df, vlowx, vlowy, vlowz
++  CCTK_INT cctk_iteration, ii,jj,kk,count, i, handle, GRHydro_reflevel
++  CCTK_REAL GRHydro_C2P_failed
++  CCTK_REAL udens, usx, usy, usz, utau, pold, pnew, &
++            temp1, drhobydpress, depsbydpress, dpressbydeps, dpressbydrho, pmin, epsmin
++  CCTK_REAL pminl,plow,tmp, dummy1, dummy2
++  CCTK_REAL local_perc_ptol
++  CCTK_REAL dpf
++
++  integer :: myproc
++
++  character(len=256) warnline
++  logical epsnegative, mustbisect
++
++  integer :: failwarnmode 
++  integer :: failinfomode 
++
++! begin EOS Omni vars
++  integer :: n,keytemp,anyerr,keyerr(1)
++  real*8  :: xpress,temp0
++  integer :: nfudgemax,nf
++  n=1;keytemp=0;anyerr=0;keyerr(1)=0
++  temp0 = 0.0d0;xpress = 0.0d0
++  nf=0;nfudgemax=30
++! end EOS Omni vars
++
++  mustbisect = .false.
++
++  failinfomode = 1
++  failwarnmode = 0
++
++! set pmin to something sensible:
++  pminl = 1.0d-28
++
++  if(con2prim_oct_hack.ne.0.and.&
++       (x .lt. -1.0d-12 .or.&
++        y .lt. -1.0d-12 .or.&
++        z .lt. -1.0d-12)) then
++     failwarnmode = 2
++     failinfomode = 2  
++  endif
++
++!!$  Undensitize the variables 
++
++  udens = dens /sqrt(det)
++  usx = sx /sqrt(det)
++  usy = sy /sqrt(det)
++  usz = sz /sqrt(det)
++  utau = tau /sqrt(det)
++  s2 = usx*usx*uxx + usy*usy*uyy + usz*usz*uzz + 2.*usx*usy*uxy + &
++       2.*usx*usz*uxz + 2.*usy*usz*uyz
++
++!!$  Set initial guess for pressure:
++  temp0 = temp
++  call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
++                      rho,epsilon,temp,ye,xpress,keyerr,anyerr)
++  ! This is the lowest admissible pressure, otherwise we are off the physical regime
++  ! Sometimes, we may end up with bad initial guesses. 
++  ! In that case we need to start off with something
++  ! reasonable at least
++  plow = max(pminl, sqrt(s2) - utau - udens)
++  ! Start out with some reasonable initial guess
++  pold = max(plow+1.d-10,xpress)
++  ! error handling
++  if(anyerr.ne.0) then
++     if(keyerr(1).eq.668) then
++        continue
++!        GRHydro_C2P_failed = 3.0d0
++!        write(warnline,"(A3,3i3,1P10E15.6)") "*1", ii,jj,kk,rho,epsilon,temp,ye,xpress
++!        call CCTK_WARN(1,warnline)
++     else 
++        !$OMP CRITICAL
++        call CCTK_WARN(failinfomode,"EOS error in c2p 0")
++        write(warnline,"(4i5,1P10E15.6)") GRHydro_Reflevel,ii,jj,kk,x,y,z
++        call CCTK_WARN(failinfomode,warnline)
++        write(warnline,"(1P10E15.6)") rho,dens,epsilon,temp,temp0,ye
++        call CCTK_WARN(failinfomode,warnline)
++        write(warnline,"(A7,i8)") "code: ",keyerr(1)
++        call CCTK_WARN(failinfomode,warnline)
++        write(warnline,"(A10,i5)") "reflevel: ", GRHydro_reflevel
++        call CCTK_WARN(failinfomode,warnline)
++        call CCTK_WARN(failwarnmode,"Aborting!!!")
++        !$OMP END CRITICAL
++     endif
++  endif
++
++!!$  Check that the variables have a chance of being physical
++
++  if( (utau + pold + udens)**2 - s2 .le. 0.0d0) then
++
++    if (c2p_reset_pressure .ne. 0) then
++      pold = sqrt(s2 + c2p_reset_pressure_to_value) - utau - udens
++    else 
++      !$OMP CRITICAL
++!!!!      call CCTK_WARN(GRHydro_NaN_verbose, "c2p failed and being told not to reset the pressure")
++      GRHydro_C2P_failed = 1.0d0
++      !$OMP END CRITICAL
++    endif
++    
++  endif
++  
++!!$  Calculate rho and epsilon 
++
++!define temporary variables to speed up
++
++  rho = udens * sqrt( (utau + pold + udens)**2 - s2)/(utau + pold + udens)
++  w_lorentz = (utau + pold + udens) / sqrt( (utau + pold + udens)**2 - s2)
++  epsilon = (sqrt( (utau + pold + udens)**2 - s2) - pold * w_lorentz - &
++       udens)/udens
++  
++!!$  Calculate the function
++
++  call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
++                      rho,epsilon,temp,ye,xpress,keyerr,anyerr)
++  ! error handling
++  if(anyerr.ne.0) then
++     if(keyerr(1).eq.668) then
++        continue
++!        GRHydro_C2P_failed = 3.0d0
++!        write(warnline,"(A3,3i3,1P10E15.6)") "*2", ii,jj,kk,rho,epsilon,temp,ye,xpress
++!        call CCTK_WARN(1,warnline)
++     else 
++        !$OMP CRITICAL
++        call CCTK_WARN(failinfomode,"EOS error in c2p 1")
++        write(warnline,"(4i5,1P10E15.6)") GRHydro_Reflevel,ii,jj,kk,x,y,z
++        call CCTK_WARN(failinfomode,warnline)
++        write(warnline,"(1P10E15.6)") rho,dens,epsilon,temp,temp0,ye
++        call CCTK_WARN(failinfomode,warnline)
++        write(warnline,"(A7,i8)") "code: ",keyerr(1)
++        call CCTK_WARN(failinfomode,warnline)
++        write(warnline,"(A10,i5)") "reflevel: ", GRHydro_reflevel
++        call CCTK_WARN(failinfomode,warnline)
++        call CCTK_WARN(failwarnmode,"Aborting!!!")
++        !$OMP END CRITICAL
++     endif
++  endif
++
++  f = pold - xpress
++
++  if (f .ne. f) then 
++     ! Ok, this yielded nonsense, let's enforce bisection!
++     mustbisect = .true.
++  endif
++
++!!$Find the root
++  
++  count = 0
++  pnew = pold
++  do while ( ((abs(pnew - pold)/abs(pnew) .gt. local_perc_ptol) .and. &
++       (abs(pnew - pold) .gt. GRHydro_del_ptol))  .or. &
++       (count .lt. GRHydro_countmin))
++    count = count + 1
++
++#if 0
++    if(myproc.eq.3.and.&
++         cctk_iteration.eq.11929.and.ii.eq.64.and.jj.eq.19.and.kk.eq.29) then
++       !$OMP CRITICAL
++       write(warnline,"(i5,1P10E18.9)") count, (abs(pnew - pold)/abs(pnew)), epsilon, temp, press
++       call CCTK_WARN(1,warnline)
++       !$OMP END CRITICAL
++    endif
++#endif
++
++    if (count > GRHydro_countmax) then
++      ! non-convergence is now handled outside of this
++      ! routine
++      GRHydro_C2P_failed = 2.0d0
++      temp = temp0
++      return
++    end if
++
++    call EOS_Omni_dpderho_dpdrhoe(handle,keytemp,GRHydro_eos_rf_prec,&
++         n,rho,epsilon,temp,ye,dpressbydeps,dpressbydrho,keyerr,anyerr)
++
++    temp1 = (utau+udens+pnew)**2 - s2
++    drhobydpress = udens * s2 / (sqrt(temp1)*(udens+utau+pnew)**2)
++    depsbydpress = pnew * s2 / (rho * (udens + utau + pnew) * temp1)
++    df = 1.0d0 - dpressbydrho*drhobydpress - &
++         dpressbydeps*depsbydpress
++
++    pold = pnew
++    
++    ! Try to obtain new pressure via Newton-Raphson.
++    
++    pnew = pold - f/df 
++    
++    ! Check if Newton-Raphson resulted in something reasonable!
++    if (c2p_resort_to_bisection.ne.0) then 
++    
++      tmp = (utau + pnew + udens)**2 - s2
++      plow = max(pminl, sqrt(s2) - utau - udens)
++      
++      if (pnew .lt. plow .or. tmp .le. 0.0d0 .or. mustbisect) then
++      
++         ! Ok, Newton-Raphson ended up finding something unphysical.
++         ! Let's try to find our root via bisection (which converges slower but is more robust)
++      
++         pnew = (plow + pold) / 2
++         tmp = (utau + pnew + udens)**2 - s2
++         
++         mustbisect = .false.
++      end if
++    
++    else
++      
++      ! This is the standard algorithm without resorting to bisection.
++    
++      pnew = max(pminl, pnew)
++      tmp = (utau + pnew + udens)**2 - s2
++    
++    endif
++    
++    ! Check if we are still in the physical range now.
++    ! If not, we set the C2P failed mask, and set pnew = pold (which will exit the loop).
++    
++    if ((tmp .le. 0.0d0) .and. GRHydro_C2P_failed .eq. 0) then
++      GRHydro_C2P_failed = 1.0d0
++      pnew = pold
++    endif
++    
++!!$    Recalculate primitive variables and function
++       
++    rho = udens * sqrt( (utau + pnew + udens)**2 - s2)/(utau + pnew + udens)
++    w_lorentz = (utau + pnew + udens) / sqrt( (utau + pnew + udens)**2 - &
++         s2)
++    epsilon = (sqrt( (utau + pnew + udens)**2 - s2) - pnew * w_lorentz - &
++         udens)/udens
++
++    call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
++         rho,epsilon,temp,ye,xpress,keyerr,anyerr)
++    ! error handling
++    if(anyerr.ne.0) then
++       if(keyerr(1).eq.668) then
++          continue
++!          GRHydro_C2P_failed = 3.0d0
++!          write(warnline,"(A3,3i3,1P10E15.6)") "*3", ii,jj,kk,rho,epsilon,temp,ye,xpress
++!          call CCTK_WARN(1,warnline)
++       else 
++          !$OMP CRITICAL
++          call CCTK_WARN(failinfomode,"EOS error in c2p 2")
++          write(warnline,"(4i5,1P10E15.6)") GRHydro_Reflevel,ii,jj,kk,x,y,z
++          call CCTK_WARN(failinfomode,warnline)
++          write(warnline,"(1P10E15.6)") rho,dens,epsilon,temp,temp0,ye
++          call CCTK_WARN(failinfomode,warnline)
++          write(warnline,"(A7,i8)") "code: ",keyerr(1)
++          call CCTK_WARN(failinfomode,warnline)
++          write(warnline,"(A10,i5)") "reflevel: ", GRHydro_reflevel
++          call CCTK_WARN(failinfomode,warnline)
++          call CCTK_WARN(failwarnmode,"Aborting!!!")
++          !$OMP END CRITICAL
++       endif
++    endif
++
++    f = pnew - xpress
++
++    if (f .ne. f) then 
++      ! Ok, this yielded nonsense, let's enforce bisection!
++      mustbisect = .true.
++    endif
++
++  enddo
++
++  
++!!$  Polish the root
++
++  do i=1,GRHydro_polish
++
++    call EOS_Omni_DPressByDRho(handle,keytemp,GRHydro_eos_rf_prec,n,&
++         rho,epsilon,temp,ye,dpressbydrho,keyerr,anyerr)
++
++    call EOS_Omni_DPressByDEps(handle,keytemp,GRHydro_eos_rf_prec,n,&
++         rho,epsilon,temp,ye,dpressbydeps,keyerr,anyerr)
++
++    temp1 = (utau+udens+pnew)**2 - s2
++    drhobydpress = udens * s2 / (sqrt(temp1)*(udens+utau+pnew)**2)
++    depsbydpress = pnew * s2 / (rho * (udens + utau + pnew) * temp1)
++    df = 1.0d0 - dpressbydrho*drhobydpress - &
++         dpressbydeps*depsbydpress
++    pold = pnew
++    pnew = pold - f/df
++    
++!!$    Recalculate primitive variables and function
++
++    rho = udens * sqrt( (utau + pnew + udens)**2 - s2)/(utau + pnew + udens)
++    w_lorentz = (utau + pnew + udens) / sqrt( (utau + pnew + udens)**2 - &
++         s2)
++    epsilon = (sqrt( (utau + pnew + udens)**2 - s2) - pnew * w_lorentz - &
++         udens)/udens
++
++    call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n, &
++         rho,epsilon,temp,ye,xpress,keyerr,anyerr)
++
++    ! error handling
++    if(anyerr.ne.0) then
++       if(keyerr(1).eq.668) then
++          continue
++!          GRHydro_C2P_failed = 3.0d0
++!          write(warnline,"(A3,3i3,1P10E15.6)") "*4", ii,jj,kk,rho,epsilon,temp,ye,xpress
++!          call CCTK_WARN(1,warnline)
++       else 
++          !$OMP CRITICAL
++          call CCTK_WARN(failinfomode,"EOS error in c2p 3")
++          write(warnline,"(4i5,1P10E15.6)") GRHydro_Reflevel,ii,jj,kk,x,y,z
++          call CCTK_WARN(failinfomode,warnline)
++          write(warnline,"(1P10E15.6)") rho,dens,epsilon,temp,temp0,ye
++          call CCTK_WARN(failinfomode,warnline)
++          write(warnline,"(A7,i8)") "code: ",keyerr(1)
++          call CCTK_WARN(failinfomode,warnline)
++          write(warnline,"(A10,i5)") "reflevel: ", GRHydro_reflevel
++          call CCTK_WARN(failinfomode,warnline)
++          call CCTK_WARN(failwarnmode,"Aborting!!!")
++          !$OMP END CRITICAL
++       endif
++    endif
++    
++    f = pold - xpress
++
++  enddo
++
++!!$  Calculate primitive variables from root
++
++  !if (rho .le. GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance) ) then
++  IF_BELOW_ATMO(rho, GRHydro_rho_min, GRHydro_atmo_tolerance, r) then
++    SET_ATMO_MIN(rho, GRHydro_rho_min, r) !GRHydro_rho_min
++    udens = rho
++    dens = sqrt(det) * rho
++    temp = GRHydro_hot_atmo_temp
++    ye = GRHydro_hot_atmo_Y_e
++    ye_con = dens * ye
++    keytemp=1
++    call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n, &
++         rho,epsilon,temp,ye,xpress,keyerr,anyerr)
++    keytemp=0
++    ! w_lorentz=1, so the expression for utau reduces to:
++    utau  = rho + rho*epsilon - udens
++    sx = 0.d0
++    sy = 0.d0
++    sz = 0.d0
++    s2 = 0.d0
++    usx = 0.d0
++    usy = 0.d0
++    usz = 0.d0
++    w_lorentz = 1.d0
++  end if
++
++  press = pnew
++  vlowx = usx / ( (rho + rho*epsilon + press) * w_lorentz**2)
++  vlowy = usy / ( (rho + rho*epsilon + press) * w_lorentz**2)
++  vlowz = usz / ( (rho + rho*epsilon + press) * w_lorentz**2)
++  velx = uxx * vlowx + uxy * vlowy + uxz * vlowz
++  vely = uxy * vlowx + uyy * vlowy + uyz * vlowz
++  velz = uxz * vlowx + uyz * vlowy + uzz * vlowz
++
++  ! indicate to wrapper routine that we dropped out of the
++  ! EOS table
++  if(keyerr(1).eq.668) then
++     GRHydro_C2P_failed = 3.0d0
++  endif
++
++end subroutine Con2Prim_pt_hot3
++
+diff --git a/src/make.code.defn b/src/make.code.defn
+index 5630804..b55a089 100644
+--- a/src/make.code.defn
++++ b/src/make.code.defn
+@@ -9,6 +9,7 @@ SRCS = 	Utils.F90 \
+ 	GRHydro_CalcBcom.F90 \
+ 	GRHydro_CalcUpdate.F90 \
+ 	GRHydro_Con2Prim.F90 \
++	GRHydro_Con2PrimHot.F90 \
+         GRHydro_DivergenceClean.F90 \
+ 	GRHydro_Eigenproblem.F90 \
+ 	GRHydro_Eigenproblem_Marquina.F90 \
+-- 
+1.7.10.4
+

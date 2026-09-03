@@ -1,0 +1,126 @@
+Index: test/qlm-minkowski.par
+===================================================================
+--- test/qlm-minkowski.par	(revision 35)
++++ test/qlm-minkowski.par	(working copy)
+@@ -95,6 +95,7 @@
+ SphericalSurface::maxntheta = 39
+ SphericalSurface::maxnphi   = 76
+ 
++SphericalSurface::name        [0] = "SphericalSurface0"
+ SphericalSurface::ntheta      [0] = 39
+ SphericalSurface::nphi        [0] = 76
+ SphericalSurface::nghoststheta[0] = 2
+@@ -155,7 +156,7 @@
+ QuasiLocalMeasures::interpolator         = "Lagrange polynomial interpolation"
+ QuasiLocalMeasures::interpolator_options = "order=4"
+ QuasiLocalMeasures::spatial_order        = 4
+-QuasiLocalMeasures::surface_index[0]     = 0
++QuasiLocalMeasures::surface_name[0]      = "SphericalSurface0"
+ 
+ 
+ 
+Index: interface.ccl
+===================================================================
+--- interface.ccl	(revision 35)
++++ interface.ccl	(working copy)
+@@ -10,8 +10,13 @@
+ FUNCTION GetMPICommWorld (CCTK_POINTER_TO_CONST IN cctkGH)
+ USES FUNCTION GetMPICommWorld
+ 
++# translate SphericalSurface name into ID
++CCTK_INT \
++FUNCTION sf_IdFromName (CCTK_INT IN id, CCTK_POINTER_TO_CONST IN name)
++USES FUNCTION sf_IdFromName
+ 
+ 
++
+ INT qlm_state[num_surfaces] TYPE=scalar
+ {
+   qlm_calc_error          # some QLM information is invalid
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 35)
++++ param.ccl	(working copy)
+@@ -23,6 +23,12 @@
+   0:* :: "surface index"
+ } -1
+ 
++STRING surface_name[100] "Spherical surface that contains the surface shape"
++{
++  ""   :: "use surface_index"
++  ".*" :: "surface name"
++} ""
++
+ STRING coordsystem "The coordinate system to use" STEERABLE=always
+ {
+   "" :: "must be a registered coordinate system"
+Index: src/qlm_import_surface.F90
+===================================================================
+--- src/qlm_import_surface.F90	(revision 35)
++++ src/qlm_import_surface.F90	(working copy)
+@@ -21,19 +21,20 @@
+      call CCTK_INFO ("Importing surface shape")
+   end if
+   
+-  if (surface_index(hn) < 0 .or. surface_index(hn) >= nsurfaces) then
++  if ((surface_index(hn) < 0 .or. surface_index(hn) >= nsurfaces) .and. &
++      CCTK_EQUALS(surface_name(hn), "")) then
+      call CCTK_WARN (0, "Illegal spherical surface index specified")
+   end if
+   
++  sn = sf_IdFromName(surface_index(hn), surface_name(hn)) + 1
++  
+   if (verbose/=0 .or. veryverbose/=0) then
+-     write (msg, '("Importing from spherical surface ",i4)') surface_index(hn)
++     write (msg, '("Importing from spherical surface ",a," ",i4)') &
++           surface_name(hn), sn - 1
+      call CCTK_INFO (msg)
+   end if
+   
+-  sn = surface_index(hn) + 1
+   
+-  
+-  
+   if (qlm_calc_error(hn) == 0 .and. cctk_iteration > qlm_iteration(hn)) then
+      
+      ! Cycle time levels
+Index: src/qlm_calculate.F90
+===================================================================
+--- src/qlm_calculate.F90	(revision 35)
++++ src/qlm_calculate.F90	(working copy)
+@@ -55,7 +55,7 @@
+      end if
+      
+      if (hn > 0) then
+-        if (surface_index(hn) == -1) then
++        if (surface_index(hn) == -1 .and. CCTK_EQUALS(surface_name(hn), "")) then
+            qlm_calc_error(hn) = 1
+            qlm_have_valid_data(hn) = 0
+            qlm_have_killing_vector(hn) = 0
+Index: src/qlm_paramcheck.F90
+===================================================================
+--- src/qlm_paramcheck.F90	(revision 35)
++++ src/qlm_paramcheck.F90	(working copy)
+@@ -22,18 +22,19 @@
+   
+   do hn = 1, num_surfaces
+      
+-     if (surface_index(hn) == -1) then
++     if (surface_index(hn) == -1 .and. CCTK_EQUALS(surface_name(hn),"")) then
+         ! no surface selected; everything is fine
+         goto 9999
+      end if
+      
+-     if (surface_index(hn) < 0 .or. surface_index(hn) >= nsurfaces) then
++     if ((surface_index(hn) < 0 .or. surface_index(hn) >= nsurfaces) .and. &
++         CCTK_EQUALS(surface_name(hn), "")) then
+         write (msg, '("Illegal surface index specified for surface ",i4," (index is ",i4,", must be less than ",i4,")")') hn-1, surface_index(hn), nsurfaces
+         call CCTK_PARAMWARN (msg)
+         goto 9999
+      end if
+      
+-     sn = surface_index(hn) + 1
++     sn = sf_IdFromName(surface_index(hn), surface_name(hn)) + 1
+      
+      ! Import surface description
+      qlm_nghoststheta(hn) = nghoststheta(sn)

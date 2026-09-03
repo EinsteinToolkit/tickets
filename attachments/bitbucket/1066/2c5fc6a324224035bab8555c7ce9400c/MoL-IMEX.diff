@@ -1,0 +1,2780 @@
+diff -ruN -x .svn MoL-old/interface.ccl MoL-IMEX/interface.ccl
+--- MoL-old/interface.ccl	2012-08-29 13:28:31.000000000 -0400
++++ MoL-IMEX/interface.ccl	2011-11-16 11:59:20.000000000 -0500
+@@ -32,12 +32,16 @@
+ ### standard (i.e., real) GFs.                               ###
+ ################################################################
+ 
++CCTK_INT FUNCTION MoLRegisterEvolvedIMEX(CCTK_INT IN EvolvedIndex, \
++                                     CCTK_INT IN RHSIndex, CCTK_INT IN RHS2Index)
+ CCTK_INT FUNCTION MoLRegisterEvolved(CCTK_INT IN EvolvedIndex, \
+                                      CCTK_INT IN RHSIndex)
+ CCTK_INT FUNCTION MoLRegisterConstrained(CCTK_INT IN ConstrainedIndex)
+ CCTK_INT FUNCTION MoLRegisterSaveAndRestore(CCTK_INT IN SandRIndex)
+ CCTK_INT FUNCTION MoLRegisterEvolvedGroup(CCTK_INT IN EvolvedIndex, \
+                                           CCTK_INT IN RHSIndex)
++CCTK_INT FUNCTION MoLRegisterEvolvedGroupIMEX(CCTK_INT IN EvolvedIndex, \
++                                          CCTK_INT IN RHSIndex, CCTK_INT IN RHS2Index)
+ CCTK_INT FUNCTION MoLRegisterConstrainedGroup(CCTK_INT IN ConstrainedIndex)
+ CCTK_INT FUNCTION MoLRegisterSaveAndRestoreGroup(CCTK_INT IN SandRIndex)
+ CCTK_INT FUNCTION MoLChangeToEvolved(CCTK_INT IN EvolvedIndex, \
+@@ -48,6 +52,8 @@
+ CCTK_INT FUNCTION MoLQueryEvolvedRHS(CCTK_INT IN EvolvedIndex)
+ CCTK_INT FUNCTION MoLNumIntegratorSubsteps()
+ 
++
++PROVIDES FUNCTION MoLRegisterEvolvedIMEX WITH MoL_RegisterEvolvedIMEX LANGUAGE C
+ PROVIDES FUNCTION MoLRegisterEvolved WITH MoL_RegisterEvolved LANGUAGE C
+ PROVIDES FUNCTION MoLRegisterConstrained WITH MoL_RegisterConstrained \
+                   LANGUAGE C
+@@ -55,6 +61,8 @@
+                   LANGUAGE C
+ PROVIDES FUNCTION MoLRegisterEvolvedGroup WITH MoL_RegisterEvolvedGroup \
+                   LANGUAGE C
++PROVIDES FUNCTION MoLRegisterEvolvedGroupIMEX WITH MoL_RegisterEvolvedGroupIMEX \
++                  LANGUAGE C
+ PROVIDES FUNCTION MoLRegisterConstrainedGroup WITH \
+                   MoL_RegisterConstrainedGroup LANGUAGE C
+ PROVIDES FUNCTION MoLRegisterSaveAndRestoreGroup WITH \
+@@ -115,6 +123,8 @@
+ ### grid arrays of all dimensions.                           ###
+ ################################################################
+ 
++# CCTK_INT FUNCTION MoLRegisterEvolvedArrayDouble(CCTK_INT IN EvolvedIndex, \
++#                                           CCTK_INT IN RHSIndex, CCTK_INT IN RHS2Index)
+ # CCTK_INT FUNCTION MoLRegisterEvolvedArray(CCTK_INT IN EvolvedIndex, \
+ #                                           CCTK_INT IN RHSIndex)
+ # CCTK_INT FUNCTION MoLRegisterConstrainedArray(CCTK_INT IN ConstrainedIndex)
+@@ -130,6 +140,8 @@
+ # CCTK_INT FUNCTION MoLChangeToSaveAndRestoreArray(CCTK_INT IN SandRIndex)
+ # CCTK_INT FUNCTION MoLChangeToNoneArray(CCTK_INT IN RemoveIndex)
+ #
++# PROVIDES FUNCTION MoLRegisterEvolvedArrayDouble WITH MoL_RegisterEvolvedArrayDouble \
++#                   LANGUAGE C
+ # PROVIDES FUNCTION MoLRegisterEvolvedArray WITH MoL_RegisterEvolvedArray \
+ #                   LANGUAGE C
+ # PROVIDES FUNCTION MoLRegisterConstrainedArray WITH \
+@@ -231,7 +243,7 @@
+   Original_Delta_Time
+ } "The original time and delta time which are reset by MoL during evolution"
+ 
+-CCTK_REAL ScratchSpace[MoL_Num_Evolved_Vars*MoL_Num_Scratch_Levels] \
++CCTK_REAL ScratchSpace[(MoL_Num_Evolved_Vars + MoL_Num_Evolved_Implicit_Vars)*MoL_Num_Scratch_Levels] \
+             TYPE       = GF \
+             Timelevels = 1 \
+             TAGS       = 'Prolongation="None" Checkpoint="no"'
+diff -ruN -x .svn MoL-old/param.ccl MoL-IMEX/param.ccl
+--- MoL-old/param.ccl	2012-08-29 13:28:31.000000000 -0400
++++ MoL-IMEX/param.ccl	2011-11-16 11:59:21.000000000 -0500
+@@ -8,6 +8,11 @@
+   0:*		:: "Anything non negative. Added to by other thorns."
+ } 0
+ 
++CCTK_INT MoL_Num_Evolved_Implicit_Vars "The maximum number of implicit variables to be evolved by MoL" ACCUMULATOR = (x+y)
++{
++  0:*		:: "Anything non negative. Added to by other thorns."
++} 0
++
+ CCTK_INT MoL_Num_Constrained_Vars "The maximum number of constrained variables with timelevels that MoL needs to know about" ACCUMULATOR = (x+y)
+ {
+   0:*		:: "Anything non negative. Added to by other thorns."
+@@ -78,9 +83,19 @@
+   0:*		:: "Anything non negative"
+ } 0
+ 
++CCTK_REAL RKstiff "coefficient which depends on the substep of RK" STEERABLE=ALWAYS
++{
++  0:* :: "between 0 and 1"
++} 0.0
++
++CCTK_REAL RKtime "coefficient which reads the time step for the IMEX" STEERABLE=ALWAYS
++{
++  0:* :: "between 0 and 1"
++} 0.0
++
+ private:
+ 
+-KEYWORD ODE_Method "The ODE method use by MoL to do time integration"
++KEYWORD ODE_Method "The ODE method used by MoL to do time integration"
+ {
+   "Generic"	:: "Generic Shu-Osher Runga-Kutta type"
+   "ICN"		:: "Iterative Crank Nicholson"
+@@ -92,6 +107,8 @@
+   "RK45CK"      :: "RK45CK (Cash-Karp) with error estimation"
+   "RK65"        :: "RK65 with error estimation"
+   "RK87"        :: "RK87 with error estimation"
++  "RKIMEX2"     :: "Implicit-Explicit RK2"
++  "RKIMEX3"     :: "Implicit-Explicit RK3"
+ } "ICN"
+ 
+ KEYWORD Generic_Type "If using the generic method, which sort"
+@@ -102,6 +119,11 @@
+   "Classic RK3"	:: "Efficient RK3 - classical version"
+ } "RK"
+ 
++CCTK_INT RKIMEX_type "Type of RKIMEX method"
++{
++  1:2		:: "There are currently 2 options for choosing the coefficients"
++} 1
++
+ CCTK_REAL ICN_avg_theta "theta of averaged ICN method, usually 0.5"
+ {
+   0:1 :: "0 <= theta <= 1"
+diff -ruN -x .svn MoL-old/schedule.ccl MoL-IMEX/schedule.ccl
+--- MoL-old/schedule.ccl	2012-08-29 13:28:31.000000000 -0400
++++ MoL-IMEX/schedule.ccl	2011-11-16 11:59:21.000000000 -0500
+@@ -616,6 +616,20 @@
+     LANG: C
+   } "Updates calculated with the averaging ICN method"
+ }
++else if (CCTK_Equals(ODE_Method,"RKIMEX2"))
++{
++  schedule MoL_RKIMEX2Add AS MoL_Add IN MoL_Step AFTER MoL_CalcRHS BEFORE MoL_PostStep
++  {
++    LANG: C
++  } "Updates calculated with the Implicit-Explicit RK2 method"
++}
++else if (CCTK_Equals(ODE_Method,"RKIMEX3"))
++{
++  schedule MoL_RKIMEX3Add AS MoL_Add IN MoL_Step AFTER MoL_CalcRHS BEFORE MoL_PostStep
++  {
++    LANG: C
++  } "Updates calculated with the Implicit-Explicit RK3 method"
++}
+ 
+ ##################################################
+ ###  Physics thorns can apply boundaries and   ###
+@@ -643,16 +657,71 @@
+ } "Ensure that everything is correct after regridding"
+ 
+ ##################################################################
+-###  Schedule the PostStep parts in the Carpet 'PostRestrict'  ###
++###  Schedule the PostStep parts in the Carpet 'PostRegrid'    ###
+ ###  bin so that symmetries are automatically done correctly.  ###
+ ###  We may want to change this later as it could be           ###
+ ###  expensive, but it's simplest for the moment.              ###
+ ##################################################################
+ 
++schedule GROUP MoL_PostStep AT PostRestrictInitial
++{
++} "Ensure that everything is correct after restriction"
++
+ schedule GROUP MoL_PostStep AT PostRestrict
+ {
+ } "Ensure that everything is correct after restriction"
+ 
++#schedule GROUP MoL_PostStep AT PostRegrid
++#{
++#} "Ensure that everything is correct after regridding"
++
++##################################################################
++###  Schedule the PostStep parts in the Carpet 'PostRestrict'  ###
++###  bin so that symmetries are automatically done correctly.  ###
++###  We may want to change this later as it could be           ###
++###  expensive, but it's simplest for the moment.              ###
++##################################################################
++
++#schedule GROUP MoL_PostStep AT PostRestrict
++#{
++#} "Ensure that everything is correct after restriction"
++
++##################################################################
++###  Schedule the PostStep parts after recovery            ###
++###  so that symmetries are automatically done correctly.  ###
++###  We may want to change this later as it could be       ###
++###  expensive, but it's simplest for the moment.          ###
++##################################################################
++
++schedule GROUP MoL_PostStep AT Post_Recover_Variables
++{
++} "Ensure that everything is correct after recovery"
++
++##########################################################################
++###  Schedule a pseudo-evolution group to handle variables which are   ###
++###  not evolved, but which should be calculated at every time step.   ###
++##########################################################################
++
++schedule GROUP MoL_PseudoEvolution AT PostInitial AFTER MoL_PostStep
++{
++} "Calculate pseudo-evolved quantities"
++
++schedule GROUP MoL_PseudoEvolution AT PostRegridInitial AFTER MoL_PostStep
++{
++} "Calculate pseudo-evolved quantities"
++
++schedule GROUP MoL_PseudoEvolution AT Evol AFTER MoL_Evolution
++{
++} "Calculate pseudo-evolved quantities"
++
++schedule GROUP MoL_PseudoEvolution AT PostRegrid AFTER MoL_PostStep
++{
++} "Calculate pseudo-evolved quantities"
++
++schedule GROUP MoL_PseudoEvolution AT Post_Recover_Variables AFTER MoL_PostStep
++{
++} "Calculate pseudo-evolved quantities"
++
+ ############################################################
+ ###  Additional boundary condition bins as requested by  ###
+ ###  Yosef Zlochower.                                    ###
+diff -ruN -x .svn MoL-old/src/ChangeType.c MoL-IMEX/src/ChangeType.c
+--- MoL-old/src/ChangeType.c	2012-08-29 13:28:31.000000000 -0400
++++ MoL-IMEX/src/ChangeType.c	2011-11-16 11:59:23.000000000 -0500
+@@ -41,6 +41,7 @@
+  ********************************************************************/
+ 
+ CCTK_INT MoL_ChangeToEvolved(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex);
++CCTK_INT MoL_ChangeToEvolvedIMEX(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex, CCTK_INT RHS2Index);
+ 
+ CCTK_INT MoL_ChangeToConstrained(CCTK_INT ConstrainedIndex);
+ 
+@@ -72,9 +73,13 @@
+    @endhistory 
+ 
+ @@*/
+-
+ CCTK_INT MoL_ChangeToEvolved(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex)
+ {
++  return MoL_ChangeToEvolvedIMEX(EvolvedIndex, RHSIndex, -1);
++}
++
++CCTK_INT MoL_ChangeToEvolvedIMEX(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex, CCTK_INT RHS2Index)
++{
+ 
+   DECLARE_CCTK_PARAMETERS;
+ 
+@@ -144,6 +149,17 @@
+           CCTK_WARN(0, "The index passed does not correspond to a GF.");
+         }
+ 
++        timelevs = CCTK_MaxTimeLevelsVI(RHS2Index);
++	
++        if ((RHS2Index!=-1) && (timelevs < 1)) 
++	  {
++	    CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
++		       "Warning whilst trying to change variable "
++		       "index %i to evolved (RHS2 GF).", RHS2Index);
++	    CCTK_WARN(0, "The index passed does not correspond to a GF.");
++	  }
++	
++
+         if (!(MoLNumEvolvedVariables < MoL_Num_Evolved_Vars))
+         {
+           CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+@@ -156,9 +172,24 @@
+                     "you are accumulating onto this parameter correctly");
+         }
+ 
++	if ((RHS2Index!=-1) &&(!(MoLNumEvolvedImplicitVariables < MoL_Num_Evolved_Implicit_Vars)))
++	  {
++	    CCTK_WARN(0,"You have tried to register more evolved implicit "
++		      "variables than the accumulator parameter "
++		      "MoL_Num_Evolved_Implicit_Variables allows. Check that "
++		      "you are accumulating onto this parameter correctly");
++	  }    
++	  
+         EvolvedVariableIndex[MoLNumEvolvedVariables] = EvolvedIndex;
+         RHSVariableIndex[MoLNumEvolvedVariables] = RHSIndex;
++        RHS2VariableIndex[MoLNumEvolvedVariables] = RHS2Index;
+         MoLNumEvolvedVariables++;
++
++	if (RHS2Index!=-1)
++	  {
++	    MoLNumEvolvedImplicitVariables++;
++	  }
++
+ #ifdef MOLDEBUG
+         printf("Changing (unknown): vars %d var %d (%s).\n",
+                MoLNumEvolvedVariables, EvolvedIndex,
+@@ -171,6 +202,7 @@
+       
+       {
+         RHSVariableIndex[usedindex] = RHSIndex;
++        RHS2VariableIndex[usedindex] = RHS2Index;
+         break;
+       }
+ 
+@@ -185,6 +217,14 @@
+           CCTK_WARN(0, "The RHS index passed does not correspond to a GF.");
+         }
+ 
++        timelevs = CCTK_MaxTimeLevelsVI(RHS2Index);
++        if ((RHS2Index!=-1) && (timelevs < 1)) {
++          CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
++                     "Warning whilst trying to change variable "
++                     "index %i to evolved type from constrained.", RHS2Index);
++          CCTK_WARN(0, "The RHS2 index passed does not correspond to a GF.");
++        }
++
+         if (!(MoLNumEvolvedVariables < MoL_Num_Evolved_Vars))
+         {
+           CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+@@ -197,6 +237,18 @@
+                     "you are accumulating onto this parameter correctly");
+         }
+ 
++        if ((RHS2Index!= -1)&&(!(MoLNumEvolvedVariables < MoL_Num_Evolved_Vars)))
++        {
++          CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
++                     "Warning whilst trying to change variable "
++                     "index %i (%s) to evolved implicit.", 
++                     EvolvedIndex, CCTK_VarName(EvolvedIndex));
++          CCTK_WARN(0, "When changing type there are more variables "
++                    "than the accumulator parameter "
++                    "MoL_Num_Evolved_Implicit_Vars allows. Check that "
++                    "you are accumulating onto this parameter correctly");
++        }
++
+         for (index = usedindex; index < MoLNumConstrainedVariables - 1; 
+              index++)
+         {
+@@ -205,7 +257,13 @@
+         MoLNumConstrainedVariables--;
+         EvolvedVariableIndex[MoLNumEvolvedVariables] = EvolvedIndex;
+         RHSVariableIndex[MoLNumEvolvedVariables] = RHSIndex;
++        RHS2VariableIndex[MoLNumEvolvedVariables] = RHS2Index;
+         MoLNumEvolvedVariables++;
++	if (RHS2Index!=-1)
++	  {
++	    MoLNumEvolvedImplicitVariables++;
++	  }
++
+ #ifdef MOLDEBUG
+         printf("Changing (constrained): vars %d var %d (%s).\n",
+                MoLNumEvolvedVariables, EvolvedIndex,
+@@ -238,6 +296,19 @@
+                     "you are accumulating onto this parameter correctly");
+         }
+ 
++        if ((RHS2Index!=-1)&&(!(MoLNumEvolvedVariables < MoL_Num_Evolved_Vars)))
++        {
++          CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
++                     "Warning whilst trying to change variable "
++                     "index %i (%s) to evolved implicit.", 
++                     EvolvedIndex, CCTK_VarName(EvolvedIndex));
++          CCTK_WARN(0, "When changing type there are more variables "
++                    "than the accumulator parameter "
++                    "MoL_Num_Evolved_Implicit_Vars allows. Check that "
++                    "you are accumulating onto this parameter correctly (IMEX)");
++        }
++
++
+         for (index = usedindex; index < MoLNumSandRVariables - 1; index++)
+         {
+           SandRVariableIndex[index] = SandRVariableIndex[index+1];
+@@ -245,7 +316,12 @@
+         MoLNumSandRVariables--;
+         EvolvedVariableIndex[MoLNumEvolvedVariables] = EvolvedIndex;
+         RHSVariableIndex[MoLNumEvolvedVariables] = RHSIndex;
++        RHS2VariableIndex[MoLNumEvolvedVariables] = RHS2Index;
+         MoLNumEvolvedVariables++;
++	if (RHS2Index!=-1) 
++	  {
++	    MoLNumEvolvedImplicitVariables++;
++	  }
+ #ifdef MOLDEBUG
+         printf("Changing (SandR): vars %d var %d (%s).\n",
+                MoLNumEvolvedVariables, EvolvedIndex,
+diff -ruN -x .svn MoL-old/src/ExternalVariables.h MoL-IMEX/src/ExternalVariables.h
+--- MoL-old/src/ExternalVariables.h	2012-08-29 13:28:31.000000000 -0400
++++ MoL-IMEX/src/ExternalVariables.h	2011-11-16 11:59:23.000000000 -0500
+@@ -11,16 +11,17 @@
+ 
+ extern CCTK_INT *EvolvedVariableIndex;
+ extern CCTK_INT *RHSVariableIndex;
++extern CCTK_INT *RHS2VariableIndex;
+ extern CCTK_INT *ConstrainedVariableIndex;
+ extern CCTK_INT *SandRVariableIndex;
+ 
+ 
+ extern CCTK_INT MoLNumEvolvedVariables;
++extern CCTK_INT MoLNumEvolvedImplicitVariables;
+ extern CCTK_INT MoLNumConstrainedVariables;
+ extern CCTK_INT MoLNumSandRVariables;
+ 
+ 
+-
+ extern CCTK_INT *EvolvedComplexVariableIndex;
+ extern CCTK_INT *RHSComplexVariableIndex;
+ extern CCTK_INT *ConstrainedComplexVariableIndex;
+@@ -38,9 +39,9 @@
+ extern CCTK_INT MoLNumSandRComplexVariables;
+ 
+ 
+-
+ extern CCTK_INT *EvolvedArrayVariableIndex;
+ extern CCTK_INT *RHSArrayVariableIndex;
++extern CCTK_INT *RHS2ArrayVariableIndex;
+ extern CCTK_INT *ConstrainedArrayVariableIndex;
+ extern CCTK_INT *SandRArrayVariableIndex;
+ 
+@@ -50,7 +51,6 @@
+ extern CCTK_INT MoLNumSandRArrayVariables;
+ 
+ 
+-
+ extern CCTK_INT *EvolvedComplexArrayVariableIndex;
+ extern CCTK_INT *RHSComplexArrayVariableIndex;
+ extern CCTK_INT *ConstrainedComplexArrayVariableIndex;
+diff -ruN -x .svn MoL-old/src/IndexArrays.c MoL-IMEX/src/IndexArrays.c
+--- MoL-old/src/IndexArrays.c	2012-08-29 13:28:31.000000000 -0400
++++ MoL-IMEX/src/IndexArrays.c	2011-11-16 11:59:24.000000000 -0500
+@@ -92,7 +92,6 @@
+     return;
+   }
+ 
+-
+   if (MoL_Num_Evolved_Vars)
+   {
+     EvolvedVariableIndex = (CCTK_INT *)malloc(MoL_Num_Evolved_Vars * 
+@@ -108,6 +107,13 @@
+       {
+ 	CCTK_WARN(0,"Failed to allocate the RHS variable index array");
+       }
++
++    RHS2VariableIndex = (CCTK_INT *)malloc(MoL_Num_Evolved_Vars * 
++					  sizeof(CCTK_INT));
++    if (!RHS2VariableIndex)
++      {
++	CCTK_WARN(0,"Failed to allocate the RHS2 variable index array");
++      }
+   }
+ 
+   if (MoL_Num_Constrained_Vars)
+@@ -195,6 +201,14 @@
+     {
+       CCTK_WARN(0,"Failed to allocate the RHS array variable index array");
+     }
++
++    RHS2ArrayVariableIndex = (CCTK_INT *)malloc(MoL_Num_ArrayEvolved_Vars * 
++					       sizeof(CCTK_INT));
++    if (!RHS2ArrayVariableIndex)
++    {
++      CCTK_WARN(0,"Failed to allocate the RHS2 array variable index array");
++    }
++
+   }
+ 
+   if (MoL_Num_ArrayConstrained_Vars)
+@@ -335,6 +349,14 @@
+             "Averaging iterative Crank Nicholson with %i iterations", 
+             MoL_Intermediate_Steps);
+   }
++  else if (CCTK_EQUALS(ODE_Method,"RKIMEX2")) 
++  {
++    sprintf(infoline, "Implicit-Explicit Runge-Kutta 2");
++  }
++  else if (CCTK_EQUALS(ODE_Method,"RKIMEX3")) 
++  {
++    sprintf(infoline, "Implicit-Explicit Runge-Kutta 3");
++  }
+   else 
+   {
+     CCTK_WARN(0, "ODE_Method not recognized!");
+@@ -381,6 +403,12 @@
+     RHSVariableIndex = NULL;
+   }
+ 
++ if (RHS2VariableIndex)
++  {
++    free(RHS2VariableIndex);  
++    RHS2VariableIndex = NULL;
++  }
++
+   if (ConstrainedVariableIndex)
+   {
+     free(ConstrainedVariableIndex);
+@@ -429,6 +457,12 @@
+     RHSArrayVariableIndex = NULL;
+   }
+ 
++ if (RHS2ArrayVariableIndex)
++  {
++    free(RHS2ArrayVariableIndex);  
++    RHS2ArrayVariableIndex = NULL;
++  }
++
+   if (ConstrainedArrayVariableIndex)
+   {
+     free(ConstrainedArrayVariableIndex);
+diff -ruN -x .svn MoL-old/src/InitialCopy.c MoL-IMEX/src/InitialCopy.c
+--- MoL-old/src/InitialCopy.c	2012-08-29 13:26:17.000000000 -0400
++++ MoL-IMEX/src/InitialCopy.c	2011-11-16 11:59:24.000000000 -0500
+@@ -382,7 +382,7 @@
+ 
+     StorageOn = CCTK_QueryGroupStorageI(cctkGH,
+                                         CCTK_GroupIndexFromVarI(ConstrainedVariableIndex[var]));
+-    
++
+     if (StorageOn < 0)
+     {
+       CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,"Warning for index %i", 
+@@ -513,13 +513,15 @@
+   CCTK_INT totalsize;
+ 
+   CCTK_REAL * restrict RHSVar;
+-  CCTK_INT StorageOn;
++  CCTK_REAL * restrict RHS2Var;
++  CCTK_INT StorageOn, Storage2On;
++  CCTK_INT var2;
+ 
+   /* FIXME */
+ 
+ #ifdef MOLDOESCOMPLEX
+ 
+-  CCTK_COMPLEX * restsrict RHSComplexVar;
++  CCTK_COMPLEX * restrict RHSComplexVar;
+ 
+ #endif
+ 
+@@ -529,12 +531,13 @@
+     totalsize *= cctk_lsh[arraydim];
+   }
+ 
+-  for (var = 0; var < MoLNumEvolvedVariables; var++)
+-  {
+-    
++ /* add the RHS2 */
++
++ for (var = 0; var < MoLNumEvolvedVariables; var++)
++   {
+     StorageOn = CCTK_QueryGroupStorageI(cctkGH,
+                                        CCTK_GroupIndexFromVarI(RHSVariableIndex[var]));
+-    
++
+     if (StorageOn < 0)
+     {
+       CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,"Warning for index %i", 
+@@ -551,9 +554,10 @@
+                  CCTK_VarName(RHSVariableIndex[var]));
+       CCTK_WARN(0, "The grid function does not have storage assigned.");
+     }
+-    
++
+     RHSVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
+                                           RHSVariableIndex[var]);
++
+     if (RHSVar)
+     {
+ #pragma omp parallel for
+@@ -568,8 +572,49 @@
+                  CCTK_VarName(RHSVariableIndex[var]));
+     }
+ 
+-  }
+-    
++    int const has_implicit_rhs = RHS2VariableIndex[var] != -1;
++
++    if (has_implicit_rhs)
++    {
++     Storage2On = CCTK_QueryGroupStorageI(cctkGH,
++					 CCTK_GroupIndexFromVarI(RHS2VariableIndex[var]));
++   
++     if (Storage2On < 0)
++     {
++       CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,"Warning for index %i", 
++                 RHS2VariableIndex[var]);
++       CCTK_WARN(0, "The index passed does not correspond to a GF.");
++     }
++     else if (Storage2On == 0) {
++#ifdef MOLDEBUG
++      printf("Aargh! Vars %d var %d index %d name %s\n",
++             MoLNumEvolvedImplicitVariables, var, RHS2VariableIndex[var],  
++                 CCTK_VarName(RHS2VariableIndex[var]));
++#endif
++       CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,"Warning for GF %s", 
++                 CCTK_VarName(RHS2VariableIndex[var]));
++       CCTK_WARN(0, "The grid function does not have storage assigned.");
++     }
++   
++     RHS2Var = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
++					   RHS2VariableIndex[var]);
++    
++     if (RHS2Var)
++     {
++   #pragma omp parallel for
++       for (index = 0; index < totalsize; index++)
++       {
++         RHS2Var[index] = 0;
++       }
++     }
++     else
++     {
++       CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,"Null pointer for variable %s", 
++                 CCTK_VarName(RHS2VariableIndex[var]));
++     }
++    }
++   }
++
+   for (var = 0; var < MoLNumEvolvedArrayVariables; var++)
+   {
+     RHSVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0,
+@@ -609,9 +654,50 @@
+                    CCTK_VarName(RHSArrayVariableIndex[var]));
+       }
+     }
+-    
+   }
+ 
++ for (var = 0; var < MoLNumEvolvedArrayVariables; var++)
++  {
++    RHS2Var = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0,
++                                          RHS2ArrayVariableIndex[var]);
++    
++    groupindex = CCTK_GroupIndexFromVarI(RHS2ArrayVariableIndex[var]);
++    ierr = CCTK_GroupDynamicData(cctkGH, groupindex,
++                                 &arraydata);
++    if (ierr)
++    {
++      CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING, 
++                 "The driver does not return group information "
++                 "for group '%s'.", 
++                 CCTK_GroupName(groupindex));
++    }
++    arraytotalsize = 1;
++    for (arraydim = 0; arraydim < arraydata.dim; arraydim++)
++    {
++      arraytotalsize *= arraydata.lsh[arraydim];
++    }
++
++    
++    if (arraytotalsize)
++    {
++      if (RHS2Var)
++      {
++#pragma omp parallel for
++        for (index = 0; index < arraytotalsize; index++)
++        {
++          RHS2Var[index] = 0;
++        }
++      }
++      else
++      {
++        printf("The pointer is %p (rhs)\n.",
++               RHS2Var);
++        CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,"Null pointer for variable %s", 
++                   CCTK_VarName(RHS2ArrayVariableIndex[var]));
++      }
++     }
++  }
++    
+   /* FIXME */
+ 
+ #ifdef MOLDOESCOMPLEX
+@@ -657,6 +743,7 @@
+   return;
+ }
+ 
++
+  /*@@
+    @routine    MoL_FillAllLevels
+    @date       Fri Apr 25 16:11:18 2003
+@@ -779,6 +866,11 @@
+              MoL_Num_Evolved_Vars,MoLNumEvolvedVariables);
+ 
+   CCTK_VInfo(CCTK_THORNSTRING,
++             "The maximum number of evolved implicit variables is %d. "
++             "%d are registered.",
++             MoL_Num_Evolved_Implicit_Vars,MoLNumEvolvedImplicitVariables);
++
++  CCTK_VInfo(CCTK_THORNSTRING,
+              "The maximum number of constrained variables is %d. "
+              "%d are registered.",
+              MoL_Num_Constrained_Vars,MoLNumConstrainedVariables);
+@@ -856,6 +948,19 @@
+       }
+     }
+ 
++    if (MoLNumEvolvedImplicitVariables)
++    {
++      CCTK_INFO("The evolved implicit variables are:");
++      for (var = 0; var < MoLNumEvolvedVariables; var++)
++      {
++        if (RHS2VariableIndex[var] != -1)
++        {
++          CCTK_VInfo(CCTK_THORNSTRING,"   %d   :   %s",
++                     var, CCTK_VarName(EvolvedVariableIndex[var]));
++        }
++      }
++    }
++
+     if (MoLNumConstrainedVariables)
+     {    
+       CCTK_INFO("The constrained variables are:");
+diff -ruN -x .svn MoL-old/src/MoL.h MoL-IMEX/src/MoL.h
+--- MoL-old/src/MoL.h	2012-08-29 13:28:31.000000000 -0400
++++ MoL-IMEX/src/MoL.h	2011-11-16 11:59:24.000000000 -0500
+@@ -19,6 +19,7 @@
+ 
+ #ifdef CCODE
+ 
++CCTK_INT MoL_RegisterEvolvedIMEX(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex, CCTK_INT RHS2Index);
+ CCTK_INT MoL_RegisterEvolved(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex);
+ CCTK_INT MoL_RegisterConstrained(CCTK_INT ConstrainedIndex);
+ CCTK_INT MoL_RegisterSaveAndRestore(CCTK_INT SandRIndex);
+@@ -26,8 +27,8 @@
+ CCTK_INT MoL_ChangeToConstrained(CCTK_INT ConstrainedIndex);
+ CCTK_INT MoL_ChangeToSaveAndRestore(CCTK_INT SandRIndex);
+ CCTK_INT MoL_ChangeToNone(CCTK_INT RemoveIndex);
+-CCTK_INT MoL_RegisterEvolvedGroup(CCTK_INT EvolvedGroupIndex, 
+-                                  CCTK_INT RHSGroupIndex);
++CCTK_INT MoL_RegisterEvolvedGroup(CCTK_INT EvolvedGroupIndex, CCTK_INT RHSGroupIndex);
++CCTK_INT MoL_RegisterEvolvedGroupIMEX(CCTK_INT EvolvedGroupIndex, CCTK_INT RHSGroupIndex, CCTK_INT RHS2GroupIndex);
+ CCTK_INT MoL_RegisterConstrainedGroup(CCTK_INT ConstrainedGroupIndex);
+ CCTK_INT MoL_RegisterSaveAndRestoreGroup(CCTK_INT SandRGroupIndex);
+ 
+diff -ruN -x .svn MoL-old/src/MoLFunctions.h MoL-IMEX/src/MoLFunctions.h
+--- MoL-old/src/MoLFunctions.h	2012-08-29 13:28:31.000000000 -0400
++++ MoL-IMEX/src/MoLFunctions.h	2011-11-16 11:59:24.000000000 -0500
+@@ -12,6 +12,7 @@
+ #ifndef MOL_FUNCTIONS_H
+ #define MOL_FUNCTIONS_H
+ 
++CCTK_INT MoL_RegisterEvolvedIMEX(CCTK_INT IN EvolvedIndex, CCTK_INT IN RHSIndex, CCTK_INT IN RHS2Index);
+ CCTK_INT MoL_RegisterEvolved(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex);
+ CCTK_INT MoL_RegisterConstrained(CCTK_INT ConstrainedIndex);
+ CCTK_INT MoL_RegisterSaveAndRestore(CCTK_INT SandRIndex);
+@@ -19,8 +20,8 @@
+ CCTK_INT MoL_ChangeToConstrained(CCTK_INT ConstrainedIndex);
+ CCTK_INT MoL_ChangeToSaveAndRestore(CCTK_INT SandRIndex);
+ CCTK_INT MoL_ChangeToNone(CCTK_INT RemoveIndex);
+-CCTK_INT MoL_RegisterEvolvedGroup(CCTK_INT EvolvedGroupIndex, 
+-                                  CCTK_INT RHSGroupIndex);
++CCTK_INT MoL_RegisterEvolvedGroup(CCTK_INT EvolvedGroupIndex, CCTK_INT RHSGroupIndex);
++CCTK_INT MoL_RegisterEvolvedGroupIMEX(CCTK_INT EvolvedGroupIndex, CCTK_INT RHSGroupIndex,CCTK_INT RHS2GroupIndex);
+ CCTK_INT MoL_RegisterConstrainedGroup(CCTK_INT ConstrainedGroupIndex);
+ CCTK_INT MoL_RegisterSaveAndRestoreGroup(CCTK_INT SandRGroupIndex);
+ 
+diff -ruN -x .svn MoL-old/src/ParamCheck.c MoL-IMEX/src/ParamCheck.c
+--- MoL-old/src/ParamCheck.c	2012-08-29 13:28:31.000000000 -0400
++++ MoL-IMEX/src/ParamCheck.c	2011-11-16 11:59:24.000000000 -0500
+@@ -160,6 +160,22 @@
+                    "and the number of scratch levels at least 13.");
+   }
+ 
++  if ( (CCTK_Equals(ODE_Method, "RKIMEX2")) &&
++       ( !((MoL_Intermediate_Steps == 4)||(MoL_Num_Scratch_Levels > 3)) ) )
++  {
++    CCTK_PARAMWARN("When using the RKIMEX evolver, the "
++                   "number of intermediate steps must be 4 " 
++                   "and the number of scratch levels at least 4.");
++  }
++
++ if ( (CCTK_Equals(ODE_Method, "RKIMEX3")) &&
++       ( !((MoL_Intermediate_Steps == 6)||(MoL_Num_Scratch_Levels > 5)) ) )
++  {
++    CCTK_PARAMWARN("When using the RKIMEX evolver, the "
++                   "number of intermediate steps must be 6 " 
++                   "and the number of scratch levels at least 6.");
++  }
++
+   if (adaptive_stepsize)
+   {
+     if (CCTK_Equals(ODE_Method, "RK45")||CCTK_Equals(ODE_Method, "RK45CK")||CCTK_Equals(ODE_Method, "RK65")||CCTK_Equals(ODE_Method, "RK87"))
+diff -ruN -x .svn MoL-old/src/RHSNaNCheck.c MoL-IMEX/src/RHSNaNCheck.c
+--- MoL-old/src/RHSNaNCheck.c	2012-08-29 13:28:31.000000000 -0400
++++ MoL-IMEX/src/RHSNaNCheck.c	2011-11-16 11:59:24.000000000 -0500
+@@ -78,6 +78,28 @@
+   for (var = 0; var < MoLNumEvolvedVariables; var++)
+   {
+     char * const varname = CCTK_FullName(RHSVariableIndex[var]);
++
++    num_nans += CheckVarsForNaN(cctkGH,
++                                -1,
++                                varname,
++                                check_for,
++                                action_if_found);
++    free(varname);
++  }
++
++  if (num_nans)
++  {
++    CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,
++               "NaNs were found on iteration %d inside MoL",
++               (int)(MoL_Intermediate_Steps - *MoL_Intermediate_Step + 1));
++  }
++
++  num_nans = 0;
++
++  for (var = 0; var < MoLNumEvolvedImplicitVariables; var++)
++  {
++    char * const varname = CCTK_FullName(RHS2VariableIndex[var]);
++
+     num_nans += CheckVarsForNaN(cctkGH,
+                                 -1,
+                                 varname,
+diff -ruN -x .svn MoL-old/src/RKIMEX2.c MoL-IMEX/src/RKIMEX2.c
+--- MoL-old/src/RKIMEX2.c	1969-12-31 19:00:00.000000000 -0500
++++ MoL-IMEX/src/RKIMEX2.c	2011-11-16 11:59:24.000000000 -0500
+@@ -0,0 +1,318 @@
++
++ /*@@
++   @file      RKIMEX2.c
++   @date      Dec 2009
++   @author    Daniela Alic and Ian Hawke
++   @desc 
++   RKIMEX following Pareschi and Russo, 2005  
++   (J.Sci.Comput.,25,112)
++   @enddesc 
++   @version   $Header: /cactusdevcvs/CactusBase/MoL/src/RKIMEX2.c,v 1.5 2008/09/23 15:46:30 schnetter Exp $
++ @@*/
++
++#include "cctk.h"
++#include "cctk_Arguments.h"
++#include "cctk_Parameters.h"
++
++#include <stdio.h>
++#include <math.h>
++#include "ExternalVariables.h"
++
++static const char *rcsid = "$Header: /cactusdevcvs/CactusBase/MoL/src/RKIMEX2.c,v 1.5 2008/09/23 15:46:30 schnetter Exp $";
++
++CCTK_FILEVERSION(CactusBase_MoL_RKIMEX2_c);
++
++/********************************************************************
++ *********************     Local Data Types   ***********************
++ ********************************************************************/
++
++/********************************************************************
++ ********************* Local Routine Prototypes *********************
++ ********************************************************************/
++
++/********************************************************************
++ ***************** Scheduled Routine Prototypes *********************
++ ********************************************************************/
++
++void MoL_RKIMEX2Add(CCTK_ARGUMENTS);
++
++/********************************************************************
++ ********************* Other Routine Prototypes *********************
++ ********************************************************************/
++
++/********************************************************************
++ *********************     Local Data   *****************************
++ ********************************************************************/
++
++/********************************************************************
++ *********************     External Routines   **********************
++ ********************************************************************/
++
++ /*@@
++   @routine    MoL_RKIMEX2Add
++   @date       
++   @author     
++   @desc 
++   Performs a single step of a RKIMEX2 type time
++   integration.
++   @enddesc 
++   @calls     
++   @calledby   
++   @history 
++ 
++   @endhistory 
++
++@@*/
++
++void MoL_RKIMEX2Add(CCTK_ARGUMENTS)
++{
++
++  DECLARE_CCTK_ARGUMENTS;
++  DECLARE_CCTK_PARAMETERS;
++    
++  cGroupDynamicData arraydata;
++  CCTK_INT groupindex, ierr;
++  CCTK_INT arraytotalsize, arraydim;
++
++  CCTK_INT index, var, var2, scratchstep, scratchindex;
++  CCTK_INT totalsize;
++  CCTK_REAL expl, impl;
++  CCTK_REAL * restrict UpdateVar;
++  CCTK_REAL * restrict OldVar;
++  CCTK_REAL const * restrict RHSVar;
++  CCTK_REAL const * restrict RHS2Var;
++  CCTK_REAL * restrict ScratchVar;
++  CCTK_REAL * restrict Scratch2Var;
++  CCTK_REAL expl_array[4][4];
++  CCTK_REAL impl_array[4][4];
++
++  CCTK_INT arrayscratchlocation;
++
++  totalsize = 1;
++  for (arraydim = 0; arraydim < cctk_dim; arraydim++)
++  {
++    totalsize *= cctk_lsh[arraydim];
++  }
++
++  char real_str[50];  // Buffer to hold string
++  CCTK_REAL value;
++  value =  (*Original_Delta_Time) / cctkGH->cctk_timefac;
++  snprintf(real_str, sizeof(real_str), "%.19g", value); // Convert value to a string and place it in real_str
++
++  CCTK_ParameterSet("RKtime", "MoL", real_str); 
++
++  CCTK_REAL m12, m13, m14, m16, m23, m11, m21;
++
++  m12 = 1.0/2.0;
++  m13 = 1.0/3.0;
++  m14 = 1.0/4.0;
++  m16 = 1.0/6.0;
++  m23 = 2.0/3.0;
++
++/* coefficients for RK2 type 1 */
++
++  if (RKIMEX_type==1) 
++  {
++    char m14_str[50]; 
++    char m13_str[50];
++    snprintf(m14_str, sizeof(m14_str), "%.19g", m14);
++    snprintf(m13_str, sizeof(m13_str), "%.19g", m13);
++
++    switch (MoL_Intermediate_Steps - (*MoL_Intermediate_Step))
++    {
++      case 0:
++      CCTK_ParameterSet("RKStiff", "MoL", m14_str);
++      break;
++      case 1:
++      CCTK_ParameterSet("RKStiff", "MoL", m14_str);
++      break;
++      case 2:
++      CCTK_ParameterSet("RKStiff", "MoL", m13_str);
++      break;
++      case 3:
++      CCTK_ParameterSet("RKStiff", "MoL", "0.0");
++    }
++
++    expl_array[0][0] = 0.0; expl_array[0][1] = 0.0; expl_array[0][2] = 0.0; expl_array[0][3] = 0.0;
++    expl_array[1][0] = 0.0; expl_array[1][1] = m12; expl_array[1][2] = 0.0; expl_array[1][3] = 0.0;
++    expl_array[2][0] = 0.0; expl_array[2][1] = m12; expl_array[2][2] = m12; expl_array[2][3] = 0.0;
++    expl_array[3][0] = 0.0; expl_array[3][1] = m13; expl_array[3][2] = m13; expl_array[3][3] = m13;
++
++    impl_array[0][0] = 0.0; impl_array[0][1] = 0.0; impl_array[0][2] = 0.0; impl_array[0][3] = 0.0;
++    impl_array[1][0] = 0.0; impl_array[1][1] = 0.0; impl_array[1][2] = 0.0; impl_array[1][3] = 0.0;
++    impl_array[2][0] = 0.0; impl_array[2][1] = m13; impl_array[2][2] = m13; impl_array[2][3] = 0.0;
++    impl_array[3][0] = 0.0; impl_array[3][1] = m13; impl_array[3][2] = m13; impl_array[3][3] = m13;
++  }
++
++ /* coefficients for RK2 type 2 */
++
++  if (RKIMEX_type==2) 
++  {
++    CCTK_REAL gama;
++    gama = 1.0 - 1.0 / sqrt(2.0);
++    m11 = 1.0 - 2.0*gama; 
++    m21 = 0.5 - gama;
++
++    char gama_str[50];  // Buffer to hold string
++    snprintf(gama_str, sizeof(gama_str), "%.19g", gama); // Convert gama to a string and place it in gama_str
++
++    switch (MoL_Intermediate_Steps - (*MoL_Intermediate_Step))
++    {
++      case 0:
++      CCTK_ParameterSet("RKStiff", "MoL", gama_str);
++      break;
++      case 1:
++      CCTK_ParameterSet("RKStiff", "MoL", gama_str);
++      break;
++      case 2:
++      CCTK_ParameterSet("RKStiff", "MoL", gama_str);
++      break;
++      case 3:
++      CCTK_ParameterSet("RKStiff", "MoL", "0.0");
++    }
++
++    expl_array[0][0] = 0.0; expl_array[0][1] = 0.0; expl_array[0][2] = 0.0; expl_array[0][3] = 0.0;
++    expl_array[1][0] = 0.0; expl_array[1][1] = 1.0; expl_array[1][2] = 0.0; expl_array[1][3] = 0.0;
++    expl_array[2][0] = 0.0; expl_array[2][1] = m14; expl_array[2][2] = m14; expl_array[2][3] = 0.0;
++    expl_array[3][0] = 0.0; expl_array[3][1] = m16; expl_array[3][2] = m16; expl_array[3][3] = m23;
++
++    impl_array[0][0] = 0.0; impl_array[0][1] = 0.0; impl_array[0][2] = 0.0; impl_array[0][3] = 0.0;
++    impl_array[1][0] = 0.0; impl_array[1][1] = m11; impl_array[1][2] = 0.0; impl_array[1][3] = 0.0;
++    impl_array[2][0] = 0.0; impl_array[2][1] = m21; impl_array[2][2] = 0.0; impl_array[2][3] = 0.0;
++    impl_array[3][0] = 0.0; impl_array[3][1] = m16; impl_array[3][2] = m16; impl_array[3][3] = m23;
++  }
++
++  /* Real GFs */
++
++  for (var = 0, var2 = 0; var < MoLNumEvolvedVariables; var++, var2++)
++  {
++    int const has_implicit_rhs = RHS2VariableIndex[var] != -1;
++    if (! has_implicit_rhs) var2--;
++   
++    const CCTK_REAL tmp = (*Original_Delta_Time) / cctkGH->cctk_timefac;
++
++    UpdateVar = (CCTK_REAL *)CCTK_VarDataPtrI(cctkGH, 0, 
++                                              EvolvedVariableIndex[var]);
++    RHSVar = (CCTK_REAL const *)CCTK_VarDataPtrI(cctkGH, 0, 
++                                                 RHSVariableIndex[var]);
++    if (has_implicit_rhs)
++    {
++      RHS2Var = (CCTK_REAL const *)CCTK_VarDataPtrI(cctkGH, 0, 
++                                                    RHS2VariableIndex[var]);
++    }
++    else
++    {
++      RHS2Var = NULL;
++    }
++
++    int const offset =
++        (MoL_Num_Evolved_Vars + MoL_Num_Evolved_Implicit_Vars)
++      * (MoL_Intermediate_Steps - (*MoL_Intermediate_Step));
++    
++    ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
++					      CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
++					      + var 
++					      + offset);
++
++    if (has_implicit_rhs)
++    {
++      Scratch2Var = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
++						 CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
++						 + MoL_Num_Evolved_Vars + var2
++						 + offset);
++    }
++    else
++    {
++      Scratch2Var = NULL;
++    }
++
++    #pragma omp parallel for
++    for (index = 0; index < totalsize; index++)
++    {
++      ScratchVar[index] = tmp * RHSVar[index];
++    }
++
++    if (has_implicit_rhs)
++    {
++      #pragma omp parallel for
++      for (index = 0; index < totalsize; index++)
++      {
++        Scratch2Var[index] = tmp * RHS2Var[index]; 
++      }
++    }
++     
++  } /* for var */
++  if (var2 != MoLNumEvolvedImplicitVariables)
++  {
++    CCTK_WARN (0, "counting error");
++  }
++
++  for (var = 0, var2 = 0; var < MoLNumEvolvedVariables; var++, var2++)
++  {
++    int const has_implicit_rhs = RHS2VariableIndex[var] != -1;
++    if (! has_implicit_rhs) var2--;
++    
++    UpdateVar = (CCTK_REAL *)CCTK_VarDataPtrI(cctkGH, 0, 
++                                              EvolvedVariableIndex[var]);
++    OldVar = (CCTK_REAL *)CCTK_VarDataPtrI(cctkGH, 1, 
++                                           EvolvedVariableIndex[var]);
++     
++    #pragma omp parallel for
++    for (index = 0; index < totalsize; index++)
++    {
++      UpdateVar[index] = OldVar[index];
++    }
++
++    for (scratchstep = 0; 
++         scratchstep < MoL_Intermediate_Steps - (*MoL_Intermediate_Step) + 1;
++         scratchstep++)
++    { 
++      int const offset = (MoL_Num_Evolved_Vars + MoL_Num_Evolved_Implicit_Vars)*scratchstep;  
++  
++      ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
++						CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
++						+ var 
++						+ offset);
++      
++      if (has_implicit_rhs)
++      { 
++	Scratch2Var = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
++						   CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
++						   + MoL_Num_Evolved_Vars + var2
++						   + offset);
++      }
++ 
++        expl = expl_array[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)][scratchstep];
++        impl = impl_array[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)][scratchstep];
++
++      if (has_implicit_rhs)
++      {
++        #pragma omp parallel for
++        for (index = 0; index < totalsize; index++)
++        {
++          UpdateVar[index] += expl * ScratchVar[index] + impl * Scratch2Var[index];
++        }
++      }
++      else
++      {
++        #pragma omp parallel for
++	for (index = 0; index < totalsize; index++)
++	{
++	  UpdateVar[index] += expl * ScratchVar[index];
++	}
++      }
++
++    } /* for scratchstep */
++    
++  } /* for var */
++  if (var2 != MoLNumEvolvedImplicitVariables)
++  {
++    CCTK_WARN (0, "counting error");
++  }
++    
++  return;
++}
++
++
++
++
+diff -ruN -x .svn MoL-old/src/RKIMEX3.c MoL-IMEX/src/RKIMEX3.c
+--- MoL-old/src/RKIMEX3.c	1969-12-31 19:00:00.000000000 -0500
++++ MoL-IMEX/src/RKIMEX3.c	2011-11-16 11:59:24.000000000 -0500
+@@ -0,0 +1,304 @@
++
++ /*@@
++   @file      RKIMEX3.c
++   @date      Jan 2011
++   @author    Daniela Alic
++   @desc 
++   RKIMEX following Pareschi and Russo, 2005  
++   (J.Sci.Comput.,25,112)
++   @enddesc 
++   @version   $Header: /cactusdevcvs/CactusBase/MoL/src/RKIMEX3.c,v 1.5 2008/09/23 15:46:30 schnetter Exp $
++ @@*/
++
++#include "cctk.h"
++#include "cctk_Arguments.h"
++#include "cctk_Parameters.h"
++
++#include <stdio.h>
++#include <math.h>
++#include "ExternalVariables.h"
++
++static const char *rcsid = "$Header: /cactusdevcvs/CactusBase/MoL/src/RKIMEX3.c,v 1.5 2008/09/23 15:46:30 schnetter Exp $";
++
++CCTK_FILEVERSION(CactusBase_MoL_RKIMEX3_c);
++
++/********************************************************************
++ *********************     Local Data Types   ***********************
++ ********************************************************************/
++
++/********************************************************************
++ ********************* Local Routine Prototypes *********************
++ ********************************************************************/
++
++/********************************************************************
++ ***************** Scheduled Routine Prototypes *********************
++ ********************************************************************/
++
++void MoL_RKIMEX3Add(CCTK_ARGUMENTS);
++
++/********************************************************************
++ ********************* Other Routine Prototypes *********************
++ ********************************************************************/
++
++/********************************************************************
++ *********************     Local Data   *****************************
++ ********************************************************************/
++
++/********************************************************************
++ *********************     External Routines   **********************
++ ********************************************************************/
++
++ /*@@
++   @routine    MoL_RKIMEX3Add
++   @date       
++   @author     
++   @desc 
++   Performs a single step of a RKIMEX3 type time
++   integration.
++   @enddesc 
++   @calls     
++   @calledby   
++   @history 
++ 
++   @endhistory 
++
++@@*/
++
++void MoL_RKIMEX3Add(CCTK_ARGUMENTS)
++{
++
++  DECLARE_CCTK_ARGUMENTS;
++  DECLARE_CCTK_PARAMETERS;
++    
++  cGroupDynamicData arraydata;
++  CCTK_INT groupindex, ierr;
++  CCTK_INT arraytotalsize, arraydim;
++
++  CCTK_INT index, var, var2, scratchstep, scratchindex;
++  CCTK_INT totalsize;
++  CCTK_REAL impl;
++  CCTK_REAL * restrict UpdateVar;
++  CCTK_REAL * restrict OldVar;
++  CCTK_REAL const * restrict RHSVar;
++  CCTK_REAL const * restrict RHS2Var;
++  CCTK_REAL * restrict Scratch2Var;
++  CCTK_REAL impl_array[6][6];
++  CCTK_REAL c_old[6];
++  CCTK_REAL c_prev[6];
++  CCTK_REAL c_flux[6];
++  CCTK_REAL cold, cprev, cflux;
++
++  CCTK_INT arrayscratchlocation;
++
++  totalsize = 1;
++  for (arraydim = 0; arraydim < cctk_dim; arraydim++)
++  {
++    totalsize *= cctk_lsh[arraydim];
++  }
++
++  char real_str[50];  // Buffer to hold string
++  CCTK_REAL value;
++  value =  (*Original_Delta_Time) / cctkGH->cctk_timefac;
++  snprintf(real_str, sizeof(real_str), "%.19g", value); // Convert value to a string and place it in real_str
++
++  CCTK_ParameterSet("RKtime", "MoL", real_str); 
++
++  CCTK_REAL m13, m14, m16, m23, m34, ma, mb, me, m22, m33, m31, m32;
++
++  m13 = 1.0/3.0;
++  m14 = 1.0/4.0;
++  m16 = 1.0/6.0;
++  m23 = 2.0/3.0;
++  m34 = 3.0/4.0;
++  ma  = 0.24169426078821;
++  mb  = 0.06042356519705;
++  me  = 0.12915286960590;
++
++ /* coefficients for RK3 type 1 */
++
++  if (RKIMEX_type==1) 
++  {
++    char ma_str[50]; 
++    snprintf(ma_str, sizeof(ma_str), "%.19g", ma); 
++
++    switch (MoL_Intermediate_Steps - (*MoL_Intermediate_Step))
++    {
++      case 0:
++      CCTK_ParameterSet("RKStiff", "MoL", ma_str);
++      break;
++      case 1:
++      CCTK_ParameterSet("RKStiff", "MoL", ma_str);
++      break;
++      case 2:
++      CCTK_ParameterSet("RKStiff", "MoL", ma_str);
++      break;
++      case 3:
++      CCTK_ParameterSet("RKStiff", "MoL", ma_str);
++      break;
++      case 4:
++      CCTK_ParameterSet("RKStiff", "MoL", "0.0");
++      break;
++      case 5:
++      CCTK_ParameterSet("RKStiff", "MoL", "0.0");
++    }
++
++    m22 = 1.0 - ma;
++    m33 = 0.5 - mb - me - ma;
++
++    c_old[0]  = 1.0; c_old[1]  = 1.0; c_old[2]  = 1.0; c_old[3]  = m34; c_old[4]  = m13; c_old[5]  = 0.0;
++    c_prev[0] = 0.0; c_prev[1] = 0.0; c_prev[2] = 0.0; c_prev[3] = m14; c_prev[4] = m23; c_prev[5] = 1.0;
++    c_flux[0] = 0.0; c_flux[1] = 0.0; c_flux[2] = 1.0; c_flux[3] = m14; c_flux[4] = m23; c_flux[5] = 0.0;
++
++    impl_array[0][0] = 0.0; impl_array[0][1] = 0.0;    impl_array[0][2] = 0.0;        impl_array[0][3] = 0.0;         impl_array[0][4] = 0.0;        impl_array[0][5] = 0.0;
++    impl_array[1][0] = 0.0; impl_array[1][1] =-ma;     impl_array[1][2] = 0.0;        impl_array[1][3] = 0.0;         impl_array[1][4] = 0.0;        impl_array[1][5] = 0.0;
++    impl_array[2][0] = 0.0; impl_array[2][1] = 0.0;    impl_array[2][2] = m22;        impl_array[2][3] = 0.0;         impl_array[2][4] = 0.0;        impl_array[2][5] = 0.0;
++    impl_array[3][0] = 0.0; impl_array[3][1] = mb;     impl_array[3][2] = me-m14*m22; impl_array[3][3] = m33-m14*ma;  impl_array[3][4] = 0.0;        impl_array[3][5] = 0.0;
++    impl_array[4][0] = 0.0; impl_array[4][1] =-m23*mb; impl_array[4][2] = m16-m23*me; impl_array[4][3] = m16-m23*m33; impl_array[4][4] = m23-m23*ma; impl_array[4][5] = 0.0;
++    impl_array[5][0] = 0.0; impl_array[5][1] = 0.0;    impl_array[5][2] = 0.0;        impl_array[5][3] = 0.0;         impl_array[5][4] = 0.0;        impl_array[5][5] = 0.0;
++  }
++
++ /* coefficients for RK3 type 2 */
++
++  if (RKIMEX_type==2) 
++  {
++    char m13_str[50]; 
++    snprintf(m13_str, sizeof(m13_str), "%.19g", m13); 
++    char m16_str[50]; 
++    snprintf(m16_str, sizeof(m16_str), "%.19g", m16); 
++
++    switch (MoL_Intermediate_Steps - (*MoL_Intermediate_Step))
++    {
++      case 0:
++      CCTK_ParameterSet("RKStiff", "MoL", m13_str);
++      break;
++      case 1:
++      CCTK_ParameterSet("RKStiff", "MoL", m13_str);
++      break;
++      case 2:
++      CCTK_ParameterSet("RKStiff", "MoL", m13_str);
++      break;
++      case 3:
++      CCTK_ParameterSet("RKStiff", "MoL", m13_str);
++      break;
++      case 4:
++      CCTK_ParameterSet("RKStiff", "MoL", m16_str);
++      break;
++      case 5:
++      CCTK_ParameterSet("RKStiff", "MoL", "0.0");
++    }
++
++    m22 = 1.0 - m13;
++    m33 = 0.5 - mb - me - ma;
++    m31 = 3.0*(2.0/9.0 + m23 - 1.0)/8.0;
++    m32 = 3.0*(- 4.0/9.0 + 1.0)/8.0;
++
++    c_old[0]  = 1.0; c_old[1]  = 1.0; c_old[2]  = 1.0; c_old[3]  = m34; c_old[4]  = m13; c_old[5]  = 0.0;
++    c_prev[0] = 0.0; c_prev[1] = 0.0; c_prev[2] = 0.0; c_prev[3] = m14; c_prev[4] = m23; c_prev[5] = 1.0;
++    c_flux[0] = 0.0; c_flux[1] = 0.0; c_flux[2] = 1.0; c_flux[3] = m14; c_flux[4] = m23; c_flux[5] = 0.0;
++
++    impl_array[0][0] = 0.0; impl_array[0][1] = 0.0;     impl_array[0][2] = 0.0;         impl_array[0][3] = 0.0;      impl_array[0][4] = 0.0;     impl_array[0][5] = 0.0;
++    impl_array[1][0] = 0.0; impl_array[1][1] =-m13;     impl_array[1][2] = 0.0;         impl_array[1][3] = 0.0;      impl_array[1][4] = 0.0;     impl_array[1][5] = 0.0;
++    impl_array[2][0] = 0.0; impl_array[2][1] = 0.0;     impl_array[2][2] = m22;         impl_array[2][3] = 0.0;      impl_array[2][4] = 0.0;     impl_array[2][5] = 0.0;
++    impl_array[3][0] = 0.0; impl_array[3][1] = m31;     impl_array[3][2] = m32-m14*m22; impl_array[3][3] = -m13*m14; impl_array[3][4] = 0.0;     impl_array[3][5] = 0.0;
++    impl_array[4][0] = 0.0; impl_array[4][1] =-m23*m31; impl_array[4][2] = m16-m23*m32; impl_array[4][3] = 0.0;      impl_array[4][4] = m23*m23; impl_array[4][5] = 0.0;
++    impl_array[5][0] = 0.0; impl_array[5][1] = 0.0;     impl_array[5][2] = 0.0;         impl_array[5][3] = 0.0;      impl_array[5][4] = 0.0;     impl_array[5][5] = 0.0;
++  }
++
++  /* Real GFs */
++
++  for (var = 0, var2 = 0; var < MoLNumEvolvedVariables; var++, var2++)
++  {
++    int const has_implicit_rhs = RHS2VariableIndex[var] != -1;
++    if (! has_implicit_rhs) var2--;
++    
++    const CCTK_REAL tmp = (*Original_Delta_Time) / cctkGH->cctk_timefac;
++
++    int const offset = (MoL_Num_Evolved_Implicit_Vars)*(MoL_Intermediate_Steps - (*MoL_Intermediate_Step));
++
++    if (has_implicit_rhs)
++    {
++      RHS2Var = (CCTK_REAL const *)CCTK_VarDataPtrI(cctkGH, 0, RHS2VariableIndex[var]);
++
++      Scratch2Var = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
++						 CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
++						 + var2
++						 + offset);
++
++      #pragma omp parallel for
++      for (index = 0; index < totalsize; index++)
++      {
++        Scratch2Var[index] = tmp * RHS2Var[index]; 
++      }
++    }
++    else
++    {
++      RHS2Var = NULL;
++      Scratch2Var = NULL;
++    }
++
++  } /* for var */
++  if (var2 != MoLNumEvolvedImplicitVariables)
++  {
++    CCTK_WARN (0, "counting error");
++  }
++
++  for (var = 0, var2 = 0; var < MoLNumEvolvedVariables; var++, var2++)
++  {
++    int const has_implicit_rhs = RHS2VariableIndex[var] != -1;
++    if (! has_implicit_rhs) var2--;
++    
++    UpdateVar = (CCTK_REAL *)CCTK_VarDataPtrI(cctkGH, 0, 
++					      EvolvedVariableIndex[var]);
++    OldVar = (CCTK_REAL *)CCTK_VarDataPtrI(cctkGH, 1, 
++					   EvolvedVariableIndex[var]);
++    RHSVar = (CCTK_REAL const *)CCTK_VarDataPtrI(cctkGH, 0, 
++                                                 RHSVariableIndex[var]);
++
++    const CCTK_REAL tmp = (*Original_Delta_Time) / cctkGH->cctk_timefac;
++  
++    cold  = c_old[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)];
++    cprev = c_prev[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)];
++    cflux = c_flux[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)];    
++
++    #pragma omp parallel for
++    for (index = 0; index < totalsize; index++)
++    {
++      UpdateVar[index] = cold*OldVar[index] + cprev*UpdateVar[index] + cflux*tmp*RHSVar[index];
++    }
++
++    if (has_implicit_rhs)
++    { 
++     for (scratchstep = 0; 
++	 scratchstep < MoL_Intermediate_Steps - (*MoL_Intermediate_Step) + 1;
++	 scratchstep++)
++     {
++       int const offset = MoL_Num_Evolved_Implicit_Vars*scratchstep;
++
++       Scratch2Var = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
++						   CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
++						   + var2
++						   + offset);
++
++       impl = impl_array[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)][scratchstep];
++
++       #pragma omp parallel for
++       for (index = 0; index < totalsize; index++)
++       {
++	 UpdateVar[index] += impl * Scratch2Var[index];
++       }
++     } /* for scratchstep */
++    } /* for if implicit rhs */
++  } /* for var */
++
++  if (var2 != MoLNumEvolvedImplicitVariables)
++  {
++    CCTK_WARN (0, "counting error");
++  }
++    
++  return;
++}
++
++
++
++
++
+diff -ruN -x .svn MoL-old/src/RKIMEX3_v1.c MoL-IMEX/src/RKIMEX3_v1.c
+--- MoL-old/src/RKIMEX3_v1.c	1969-12-31 19:00:00.000000000 -0500
++++ MoL-IMEX/src/RKIMEX3_v1.c	2011-11-16 11:59:24.000000000 -0500
+@@ -0,0 +1,347 @@
++
++ /*@@
++   @file      RKIMEX3.c
++   @date      Dec 2009
++   @author    Daniela Alic and Ian Hawke
++   @desc 
++   RKIMEX following Pareschi and Russo, 2005  
++   (J.Sci.Comput.,25,112)
++   @enddesc 
++   @version   $Header: /cactusdevcvs/CactusBase/MoL/src/RKIMEX3.c,v 1.5 2008/09/23 15:46:30 schnetter Exp $
++ @@*/
++
++#include "cctk.h"
++#include "cctk_Arguments.h"
++#include "cctk_Parameters.h"
++
++#include <stdio.h>
++#include <math.h>
++#include "ExternalVariables.h"
++
++static const char *rcsid = "$Header: /cactusdevcvs/CactusBase/MoL/src/RKIMEX3.c,v 1.5 2008/09/23 15:46:30 schnetter Exp $";
++
++CCTK_FILEVERSION(CactusBase_MoL_RKIMEX3_c);
++
++/********************************************************************
++ *********************     Local Data Types   ***********************
++ ********************************************************************/
++
++/********************************************************************
++ ********************* Local Routine Prototypes *********************
++ ********************************************************************/
++
++/********************************************************************
++ ***************** Scheduled Routine Prototypes *********************
++ ********************************************************************/
++
++void MoL_RKIMEX3Add(CCTK_ARGUMENTS);
++
++/********************************************************************
++ ********************* Other Routine Prototypes *********************
++ ********************************************************************/
++
++/********************************************************************
++ *********************     Local Data   *****************************
++ ********************************************************************/
++
++/********************************************************************
++ *********************     External Routines   **********************
++ ********************************************************************/
++
++ /*@@
++   @routine    MoL_RKIMEX3Add
++   @date       
++   @author     
++   @desc 
++   Performs a single step of a RKIMEX3 type time
++   integration.
++   @enddesc 
++   @calls     
++   @calledby   
++   @history 
++ 
++   @endhistory 
++
++@@*/
++
++void MoL_RKIMEX3Add(CCTK_ARGUMENTS)
++{
++
++  DECLARE_CCTK_ARGUMENTS;
++  DECLARE_CCTK_PARAMETERS;
++    
++  cGroupDynamicData arraydata;
++  CCTK_INT groupindex, ierr;
++  CCTK_INT arraytotalsize, arraydim;
++
++  CCTK_INT index, var, var2, scratchstep, scratchindex;
++  CCTK_INT totalsize;
++  CCTK_REAL expl, impl;
++  CCTK_REAL * restrict UpdateVar;
++  CCTK_REAL * restrict OldVar;
++  CCTK_REAL const * restrict RHSVar;
++  CCTK_REAL const * restrict RHS2Var;
++  CCTK_REAL * restrict ScratchVar;
++  CCTK_REAL * restrict Scratch2Var;
++  CCTK_REAL expl_array[6][6];
++  CCTK_REAL impl_array[6][6];
++
++  CCTK_INT arrayscratchlocation;
++
++  totalsize = 1;
++  for (arraydim = 0; arraydim < cctk_dim; arraydim++)
++  {
++    totalsize *= cctk_lsh[arraydim];
++  }
++
++  char real_str[50];  // Buffer to hold string
++  CCTK_REAL value;
++  value =  (*Original_Delta_Time) / cctkGH->cctk_timefac;
++  snprintf(real_str, sizeof(real_str), "%.19g", value); // Convert value to a string and place it in real_str
++
++  CCTK_ParameterSet("RKtime", "MoL", real_str); 
++
++  CCTK_REAL m13, m14, m16, m23, m34, ma, mb, me, m22, m33, m31, m32;
++
++  m13 = 1.0/3.0;
++  m14 = 1.0/4.0;
++  m16 = 1.0/6.0;
++  m23 = 2.0/3.0;
++  m34 = 3.0/4.0;
++  ma  = 0.24169426078821;
++  mb  = 0.06042356519705;
++  me  = 0.12915286960590;
++
++ /* coefficients for RK3 type 1 */
++
++  if (RKIMEX_type==1) 
++  {
++    char ma_str[50]; 
++    snprintf(ma_str, sizeof(ma_str), "%.19g", ma); 
++
++    switch (MoL_Intermediate_Steps - (*MoL_Intermediate_Step))
++    {
++      case 0:
++      CCTK_ParameterSet("RKStiff", "MoL", ma_str);
++      break;
++      case 1:
++      CCTK_ParameterSet("RKStiff", "MoL", ma_str);
++      break;
++      case 2:
++      CCTK_ParameterSet("RKStiff", "MoL", ma_str);
++      break;
++      case 3:
++      CCTK_ParameterSet("RKStiff", "MoL", ma_str);
++      break;
++      case 4:
++      CCTK_ParameterSet("RKStiff", "MoL", "0.0");
++      break;
++      case 5:
++      CCTK_ParameterSet("RKStiff", "MoL", "0.0");
++    }
++
++    m22 = 1.0 - ma;
++    m33 = 0.5 - mb - me - ma;
++
++    expl_array[0][0] = 0.0; expl_array[0][1] = 0.0; expl_array[0][2] = 0.0; expl_array[0][3] = 0.0; expl_array[0][4] = 0.0; expl_array[0][5] = 0.0;
++    expl_array[1][0] = 0.0; expl_array[1][1] = 0.0; expl_array[1][2] = 0.0; expl_array[1][3] = 0.0; expl_array[1][4] = 0.0; expl_array[1][5] = 0.0;
++    expl_array[2][0] = 0.0; expl_array[2][1] = 0.0; expl_array[2][2] = 1.0; expl_array[2][3] = 0.0; expl_array[2][4] = 0.0; expl_array[2][5] = 0.0;
++    expl_array[3][0] = 0.0; expl_array[3][1] = 0.0; expl_array[3][2] = m14; expl_array[3][3] = m14; expl_array[3][4] = 0.0; expl_array[3][5] = 0.0;
++    expl_array[4][0] = 0.0; expl_array[4][1] = 0.0; expl_array[4][2] = m16; expl_array[4][3] = m16; expl_array[4][4] = m23; expl_array[4][5] = 0.0;
++    expl_array[5][0] = 0.0; expl_array[5][1] = 0.0; expl_array[5][2] = m16; expl_array[5][3] = m16; expl_array[5][4] = m23; expl_array[5][5] = 0.0;
++
++    impl_array[0][0] = 0.0; impl_array[0][1] = 0.0; impl_array[0][2] = 0.0; impl_array[0][3] = 0.0; impl_array[0][4] = 0.0; impl_array[0][5] = 0.0;
++    impl_array[1][0] = 0.0; impl_array[1][1] = -ma; impl_array[1][2] = 0.0; impl_array[1][3] = 0.0; impl_array[1][4] = 0.0; impl_array[1][5] = 0.0;
++    impl_array[2][0] = 0.0; impl_array[2][1] = 0.0; impl_array[2][2] = m22; impl_array[2][3] = 0.0; impl_array[2][4] = 0.0; impl_array[2][5] = 0.0;
++    impl_array[3][0] = 0.0; impl_array[3][1] = mb;  impl_array[3][2] = me;  impl_array[3][3] = m33; impl_array[3][4] = 0.0; impl_array[3][5] = 0.0;
++    impl_array[4][0] = 0.0; impl_array[4][1] = 0.0; impl_array[4][2] = m16; impl_array[4][3] = m16; impl_array[4][4] = m23; impl_array[4][5] = 0.0;
++    impl_array[5][0] = 0.0; impl_array[5][1] = 0.0; impl_array[5][2] = m16; impl_array[5][3] = m16; impl_array[5][4] = m23; impl_array[5][5] = 0.0;
++  }
++
++ /* coefficients for RK3 type 2 */
++
++  if (RKIMEX_type==2) 
++  {
++    char m13_str[50]; 
++    snprintf(m13_str, sizeof(m13_str), "%.19g", m13); 
++    char m16_str[50]; 
++    snprintf(m16_str, sizeof(m16_str), "%.19g", m16); 
++
++    switch (MoL_Intermediate_Steps - (*MoL_Intermediate_Step))
++    {
++      case 0:
++      CCTK_ParameterSet("RKStiff", "MoL", m13_str);
++      break;
++      case 1:
++      CCTK_ParameterSet("RKStiff", "MoL", m13_str);
++      break;
++      case 2:
++      CCTK_ParameterSet("RKStiff", "MoL", m13_str);
++      break;
++      case 3:
++      CCTK_ParameterSet("RKStiff", "MoL", m13_str);
++      break;
++      case 4:
++      CCTK_ParameterSet("RKStiff", "MoL", m16_str);
++      break;
++      case 5:
++      CCTK_ParameterSet("RKStiff", "MoL", "0.0");
++    }
++
++    m22 = 1.0 - m13;
++    m33 = 0.5 - mb - me - ma;
++    m31 = 3.0*(2.0/9.0 + m23 - 1.0)/8.0;
++    m32 = 3.0*(- 4.0/9.0 + 1.0)/8.0;
++
++    expl_array[0][0] = 0.0; expl_array[0][1] = 0.0; expl_array[0][2] = 0.0; expl_array[0][3] = 0.0; expl_array[0][4] = 0.0; expl_array[0][5] = 0.0;
++    expl_array[1][0] = 0.0; expl_array[1][1] = 0.0; expl_array[1][2] = 0.0; expl_array[1][3] = 0.0; expl_array[1][4] = 0.0; expl_array[1][5] = 0.0;
++    expl_array[2][0] = 0.0; expl_array[2][1] = 0.0; expl_array[2][2] = 1.0; expl_array[2][3] = 0.0; expl_array[2][4] = 0.0; expl_array[2][5] = 0.0;
++    expl_array[3][0] = 0.0; expl_array[3][1] = 0.0; expl_array[3][2] = m14; expl_array[3][3] = m14; expl_array[3][4] = 0.0; expl_array[3][5] = 0.0;
++    expl_array[4][0] = 0.0; expl_array[4][1] = 0.0; expl_array[4][2] = m16; expl_array[4][3] = m16; expl_array[4][4] = m23; expl_array[4][5] = 0.0;
++    expl_array[5][0] = 0.0; expl_array[5][1] = 0.0; expl_array[5][2] = m16; expl_array[5][3] = m16; expl_array[5][4] = m23; expl_array[5][5] = 0.0;
++
++    impl_array[0][0] = 0.0; impl_array[0][1] = 0.0; impl_array[0][2] = 0.0; impl_array[0][3] = 0.0; impl_array[0][4] = 0.0; impl_array[0][5] = 0.0;
++    impl_array[1][0] = 0.0; impl_array[1][1] =-m13; impl_array[1][2] = 0.0; impl_array[1][3] = 0.0; impl_array[1][4] = 0.0; impl_array[1][5] = 0.0;
++    impl_array[2][0] = 0.0; impl_array[2][1] = 0.0; impl_array[2][2] = m22; impl_array[2][3] = 0.0; impl_array[2][4] = 0.0; impl_array[2][5] = 0.0;
++    impl_array[3][0] = 0.0; impl_array[3][1] = m31; impl_array[3][2] = m32; impl_array[3][3] = 0.0; impl_array[3][4] = 0.0; impl_array[3][5] = 0.0;
++    impl_array[4][0] = 0.0; impl_array[4][1] = 0.0; impl_array[4][2] = m16; impl_array[4][3] = 0.0; impl_array[4][4] = m23; impl_array[4][5] = 0.0;
++    impl_array[5][0] = 0.0; impl_array[5][1] = 0.0; impl_array[5][2] = m16; impl_array[5][3] = 0.0; impl_array[5][4] = m23; impl_array[5][5] = m16;
++  }
++
++  /* Real GFs */
++
++  for (var = 0, var2 = 0; var < MoLNumEvolvedVariables; var++, var2++)
++  {
++    int const has_implicit_rhs = RHS2VariableIndex[var] != -1;
++    if (! has_implicit_rhs) var2--;
++    
++    const CCTK_REAL tmp = (*Original_Delta_Time) / cctkGH->cctk_timefac;
++    
++    UpdateVar = (CCTK_REAL *)CCTK_VarDataPtrI(cctkGH, 0, 
++                                              EvolvedVariableIndex[var]);
++    RHSVar = (CCTK_REAL const *)CCTK_VarDataPtrI(cctkGH, 0, 
++                                                 RHSVariableIndex[var]);
++    if (has_implicit_rhs)
++    {
++      RHS2Var = (CCTK_REAL const *)CCTK_VarDataPtrI(cctkGH, 0, 
++						    RHS2VariableIndex[var]);
++    }
++    else
++    {
++      RHS2Var = NULL;
++    }
++
++    int const offset =
++        (MoL_Num_Evolved_Vars + MoL_Num_Evolved_Implicit_Vars)
++      * (MoL_Intermediate_Steps - (*MoL_Intermediate_Step));
++
++    ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
++					      CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
++					      + var 
++					      + offset);
++
++    if (has_implicit_rhs)
++    {
++      Scratch2Var = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
++						 CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
++						 + MoL_Num_Evolved_Vars + var2
++						 + offset);
++    }
++    else
++    {
++      Scratch2Var = NULL;
++    }
++
++    #pragma omp parallel for
++    for (index = 0; index < totalsize; index++)
++    {
++      ScratchVar[index] = tmp * RHSVar[index];
++    }
++
++    if (has_implicit_rhs)
++    {
++      #pragma omp parallel for
++      for (index = 0; index < totalsize; index++)
++      {
++        Scratch2Var[index] = tmp * RHS2Var[index]; 
++      }
++    }
++     
++  } /* for var */
++  if (var2 != MoLNumEvolvedImplicitVariables)
++  {
++    CCTK_WARN (0, "counting error");
++  }
++
++ 
++  for (var = 0, var2 = 0; var < MoLNumEvolvedVariables; var++, var2++)
++  {
++    int const has_implicit_rhs = RHS2VariableIndex[var] != -1;
++    if (! has_implicit_rhs) var2--;
++    
++    UpdateVar = (CCTK_REAL *)CCTK_VarDataPtrI(cctkGH, 0, 
++					      EvolvedVariableIndex[var]);
++    OldVar = (CCTK_REAL *)CCTK_VarDataPtrI(cctkGH, 1, 
++					   EvolvedVariableIndex[var]);
++    
++    #pragma omp parallel for
++    for (index = 0; index < totalsize; index++)
++    {
++      UpdateVar[index] = OldVar[index];
++    }
++
++    for (scratchstep = 0; 
++	 scratchstep < MoL_Intermediate_Steps - (*MoL_Intermediate_Step) + 1;
++	 scratchstep++)
++    {
++    
++      int const offset = (MoL_Num_Evolved_Vars + MoL_Num_Evolved_Implicit_Vars)*scratchstep;
++
++      ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
++						CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
++						+ var 
++						+ offset);
++      
++      if (has_implicit_rhs)
++      { 
++	Scratch2Var = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
++						   CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
++						   + MoL_Num_Evolved_Vars + var2
++						   + offset);
++      }
++      
++      expl = expl_array[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)][scratchstep];
++      impl = impl_array[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)][scratchstep];
++
++      if (has_implicit_rhs)
++      {
++        #pragma omp parallel for
++	for (index = 0; index < totalsize; index++)
++	{
++	  UpdateVar[index] += expl * ScratchVar[index] + impl * Scratch2Var[index];
++	}
++      }
++      else
++      {
++        #pragma omp parallel for
++	for (index = 0; index < totalsize; index++)
++	{
++	  UpdateVar[index] += expl * ScratchVar[index];
++	}
++      }
++      
++    } /* for scratchstep */
++    
++  } /* for var */
++  if (var2 != MoLNumEvolvedImplicitVariables)
++  {
++    CCTK_WARN (0, "counting error");
++  }
++    
++  return;
++}
++
++
++
++
++
+diff -ruN -x .svn MoL-old/src/RKIMEX3_v2.c MoL-IMEX/src/RKIMEX3_v2.c
+--- MoL-old/src/RKIMEX3_v2.c	1969-12-31 19:00:00.000000000 -0500
++++ MoL-IMEX/src/RKIMEX3_v2.c	2011-11-16 11:59:24.000000000 -0500
+@@ -0,0 +1,304 @@
++
++ /*@@
++   @file      RKIMEX3.c
++   @date      Jan 2011
++   @author    Daniela Alic
++   @desc 
++   RKIMEX following Pareschi and Russo, 2005  
++   (J.Sci.Comput.,25,112)
++   @enddesc 
++   @version   $Header: /cactusdevcvs/CactusBase/MoL/src/RKIMEX3.c,v 1.5 2008/09/23 15:46:30 schnetter Exp $
++ @@*/
++
++#include "cctk.h"
++#include "cctk_Arguments.h"
++#include "cctk_Parameters.h"
++
++#include <stdio.h>
++#include <math.h>
++#include "ExternalVariables.h"
++
++static const char *rcsid = "$Header: /cactusdevcvs/CactusBase/MoL/src/RKIMEX3.c,v 1.5 2008/09/23 15:46:30 schnetter Exp $";
++
++CCTK_FILEVERSION(CactusBase_MoL_RKIMEX3_c);
++
++/********************************************************************
++ *********************     Local Data Types   ***********************
++ ********************************************************************/
++
++/********************************************************************
++ ********************* Local Routine Prototypes *********************
++ ********************************************************************/
++
++/********************************************************************
++ ***************** Scheduled Routine Prototypes *********************
++ ********************************************************************/
++
++void MoL_RKIMEX3Add(CCTK_ARGUMENTS);
++
++/********************************************************************
++ ********************* Other Routine Prototypes *********************
++ ********************************************************************/
++
++/********************************************************************
++ *********************     Local Data   *****************************
++ ********************************************************************/
++
++/********************************************************************
++ *********************     External Routines   **********************
++ ********************************************************************/
++
++ /*@@
++   @routine    MoL_RKIMEX3Add
++   @date       
++   @author     
++   @desc 
++   Performs a single step of a RKIMEX3 type time
++   integration.
++   @enddesc 
++   @calls     
++   @calledby   
++   @history 
++ 
++   @endhistory 
++
++@@*/
++
++void MoL_RKIMEX3Add(CCTK_ARGUMENTS)
++{
++
++  DECLARE_CCTK_ARGUMENTS;
++  DECLARE_CCTK_PARAMETERS;
++    
++  cGroupDynamicData arraydata;
++  CCTK_INT groupindex, ierr;
++  CCTK_INT arraytotalsize, arraydim;
++
++  CCTK_INT index, var, var2, scratchstep, scratchindex;
++  CCTK_INT totalsize;
++  CCTK_REAL impl;
++  CCTK_REAL * restrict UpdateVar;
++  CCTK_REAL * restrict OldVar;
++  CCTK_REAL const * restrict RHSVar;
++  CCTK_REAL const * restrict RHS2Var;
++  CCTK_REAL * restrict Scratch2Var;
++  CCTK_REAL impl_array[6][6];
++  CCTK_REAL c_old[6];
++  CCTK_REAL c_prev[6];
++  CCTK_REAL c_flux[6];
++  CCTK_REAL cold, cprev, cflux;
++
++  CCTK_INT arrayscratchlocation;
++
++  totalsize = 1;
++  for (arraydim = 0; arraydim < cctk_dim; arraydim++)
++  {
++    totalsize *= cctk_lsh[arraydim];
++  }
++
++  char real_str[50];  // Buffer to hold string
++  CCTK_REAL value;
++  value =  (*Original_Delta_Time) / cctkGH->cctk_timefac;
++  snprintf(real_str, sizeof(real_str), "%.19g", value); // Convert value to a string and place it in real_str
++
++  CCTK_ParameterSet("RKtime", "MoL", real_str); 
++
++  CCTK_REAL m13, m14, m16, m23, m34, ma, mb, me, m22, m33, m31, m32;
++
++  m13 = 1.0/3.0;
++  m14 = 1.0/4.0;
++  m16 = 1.0/6.0;
++  m23 = 2.0/3.0;
++  m34 = 3.0/4.0;
++  ma  = 0.24169426078821;
++  mb  = 0.06042356519705;
++  me  = 0.12915286960590;
++
++ /* coefficients for RK3 type 1 */
++
++  if (RKIMEX_type==1) 
++  {
++    char ma_str[50]; 
++    snprintf(ma_str, sizeof(ma_str), "%.19g", ma); 
++
++    switch (MoL_Intermediate_Steps - (*MoL_Intermediate_Step))
++    {
++      case 0:
++      CCTK_ParameterSet("RKStiff", "MoL", ma_str);
++      break;
++      case 1:
++      CCTK_ParameterSet("RKStiff", "MoL", ma_str);
++      break;
++      case 2:
++      CCTK_ParameterSet("RKStiff", "MoL", ma_str);
++      break;
++      case 3:
++      CCTK_ParameterSet("RKStiff", "MoL", ma_str);
++      break;
++      case 4:
++      CCTK_ParameterSet("RKStiff", "MoL", "0.0");
++      break;
++      case 5:
++      CCTK_ParameterSet("RKStiff", "MoL", "0.0");
++    }
++
++    m22 = 1.0 - ma;
++    m33 = 0.5 - mb - me - ma;
++
++    c_old[0]  = 1.0; c_old[1]  = 1.0; c_old[2]  = 1.0; c_old[3]  = m34; c_old[4]  = m13; c_old[5]  = 0.0;
++    c_prev[0] = 0.0; c_prev[1] = 0.0; c_prev[2] = 0.0; c_prev[3] = m14; c_prev[4] = m23; c_prev[5] = 1.0;
++    c_flux[0] = 0.0; c_flux[1] = 0.0; c_flux[2] = 1.0; c_flux[3] = m14; c_flux[4] = m23; c_flux[5] = 0.0;
++
++    impl_array[0][0] = 0.0; impl_array[0][1] = 0.0;    impl_array[0][2] = 0.0;        impl_array[0][3] = 0.0;         impl_array[0][4] = 0.0;        impl_array[0][5] = 0.0;
++    impl_array[1][0] = 0.0; impl_array[1][1] =-ma;     impl_array[1][2] = 0.0;        impl_array[1][3] = 0.0;         impl_array[1][4] = 0.0;        impl_array[1][5] = 0.0;
++    impl_array[2][0] = 0.0; impl_array[2][1] = 0.0;    impl_array[2][2] = m22;        impl_array[2][3] = 0.0;         impl_array[2][4] = 0.0;        impl_array[2][5] = 0.0;
++    impl_array[3][0] = 0.0; impl_array[3][1] = mb;     impl_array[3][2] = me-m14*m22; impl_array[3][3] = m33-m14*ma;  impl_array[3][4] = 0.0;        impl_array[3][5] = 0.0;
++    impl_array[4][0] = 0.0; impl_array[4][1] =-m23*mb; impl_array[4][2] = m16-m23*me; impl_array[4][3] = m16-m23*m33; impl_array[4][4] = m23-m23*ma; impl_array[4][5] = 0.0;
++    impl_array[5][0] = 0.0; impl_array[5][1] = m23*mb; impl_array[5][2] = m23*me;     impl_array[5][3] = m23*m33;     impl_array[5][4] = m23*ma;     impl_array[5][5] = 0.0;
++  }
++
++ /* coefficients for RK3 type 2 */
++
++  if (RKIMEX_type==2) 
++  {
++    char m13_str[50]; 
++    snprintf(m13_str, sizeof(m13_str), "%.19g", m13); 
++    char m16_str[50]; 
++    snprintf(m16_str, sizeof(m16_str), "%.19g", m16); 
++
++    switch (MoL_Intermediate_Steps - (*MoL_Intermediate_Step))
++    {
++      case 0:
++      CCTK_ParameterSet("RKStiff", "MoL", m13_str);
++      break;
++      case 1:
++      CCTK_ParameterSet("RKStiff", "MoL", m13_str);
++      break;
++      case 2:
++      CCTK_ParameterSet("RKStiff", "MoL", m13_str);
++      break;
++      case 3:
++      CCTK_ParameterSet("RKStiff", "MoL", m13_str);
++      break;
++      case 4:
++      CCTK_ParameterSet("RKStiff", "MoL", m16_str);
++      break;
++      case 5:
++      CCTK_ParameterSet("RKStiff", "MoL", "0.0");
++    }
++
++    m22 = 1.0 - m13;
++    m33 = 0.5 - mb - me - ma;
++    m31 = 3.0*(2.0/9.0 + m23 - 1.0)/8.0;
++    m32 = 3.0*(- 4.0/9.0 + 1.0)/8.0;
++
++    c_old[0]  = 1.0; c_old[1]  = 1.0; c_old[2]  = 1.0; c_old[3]  = m34; c_old[4]  = m13; c_old[5]  = 0.0;
++    c_prev[0] = 0.0; c_prev[1] = 0.0; c_prev[2] = 0.0; c_prev[3] = m14; c_prev[4] = m23; c_prev[5] = 1.0;
++    c_flux[0] = 0.0; c_flux[1] = 0.0; c_flux[2] = 1.0; c_flux[3] = m14; c_flux[4] = m23; c_flux[5] = 0.0;
++
++    impl_array[0][0] = 0.0; impl_array[0][1] = 0.0;     impl_array[0][2] = 0.0;         impl_array[0][3] = 0.0; impl_array[0][4] = 0.0; impl_array[0][5] = 0.0;
++    impl_array[1][0] = 0.0; impl_array[1][1] =-m13;     impl_array[1][2] = 0.0;         impl_array[1][3] = 0.0; impl_array[1][4] = 0.0; impl_array[1][5] = 0.0;
++    impl_array[2][0] = 0.0; impl_array[2][1] = 0.0;     impl_array[2][2] = m22;         impl_array[2][3] = 0.0; impl_array[2][4] = 0.0; impl_array[2][5] = 0.0;
++    impl_array[3][0] = 0.0; impl_array[3][1] = m31;     impl_array[3][2] = m32-m14*m22; impl_array[3][3] = 0.0; impl_array[3][4] = 0.0; impl_array[3][5] = 0.0;
++    impl_array[4][0] = 0.0; impl_array[4][1] =-m23*m31; impl_array[4][2] = m16-m23*m32; impl_array[4][3] = 0.0; impl_array[4][4] = m23; impl_array[4][5] = 0.0;
++    impl_array[5][0] = 0.0; impl_array[5][1] = m23*m31; impl_array[5][2] = m23*m32;     impl_array[5][3] = 0.0; impl_array[5][4] = 0.0; impl_array[5][5] = m16;
++  }
++
++  /* Real GFs */
++
++  for (var = 0, var2 = 0; var < MoLNumEvolvedVariables; var++, var2++)
++  {
++    int const has_implicit_rhs = RHS2VariableIndex[var] != -1;
++    if (! has_implicit_rhs) var2--;
++    
++    const CCTK_REAL tmp = (*Original_Delta_Time) / cctkGH->cctk_timefac;
++
++    int const offset = (MoL_Num_Evolved_Implicit_Vars)*(MoL_Intermediate_Steps - (*MoL_Intermediate_Step));
++
++    if (has_implicit_rhs)
++    {
++      RHS2Var = (CCTK_REAL const *)CCTK_VarDataPtrI(cctkGH, 0, RHS2VariableIndex[var]);
++
++      Scratch2Var = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
++						 CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
++						 + var2
++						 + offset);
++
++      #pragma omp parallel for
++      for (index = 0; index < totalsize; index++)
++      {
++        Scratch2Var[index] = tmp * RHS2Var[index]; 
++      }
++    }
++    else
++    {
++      RHS2Var = NULL;
++      Scratch2Var = NULL;
++    }
++
++  } /* for var */
++  if (var2 != MoLNumEvolvedImplicitVariables)
++  {
++    CCTK_WARN (0, "counting error");
++  }
++
++  for (var = 0, var2 = 0; var < MoLNumEvolvedVariables; var++, var2++)
++  {
++    int const has_implicit_rhs = RHS2VariableIndex[var] != -1;
++    if (! has_implicit_rhs) var2--;
++    
++    UpdateVar = (CCTK_REAL *)CCTK_VarDataPtrI(cctkGH, 0, 
++					      EvolvedVariableIndex[var]);
++    OldVar = (CCTK_REAL *)CCTK_VarDataPtrI(cctkGH, 1, 
++					   EvolvedVariableIndex[var]);
++    RHSVar = (CCTK_REAL const *)CCTK_VarDataPtrI(cctkGH, 0, 
++                                                 RHSVariableIndex[var]);
++
++    const CCTK_REAL tmp = (*Original_Delta_Time) / cctkGH->cctk_timefac;
++  
++    cold  = c_old[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)];
++    cprev = c_prev[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)];
++    cflux = c_flux[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)];    
++
++    #pragma omp parallel for
++    for (index = 0; index < totalsize; index++)
++    {
++      UpdateVar[index] = cold*OldVar[index] + cprev*UpdateVar[index] + cflux*tmp*RHSVar[index];
++    }
++
++    if (has_implicit_rhs)
++    { 
++     for (scratchstep = 0; 
++	 scratchstep < MoL_Intermediate_Steps - (*MoL_Intermediate_Step) + 1;
++	 scratchstep++)
++     {
++       int const offset = MoL_Num_Evolved_Implicit_Vars*scratchstep;
++
++       Scratch2Var = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
++						   CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
++						   + var2
++						   + offset);
++
++       impl = impl_array[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)][scratchstep];
++
++       #pragma omp parallel for
++       for (index = 0; index < totalsize; index++)
++       {
++	 UpdateVar[index] += impl * Scratch2Var[index];
++       }
++     } /* for scratchstep */
++    } /* for if implicit rhs */
++  } /* for var */
++
++  if (var2 != MoLNumEvolvedImplicitVariables)
++  {
++    CCTK_WARN (0, "counting error");
++  }
++    
++  return;
++}
++
++
++
++
++
+diff -ruN -x .svn MoL-old/src/Registration.c MoL-IMEX/src/Registration.c
+--- MoL-old/src/Registration.c	2012-08-29 13:28:31.000000000 -0400
++++ MoL-IMEX/src/Registration.c	2011-11-16 11:59:24.000000000 -0500
+@@ -38,20 +38,23 @@
+  ********************* Other Routine Prototypes *********************
+  ********************************************************************/
+ 
++CCTK_INT MoL_RegisterEvolvedIMEX(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex, CCTK_INT RHS2Index);
++
+ CCTK_INT MoL_RegisterEvolved(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex);
+ 
+ CCTK_INT MoL_RegisterConstrained(CCTK_INT ConstrainedIndex);
+ 
+ CCTK_INT MoL_RegisterSaveAndRestore(CCTK_INT SandRIndex);
+ 
+-CCTK_INT MoL_RegisterEvolvedGroup(CCTK_INT EvolvedGroupIndex, 
+-                                  CCTK_INT RHSGroupIndex);
++CCTK_INT MoL_RegisterEvolvedGroup(CCTK_INT EvolvedGroupIndex, CCTK_INT RHSGroupIndex);
++
++CCTK_INT MoL_RegisterEvolvedGroupIMEX(CCTK_INT EvolvedGroupIndex, CCTK_INT RHSGroupIndex, CCTK_INT RHS2GroupIndex);
+ 
+ CCTK_INT MoL_RegisterConstrainedGroup(CCTK_INT ConstrainedGroupIndex);
+ 
+ CCTK_INT MoL_RegisterSaveAndRestoreGroup(CCTK_INT SandRGroupIndex);
+ 
+-
++CCTK_INT MoL_RegisterEvolvedRealIMEX(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex, CCTK_INT RHS2Index);
+ 
+ CCTK_INT MoL_RegisterEvolvedReal(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex);
+ 
+@@ -59,14 +62,14 @@
+ 
+ CCTK_INT MoL_RegisterSaveAndRestoreReal(CCTK_INT SandRIndex);
+ 
+-CCTK_INT MoL_RegisterEvolvedRealGroup(CCTK_INT EvolvedGroupIndex, 
+-                                  CCTK_INT RHSGroupIndex);
++CCTK_INT MoL_RegisterEvolvedRealGroup(CCTK_INT EvolvedGroupIndex, CCTK_INT RHSGroupIndex);
++
++CCTK_INT MoL_RegisterEvolvedRealGroupIMEX(CCTK_INT EvolvedGroupIndex, CCTK_INT RHSGroupIndex, CCTK_INT RHS2GroupIndex);
+ 
+ CCTK_INT MoL_RegisterConstrainedRealGroup(CCTK_INT ConstrainedGroupIndex);
+ 
+ CCTK_INT MoL_RegisterSaveAndRestoreRealGroup(CCTK_INT SandRGroupIndex);
+ 
+-
+ CCTK_INT MoL_RegisterEvolvedComplex(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex);
+ 
+ CCTK_INT MoL_RegisterConstrainedComplex(CCTK_INT ConstrainedIndex);
+@@ -80,6 +83,7 @@
+ 
+ CCTK_INT MoL_RegisterSaveAndRestoreComplexGroup(CCTK_INT SandRGroupIndex);
+ 
++CCTK_INT MoL_RegisterEvolvedArrayIMEX(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex, CCTK_INT RHS2Index);
+ 
+ CCTK_INT MoL_RegisterEvolvedArray(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex);
+ 
+@@ -87,14 +91,14 @@
+ 
+ CCTK_INT MoL_RegisterSaveAndRestoreArray(CCTK_INT SandRIndex);
+ 
+-CCTK_INT MoL_RegisterEvolvedArrayGroup(CCTK_INT EvolvedGroupIndex, 
+-                                       CCTK_INT RHSGroupIndex);
++CCTK_INT MoL_RegisterEvolvedArrayGroup(CCTK_INT EvolvedGroupIndex, CCTK_INT RHSGroupIndex);
++
++CCTK_INT MoL_RegisterEvolvedArrayGroupIMEX(CCTK_INT EvolvedGroupIndex, CCTK_INT RHSGroupIndex, CCTK_INT RHS2GroupIndex);
+ 
+ CCTK_INT MoL_RegisterConstrainedArrayGroup(CCTK_INT ConstrainedGroupIndex);
+ 
+ CCTK_INT MoL_RegisterSaveAndRestoreArrayGroup(CCTK_INT SandRGroupIndex);
+ 
+-
+ CCTK_INT MoL_RegisterEvolvedComplexArray(CCTK_INT EvolvedIndex, 
+                                          CCTK_INT RHSIndex);
+ 
+@@ -147,6 +151,12 @@
+ }
+ 
+ 
++CCTK_INT MoL_RegisterEvolved(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex)
++{
++ return MoL_RegisterEvolvedIMEX(EvolvedIndex, RHSIndex, -1);
++}
++
++
+  /*@@
+    @routine    MoL_RegisterEvolved
+    @date       Thu May 30 11:36:59 2002
+@@ -163,7 +173,7 @@
+ 
+ @@*/
+ 
+-CCTK_INT MoL_RegisterEvolved(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex)
++CCTK_INT MoL_RegisterEvolvedIMEX(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex, CCTK_INT RHS2Index)
+ {
+ 
+   CCTK_INT retval, GroupType;
+@@ -201,16 +211,16 @@
+             case CCTK_GF:
+               {
+                 retval +=
+-                  MoL_RegisterEvolvedReal(EvolvedIndex, 
+-                                          RHSIndex);
++                  MoL_RegisterEvolvedRealIMEX(EvolvedIndex, 
++						RHSIndex, RHS2Index);
+                 break;
+               }
+             case CCTK_ARRAY:
+             case CCTK_SCALAR:
+               {
+                 retval +=
+-                  MoL_RegisterEvolvedArray(EvolvedIndex, 
+-                                           RHSIndex);
++                  MoL_RegisterEvolvedArrayIMEX(EvolvedIndex, 
++                                           RHSIndex, RHS2Index);
+                 break;
+               }
+             default:
+@@ -498,13 +508,17 @@
+   }  
+   
+   return retval;
+-  
++
+ }
+ 
+-CCTK_INT MoL_RegisterEvolvedGroup(CCTK_INT EvolvedGroupIndex, 
+-                                  CCTK_INT RHSGroupIndex)
++CCTK_INT MoL_RegisterEvolvedGroup(CCTK_INT EvolvedGroupIndex, CCTK_INT RHSGroupIndex)
+ {
++  return MoL_RegisterEvolvedGroupIMEX(EvolvedGroupIndex, RHSGroupIndex, -1);
++}
+ 
++CCTK_INT MoL_RegisterEvolvedGroupIMEX(CCTK_INT EvolvedGroupIndex, 
++					CCTK_INT RHSGroupIndex, CCTK_INT RHS2GroupIndex)
++{
+   CCTK_INT retval, GroupFirstVar;
+   
+   retval = 0;
+@@ -519,7 +533,7 @@
+                CCTK_GroupName(EvolvedGroupIndex));
+     retval++;
+   }
+-
++ 
+   GroupFirstVar = CCTK_FirstVarIndexI(EvolvedGroupIndex);
+   if (GroupFirstVar < 0)
+   {
+@@ -538,46 +552,16 @@
+           case CCTK_GF:
+             {
+               retval +=
+-                MoL_RegisterEvolvedRealGroup(EvolvedGroupIndex, 
+-                                             RHSGroupIndex);
+-              break;
+-            }
+-          case CCTK_ARRAY:
+-          case CCTK_SCALAR:
+-            {
+-              retval +=
+-                MoL_RegisterEvolvedArrayGroup(EvolvedGroupIndex, 
+-                                              RHSGroupIndex);
+-              break;
+-            }
+-          default:
+-            {
+-              CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,
+-                         "The group '%s' is not a GF or an array", 
+-                         CCTK_GroupName(EvolvedGroupIndex));
+-              retval++;
+-              break;
+-            }
+-        }
+-        break;
+-      }
+-    case CCTK_VARIABLE_COMPLEX:
+-      {
+-        switch (CCTK_GroupTypeI(EvolvedGroupIndex))
+-        {
+-          case CCTK_GF:
+-            {
+-              retval +=
+-                MoL_RegisterEvolvedComplexGroup(EvolvedGroupIndex, 
+-                                                RHSGroupIndex);
++                MoL_RegisterEvolvedRealGroupIMEX(EvolvedGroupIndex, 
++                                             RHSGroupIndex, RHS2GroupIndex);
+               break;
+             }
+           case CCTK_ARRAY:
+           case CCTK_SCALAR:
+             {
+               retval +=
+-                MoL_RegisterEvolvedComplexArrayGroup(EvolvedGroupIndex, 
+-                                                     RHSGroupIndex);
++                MoL_RegisterEvolvedArrayGroupIMEX(EvolvedGroupIndex, 
++                                              RHSGroupIndex, RHS2GroupIndex);
+               break;
+             }
+           default:
+@@ -605,7 +589,6 @@
+ 
+ }
+ 
+-
+ CCTK_INT MoL_RegisterConstrainedGroup(CCTK_INT ConstrainedGroupIndex)
+ {
+ 
+@@ -822,16 +805,21 @@
+ 
+ CCTK_INT MoL_RegisterEvolvedReal(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex)
+ {
++ return MoL_RegisterEvolvedRealIMEX(EvolvedIndex, RHSIndex, -1);
++}
++
++CCTK_INT MoL_RegisterEvolvedRealIMEX(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex, CCTK_INT RHS2Index)
++{
+ 
+   DECLARE_CCTK_PARAMETERS;
+ 
+-  CCTK_INT /*  ierr, */ index, varused, numtimelevs1, numtimelevs2;
++  CCTK_INT /*  ierr, */ index, varused, numtimelevs1, numtimelevs2, numtimelevs3;
+   
+ #ifdef MOLDEBUG
+   printf("Arrived in MoLRegisterEvolved \n");
+-  printf("The indexes are %d and %d.\n",EvolvedIndex, RHSIndex);
+-  printf("These correspond to variables %s and %s.\n",
+-         CCTK_VarName(EvolvedIndex),CCTK_VarName(RHSIndex));
++  printf("The indexes are %d and %d and %d.\n",EvolvedIndex, RHSIndex, RHS2Index);
++  printf("These correspond to variables %s and %s and %s.\n",
++         CCTK_VarName(EvolvedIndex),CCTK_VarName(RHSIndex), CCTK_VarName(RHS2Index));
+   printf("The pointer to EvolvedVariableIndex: %p\n",
+          EvolvedVariableIndex);
+ #endif
+@@ -850,7 +838,15 @@
+                "The rhs variable %s is not a GF and so should "
+                "not be registered with MoLRegisterEvolved.", 
+                CCTK_VarName(RHSIndex)); 
+-  }    
++  }
++
++  if ((RHS2Index!=-1) && !(CCTK_GroupTypeFromVarI(RHS2Index)==CCTK_GF))
++  {
++    CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,
++               "The rhs variable %s is not a GF and so should "
++               "not be registered with MoLRegisterEvolved.", 
++               CCTK_VarName(RHS2Index)); 
++  }
+ 
+   if (!(CCTK_VarTypeI(EvolvedIndex)==CCTK_VARIABLE_REAL))
+   {
+@@ -868,10 +864,22 @@
+                CCTK_VarName(RHSIndex)); 
+   }
+ 
++  if ((RHS2Index!=-1) && !(CCTK_VarTypeI(RHS2Index)==CCTK_VARIABLE_REAL))
++  {
++    CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,
++               "The rhs variable %s is not of type CCTK_REAL and "
++               "so should not be registered with MoLRegisterEvolved.", 
++               CCTK_VarName(RHS2Index)); 
++  }
++
+   numtimelevs1 = CCTK_MaxTimeLevelsVI(EvolvedIndex);
+   numtimelevs2 = CCTK_MaxTimeLevelsVI(RHSIndex);
+-  
+-  if ( (numtimelevs1 < 0) || (numtimelevs2 < 0) ) 
++  if (RHS2Index!=-1) 
++  {
++   numtimelevs3 = CCTK_MaxTimeLevelsVI(RHS2Index);
++  }
++
++  if ( (numtimelevs1 < 0) || (numtimelevs2 < 0) || ((RHS2Index!=-1) && (numtimelevs3 < 0))) 
+   {
+     CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+                "Warning for variable index %i", EvolvedIndex); 
+@@ -886,7 +894,7 @@
+     CCTK_WARN(0, "The GF passed only has one timelevel. "
+               "It must have at least two.");
+   }
+-
++  
+   varused = 0;
+ 
+   for (index = 0; (index < MoLNumEvolvedVariables)&&(!varused); index++)
+@@ -897,7 +905,7 @@
+            index,EvolvedVariableIndex[index]);
+ #endif
+   }
+-
++  
+   if (varused)
+   {
+ 
+@@ -912,7 +920,7 @@
+   }
+   else
+   {
+-
++  
+     if (MoLNumEvolvedVariables+1 > MoL_Num_Evolved_Vars)
+     {
+       CCTK_WARN(0,"You have tried to register more evolved "
+@@ -921,11 +929,28 @@
+                 "you are accumulating onto this parameter correctly");
+     }
+   
++    if (RHS2Index!=-1)
++      {    
++       if (MoLNumEvolvedImplicitVariables+1 > MoL_Num_Evolved_Implicit_Vars)
++         {
++          CCTK_WARN(0,"You have tried to register more evolved implicit "
++                "variables than the accumulator parameter "
++                "MoL_Num_Evolved_Implicit_Variables allows. Check that "
++                "you are accumulating onto this parameter correctly");
++         }    
++      }
++
+     EvolvedVariableIndex[MoLNumEvolvedVariables] = EvolvedIndex;
+     RHSVariableIndex[MoLNumEvolvedVariables] = RHSIndex;
+-  
++    RHS2VariableIndex[MoLNumEvolvedVariables] = RHS2Index;
++
+     MoLNumEvolvedVariables++;
+ 
++    if (RHS2Index!=-1)
++    {
++     MoLNumEvolvedImplicitVariables++;
++    }
++
+ #ifdef MOLDEBUG
+     printf("The max number is now %d. Just added %d (%s).\n",
+            MoLNumEvolvedVariables, EvolvedIndex,
+@@ -934,19 +959,17 @@
+ 
+   }
+ 
+-  varused = -1;
++ varused = -1;
+ 
+-  for (index = 0; (index < MoLNumConstrainedVariables)&&(!(varused+1)); 
+-       index++)
++ for (index = 0; (index < MoLNumConstrainedVariables)&&(!(varused+1)); index++)
+   {
+     if (EvolvedIndex == ConstrainedVariableIndex[index])
+     {
+       varused = index;
+     }
+-    
+   }
+-  
+-  if ((varused+1))
++
++ if ((varused+1))
+   {
+     for (index = varused; index < MoLNumConstrainedVariables-1; index++)
+     {
+@@ -954,7 +977,7 @@
+     }
+     MoLNumConstrainedVariables--;
+   }
+-    
++
+   varused = -1;
+ 
+   for (index = 0; (index < MoLNumSandRVariables)&&(!(varused+1)); index++)
+@@ -1212,11 +1235,17 @@
+ }
+ 
+ CCTK_INT MoL_RegisterEvolvedRealGroup(CCTK_INT EvolvedGroupIndex, 
+-                                      CCTK_INT RHSGroupIndex)
++					    CCTK_INT RHSGroupIndex)
+ {
++return MoL_RegisterEvolvedRealGroupIMEX(EvolvedGroupIndex, RHSGroupIndex, -1);
++}
+ 
+-  CCTK_INT EvolvedGroupFirstVar, RHSGroupFirstVar, GroupNumVars, retval;
+-  CCTK_INT EvolvedVar, RHSVar;
++CCTK_INT MoL_RegisterEvolvedRealGroupIMEX(CCTK_INT EvolvedGroupIndex, 
++					    CCTK_INT RHSGroupIndex, CCTK_INT RHS2GroupIndex)
++{
++
++  CCTK_INT EvolvedGroupFirstVar, RHSGroupFirstVar, RHS2GroupFirstVar, GroupNumVars, retval;
++  CCTK_INT EvolvedVar, RHSVar, RHS2Var;
+   
+   EvolvedGroupFirstVar = CCTK_FirstVarIndexI(EvolvedGroupIndex);
+   if (EvolvedGroupFirstVar < 0)
+@@ -1234,6 +1263,17 @@
+               RHSGroupIndex);
+   }
+ 
++  if (RHS2GroupIndex!=-1)
++  {
++    RHS2GroupFirstVar = CCTK_FirstVarIndexI(RHS2GroupIndex);
++    if (RHS2GroupFirstVar < 0)
++    {
++      CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++               "RHS2 group index %d is not a real group index.",
++              RHS2GroupIndex);
++    }
++  }
++
+   GroupNumVars = CCTK_NumVarsInGroupI(EvolvedGroupIndex);
+   if (CCTK_NumVarsInGroupI(RHSGroupIndex) != GroupNumVars)
+   {
+@@ -1245,13 +1285,25 @@
+   
+   retval = 0;
+   
+-  for (EvolvedVar = EvolvedGroupFirstVar, RHSVar = RHSGroupFirstVar;
+-       EvolvedVar < EvolvedGroupFirstVar + GroupNumVars;
+-       EvolvedVar++, RHSVar++)
++  if (RHS2GroupIndex!=-1)
+   {
+-    retval += MoL_RegisterEvolvedReal(EvolvedVar, RHSVar);
++   for (EvolvedVar = EvolvedGroupFirstVar, RHSVar = RHSGroupFirstVar, RHS2Var = RHS2GroupFirstVar;
++        EvolvedVar < EvolvedGroupFirstVar + GroupNumVars;
++        EvolvedVar++, RHSVar++, RHS2Var++)
++   {
++    retval += MoL_RegisterEvolvedRealIMEX(EvolvedVar, RHSVar, RHS2Var);
++   }
+   }
+-  
++  else
++  {
++   for (EvolvedVar = EvolvedGroupFirstVar, RHSVar = RHSGroupFirstVar;
++        EvolvedVar < EvolvedGroupFirstVar + GroupNumVars;
++        EvolvedVar++, RHSVar++)
++   {
++     retval += MoL_RegisterEvolvedReal(EvolvedVar, RHSVar);
++   }
++  }
++
+   return retval;
+ }
+ 
+@@ -1797,19 +1849,23 @@
+ 
+ }
+ 
+-
+ CCTK_INT MoL_RegisterEvolvedArray(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex)
+ {
++  return MoL_RegisterEvolvedArrayIMEX(EvolvedIndex, RHSIndex, -1);
++}
++
++CCTK_INT MoL_RegisterEvolvedArrayIMEX(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex, CCTK_INT RHS2Index)
++{
+ 
+   DECLARE_CCTK_PARAMETERS;
+ 
+-  CCTK_INT /*  ierr,  */ index, varused, numtimelevs1, numtimelevs2;
++  CCTK_INT /*  ierr,  */ index, varused, numtimelevs1, numtimelevs2, numtimelevs3;
+   
+ #ifdef MOLDEBUG
+   printf("Arrived in MoLRegisterEvolvedArray \n");
+-  printf("The indexes are %d and %d.\n",EvolvedIndex, RHSIndex);
+-  printf("These correspond to variables %s and %s.\n",
+-         CCTK_VarName(EvolvedIndex),CCTK_VarName(RHSIndex));
++  printf("The indexes are %d and %d and %d.\n",EvolvedIndex, RHSIndex, RHS2Index);
++  printf("These correspond to variables %s and %s and %s.\n",
++         CCTK_VarName(EvolvedIndex),CCTK_VarName(RHSIndex), CCTK_VarName(RHS2Index));
+   printf("The pointer to EvolvedVariableIndex: %p\n",
+          EvolvedArrayVariableIndex);
+ #endif
+@@ -1830,6 +1886,18 @@
+                CCTK_VarName(RHSIndex)); 
+   }    
+ 
++  if ((RHS2Index!=-1) && !(CCTK_GroupTypeFromVarI(RHS2Index)==CCTK_ARRAY))
++  {
++    CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,
++               "The rhs2 variable %s is not an array and so "
++               "should not be registered with MoLRegisterEvolved.", 
++               CCTK_VarName(RHS2Index)); 
++  }    
++
++ CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,
++               "Change Evolved Array IMEX %s", 
++               CCTK_VarName(RHSIndex)); 
++
+   if (!(CCTK_VarTypeI(EvolvedIndex)==CCTK_VARIABLE_REAL))
+   {
+     CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,
+@@ -1848,10 +1916,23 @@
+                CCTK_VarName(RHSIndex)); 
+   }
+ 
++ if ((RHS2Index!=-1) && !(CCTK_VarTypeI(RHS2Index)==CCTK_VARIABLE_REAL))
++ {
++    CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,
++               "The rhs variable %s is not of type CCTK_REAL "
++               "and so should not be registered with "
++               "MoLRegisterEvolvedArray.", 
++               CCTK_VarName(RHS2Index)); 
++ }
++
+   numtimelevs1 = CCTK_MaxTimeLevelsVI(EvolvedIndex);
+   numtimelevs2 = CCTK_MaxTimeLevelsVI(RHSIndex);
+-  
+-  if ( (numtimelevs1 < 0) || (numtimelevs2 < 0) ) 
++ if (RHS2Index!=-1) 
++ {
++  numtimelevs3 = CCTK_MaxTimeLevelsVI(RHS2Index);
++ }
++
++  if ( (numtimelevs1 < 0) || (numtimelevs2 < 0) || ((RHS2Index!=-1) && (numtimelevs3 < 0))) 
+   {
+     CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+                "Warning for variable index %i", EvolvedIndex); 
+@@ -1866,7 +1947,7 @@
+     CCTK_WARN(0, "The array passed only has one timelevel. "
+               "It must have at least two.");
+   }
+-
++  
+   varused = 0;
+ 
+   for (index = 0; (index < MoLNumEvolvedArrayVariables)&&(!varused); index++)
+@@ -1877,7 +1958,7 @@
+            index,EvolvedArrayVariableIndex[index]);
+ #endif
+   }
+-
++  
+   if (varused)
+   {
+ 
+@@ -1904,7 +1985,8 @@
+ 
+     EvolvedArrayVariableIndex[MoLNumEvolvedArrayVariables] = EvolvedIndex;
+     RHSArrayVariableIndex[MoLNumEvolvedArrayVariables] = RHSIndex;
+-  
++    RHS2ArrayVariableIndex[MoLNumEvolvedArrayVariables] = RHS2Index;
++
+     MoLNumEvolvedArrayVariables++;
+     
+   }
+@@ -1948,6 +2030,7 @@
+ 
+ }
+ 
++
+ CCTK_INT MoL_RegisterConstrainedArray(CCTK_INT ConstrainedIndex)
+ {
+ 
+@@ -2049,7 +2132,6 @@
+   }  
+ 
+   return 0;
+-
+ }
+ 
+ CCTK_INT MoL_RegisterSaveAndRestoreArray(CCTK_INT SandRIndex)
+@@ -2147,9 +2229,15 @@
+ CCTK_INT MoL_RegisterEvolvedArrayGroup(CCTK_INT EvolvedGroupIndex, 
+                                        CCTK_INT RHSGroupIndex)
+ {
++return MoL_RegisterEvolvedArrayGroupIMEX(EvolvedGroupIndex, RHSGroupIndex, -1);
++}
++  
++CCTK_INT MoL_RegisterEvolvedArrayGroupIMEX(CCTK_INT EvolvedGroupIndex, 
++					     CCTK_INT RHSGroupIndex, CCTK_INT RHS2GroupIndex)
++{
+ 
+-  CCTK_INT EvolvedGroupFirstVar, RHSGroupFirstVar, GroupNumVars, retval;
+-  CCTK_INT EvolvedVar, RHSVar;
++  CCTK_INT EvolvedGroupFirstVar, RHSGroupFirstVar, RHS2GroupFirstVar, GroupNumVars, retval;
++  CCTK_INT EvolvedVar, RHSVar, RHS2Var;
+   
+   EvolvedGroupFirstVar = CCTK_FirstVarIndexI(EvolvedGroupIndex);
+   if (EvolvedGroupFirstVar < 0)
+@@ -2159,6 +2247,10 @@
+                EvolvedGroupIndex);
+   }
+   
++ CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++               "Change MoL_RegisterEvolvedArrayGroupIMEX %d.",
++               EvolvedGroupIndex);
++
+   RHSGroupFirstVar = CCTK_FirstVarIndexI(RHSGroupIndex);
+   if (RHSGroupFirstVar < 0)
+   {
+@@ -2167,6 +2259,17 @@
+               RHSGroupIndex);
+   }
+ 
++  if (RHS2GroupIndex!=-1)
++  {
++    RHS2GroupFirstVar = CCTK_FirstVarIndexI(RHS2GroupIndex);
++    if (RHS2GroupFirstVar < 0)
++    {
++      CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++               "RHS2 group index %d is not a real group index.",
++              RHS2GroupIndex);
++    }
++  }
++
+   GroupNumVars = CCTK_NumVarsInGroupI(EvolvedGroupIndex);
+   if (CCTK_NumVarsInGroupI(RHSGroupIndex) != GroupNumVars)
+   {
+@@ -2178,17 +2281,18 @@
+   
+   retval = 0;
+   
+-  for (EvolvedVar = EvolvedGroupFirstVar, RHSVar = RHSGroupFirstVar;
++  for (EvolvedVar = EvolvedGroupFirstVar, RHSVar = RHSGroupFirstVar, RHS2Var = RHS2GroupFirstVar;
+        EvolvedVar < EvolvedGroupFirstVar + GroupNumVars;
+-       EvolvedVar++, RHSVar++)
++       EvolvedVar++, RHSVar++, RHS2Var++)
+   {
+-    retval += MoL_RegisterEvolvedArray(EvolvedVar, RHSVar);
++    retval += MoL_RegisterEvolvedArrayIMEX(EvolvedVar, RHSVar, RHS2Var);
+   }
+ 
+   return retval;
+ 
+ }
+ 
++
+ CCTK_INT MoL_RegisterConstrainedArrayGroup(CCTK_INT ConstrainedGroupIndex)
+ {
+   
+diff -ruN -x .svn MoL-old/src/SetTime.c MoL-IMEX/src/SetTime.c
+--- MoL-old/src/SetTime.c	2012-08-29 13:28:31.000000000 -0400
++++ MoL-IMEX/src/SetTime.c	2011-11-16 11:59:24.000000000 -0500
+@@ -327,6 +327,14 @@
+          + ((alpha_array87[substep] - 1)
+             * (* Original_Delta_Time) / cctkGH->cctk_timefac));
+   }
++  else if (CCTK_EQUALS(ODE_Method,"RKIMEX2"))
++  {
++    cctkGH->cctk_time = (*Original_Time);
++  }
++  else if (CCTK_EQUALS(ODE_Method,"RKIMEX3"))
++  {
++    cctkGH->cctk_time = (*Original_Time);
++  }
+ #ifdef MOLDEBUG
+   printf("MoL has once more reset t (%d): %f.\n", 
+          *MoL_Intermediate_Step, cctkGH->cctk_time);
+@@ -439,6 +447,10 @@
+       = ((alpha_array87[substep + 1] - alpha_array87[substep])
+          * (* Original_Delta_Time));
+   }
++  else if (CCTK_EQUALS(ODE_Method,"RKIMEX"))
++  {
++      cctkGH->cctk_delta_time = (*Original_Delta_Time);
++  }
+ #ifdef MOLDEBUG
+   printf("MoL has once more reset dt (%d): %f.\n", 
+          *MoL_Intermediate_Step, 
+diff -ruN -x .svn MoL-old/src/Startup.c MoL-IMEX/src/Startup.c
+--- MoL-old/src/Startup.c	2012-08-29 13:28:31.000000000 -0400
++++ MoL-IMEX/src/Startup.c	2011-11-16 11:59:24.000000000 -0500
+@@ -27,10 +27,12 @@
+ 
+ CCTK_INT *EvolvedVariableIndex = NULL;
+ CCTK_INT *RHSVariableIndex = NULL;
++CCTK_INT *RHS2VariableIndex = NULL;
+ CCTK_INT *ConstrainedVariableIndex = NULL;
+ CCTK_INT *SandRVariableIndex = NULL;
+ 
+ CCTK_INT MoLNumEvolvedVariables = 0;
++CCTK_INT MoLNumEvolvedImplicitVariables = 0;
+ CCTK_INT MoLNumConstrainedVariables = 0;
+ CCTK_INT MoLNumSandRVariables = 0;
+ 
+@@ -47,6 +49,7 @@
+ 
+ CCTK_INT *EvolvedArrayVariableIndex = NULL;
+ CCTK_INT *RHSArrayVariableIndex = NULL;
++CCTK_INT *RHS2ArrayVariableIndex = NULL;
+ CCTK_INT *ConstrainedArrayVariableIndex = NULL;
+ CCTK_INT *SandRArrayVariableIndex = NULL;
+ 
+diff -ruN -x .svn MoL-old/src/make.code.defn MoL-IMEX/src/make.code.defn
+--- MoL-old/src/make.code.defn	2012-08-29 13:28:31.000000000 -0400
++++ MoL-IMEX/src/make.code.defn	2011-11-16 11:59:24.000000000 -0500
+@@ -16,6 +16,8 @@
+ 	RK45.c \
+ 	RK65.c \
+ 	RK87.c \
++	RKIMEX2.c \
++	RKIMEX3.c \
+ 	Registration.c \
+ 	RKCoefficients.c \
+ 	RHSNaNCheck.c \

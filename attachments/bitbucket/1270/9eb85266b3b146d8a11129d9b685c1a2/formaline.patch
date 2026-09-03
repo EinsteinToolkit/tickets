@@ -1,0 +1,51 @@
+Index: src/make.configuration.deps
+===================================================================
+--- src/make.configuration.deps	(revision 232)
++++ src/make.configuration.deps	(working copy)
+@@ -139,24 +139,28 @@
+ 	$(RM) -f $(@:%.c=%-????.c)
+ 	$(FORMALINE_BIN_DIR)/makeblob.pl $(@:%.c=%) '' Cactus < $<
+ 
++CACTUS_CONFIGS_DIR ?= configs
++CACTUS_REPL_EXPR = $(patsubst %/,%,$(patsubst /%,%,$(CACTUS_CONFIGS_DIR)))
++
+ $(TARBALL_DIR)/flesh-Cactus.tar.gz: $(TARBALL_DIR)/flesh-Cactus.files
+ 	cd $(CCTK_HOME) && \
+-	$(TAR) czf $@ -T $< || [ $$(( $$? / ($(IS_GNUTAR)+1) )) -eq 0 ]
++	$(TAR) --transform='s&^$(CACTUS_REPL_EXPR)/&configs/&' -czf $@ -T $< || [ $$(( $$? / ($(IS_GNUTAR)+1) )) -eq 0 ]
+ 
+ # This dependency means that the tarball for a thorn is only updated
+ # if the thorn is actually recompiled.  This does not catch changes to
+ # files that do not influence the executable.
+ $(TARBALL_DIR)/flesh-Cactus.files: $(CCTK_LIBDIR)/$(LIBNAME_PREFIX)$(CCTK_LIBNAME_PREFIX)$(FLESHLIB)$(LIBNAME_SUFFIX) $(TARBALL_DIR)/flesh-Cactus.ccldeps
++	@echo THORNLIST=$(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/ThornList 
+ 	cd $(CCTK_HOME) && \
+ 	find CONTRIBUTORS COPYRIGHT Makefile lib/ src/ \
+-		`ls configs/$(notdir $(TOP))/OptionList 2> /dev/null` \
+-		`ls configs/$(notdir $(TOP))/properties.ini 2> /dev/null` \
+-		`ls configs/$(notdir $(TOP))/RunScript 2> /dev/null` \
+-		`ls configs/$(notdir $(TOP))/ScriptFile 2> /dev/null` \
+-		`ls configs/$(notdir $(TOP))/SubmitScript 2> /dev/null` \
+-		configs/$(notdir $(TOP))/ThornList \
+-		configs/$(notdir $(TOP))/config-data \
+-		configs/$(notdir $(TOP))/config-info \
++		`ls $(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/OptionList 2> /dev/null` \
++		`ls $(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/properties.ini 2> /dev/null` \
++		`ls $(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/RunScript 2> /dev/null` \
++		`ls $(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/ScriptFile 2> /dev/null` \
++		`ls $(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/SubmitScript 2> /dev/null` \
++		$(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/ThornList \
++		$(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/config-data \
++		$(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/config-info \
+ 		-name 'CVS' -prune -o \
+ 		-name '_darcs' -prune -o \
+ 		-name '.git' -prune -o \
+@@ -167,7 +171,7 @@
+ 		-name '.?*' -prune -o \
+ 		-name '*~' -prune -o \
+ 		! -type d \
+-		-print > $@
++		-print >> $@
+ 
+ -include $(TARBALL_DIR)/flesh-Cactus.ccldeps
+ # Make aborts if these dependencies vanish.  Therefore mention only files

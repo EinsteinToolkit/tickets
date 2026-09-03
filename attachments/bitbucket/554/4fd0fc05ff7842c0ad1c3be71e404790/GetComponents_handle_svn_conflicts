@@ -1,0 +1,38 @@
+diff --git a/GetComponents b/GetComponents
+index ac2f2cc..9a0336e 100755
+--- a/GetComponents
++++ b/GetComponents
+@@ -1214,15 +1245,29 @@ sub handle_svn {
+             WARN($log);
+             push( @components_error, $checkout );
+         }
+-
+-        # check for possible conflicts
+-        if ( $out =~ /^C\s+/m ) {
+-            my $log =
+-              "Module $checkout has conflicts, don't forget to resolve\n";
++        elsif ($out =~ /^[CE]\s+/gm && $out =~ /conflicts/gm) {
++            my $log = "Module $checkout has conflicts, don't forget to resolve\n";
++            $out =~ s/^(?![CE]).*$//gmi;
++            $out =~ s/\n+/\n/g;
++            $log .= $out;
+             WARN($log);
+             push( @components_error, $checkout . ": conflict during update" );
+             $err = 1;
+         }
++        else {
++            $cmd = "cd $target/$dir && $svn status --non-interactive";
++            ( $err, $out ) = run_command( $cmd, $VERBOSE, $bad_cert );
++            if ($out =~ /^[CE]\s+/gm) {
++                my $log = "Module $checkout has conflicts, don't forget to resolve\n";
++                $out =~ s/^(?![CE]).*$//gmi;
++                $out =~ s/\n+/\n/g;
++                $log .= $out;
++                WARN($log);
++                push( @components_error, $checkout . ": pre-existing conflicts" );
++                $err = 1;
++            }
++        }
++
+         return $err;
+     }

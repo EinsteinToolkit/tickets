@@ -1,0 +1,32 @@
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 264)
++++ schedule.ccl	(working copy)
+@@ -271,11 +271,11 @@
+ 
+   if (CCTK_IsThornActive("PUGH" ))
+   {
+-     schedule GRHydro_Rho_Minima_Setup_Final_PUGH AT CCTK_PostInitial BEFORE MoL_PostStep
++     schedule GRHydro_Rho_Minima_Setup_Final_PUGH AT CCTK_PostInitial BEFORE (MoL_PostStepModify MoL_PostStep)
+      {
+        LANG: C
+      } "Set the value of the rest-mass density of the atmosphere which will be used during the evolution (PUGH)"
+-     schedule GRHydro_InitialAtmosphereResetM AT CCTK_PostInitial BEFORE MoL_PostStep AFTER GRHydro_Rho_Minima_Setup_Final_PUGH
++     schedule GRHydro_InitialAtmosphereResetM AT CCTK_PostInitial BEFORE (MoL_PostStepModify MoL_PostStep) AFTER GRHydro_Rho_Minima_Setup_Final_PUGH
+      {
+        LANG: Fortran
+      } "Use mask to enforce atmosphere at initial time"
+@@ -296,11 +296,11 @@
+ 
+   if (CCTK_IsThornActive("PUGH" ))
+   {
+-     schedule GRHydro_Rho_Minima_Setup_Final_PUGH AT CCTK_PostInitial BEFORE MoL_PostStep
++     schedule GRHydro_Rho_Minima_Setup_Final_PUGH AT CCTK_PostInitial BEFORE (MoL_PostStepModify MoL_PostStep)
+      {
+        LANG: C
+      } "Set the value of the rest-mass density of the atmosphere which will be used during the evolution (PUGH)"
+-     schedule GRHydro_InitialAtmosphereReset AT CCTK_PostInitial BEFORE MoL_PostStep AFTER GRHydro_Rho_Minima_Setup_Final_PUGH
++     schedule GRHydro_InitialAtmosphereReset AT CCTK_PostInitial BEFORE (MoL_PostStepModify MoL_PostStep) AFTER GRHydro_Rho_Minima_Setup_Final_PUGH
+      {
+        LANG: Fortran
+      } "Use mask to enforce atmosphere at initial time"

@@ -1,0 +1,100 @@
+From 6af4ae6ee8c67c067caf7501c5cd195b4d5fe2d5 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Mon, 14 Jan 2013 23:02:55 -0800
+Subject: [PATCH 01/12] GRHydro: add parameters to set Bondi solution only in
+ certain range.
+
+---
+ param.ccl            |   14 ++++++++++++++
+ schedule.ccl         |    7 +++++++
+ src/GRHydro_BondiM.c |   17 +++++++++++++++++
+ 3 files changed, 38 insertions(+)
+
+diff --git a/param.ccl b/param.ccl
+index 1eb8e46..0218b2b 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -395,6 +395,20 @@ CCTK_REAL  bondi_beta_sonicpt "Plasma beta parameter at the sonic point. Calcula
+   (0:* :: "positive"
+ } 1.0
+ 
++CCTK_BOOLEAN bondi_evolve_only_annulus "reset to initial data outside of bondi_freeze_inner_radius and bondi_freeze_outer_radius"
++{
++} "no"
++
++CCTK_REAL bondi_freeze_inner_radius "reset to initial at radii below this"
++{
++  *:* :: "any value"
++} -1.
++
++CCTK_REAL bondi_freeze_outer_radius "reset to initial at radii above this"
++{
++  *:* :: "any value"
++} 1e300
++
+ # For Poloidal Magnetic field test:
+ 
+ CCTK_REAL poloidal_A_b  "Vector potential strength"
+diff --git a/schedule.ccl b/schedule.ccl
+index 76563c9..d5aa21a 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -250,6 +250,13 @@ if (CCTK_EQUALS(initial_hydro, "magnetized_bondi_solution"))
+   } "setup GRHydro vars for the magnetized Bondi solution"
+ }
+ 
++if(bondi_evolve_only_annulus) {
++SCHEDULE GRHydro_BondiM_Range IN HydroBase_Con2Prim BEFORE Con2Prim
++{
++  LANG: C
++} "force analytic solution outside anulus"
++}
++
+ if (CCTK_EQUALS(initial_Bvec, "poloidalmagfield") || CCTK_EQUALS(initial_Avec, "poloidalmagfield"))
+ {
+ #  SCHEDULE GRHydro_PoloidalMagFieldM AT CCTK_INITIAL AFTER IN HydroBase_Initial AFTER rnsid_init AFTER TOV_Initial_Data after CCCC_StarMapper_InitialData
+diff --git a/src/GRHydro_BondiM.c b/src/GRHydro_BondiM.c
+index f947abb..ca693ad 100644
+--- a/src/GRHydro_BondiM.c
++++ b/src/GRHydro_BondiM.c
+@@ -84,6 +84,7 @@
+ 
+ //some math helpers
+ #define SQR(x) ((x)*(x))
++#define CUBE(x) ((x)*(x)*(x))
+ 
+ 
+ static CCTK_REAL  Mdot, rs, vs_sq, vs, cs_sq, cs, rhos, hs, K, Qdot, gamma_eos, r_sol;
+@@ -902,6 +903,19 @@ static void  calc_vel_bondi( CCTK_REAL vtmp, CCTK_REAL x[NDIM], CCTK_REAL x_sphe
+ ***********************************************************************************/
+ void GRHydro_BondiM(CCTK_ARGUMENTS)
+ {
++  GRHydro_BondiM_Internal(CCTK_PASS_CTOC, 1e100, -1e100);
++}
++
++void GRHydro_BondiM_Range(CCTK_ARGUMENTS)
++{
++  DECLARE_CCTK_PARAMETERS;
++  GRHydro_BondiM_Internal(CCTK_PASS_CTOC, bondi_freeze_inner_radius,
++                          bondi_freeze_outer_radius);
++}
++
++
++void GRHydro_BondiM_Internal(CCTK_ARGUMENTS, CCTK_REAL range_min, CCTK_REAL range_max)
++{
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+   CCTK_REAL det;
+@@ -1134,6 +1148,9 @@ void GRHydro_BondiM(CCTK_ARGUMENTS)
+ 
+     rspher = x_spher[RR]; 
+ 
++    if(rspher > range_min && rspher < range_max)
++      continue;
++
+     /* Find nearest point in the Bondi solution : */
+     j = (int)  ( 0.5 +  (log10(rspher) - logrmin) / dlogr ) ; 
+ 
+-- 
+1.7.10.4
+

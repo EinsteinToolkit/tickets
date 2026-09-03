@@ -1,0 +1,455 @@
+From 00b6c05e91864d54544eb5bd60169549a0a0d837 Mon Sep 17 00:00:00 2001
+From: Christian Ott <cott@tapir.caltech.edu>
+Date: Wed, 10 Jul 2013 23:50:31 -0700
+Subject: [PATCH 02/18] * Major bug fix in EOS_Omni/nuc_eos. In the code
+ (before the fix),   offending specific internal energies where limited and
+ the EOS   returned seemingly fine, but thermodynamically inconsistent data.
+
+  This has been fixed. This fix also makes isolated microphysical NS
+  simulations not work anymore. Why this is the case, we are still
+  investigating
+---
+ src/nuc_eos/eosmodule.F90    |   4 +
+ src/nuc_eos/findtemp.F90     | 191 ++++++++++++++++++++++++++++---------------
+ src/nuc_eos/linterp.F        |   6 +-
+ src/nuc_eos/linterp_many.F90 |  18 ++--
+ src/nuc_eos/nuc_eos.F90      |  63 ++++++++++----
+ 5 files changed, 190 insertions(+), 92 deletions(-)
+
+diff --git a/src/nuc_eos/eosmodule.F90 b/src/nuc_eos/eosmodule.F90
+index 7ac049c..174d817 100644
+--- a/src/nuc_eos/eosmodule.F90
++++ b/src/nuc_eos/eosmodule.F90
+@@ -25,6 +25,7 @@
+ ! basics
+    integer, parameter :: nvars = 19
+    real*8,pointer :: alltables(:,:,:,:)
++   real*8,allocatable :: epstable(:,:,:)
+   ! index variable mapping:
+   !  1 -> logpress
+   !  2 -> logenergy
+@@ -87,6 +88,8 @@ subroutine setup_eosmodule(nrho_, ntemp_, nye_, alltables_, logrho_, logtemp_, y
+  logtemp   => logtemp_
+  ye        => ye_
+ 
++ allocate(epstable(nrho,ntemp,nye))
++ epstable(1:nrho,1:ntemp,1:nye) = 10.0d0**alltables(1:nrho,1:ntemp,1:nye,2)
+ 
+  energy_shift = energy_shift_
+  if(do_energy_shift.ne.1) then
+@@ -103,5 +106,6 @@ subroutine setup_eosmodule(nrho_, ntemp_, nye_, alltables_, logrho_, logtemp_, y
+  eos_tempmin = 10.0d0**logtemp(1)
+  eos_tempmax = 10.0d0**logtemp(ntemp)
+ 
++
+ end subroutine setup_eosmodule
+ 
+diff --git a/src/nuc_eos/findtemp.F90 b/src/nuc_eos/findtemp.F90
+index 125b0cd..4c42a21 100644
+--- a/src/nuc_eos/findtemp.F90
++++ b/src/nuc_eos/findtemp.F90
+@@ -1,3 +1,107 @@
++subroutine findtemp_deb(lr,lt0,y,epsin,keyerrt,rfeps)
++
++  use eosmodule
++
++  implicit none
++
++  real*8 lr,lt0,y,epsin
++  real*8 eps,lt,ldt
++  real*8 tol
++  real*8 d1,d2,d3
++  real*8 eps0,eps1,lt1
++
++  real*8 ltn,ltmax,ltmin
++  real*8 tinput,rfeps
++
++  integer :: rl = 0
++  integer itmax,i,keyerrt
++  integer ii,jj,kk
++  
++  keyerrt=0
++
++  tol=rfeps ! precision to which we need to find temp
++  itmax=20 ! use at most 20 iterations, then bomb
++
++  lt=lt0
++  lt1=lt 
++
++  eps0=epsin
++  eps1=eps0
++  
++  ltmax=logtemp(ntemp)
++  ltmin=logtemp(1)
++
++  ! Note: We are using Ewald's Lagrangian interpolator here!
++
++  !preconditioning 1: do we already have the right temperature?
++  call findthis(lr,lt,y,eps,alltables(:,:,:,2),d1,d2,d3)
++  if (abs(eps-eps0).lt.tol*abs(eps0)) then
++     return
++  endif
++  lt1=lt
++  eps1=eps
++ 
++  do i=1,itmax
++     !d2 is the derivative deps/dlogtemp;
++     ldt = -(eps - eps0)/d2 
++     ltn = lt+ldt
++     ltn = min(ltn,ltmax)
++     ltn = max(ltn,ltmin)
++     lt1=lt
++     lt=ltn
++     eps1=eps
++     call findthis(lr,lt,y,eps,alltables(:,:,:,2),d1,d2,d3)
++     if (abs(eps - eps0).lt.tol*abs(eps0)) then
++        exit
++     endif
++     !setup new d2
++
++     ! if we are closer than 10^-2  to the 
++     ! root (eps-eps0)=0, we are switching to 
++     ! the secant method, since the table is rather coarse and the
++     ! derivatives may be garbage.
++     if(abs(eps-eps0).lt.1.0d-3*abs(eps0)) then
++        d2 = (eps-eps1)/(lt-lt1)
++     endif
++  enddo
++
++
++ if(i.ge.itmax) then
++    keyerrt=667
++    call bisection(lr,lt0,y,eps0,lt,alltables(:,:,:,2),keyerrt,1)
++    if(keyerrt.eq.667) then
++       if(lt.ge.log10(t_max_hack)) then
++          ! handling for too high temperatures
++          lt = log10(t_max_hack)
++          keyerrt=0
++          goto 12
++       else if(abs(lt-log10(t_max_hack))/log10(t_max_hack).lt.0.025d0) then
++          lt0 = min(lt,log10(t_max_hack))
++          keyerrt=0
++          goto 12
++       else
++#if 0
++          ! total failure
++          write(*,*) "EOS: Did not converge in findtemp!"
++          write(*,*) "rl,logrho,logtemp0,ye,lt,eps,eps0,abs(eps-eps0)/eps0"
++          write(*,"(i4,i4,1P10E19.10)") i,rl,lr,lt0,y,lt,eps,eps0,abs(eps-eps0)/eps0
++          write(*,*) "Tried calling bisection... didn't help... :-/"
++          write(*,*) "Bisection error: ",keyerrt
++#endif
++       endif
++    endif
++    
++    lt0=min(lt,log10(t_max_hack))
++    return
++ endif
++
++12 continue
++
++  lt0=min(lt,log10(t_max_hack))
++
++
++end subroutine findtemp_deb
++
+ subroutine findtemp(lr,lt0,y,epsin,keyerrt,rfeps)
+ 
+   use eosmodule
+@@ -206,77 +310,34 @@ subroutine findtemp_low(lr,t0,y,epsin,keyerrt,rfeps)
+ 
+   implicit none
+ 
+-  real*8 lr,t0,y,epsin
+-  real*8 eps,t,dt
+-  real*8 tol
+-  real*8 dlepsdt
+-  real*8 eps0,eps1,t1
++  real*8 lr,t0,y,epsin,rfeps,dlepsdt
++  integer :: keyerrt
+ 
+-  real*8 tn,tmin,tmax
+-  real*8 tinput,rfeps
+ 
+-  integer :: rl = 0
+-  integer itmax,i,keyerrt
+-  integer ii,jj,kk
+-  
+-  keyerrt=0
++  real*8 :: eps2, eps1
++  real*8 :: t2, t1
++  real*8 :: m
+ 
+-  tol=rfeps ! need to find energy to less than 1 in 10^-10
+-  itmax=100 ! use at most 20 iterations, then bomb
++  keyerrt = 0
++  t2 = 10.0d0**logtemp(2)
++  t1 = 10.0d0**logtemp(1)
+ 
+-  t=t0
+-  t1=t 
+-
+-  eps0=epsin
+-  eps1=eps0
+-  
+-  tmax=10.0d0**logtemp(2)
+-  tmin=-20.0d0
+-
+-  !preconditioning 1: do we already have the right temperature?
+-  call intp3d_linearTlow(lr,t,y,eps,1,alltables(:,:,:,2),nrho,&
+-       ntemp,nye,logrho,logtemp,ye,dlepsdt)
++  call intp3d_linearTlow(lr,t2,y,eps2,1,epstable,nrho,&
++         ntemp,nye,logrho,logtemp,ye,dlepsdt)
+ 
+-  if (abs(eps-eps0).lt.tol*abs(eps0)) then
+-     return
+-  endif
+-  t1=t
+-  eps1=eps
+- 
+-  do i=1,itmax
+-     dt = -(eps - eps0)/dlepsdt 
+-     tn = t+dt
+-     if(tn >= tmax) then
+-        tn = tmax*0.9d0
+-     endif
+-     tn = min(tn,tmax)
+-     tn = max(tn,tmin)
+-     t1=t
+-     t=tn
+-     eps1=eps
++  call intp3d_linearTlow(lr,t1,y,eps1,1,epstable,nrho,&
++         ntemp,nye,logrho,logtemp,ye,dlepsdt)
+ 
+-     call intp3d_linearTlow(lr,t,y,eps,1,alltables(:,:,:,2),nrho,&
+-          ntemp,nye,logrho,logtemp,ye,dlepsdt)
+-
+-     if (abs(eps - eps0).lt.tol*abs(eps0)) then
+-        exit
+-     endif
+-
+-     ! if we are closer than 10^-2  to the 
+-     ! root (eps-eps0)=0, we are switching to 
+-     ! the secant method, since the table is rather coarse and the
+-     ! derivatives may be garbage.
+-     if(abs(eps-eps0).lt.1.0d-3*abs(eps0)) then
+-        dlepsdt = (eps-eps1)/(t-t1)
+-     endif
+-  enddo
+-
+-  t0 = t
+-
+-  if(i.ge.itmax) then
+-     keyerrt=667
+-     return
+-  endif
++  m = (t2-t1)/(eps2-eps1)
++  t0 = (epsin-eps1) * m + t1
+ 
++#if 0
++  !$OMP CRITICAL
++  write(6,*) t0,epsin,eps2,eps1
++  call intp3d_linearTlow(lr,t0,y,eps2,1,epstable,nrho,&
++         ntemp,nye,logrho,logtemp,ye,dlepsdt)
++  write(6,"(1P10E15.6)") abs(epsin-eps2)/epsin
++  !$OMP END CRITICAL
++#endif
+ 
+ end subroutine findtemp_low
+diff --git a/src/nuc_eos/linterp.F b/src/nuc_eos/linterp.F
+index 600c11e..0a9d48a 100644
+--- a/src/nuc_eos/linterp.F
++++ b/src/nuc_eos/linterp.F
+@@ -61,9 +61,9 @@ c
+       dy    = (yt(ny) - yt(1)) / FLOAT(ny-1)
+       dz    = (zt(nz) - zt(1)) / FLOAT(nz-1)
+ c
+-      dxi   = 1. / dx
+-      dyi   = 1. / dy
+-      dzi   = 1. / dz
++      dxi   = 1.0d0 / dx
++      dyi   = 1.0d0 / dy
++      dzi   = 1.0d0 / dz
+ c
+       dxyi  = dxi * dyi
+       dxzi  = dxi * dzi
+diff --git a/src/nuc_eos/linterp_many.F90 b/src/nuc_eos/linterp_many.F90
+index 1fe5983..3d6f437 100644
+--- a/src/nuc_eos/linterp_many.F90
++++ b/src/nuc_eos/linterp_many.F90
+@@ -54,9 +54,9 @@
+       dy    = (yt(ny) - yt(1)) / FLOAT(ny-1)
+       dz    = (zt(nz) - zt(1)) / FLOAT(nz-1)
+ !
+-      dxi   = 1. / dx
+-      dyi   = 1. / dy
+-      dzi   = 1. / dz
++      dxi   = 1.0d0 / dx
++      dyi   = 1.0d0 / dy
++      dzi   = 1.0d0 / dz
+ !
+       dxyi  = dxi * dyi
+       dxzi  = dxi * dzi
+@@ -181,9 +181,9 @@
+       dy    = 10.0d0**yt(2) - 10.0d0**yt(1)
+       dz    = (zt(nz) - zt(1)) / FLOAT(nz-1)
+ !
+-      dxi   = 1. / dx
+-      dyi   = 1. / dy
+-      dzi   = 1. / dz
++      dxi   = 1.0d0 / dx
++      dyi   = 1.0d0 / dy
++      dzi   = 1.0d0 / dz
+ !
+       dxyi  = dxi * dyi
+       dxzi  = dxi * dzi
+@@ -304,9 +304,9 @@
+       dy    = 10.0d0**yt(2) - 10.0d0**yt(1)
+       dz    = (zt(nz) - zt(1)) / FLOAT(nz-1)
+ !
+-      dxi   = 1. / dx
+-      dyi   = 1. / dy
+-      dzi   = 1. / dz
++      dxi   = 1.0d0 / dx
++      dyi   = 1.0d0 / dy
++      dzi   = 1.0d0 / dz
+ !
+       dxyi  = dxi * dyi
+       dxzi  = dxi * dzi
+diff --git a/src/nuc_eos/nuc_eos.F90 b/src/nuc_eos/nuc_eos.F90
+index 1dfb9e8..65b0562 100644
+--- a/src/nuc_eos/nuc_eos.F90
++++ b/src/nuc_eos/nuc_eos.F90
+@@ -83,13 +83,17 @@ subroutine nuc_eos_full(xrho,xtemp,xye,xenr,xprs,xent,xcs2,xdedt,&
+   lt = log10(max(xtemp,eos_tempmin))
+   y = xye
+   xeps = xenr + energy_shift
+-  leps = log10(max(xeps,1.0d0))
+ 
+   keyerr = 0
+ 
+   if(keytemp.eq.0) then
+      !need to find temperature based on xeps
+-     call findtemp(lr,lt,y,leps,keyerrt,rfeps)
++     if(xeps .gt. 0.0d0) then
++        leps = log10(xeps)
++        call findtemp(lr,lt,y,leps,keyerrt,rfeps)
++     else
++        keyerrt = 667
++     endif
+      if(keyerrt.ne.0) then
+         call CCTK_WARN (0, "Did not find temperature")
+      endif
+@@ -272,18 +276,23 @@ subroutine nuc_eos_short(xrho,xtemp,xye,xenr,xprs,xent,xcs2,xdedt,&
+   if(keytemp.eq.0) then
+      !need to find temperature based on xeps
+      xeps = xenr + energy_shift
+-     leps = log10(max(xeps,1.0d0))
+-     call findtemp(lr,lt,y,leps,keyerrt,rfeps)
+-     if(keyerrt.eq.667 .and. lt .lt. 10.0d0) then
++     if(xeps .gt. 0.0d0) then
++        leps = log10(xeps)
++        call findtemp(lr,lt,y,leps,keyerrt,rfeps)
++     else
++        keyerrt = 667
++     endif
++     if(keyerrt.eq.667) then
+         ! turns out, we can still converge, but                                 
+         ! too a bogus, possibly negative temperature                            
+         xt = xtemp
+-        call findtemp_low(lr,xt,y,leps,keyerrt,rfeps)
++        call findtemp_low(lr,xt,y,xeps,keyerrt,rfeps)
+         if(keyerrt.eq.0) then
+            keyerrt = 668
+            xtemp = xt
+         else
+            keyerrt = 667
++           keyerr  = keyerrt
+            return
+         endif
+         keyerr = keyerrt
+@@ -365,6 +374,7 @@ subroutine nuc_eos_press_eps(xrho,xtemp,xye,xenr,xprs,&
+   real*8 :: lr,lt,y,xt,xx,xeps,leps,xs
+   real*8 :: d1,d2,d3,ff(8)
+   integer :: keyerrt 
++  character(len=256) :: warnline
+ 
+   keyerrt = 0
+ 
+@@ -411,20 +421,38 @@ subroutine nuc_eos_press_eps(xrho,xtemp,xye,xenr,xprs,&
+   if(keytemp.eq.0) then
+      !need to find temperature based on xeps
+      xeps = xenr + energy_shift
+-     leps = log10(max(xeps,1.0d0))
+-     call findtemp(lr,lt,y,leps,keyerrt,rfeps)
+-     if(keyerrt.eq.667 .and. lt .lt. 10.0d0) then
++     if(xeps .gt. 0.0d0) then
++        leps = log10(xeps)
++        call findtemp(lr,lt,y,leps,keyerrt,rfeps)
++     else
++        keyerrt = 667
++     endif
++!     if(xenr .lt. -9.00725347549139d20) then
++!     if(xenr.lt.-2.28659899d20) then
++!        write(warnline,"(A4,i5,1P10E15.6)") "UGGx",keyerrt,lr,lt,xt,xtemp,y,xeps,xenr
++!        call CCTK_WARN(1,warnline)
++!     endif
++     if(keyerrt.eq.667) then
+         ! turns out, we can still converge, but                                 
+         ! too a bogus, possibly negative temperature                            
+         xt = xtemp
+-        call findtemp_low(lr,xt,y,leps,keyerrt,rfeps)
++        call findtemp_low(lr,xt,y,xeps,keyerrt,rfeps)
+         if(keyerrt.eq.0) then 
+            keyerrt = 668
++           if(xeps.lt.0.0d0) then
++              keyerrt = 668 ! impossible to do anything
++           endif
+            xtemp = xt
+         else
+            keyerrt = 667
++           keyerr = keyerrt
+            return
+         endif
++!        if(xenr .lt. -9.00725347549139d20) then
++!        if(xenr.lt.-2.28659899d20) then
++!           write(warnline,"(A4,i5,1P10E15.6)") "UGG",keyerrt,lr,lt,xt,xtemp,y,xeps,xenr
++!           call CCTK_WARN(0,warnline)
++!        endif
+         keyerr = keyerrt
+      else
+         xtemp = 10.0d0**lt
+@@ -502,20 +530,25 @@ subroutine nuc_eos_dpdr_dpde(xrho,xtemp,xye,xenr,xdpderho,&
+   if(keytemp.eq.0) then
+      !need to find temperature based on xeps
+      xeps = xenr + energy_shift
+-     leps = log10(max(xeps,1.0d0))
+-     call findtemp(lr,lt,y,leps,keyerrt,rfeps)
+-     if(keyerrt.eq.667 .and. lt .lt. 10.0d0) then
++     if(xeps .gt. 0.0d0) then
++        leps = log10(xeps)
++        call findtemp(lr,lt,y,leps,keyerrt,rfeps)
++     else
++        keyerrt = 667
++     endif
++     if(keyerrt.eq.667) then
+         ! turns out, we can still converge, but
+         ! too a bogus, possibly negative temperature
+         xt = xtemp
+-        call findtemp_low(lr,xt,y,leps,keyerrt,rfeps)
++        call findtemp_low(lr,xt,y,xeps,keyerrt,rfeps)
+         if(keyerrt.eq.0) then
+            keyerrt = 668
+            xtemp = xt
+         else
+            keyerrt = 667
++           keyerr = keyerrt
+            return
+-           endif
++        endif
+         keyerr = keyerrt
+      else
+         xtemp = 10.0d0**lt
+-- 
+1.8.5.3
+

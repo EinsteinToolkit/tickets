@@ -1,0 +1,189 @@
+From 5e107c8c7d8924c85568fb09af10c27430a927fc Mon Sep 17 00:00:00 2001
+From: Josh Faber <jfaberrit@jfaber3.local>
+Date: Tue, 24 Jul 2012 10:31:13 -0400
+Subject: [PATCH 17/17] Fix to oblique case for Advected loop, new
+ implementation of Alfven wave test including
+ used-defined pressure (to alter wavespeed) and
+ oblique case
+
+---
+ param.ccl                     |   14 +++++++
+ src/GRHydro_AdvectedLoopM.F90 |    6 +--
+ src/GRHydro_AlfvenWaveM.F90   |   87 ++++++++++++++++++++++++++---------------
+ 3 files changed, 72 insertions(+), 35 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index 63a138e..2651a7c 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -191,6 +191,20 @@ KEYWORD advectedloop_delA "How to calculate B^i field from the potential A^b"
+   "Numeric"	:: "Finite difference approximation of the derivatives applied"
+ } "Exact"
+ 
++#################################3
++# Alfven Wave test
++################################3
++KEYWORD alfvenwave_type "1-dimensional or 2-dimensional?"
++{
++  "1D"	:: "1-dimensional"
++  "2D"	:: "2-dimensional (in x-y plane)"
++} "1D"
++
++CCTK_REAL alfvenwave_pressure "P_gas for the Alfven wave"
++{
++  (0:* :: "positive"
++} 1.0
++
+ ##################################################################################
+ # BONDI PARAMETERS: (black hole mass specified by parameters from the "Exact" thorn)
+ ##################################################################################
+diff --git a/src/GRHydro_AdvectedLoopM.F90 b/src/GRHydro_AdvectedLoopM.F90
+index 22775ed..922e7f5 100644
+--- a/src/GRHydro_AdvectedLoopM.F90
++++ b/src/GRHydro_AdvectedLoopM.F90
+@@ -133,9 +133,9 @@ subroutine GRHydro_AdvectedLoopM(CCTK_ARGUMENTS)
+   dz = CCTK_DELTA_SPACE(3)
+ 
+ !!$ Note that the 3D test wasn't deviced to be used with AMR!
+-  range_x = (cctk_gsh(1)-1)*dx
+-  range_y = (cctk_gsh(2)-1)*dy
+-  range_z = (cctk_gsh(3)-1)*dz
++  range_x = (cctk_gsh(1)-2*cctk_nghostzones(1))*dx
++  range_y = (cctk_gsh(2)-2*cctk_nghostzones(2))*dy
++  range_z = (cctk_gsh(3)-2*cctk_nghostzones(3))*dz
+ 
+   range_d = sqrt(range_z**2+range_x**2)
+   diaglength = range_x*range_z/range_d
+diff --git a/src/GRHydro_AlfvenWaveM.F90 b/src/GRHydro_AlfvenWaveM.F90
+index 8ed68c2..23deb2a 100644
+--- a/src/GRHydro_AlfvenWaveM.F90
++++ b/src/GRHydro_AlfvenWaveM.F90
+@@ -65,6 +65,7 @@ subroutine GRHydro_AlfvenWaveM(CCTK_ARGUMENTS)
+   CCTK_REAL :: dx,dy,dz
+   CCTK_REAL :: range_x,range_y,range_z,range_d
+   CCTK_REAL :: cos_theta, sin_theta
++  CCTK_REAL :: diaglength,xnew,vparallel,vperp,Bparallel,Bperp
+   CCTK_REAL :: Bvecx_d, Bvecz_d
+   CCTK_REAL :: velx_d, velz_d
+   CCTK_REAL :: det
+@@ -77,10 +78,13 @@ subroutine GRHydro_AlfvenWaveM(CCTK_ARGUMENTS)
+ 
+ !!$pressure, density, B^x, specific internal energy and enthalpy:
+   rhoval   = 1.0d0
+-  pressval = 1.0d0
++  pressval = alfvenwave_pressure
+   Bxval    = 1.0d0
+   epsval = pressval/(gam-1.0d0)/rhoval
+   hval   = 1.0d0 + epsval + pressval/rhoval
++
++!!$ DZ: rho=P=Bxval=AA = 1
++!!$ Using DZ parameters, epsval=1.5, hval=3.5
+   
+ !!$ Alfven Wave Amplitude:
+   AA=1.0d0
+@@ -91,6 +95,14 @@ subroutine GRHydro_AlfvenWaveM(CCTK_ARGUMENTS)
+   t3 = 0.5d0*(1.0d0+sqrt(1.0d0-t2**2))
+   valf = sqrt(Bxval**2/t1/t3)
+ 
++  write(*,*)'Alfven velocity:',valf
++
++!!$ Using DZ parameters with P=1.0, we have:
++!!$ t1=5.5
++!!$ t2=4/11
++!!$ t3=0.96577
++!!$ valf=0.43389
++
+ !!$ Vx value:
+    vxval=0.0d0
+     
+@@ -103,45 +115,56 @@ subroutine GRHydro_AlfvenWaveM(CCTK_ARGUMENTS)
+   dz = CCTK_DELTA_SPACE(3)
+ 
+ !!$ Note that the 3D test wasn't deviced to be used with AMR!
+-  range_x = (cctk_gsh(1)-1)*dx
+-  range_y = (cctk_gsh(2)-1)*dy
+-  range_z = (cctk_gsh(3)-1)*dz
+-
+-  range_d = sqrt(range_z**2+range_x**2)
+-
+-  cos_theta = range_z/range_d
+-  sin_theta = range_x/range_d
++  range_x = (cctk_gsh(1)-2*cctk_nghostzones(1))*dx
++  range_y = (cctk_gsh(2)-2*cctk_nghostzones(2))*dy
++  range_z = (cctk_gsh(3)-2*cctk_nghostzones(3))*dz
+ 
+ !!$ Alfven wave number
+-  wnbr = 2.0d0*pi/range_x
+   
+   do i=1,nx
+      do j=1,ny
+         do k=1,nz
+-           
+-           rho(i,j,k)=rhoval
++
++           rho(i,j,k)=rhoval	
+            press(i,j,k)=pressval
+            eps(i,j,k)=epsval
+-           velx(i,j,k)=vxval
+-           vely(i,j,k)=-valf*AA*cos(wnbr*x(i,j,k))
+-           velz(i,j,k)=-valf*AA*sin(wnbr*x(i,j,k))
+-           Bvecx(i,j,k)=Bxval
+-           Bvecy(i,j,k)=AA*Bxval*cos(wnbr*x(i,j,k))
+-           Bvecz(i,j,k)=AA*Bxval*sin(wnbr*x(i,j,k))
+-
+-
+-!!$           if (CCTK_EQUALS(advectedloop_type,"3D")) then
+-!!$            Bvecx_d = cos_theta*Bvecx(i,j,k)+sin_theta*Bvecz(i,j,k)
+-!!$            Bvecz_d = cos_theta*Bvecz(i,j,k)-sin_theta*Bvecx(i,j,k)
+-!!$            velx_d = cos_theta*velx(i,j,k)+sin_theta*velz(i,j,k)
+-!!$            velz_d = cos_theta*velz(i,j,k)-sin_theta*velx(i,j,k)
+-!!$           
+-!!$            Bvecx(i,j,k) = Bvecx_d
+-!!$            Bvecz(i,j,k) = Bvecz_d
+-!!$            velx(i,j,k) = velx_d
+-!!$            velz(i,j,k) = velz_d
+-!!$           end if 
+-           
++          
++           if (CCTK_EQUALS(alfvenwave_type,"1D")) then
++
++	     wnbr = 2.0d0*pi/range_x
++
++             velx(i,j,k)=vxval
++             vely(i,j,k)=-valf*AA*cos(wnbr*x(i,j,k))
++             velz(i,j,k)=-valf*AA*sin(wnbr*x(i,j,k))
++             Bvecx(i,j,k)=Bxval
++             Bvecy(i,j,k)=AA*Bxval*cos(wnbr*x(i,j,k))
++             Bvecz(i,j,k)=AA*Bxval*sin(wnbr*x(i,j,k))
++
++           else if (CCTK_EQUALS(alfvenwave_type,"2D")) then
++      
++	     diaglength=range_x*range_y/range_d
++             range_d = sqrt(range_x**2+range_y**2)
++             cos_theta = range_y/range_d
++             sin_theta = range_x/range_d
++             wnbr = 2.0d0*pi/diaglength
++
++	     xnew = cos_theta*x(i,j,k)+sin_theta*y(i,j,k)
++
++	     vparallel=vxval
++	     vperp=-valf*AA*cos(wnbr*xnew)
++             velx(i,j,k)=vparallel*cos_theta-vperp*sin_theta	
++             vely(i,j,k)=vparallel*sin_theta+vperp*cos_theta
++             velz(i,j,k)=-valf*AA*sin(wnbr*xnew)
++             Bparallel=Bxval
++             Bperp=AA*Bxval*cos(wnbr*xnew)
++             Bvecx(i,j,k)=Bparallel*cos_theta-Bperp*sin_theta	
++             Bvecy(i,j,k)=Bparallel*sin_theta+Bperp*cos_theta
++             Bvecz(i,j,k)=AA*Bxval*sin(wnbr*xnew)
++
++           else
++             call CCTK_WARN(0,"Alfven wave case not recognized!")
++           end if 
++     
+            det=SPATIAL_DETERMINANT(gxx(i,j,k),gxy(i,j,k),gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k))
+            
+            if (CCTK_EQUALS(GRHydro_eos_type,"Polytype")) then
+-- 
+1.7.10.4
+

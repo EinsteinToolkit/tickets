@@ -1,0 +1,31 @@
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 37)
++++ param.ccl	(working copy)
+@@ -29,6 +29,10 @@
+ {
+ } "no"
+ 
++BOOLEAN output_schedule_timers "Output the schedule timers in a formatted tabular format" STEERABLE=ALWAYS
++{
++} "yes"
++
+ BOOLEAN output_all_timers "Output one file per processor containing all the Cactus timers" STEERABLE=ALWAYS
+ {
+ } "no"
+Index: src/Output.c
+===================================================================
+--- src/Output.c	(revision 37)
++++ src/Output.c	(working copy)
+@@ -160,7 +160,10 @@
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+ 
+-  PrintTimes(CCTK_PASS_CTOC);
++  if (output_schedule_timers)
++  {
++    PrintTimes(CCTK_PASS_CTOC);
++  }
+ 
+   if (output_all_timers)
+   {

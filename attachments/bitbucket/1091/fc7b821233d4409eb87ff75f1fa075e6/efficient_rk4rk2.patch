@@ -1,0 +1,506 @@
+diff --git a/MoL/src/ParamCheck.c b/MoL/src/ParamCheck.c
+index 5ae51d6..b80aa1b 100644
+--- a/MoL/src/ParamCheck.c
++++ b/MoL/src/ParamCheck.c
+@@ -172,10 +172,10 @@ void MoL_ParamCheck(CCTK_ARGUMENTS)
+                    "number of intermediate steps must be 10 and the number of scratch levels at least 10");
+   }
+ 
+-  if ( (CCTK_Equals(ODE_Method, "RK4-RK2"))&&( !((MoL_Intermediate_Steps == 4) || (MoL_Num_Scratch_Levels > 3))) )
++  if ( (CCTK_Equals(ODE_Method, "RK4-RK2"))&&( !((MoL_Intermediate_Steps == 4) || (MoL_Num_Scratch_Levels > 0))) )
+   {
+     CCTK_PARAMWARN("When using the multirate RK4-RK2 evolver the "
+-                   "number of intermediate steps must be 4 and the number of scratch levels at least 3");
++                   "number of intermediate steps must be 4 and the number of scratch levels at least 1");
+   }
+ 
+   if (adaptive_stepsize)
+diff --git a/MoL/src/RK4-RK2.c b/MoL/src/RK4-RK2.c
+index 22ec162..3da21a5 100644
+--- a/MoL/src/RK4-RK2.c
++++ b/MoL/src/RK4-RK2.c
+@@ -1,353 +1,155 @@
+- /*@@
+-   @file      RK4.c
+-   @date      Fri July 14, 2006
+-   @author    Yosef Zlochower
+-   @desc 
+-   A routine to perform RK4 evolution. Mostly copied from
+-   genericRK.c
+-   @enddesc 
+-   @version   $Header$
+- @@*/
+-
+-#include "cctk.h"
+-#include "cctk_Arguments.h"
+-#include "cctk_Parameters.h"
++#include <cctk.h>
++#include <cctk_Arguments.h>
++#include <cctk_Parameters.h>
+ 
+ #include <stdio.h>
+-#include "ExternalVariables.h"
+-
+-//#define MOLDEBUG
+-
+-static const char *rcsid = "$Header$";
+-
+-CCTK_FILEVERSION(CactusBase_MoL_RK4_RK2_c);
+-
+-/********************************************************************
+- *********************     Local Data Types   ***********************
+- ********************************************************************/
+-
+-/********************************************************************
+- ********************* Local Routine Prototypes *********************
+- ********************************************************************/
+-
+-/********************************************************************
+- ***************** Scheduled Routine Prototypes *********************
+- ********************************************************************/
+-
+-void MoL_RK4_RK2_Add(CCTK_ARGUMENTS);
+-
+-/********************************************************************
+- ********************* Other Routine Prototypes *********************
+- ********************************************************************/
+ 
+-/********************************************************************
+- *********************     Local Data   *****************************
+- ********************************************************************/
++#include "ExternalVariables.h"
+ 
+-/********************************************************************
+- *********************     External Routines   **********************
+- ********************************************************************/
++/* #define MOLDEBUG */
+ 
+- /*@@
+-   @routine    MoL_RK4Add
+-   @date       
+-   @author     
+-   @desc 
+-   Performs a single step of a RK4 type time
+-   integration.
+-   @enddesc 
+-   @calls     
+-   @calledby   
+-   @history 
+- 
+-   @endhistory 
+ 
+-@@*/
+ 
+ void MoL_RK4_RK2_Add(CCTK_ARGUMENTS)
+ {
+-
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+-    
+-  cGroupDynamicData arraydata;
+-  CCTK_INT groupindex, ierr;
+-  CCTK_INT arraytotalsize, arraydim;
+-
+-  /* FIXME */
+-
++  
+ #ifdef MOLDOESCOMPLEX
+-
+-CCTK_WARN(0, "not implemented");
+-  CCTK_COMPLEX Complex_alpha, Complex_beta, Complex_Delta_Time;
+-  CCTK_COMPLEX * restrict OldComplexVar;
+-  CCTK_COMPLEX * restrict UpdateComplexVar;
+-  CCTK_COMPLEX const * restrict RHSComplexVar;
+-  CCTK_COMPLEX * restrict ScratchComplexVar;
+-
++  CCTK_WARN(CCTK_WARN_ABORT, "not implemented");
+ #endif
+-
+-  static CCTK_INT scratchspace_firstindex = -99;
+-  static CCTK_INT scratchspace_firstindex_slow = -99;
+-  CCTK_INT index, var, scratchstep;
+-  CCTK_INT totalsize;
+-  CCTK_REAL alpha[3], beta[4];
+-  CCTK_REAL alpha_slow[3], beta_slow[4];
+-  CCTK_REAL * restrict UpdateVar;
+-  CCTK_REAL * restrict OldVar;
+-  CCTK_REAL const * restrict RHSVar;
+-  CCTK_REAL * restrict ScratchVar;
+-
+-  CCTK_INT arrayscratchlocation;
+-
+-  /* Keep a running total of alpha as we perform the substeps, so that
+-     we know the "real" alpha (including round-off errors) when we
+-     calculate the final result. */
+-  static CCTK_REAL sum_alpha;
+-  /* the last MoL intermediate step that was summed */
+-  static CCTK_INT last_sum_step;
+-
+-  totalsize = 1;
+-  for (arraydim = 0; arraydim < cctk_dim; arraydim++)
+-  {
+-     totalsize *= cctk_lsh[arraydim];
+-  }
+-
+-  if (scratchspace_firstindex == -99)
+-  {
+-    scratchspace_firstindex = CCTK_FirstVarIndex("MOL::SCRATCHSPACE");
+-  }
+   
+-  if (scratchspace_firstindex_slow == -99)
+-  {
++  
++  
++  static int scratchspace_firstindex      = -1;
++  static int scratchspace_firstindex_slow = -1;
++  if (scratchspace_firstindex < 0) {
++    scratchspace_firstindex      = CCTK_FirstVarIndex("MOL::SCRATCHSPACE");
+     scratchspace_firstindex_slow = CCTK_FirstVarIndex("MOL::SCRATCHSPACESLOW");
+   }
+-
+-  switch (MoL_Intermediate_Steps - (*MoL_Intermediate_Step))
+-  {
+-    case 0:
+-      alpha[0] = 1.0/2.0;
+-      alpha[1] = 0;
+-      alpha[2] = 0;
+-      alpha_slow[0] = 0;
+-      alpha_slow[1] = 0;
+-      alpha_slow[2] = 0;
+-      break;
+-    case 1:
+-      alpha[0] = 0.0;
+-      alpha[1] = 1.0/2.0;
+-      alpha[2] = 0;
+-      alpha_slow[0] = 0;
+-      alpha_slow[1] = 0;
+-      alpha_slow[2] = 0;
+-      break;
+-    case 2:
+-      alpha[0] = 0.0;
+-      alpha[1] = 0.0;
+-      alpha[2] = 1.0;
+-      alpha_slow[0] = 1.0;
+-      alpha_slow[1] = 0;
+-      alpha_slow[2] = 0;
+-      break;
+-  }
+-
+-  beta[0] = 1.0/3.0; 
+-  beta[1] = 1.0/6.0; 
+-  beta[2] = 1.0/6.0; 
+-  beta[3] = 1.0/3.0;
+-
+-  beta_slow[0] = 1.0/2.0; 
+-  beta_slow[1] = 0.0; 
+-  beta_slow[2] = 0.0; 
+-  beta_slow[3] = 1.0/2.0;
+-
+-
+-  /* FIXME */
+-
+-
+-  /* Real GFs, the "fast" part */
+-
+-  for (var = 0; var < MoLNumEvolvedVariables; var++)
+-  {
+-    
+-    UpdateVar = (CCTK_REAL *)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                              EvolvedVariableIndex[var]);
+-    OldVar = (CCTK_REAL *)CCTK_VarDataPtrI(cctkGH, 1, 
+-                                              EvolvedVariableIndex[var]);
+-    RHSVar = (CCTK_REAL const *)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                                 RHSVariableIndex[var]);
+-/* #define MOLDEBUG 1 */
+-#ifdef MOLDEBUG
+-    printf("In multirate RK. Variable %d (%s). RHS %d (%s). beta %g.\n",
+-           EvolvedVariableIndex[var],
+-           CCTK_VarName(EvolvedVariableIndex[var]),
+-           RHSVariableIndex[var],
+-           CCTK_VarName(RHSVariableIndex[var]),
+-           beta[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)]);
+-#endif
+-
+-    ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
+-                                      scratchspace_firstindex
+-                                      + var
+-                                      + MoLNumEvolvedVariables * (MoL_Intermediate_Steps - (*MoL_Intermediate_Step)));
+-
+-#pragma omp parallel for
+-    for (index = 0; index < totalsize; index++)
+-    {
+-      ScratchVar[index] = (*Original_Delta_Time) / cctkGH->cctk_timefac * RHSVar[index];
+-    
+-#ifdef MOLDEBUG
+-      if (CCTK_EQUALS(verbose,"extreme"))
+-      {
+-        printf("Variable: %d. Index: %d. dt: %f. beta %f. RHS: %f. q: %f.\n",
+-               var, index, (*Original_Delta_Time) / cctkGH->cctk_timefac, beta, RHSVar[index], 
+-               UpdateVar[index]);
+-      }
+-#endif
+-    }
+-    
+-    
+-#pragma omp parallel for
+-    for (index = 0; index < totalsize; index++)
+-    {
+-      UpdateVar[index] = OldVar[index];
+-    }
++  
++  int const step = MoL_Intermediate_Steps - *MoL_Intermediate_Step;
++  
++  int totalsize = 1;
++  for (int d=0; d<cctk_dim; ++d) totalsize *= cctk_lsh[d];
++  
++  CCTK_REAL const dt = *Original_Delta_Time / cctkGH->cctk_timefac;
++  
++  
++  
++  int const allvar1 = MoLNumEvolvedVariables + MoLNumEvolvedVariablesSlow;
++#pragma omp parallel for schedule(dynamic)
++  for (int var1=0; var1<allvar1; ++var1) {
+     
+-
+-    if ((*MoL_Intermediate_Step)>1)
+-    {
+-      //printf("Step %d \n", MoL_Intermediate_Steps - (*MoL_Intermediate_Step));
+-      for (scratchstep = 0; scratchstep <= MoL_Intermediate_Steps - (*MoL_Intermediate_Step); scratchstep++)
+-      {
+-         
+-         //printf("Scratch Step %d, alpha %g \n", scratchstep, alpha[scratchstep]);
+-         
+-         ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
+-                                       scratchspace_firstindex
+-                                       + var
+-                                       + MoLNumEvolvedVariables * scratchstep);
++    if (var1 < MoLNumEvolvedVariables) {
++      /* a fast variable */
++      int const var = var1;
+       
+-#pragma omp parallel for
+-         for (index = 0; index < totalsize; index++)
+-         {
+-            UpdateVar[index] += alpha[scratchstep] * ScratchVar[index];
+-         }
+-      }
+-    }
+-    else
+-    {
+-      //printf("Final Step!\n");
+-    
+-      for (scratchstep = 0; scratchstep < MoL_Intermediate_Steps; scratchstep++)
+-      {
+-         
+-         //printf("Scratch Step %d, beta %g \n", scratchstep, beta[scratchstep]);
+-         
+-         ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
+-                                       scratchspace_firstindex
+-                                       + var
+-                                       + MoLNumEvolvedVariables * scratchstep);
++      CCTK_REAL *restrict const UpdateVar =
++        CCTK_VarDataPtrI(cctkGH, 0, EvolvedVariableIndex[var]);
++      CCTK_REAL const *restrict const OldVar =
++        CCTK_VarDataPtrI(cctkGH, 1, EvolvedVariableIndex[var]);
++      CCTK_REAL const *restrict const RHSVar =
++        CCTK_VarDataPtrI(cctkGH, 0, RHSVariableIndex[var]);
+       
+-#pragma omp parallel for
+-         for (index = 0; index < totalsize; index++)
+-         {
+-            UpdateVar[index] += beta[scratchstep] * ScratchVar[index];
+-         }
+-      }
+-    }
+-
+-  }
+-
+-
+-  for (var = 0; var < MoLNumEvolvedVariablesSlow; var++)
+-  {
+-    
+-    UpdateVar = (CCTK_REAL *)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                              EvolvedVariableIndexSlow[var]);
+-    OldVar = (CCTK_REAL *)CCTK_VarDataPtrI(cctkGH, 1, 
+-                                              EvolvedVariableIndexSlow[var]);
+-    RHSVar = (CCTK_REAL const *)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                                 RHSVariableIndexSlow[var]);
+-/* #define MOLDEBUG 1 */
+-#ifdef MOLDEBUG
+-    printf("In multirate RK. SLOW Variable %d (%s). RHS %d (%s). beta %g.\n",
+-           EvolvedVariableIndexSlow[var],
+-           CCTK_VarName(EvolvedVariableIndexSlow[var]),
+-           RHSVariableIndexSlow[var],
+-           CCTK_VarName(RHSVariableIndexSlow[var]),
+-           beta[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)]);
+-#endif
+-
+-    ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
+-                                      scratchspace_firstindex_slow
+-                                      + var
+-                                      + MoLNumEvolvedVariablesSlow * (MoL_Intermediate_Steps - (*MoL_Intermediate_Step)));
+-
+-#pragma omp parallel for
+-    for (index = 0; index < totalsize; index++)
+-    {
+-      ScratchVar[index] = (*Original_Delta_Time) / cctkGH->cctk_timefac * RHSVar[index];
+-    
+-#ifdef MOLDEBUG
+-      if (CCTK_EQUALS(verbose,"extreme"))
+-      {
+-        printf("SLOW Variable: %d. Index: %d. dt: %f. beta %f. RHS: %f. q: %f.\n",
+-               var, index, (*Original_Delta_Time) / cctkGH->cctk_timefac, beta, RHSVar[index], 
+-               UpdateVar[index]);
+-      }
+-#endif
+-    }
+-    
+-    
+-#pragma omp parallel for
+-    for (index = 0; index < totalsize; index++)
+-    {
+-      UpdateVar[index] = OldVar[index];
+-    }
+-
+-    if ((*MoL_Intermediate_Step)>1)
+-    {
+-      //printf("Step %d \n", MoL_Intermediate_Steps - (*MoL_Intermediate_Step));
+-      for (scratchstep = 0; scratchstep <= /*MoL_Intermediate_Steps - (*MoL_Intermediate_Step)*/ 0; scratchstep++)
+-      {
+-         
+-         //printf("Scratch Step %d, alpha %g \n", scratchstep, alpha_slow[scratchstep]);
+-         
+-         ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
+-                                       scratchspace_firstindex_slow
+-                                       + var
+-                                       + MoLNumEvolvedVariablesSlow * scratchstep);
++#define SCRATCHINDEX(step)                                              \
++      (scratchspace_firstindex + var + MoLNumEvolvedVariables * (step))
++      CCTK_REAL *restrict const ScratchVar =
++        CCTK_VarDataPtrI(cctkGH, 0, SCRATCHINDEX(0));
+       
+-#pragma omp parallel for
+-         for (index = 0; index < totalsize; index++)
+-         {
+-            UpdateVar[index] += alpha_slow[scratchstep] * ScratchVar[index];
+-         }
++      switch (step) {
++        
++      case 0:
++        for (int i=0; i<totalsize; ++i) {
++          CCTK_REAL const scaled_rhs = dt * RHSVar[i];
++          ScratchVar[i] = OldVar[i] + 1.0/3.0 * scaled_rhs;
++          UpdateVar[i] = OldVar[i] + 0.5 * scaled_rhs;
++        }
++        break;
++        
++      case 1:
++        for (int i=0; i<totalsize; ++i) {
++          CCTK_REAL const scaled_rhs = dt * RHSVar[i];
++          ScratchVar[i] += 1.0/6.0 * scaled_rhs;
++          UpdateVar[i] = OldVar[i] + 0.5 * scaled_rhs;
++        }
++        break;
++        
++      case 2:
++        for (int i=0; i<totalsize; ++i) {
++          CCTK_REAL const scaled_rhs = dt * RHSVar[i];
++          ScratchVar[i] += 1.0/6.0 * scaled_rhs;
++          UpdateVar[i] = OldVar[i] + scaled_rhs;
++        }
++        break;
++        
++      case 3:
++        for (int i=0; i<totalsize; ++i) {
++          CCTK_REAL const scaled_rhs = dt * RHSVar[i];
++          /* ScratchVar contains OldVar */
++          UpdateVar[i] = ScratchVar[i] + 1.0/3.0 * scaled_rhs;
++        }
++        break;
++        
++      default:
++        assert(0);
+       }
+-    }
+-    else
+-    {
+-      //printf("Final Step!\n");
+-    
+-      for (scratchstep = 0; scratchstep < MoL_Intermediate_Steps; scratchstep++)
+-      {
+-         
+-         //printf("Scratch Step %d, beta %g \n", scratchstep, beta_slow[scratchstep]);
+-         
+-         ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
+-                                       scratchspace_firstindex_slow
+-                                       + var
+-                                       + MoLNumEvolvedVariablesSlow * scratchstep);
++#undef SCRATCHINDEX
++      
++    } else {
++      /* a slow variable */
++      int const var = var1 - MoLNumEvolvedVariables;
++      
++      CCTK_REAL *restrict const UpdateVar =
++        CCTK_VarDataPtrI(cctkGH, 0, EvolvedVariableIndexSlow[var]);
++      CCTK_REAL const *restrict const OldVar =
++        CCTK_VarDataPtrI(cctkGH, 1, EvolvedVariableIndexSlow[var]);
++      CCTK_REAL const *restrict const RHSVar =
++        CCTK_VarDataPtrI(cctkGH, 0, RHSVariableIndexSlow[var]);
+       
+-#pragma omp parallel for
+-         for (index = 0; index < totalsize; index++)
+-         {
+-            UpdateVar[index] += beta_slow[scratchstep] * ScratchVar[index];
+-         }
++#define SCRATCHINDEX(step)                                              \
++      (scratchspace_firstindex_slow + var + MoLNumEvolvedVariablesSlow * (step))
++      CCTK_REAL *restrict const ScratchVar =
++        CCTK_VarDataPtrI(cctkGH, 0, SCRATCHINDEX(0));
++      
++      switch (step) {
++        
++      case 0:
++        for (int i=0; i<totalsize; ++i) {
++          CCTK_REAL const scaled_rhs = dt * RHSVar[i];
++          CCTK_REAL const scratchval = OldVar[i] + scaled_rhs;
++          ScratchVar[i] = scratchval;
++          UpdateVar[i] = scratchval;
++        }
++        break;
++        
++      case 1:
++      case 2:
++        for (int i=0; i<totalsize; ++i) {
++          /* This is the same value as for the previous MoL step.
++             However, MoL_PostStep may have modified it (e.g. enforced
++             a constraint), so we need to recreate the original value
++             here for consistency. */
++          /* ScratchVar contains OldVar */
++          UpdateVar[i] = ScratchVar[i];
++        }
++        break;
++        
++      case 3:
++        for (int i=0; i<totalsize; ++i) {
++          CCTK_REAL const scaled_rhs = dt * RHSVar[i];
++          /* ScratchVar contains OldVar */
++          UpdateVar[i] =
++            0.5 * OldVar[i] + 0.5 * ScratchVar[i] + 0.5 * scaled_rhs;
++        }
++        break;
++        
++      default:
++        assert(0);
+       }
+-    }
+-
+-  }
+-
+-  return;
++#undef SCRATCHINDEX
++      
++    } /* if fast or slow */
++  }   /* for var */
++  
+ }

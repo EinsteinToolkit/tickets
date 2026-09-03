@@ -1,0 +1,22 @@
+Index: src/main/Parameters.c
+===================================================================
+--- src/main/Parameters.c	(revision 5066)
++++ src/main/Parameters.c	(working copy)
+@@ -2206,7 +2206,7 @@
+   retval = 0;
+ 
+   /* try parsing as number */
+-  inval = strtol (value, &endptr, 0);
++  inval = strtol (value, &endptr, 10);
+ 
+   if (*endptr) /* if we could not parse as a number, try an expression */
+   {
+@@ -2767,7 +2767,7 @@
+       else
+       {
+           vals[i].type = ival;
+-          vals[i].value.ival = (CCTK_INT)strtol (vars[i], &endptr, 0);
++          vals[i].value.ival = (CCTK_INT)strtol (vars[i], &endptr, 10);
+           if (!*endptr)
+             ierr = 0;
+           else

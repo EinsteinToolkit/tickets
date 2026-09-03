@@ -1,0 +1,88 @@
+Index: lib/sbin/CreateParameterBindings.pl
+===================================================================
+--- lib/sbin/CreateParameterBindings.pl	(revision 4979)
++++ lib/sbin/CreateParameterBindings.pl	(working copy)
+@@ -202,7 +202,9 @@
+     push(@data, "  DECLARE_PRIVATE_\U$thorn\E_STRUCT_PARAMS \\")
+       if($header_files{"\U$thorn\E PRIVATE"});
+ 
+-    my $delim = ' ';
++
++    my @data2;
+     foreach $friend (split(' ',$rhparameter_db->{"\U$thorn\E SHARES implementations"}))
+     {
+       $rhinterface_db->{"IMPLEMENTATION \U$friend\E THORNS"} =~ m:([^ ]*):;
+@@ -223,12 +225,18 @@
+           $varprefix = ' const *';
+         }
+ 
+-        push(@data, "  CCTK_DECLARE_INIT ($type_string$varprefix const, $parameter, RESTRICTED_\U$friend\E_STRUCT.$realname); \\");
+-	$delim = ',';
++        push(@data, "  CCTK_DECLARE_INIT ($type_string$varprefix const, $parameter, CCTK_PARAMETER__${friend}__$realname); \\");
++        push(@data2, 
++             "#ifndef CCTK_PARAMETER__${friend}__$realname\n" .
++             "#  define CCTK_PARAMETER__${friend}__$realname RESTRICTED_\U$friend\E_STRUCT.$realname\n" .
++             "#endif");
+       }
+     }
+ 
+     push(@data, '');
++    push(@data, @data2);
++    push(@data, '');
+     push(@data, "#endif  /* _\U$thorn\E_PARAMETERS_H_ */");
+     push(@data, "\n");  # workaround for perl 5.004_04 to add a trailing newline
+ 
+Index: lib/sbin/create_c_stuff.pl
+===================================================================
+--- lib/sbin/create_c_stuff.pl	(revision 4979)
++++ lib/sbin/create_c_stuff.pl	(working copy)
+@@ -175,8 +175,14 @@
+   my($line,@data);
+   my(%parameters);
+   my($type, $type_string);
+-  my(@definition);
++  my(@definition, @definition2);
+ 
++  # determine thorn name from structure name
++  # TODO: pass thorn name explicitly
++  my $thorn = $structure;
++  $thorn =~ s{^[^_]*_}{};       # remove PRIVATE_ or RESTRICTED_ prefix
++  $thorn =~ s{_STRUCT$}{};
++
+   # Create the structure
+   push(@data, '#ifdef __cplusplus');
+   push(@data, 'extern "C"');
+@@ -185,7 +191,6 @@
+   push(@data, '');
+   push(@data, 'extern struct');
+   push(@data, '{');
+-  my $delim = ' ';
+ 
+   foreach $parameter (&order_params($rhparameters, $rhparameter_db))
+   {
+@@ -206,8 +211,12 @@
+     my $realname = $rhparameter_db->{"\U$rhparameters->{$parameter} $parameter\E realname"};
+ 
+     push(@data, "  $type_string $realname$suffix;");
+-    push(@definition, "  CCTK_DECLARE_INIT ($type_string$varprefix const, $parameter, $structure.$realname); \\");
+-    $delim = ',';
++    push(@definition, "  CCTK_DECLARE_INIT ($type_string$varprefix const, $parameter, CCTK_PARAMETER__${thorn}__$realname); \\");
++    push(@definition2,
++         "#ifndef CCTK_PARAMETER__${thorn}__$realname\n" .
++         "#  define CCTK_PARAMETER__${thorn}__$realname $structure.$realname\n" .
++         "#endif");
+   }
+ 
+   # Some compilers don't like an empty structure.
+@@ -226,9 +235,9 @@
+ 
+   push(@data, "#define DECLARE_${structure}_PARAMS \\");
+   push(@data, @definition);
++  push(@data, "\n");
++  push(@data, @definition2);
+ 
+-  push(@data, "\n");   # workaround for perl 5.004_04 to add a trailing newline
+-
+   return join ("\n", @data);
+ }
+ 

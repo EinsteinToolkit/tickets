@@ -1,0 +1,91 @@
+# HG changeset patch
+# User Ian Hinder <ian.hinder@aei.mpg.de>
+# Date 2011-06-01 08:56:00 +0200
+# Node ID 5924512df9b3255f4b883caa66f67c2e94c8022f
+# Parent  f7c2a042034c7032b44e3f82b6473b7040a7ac61
+Add timer tree output and associated parameters
+
+New parameters output_initialise_timer_tree and
+output_timer_tree_every control output of a new "timer tree diagram"
+to standard output for the Initialise and Evolve timer trees
+respectively.  These diagrams indicate:
+
+1. the value of each timer;
+2. the percentage of the given tree taken by each timer;
+3. which timers are contained in which other timers;
+4. any untimed code
+
+for any timer which takes more than 1% of the tree time.
+
+diff --git a/Carpet/Carpet/param.ccl b/Carpet/Carpet/param.ccl
+--- a/Carpet/Carpet/param.ccl
++++ b/Carpet/Carpet/param.ccl
+@@ -523,3 +523,14 @@
+ {
+   ".*" :: "must be a legal clock name"
+ } "gettimeofday"
++
++
++BOOLEAN output_initialise_timer_tree "Output timing information in tree form to standard output for Initialise"
++{
++} "no"
++
++INT output_timer_tree_every "Output timing information in tree form to standard output for Evolve every so many iterations"
++{
++  0   :: "don't report"
++  1:* :: "report every so many iterations"
++} 0
+diff --git a/Carpet/Carpet/src/Evolve.cc b/Carpet/Carpet/src/Evolve.cc
+--- a/Carpet/Carpet/src/Evolve.cc
++++ b/Carpet/Carpet/src/Evolve.cc
+@@ -19,6 +19,7 @@
+ #include <carpet.hh>
+ #include <Timers.hh>
+ #include <TimerSet.hh>
++#include "TimerNode.hh"
+ 
+ 
+ 
+@@ -85,6 +86,15 @@
+         {
+           Carpet::TimerSet::writeData (cctkGH, timer_file);
+         }
++
++        if (output_timer_tree_every > 0 and
++            cctkGH->cctk_iteration % output_timer_tree_every == 0 and
++            cctkGH->cctk_iteration % do_every == 0)
++        {
++          TimerNode *rt = TimerNode::getRootTimer();
++          TimerNode *et = rt->getChildTimer("Evolve");
++          et->print(cout, et->getTime(), 0, 1.0);
++        }
+       }
+       
+       // Ensure that all levels have consistent times
+diff --git a/Carpet/Carpet/src/Initialise.cc b/Carpet/Carpet/src/Initialise.cc
+--- a/Carpet/Carpet/src/Initialise.cc
++++ b/Carpet/Carpet/src/Initialise.cc
+@@ -14,6 +14,7 @@
+ #include <carpet.hh>
+ #include <Timers.hh>
+ #include <TimerSet.hh>
++#include <TimerNode.hh>
+ 
+ 
+ 
+@@ -133,7 +134,14 @@
+     if (output_timers_every > 0) {
+       TimerSet::writeData (cctkGH, timer_file);
+     }
+-    
++
++    if (output_initialise_timer_tree)
++    {
++      TimerNode *rt = TimerNode::getRootTimer();
++      TimerNode *it = rt->getChildTimer("Initialise");
++      it->print(cout, it->getTime(), 0, 1.0);
++    }
++
+     Waypoint ("Done with initialisation");
+     
+     return 0;

@@ -1,0 +1,246 @@
+From ee85c6a7158d75580e62c433bb67a469b27ae1a0 Mon Sep 17 00:00:00 2001
+From: Bruno Coutinho Mundim <bcmsma@astro.rit.edu>
+Date: Mon, 21 May 2012 16:40:41 -0500
+Subject: [PATCH 10/17] update advectedloop2D.par
+
+---
+ par/advectedloop2D.par |   99 +++++++++++++++++-------------------------------
+ 1 file changed, 34 insertions(+), 65 deletions(-)
+
+diff --git a/par/advectedloop2D.par b/par/advectedloop2D.par
+index c427bd0..8c40f5c 100644
+--- a/par/advectedloop2D.par
++++ b/par/advectedloop2D.par
+@@ -9,11 +9,11 @@ Cactus::cctk_run_title = "Advected magnetic field loop (2d version)"
+ Cactus::cctk_full_warnings         = "yes"
+ 
+ #Cactus::terminate		= "never"
+-#Cactus::terminate       = "time"
+-#Cactus::cctk_final_time = 1500.0
+-Cactus::terminate = "iteration"
++Cactus::terminate       = "time"
++Cactus::cctk_final_time = 50.0
++#Cactus::terminate = "iteration"
+ #Cactus::cctk_itlast        =  0
+-Cactus::cctk_itlast        =  256
++#Cactus::cctk_itlast        =  256
+ #Cactus::terminate="runtime"
+ #Cactus::max_runtime=28800  #  46 days
+ #Cactus::max_runtime=1410  #  23.5 hours
+@@ -28,33 +28,15 @@ Cactus::cctk_itlast        =  256
+ 
+ ActiveThorns = "Boundary CartGrid3D CoordBase Fortran InitBase IOUtil LocalReduce SymBase Time"
+ ActiveThorns = "AEILocalInterp LocalInterp"
+-#ActiveThorns = "MoL Periodic ReflectionSymmetry RotatingSymmetry90 Slab SpaceMask SphericalSurface"
+-#ActiveThorns = "MoL Periodic ReflectionSymmetry RotatingSymmetry180 Slab SpaceMask SphericalSurface"
+-#ActiveThorns = "MoL Periodic ReflectionSymmetry Slab SpaceMask SphericalSurface"
+-ActiveThorns = "MoL Periodic Slab SpaceMask SphericalSurface"
+-ActiveThorns = "Carpet CarpetInterp CarpetIOASCII CarpetIOHDF5 CarpetIOScalar CarpetLib CarpetIOBasic CarpetReduce CarpetRegrid2 CarpetSlab CarpetTracker CarpetMask LoopControl"
++ActiveThorns = "MoL Periodic Slab SpaceMask"
++ActiveThorns = "Carpet CarpetInterp CarpetIOASCII CarpetIOHDF5 CarpetIOScalar CarpetLib CarpetIOBasic CarpetReduce CarpetRegrid2 CarpetSlab LoopControl"
+ #ActiveThorns = "Formaline NaNChecker TerminationTrigger TimerReport"
+ ActiveThorns = "NaNChecker TerminationTrigger TimerReport"
+ ActiveThorns = "ADMbase ADMcoupling ADMmacros CoordGauge StaticConformal"
+-#ActiveThorns = "PunctureTracker"
+-#ActiveThorns = "ADManalysis Constants TmunuBase HydroBase "
+ ActiveThorns = "Constants TmunuBase HydroBase "
+-#ActiveThorns = "QuasiLocalMeasures"
+-#ActiveThorns = "ADMConstraints"
+-#ActiveThorns = "EOS_Base EOS_IdealFluid EOS_Polytrope"
+ ActiveThorns = "EOS_Omni"
+ ActiveThorns = "GRHydro GRHydro_InitData"
+-ActiveThorns = "BLAS LAPACK GSL HDF5"
+-#ActiveThorns = "TwoPunctures"
+-#ActiveThorns = "SummationByParts"
+-#ActiveThorns = "TOVSolver"
+-#ActiveThorns = "GenericFD NewRad"
+-#ActiveThorns = "ML_BSSN ML_BSSN_Helper ML_ADMConstraints"
+-#ActiveThorns = "Hydro_Analysis"
+-#ActiveThorns = "Dissipation"
+-#ActiveThorns = "AHFinderDirect"
+-#ActiveThorns = "WeylScal4 Multipole"
+-#ActiveThorns = "SetMask_SphericalSurface"
++ActiveThorns = "HDF5"
+ ActiveThorns = "SystemStatistics"
+ 
+ #------------------------------------------------------------------------------
+@@ -79,19 +61,12 @@ CarpetLib::memstat_file    = "carpetlib-memory-statistics.asc"
+ #CarpetLib::print_timestats_every    = 1024
+ #CarpetLib::timestat_file    = "carpetlib-timing-statistics.asc"
+ 
+-CarpetMask::verbose = "yes"
+ CarpetReduce::verbose    = "no"
+ CarpetRegrid2::verbose    = "yes"
+ #CarpetRegrid2::veryverbose    = "yes"
+ 
+-CarpetTracker::verbose    = "yes"
+-
+-#Dissipation::verbose = "no"
+-
+ #NaNChecker::verbose         = "all"
+ 
+-#PunctureTracker::verbose   = "yes"
+-
+ TimerReport::out_every    = 1024
+ TimerReport::out_filename = "TimerReport"
+ #TimerReport::output_all_timers = "yes"
+@@ -100,11 +75,6 @@ TimerReport::out_filename = "TimerReport"
+ #TimerReport::before_checkpoint          = "yes"
+ TimerReport::n_top_timers = 40
+ 
+-#TwoPunctures::verbose            =  "yes"
+-
+-#QuasiLocalMeasures::verbose   = "yes"
+-SphericalSurface::verbose   = "yes"
+-
+ #------------------------------------------------------------------------------
+ # Utility parameters:
+ #------------------------------------------------------------------------------
+@@ -196,13 +166,6 @@ Periodic::periodic_x = "yes"
+ Periodic::periodic_y = "yes"
+ Periodic::periodic_z = "yes"
+ 
+-#ReflectionSymmetry::reflection_x = "no"  
+-#ReflectionSymmetry::reflection_y = "no"  
+-#ReflectionSymmetry::reflection_z = "yes"
+-#ReflectionSymmetry::avoid_origin_x = "no"
+-#ReflectionSymmetry::avoid_origin_y = "no"
+-#ReflectionSymmetry::avoid_origin_z = "no"
+-
+ # General Carpet parameters:
+ Carpet::domain_from_coordbase    = "yes"
+ Carpet::enable_all_storage       = "no"
+@@ -226,8 +189,8 @@ CarpetInterp::check_tree_search = "no"
+ HydroBase::initial_hydro         = "advectedloop"
+ 
+ GRHydro_InitData::advectedloop_type = "2D"
+-GRHydro_InitData::advectedloop_case = "V^z/=0"
+-#GRHydro_InitData::advectedloop_case = "V^z=0"
++#GRHydro_InitData::advectedloop_case = "V^z/=0"
++GRHydro_InitData::advectedloop_case = "V^z=0"
+ GRHydro_InitData::advectedloop_delA = "Exact"
+ #GRHydro_InitData::advectedloop_delA = "Numeric"
+ 
+@@ -238,11 +201,11 @@ GRHydro::initial_Gamma             = 1.666666666666667
+ # Numerics:
+ #----------
+ 
+-TmunuBase::stress_energy_storage = "yes"
+-TmunuBase::stress_energy_at_RHS  = "no"
+-TmunuBase::timelevels            =  1
+-TmunuBase::prolongation_type     = "none"
+-TmunuBase::support_old_CalcTmunu_mechanism = "no"
++#TmunuBase::stress_energy_storage = "yes"
++#TmunuBase::stress_energy_at_RHS  = "no"
++#TmunuBase::timelevels            =  1
++#TmunuBase::prolongation_type     = "none"
++#TmunuBase::support_old_CalcTmunu_mechanism = "no"
+ 
+ HydroBase::timelevels            = 2
+ #HydroBase::timelevels            = 3
+@@ -258,7 +221,7 @@ HydroBase::Bvec_evolution_method = "GRHydro"
+ 
+ GRHydro::method_type               = "RSA FV"
+ GRHydro::recon_method              = "tvd"
+-GRHydro::tvd_limiter               = "vanleerMC"
++GRHydro::tvd_limiter               = "vanleerMC2"
+ GRHydro::recon_vars                = "primitive"
+ GRHydro::riemann_solver            = "HLLE"
+ GRHydro::bound                     = "none"
+@@ -269,10 +232,13 @@ GRHydro::Grhydro_MaxNumConstrainedVars = 13
+ GRHydro::GRHydro_MaxNumEvolvedVars     = 10
+ 
+ GRHydro::clean_divergence          = "yes"
+-GRHydro::kap_dc                    = 1.0
++GRHydro::kap_dc                    = 10.0
+ GRHydro::track_divB                = "yes"
+ GRHydro::calculate_bcom            = "yes"
+ 
++GRHydro::psidcspeed = "light speed"
++GRHydro::decouple_normal_Bfield = "yes"
++
+ #------------------------------------------------------------------------------
+ # Output:
+ #------------------------------------------------------------------------------
+@@ -284,13 +250,14 @@ IOBasic::outInfo_every = 1
+ IOBasic::outInfo_reductions = "maximum"
+ IOBasic::outInfo_vars  = "
+  Carpet::physical_time_per_hour
+- HydroBase::rho
+- HydroBase::press
+  GRHydro::bcom_sq
++ HydroBase::press
++ HydroBase::rho
+  SystemStatistics::maxrss_mb
+ "
+ 
+-IOScalar::outScalar_every      = 1024
++#IOScalar::outScalar_every      = 1024
++IOScalar::outScalar_every      = 320   #t=1
+ IOScalar::one_file_per_group   = "yes"
+ IOScalar::outScalar_reductions = "minimum maximum average norm1 norm2"
+ IOScalar::outScalar_vars       = "
+@@ -318,14 +285,14 @@ IOASCII::output_boundary_points = "no"  #hg version only!
+ #IOASCII::out3D_ghosts       = "no"  #hg (DEPRECATED)
+ #IOASCII::out3D_outer_ghosts = "no" #hg (DEPRECATED)
+ 
+-IOASCII::out0D_every     = 256
++IOASCII::out0D_every     = 320
+ IOASCII::out0D_vars      = "
+  Carpet::timing
+ "
+ 
+ #Set these IOASCII options for initial data only:
+-#IOASCII::out1D_every     = 256000000
+-IOASCII::out1D_dt        = 10
++IOASCII::out1D_every     = 7680
++#IOASCII::out1D_dt        = 10
+ IOASCII::out1D_d         = "yes"
+ IOASCII::out1D_vars      = "
+  GRHydro::bcom
+@@ -334,6 +301,7 @@ IOASCII::out1D_vars      = "
+  GRHydro::Bcons
+  GRHydro::dens
+  GrHydro::divB
++ GrHydro::psidc
+  GRHydro::scon
+  GRHydro::tau
+  HydroBase::Bvec
+@@ -365,12 +333,12 @@ IOASCII::out1D_vars      = "
+ CarpetIOHDF5::one_file_per_group             = "yes"
+ CarpetIOHDF5::open_one_input_file_at_a_time  = "yes"
+ 
+-CarpetIOHDF5::output_symmetry_points         = "no"
+-CarpetIOHDF5::output_ghost_points            = "no"
+-CarpetIOHDF5::output_boundary_points         = "no"
+-CarpetIOHDF5::output_buffer_points           = "no"
++CarpetIOHDF5::output_symmetry_points         = "yes"
++CarpetIOHDF5::output_ghost_points            = "yes"
++CarpetIOHDF5::output_boundary_points         = "yes"
++CarpetIOHDF5::output_buffer_points           = "yes"
+ 
+-CarpetIOHDF5::out2D_every                    = 256
++CarpetIOHDF5::out2D_every                    = 160
+ CarpetIOHDF5::out2D_xy                       = "yes"
+ CarpetIOHDF5::out2D_xz                       = "no"
+ CarpetIOHDF5::out2D_yz                       = "no"
+@@ -382,6 +350,7 @@ CarpetIOHDF5::out2D_vars      = "
+  GRHydro::Bcons
+  GRHydro::dens
+  GRHydro::divB
++ GrHydro::psidc
+  GRHydro::scon
+  GRHydro::tau
+  Grid::coordinates
+@@ -393,7 +362,7 @@ CarpetIOHDF5::out2D_vars      = "
+  HydroBase::w_lorentz
+ "
+ 
+-CarpetIOHDF5::out3D_every = 4096
++CarpetIOHDF5::out3D_every = 1920
+ CarpetIOHDF5::out3D_vars  = "
+  GRHydro::bcom
+  GRHydro::bcom0
+-- 
+1.7.10.4
+

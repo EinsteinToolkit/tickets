@@ -1,0 +1,16 @@
+diff --git a/TwoPunctures/schedule.ccl b/TwoPunctures/schedule.ccl
+index 643ddb5..2fa6e71 100644
+--- a/TwoPunctures/schedule.ccl
++++ b/TwoPunctures/schedule.ccl
+@@ -30,6 +30,11 @@ if (CCTK_Equals(initial_data, "twopunctures"))
+   {
+     LANG: C
+     STORAGE: puncture_u bare_mass
++    READS: grid::coordinates(EVERYWHERE)
++    WRITES: TWOPUNCTURES::puncture_u(INTERIOR)
++    WRITES: ADMBASE::METRIC(INTERIOR)
++    WRITES: ADMBASE::CURV(INTERIOR)
++    WRITES: ADMBASE::alp(INTERIOR)
+     # SYNC: ADMBase::metric ADMBase::curv ADMBase::lapse
+   } "Create puncture black hole initial data"
+ 

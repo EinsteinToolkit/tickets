@@ -1,0 +1,25 @@
+From d9fac14909a2bc62c65e2794cb120050db58ff79 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Mon, 25 Nov 2013 21:06:32 -0800
+Subject: [PATCH 15/36] GRHydro: fix z direction in optimized C++ PPM
+
+---
+ src/GRHydro_PPMReconstruct_drv_opt.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/GRHydro_PPMReconstruct_drv_opt.cc b/src/GRHydro_PPMReconstruct_drv_opt.cc
+index ed755ac..69f2590 100644
+--- a/src/GRHydro_PPMReconstruct_drv_opt.cc
++++ b/src/GRHydro_PPMReconstruct_drv_opt.cc
+@@ -490,7 +490,7 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+         //ppm1d_cxx<do_temp,do_ye,do_mhd,clean_divergence,ppm_detect>
+         
+         ppm1d_cxx_func
+-          (ny,CCTK_DELTA_SPACE(1),
++          (nz,CCTK_DELTA_SPACE(2),
+            &rho1d[0],&velz1d[0],&velx1d[0],&vely1d[0],&eps1d[0],&press1d[0],&temp1d[0],
+            &ye1d[0],&Bvcz1d[0],&Bvcx1d[0],&Bvcy1d[0],&psidc1d[0],
+            &rho1d_minus[0],&velz1d_minus[0],&velx1d_minus[0],&vely1d_minus[0],&eps1d_minus[0],&temp1d_minus[0],
+-- 
+1.9.0
+

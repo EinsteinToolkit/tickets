@@ -1,0 +1,142 @@
+diff -r 0df125d4132d Carpet/Carpet/src/LoadBalanceReal/carpet_boxtypes.f90
+--- a/Carpet/Carpet/src/LoadBalanceReal/carpet_boxtypes.f90	Tue Nov 15 09:33:38 2011 -0800
++++ b/Carpet/Carpet/src/LoadBalanceReal/carpet_boxtypes.f90	Wed Nov 16 14:26:16 2011 -0800
+@@ -133,7 +133,7 @@
+ !   zones (communication). Ghost zones are added with a multiplication factor
+ !   of alpha.
+     subroutine calc_imbalance ( sregion, imbalance )
+-      type(superregion2), pointer, intent(in) :: sregion
++      type(superregion2), pointer :: sregion
+       real(wp), intent(out) :: imbalance
+       integer, dimension(3) :: cost
+       real(wp) :: maxcost, maxgcost, n
+@@ -161,7 +161,7 @@
+ 
+ !       Routine to traverse the tree and accumulate the cost of the leaves.
+         recursive subroutine traverse_tree ( sreg )
+-          type(superregion2), pointer, intent(in) :: sreg
++          type(superregion2), pointer :: sreg
+           integer :: ich, nch, tcost, gcost
+ 
+ !         If the region has children recursively traverse the children.
+@@ -195,7 +195,7 @@
+     subroutine AssignProcs ( minproc, maxproc, frac1, frac2, sregion )
+       integer, intent(in) :: minproc, maxproc
+       real(wp), intent(in) :: frac1, frac2
+-      type(superregion2), pointer, intent(inout) :: sregion
++      type(superregion2), pointer :: sregion
+ 
+ !     Initialize.
+       if ( frac1 == 0 ) then
+@@ -211,7 +211,7 @@
+ 
+ !       Routine to traverse the tree and assign processor ids to the leaves.
+         recursive subroutine traverse_treep ( sreg )
+-          type(superregion2), pointer, intent(inout) :: sreg
++          type(superregion2), pointer :: sreg
+           integer :: ich, nch, maxcost, np
+           integer, dimension(3) :: cost
+           integer, dimension(1) :: mydim
+@@ -258,8 +258,8 @@
+ !   in the pre-allocated array of length nprocs. The array should be
+ !   initialized to zero.
+     subroutine calc_proc_load ( sregions, proc_load )
+-      type(ptr), dimension(:), allocatable, intent(in) :: sregions
+-      integer, dimension(:), allocatable, intent(inout) :: proc_load
++      type(ptr), dimension(:), intent(in) :: sregions
++      integer, dimension(:), intent(inout) :: proc_load
+       integer :: i
+ 
+ !     For each of the super regions in the array.
+@@ -274,7 +274,7 @@
+ !       Routine to traverse the tree and add the load of each leaf to the
+ !       assigned processor.
+         recursive subroutine traverse_treel ( sreg )
+-          type(superregion2), pointer, intent(in) :: sreg
++          type(superregion2), pointer :: sreg
+           integer, dimension(3) :: cost
+           integer :: ich, nch
+ 
+@@ -313,7 +313,7 @@
+       real(wp), intent(in) :: nprocs, fract
+       integer, intent(in) :: maxchoices, maxfactor
+       integer, intent(inout) :: clevel
+-      type(superregion2), pointer, intent(inout) :: newreg
++      type(superregion2), pointer :: newreg
+       integer, intent(inout) :: ncount
+       type(bbox) :: reg
+       integer, dimension(3) :: cost
+diff -r 0df125d4132d Carpet/Carpet/src/LoadBalanceReal/carpet_region.f90
+--- a/Carpet/Carpet/src/LoadBalanceReal/carpet_region.f90	Tue Nov 15 09:33:38 2011 -0800
++++ b/Carpet/Carpet/src/LoadBalanceReal/carpet_region.f90	Wed Nov 16 14:26:16 2011 -0800
+@@ -56,9 +56,9 @@
+       type(bbox), intent(in) :: box
+       type(boundary), intent(in) :: outerbound
+       integer, intent(in) :: map
+-      type(superregion2), pointer, intent(out) :: sregion
++      type(superregion2), pointer :: sregion
+ !      gfortran dies with an internal compiler error on this initialization.
+-!      type(superregion2), pointer, intent(out) :: sregion => null()
++!      type(superregion2), pointer :: sregion => null()
+ 
+       allocate ( sregion )
+       sregion%extent = box
+@@ -77,7 +77,7 @@
+ !   The use of intent(in) on the sregion just ensures that sregion itself
+ !   is not modified. Its childrens pointer can be nullified.
+     subroutine disassociate ( sregion )
+-      ! type(superregion2), pointer, intent(in) :: sregion
++      ! type(superregion2), pointer :: sregion
+       type(superregion2), pointer :: sregion
+       integer :: n, i
+ 
+@@ -94,8 +94,8 @@
+ !   Routine to assign the pointers of the children of sregion1 to the same
+ !   super regions as sregion2.
+     subroutine point_to_children ( sregion1, sregion2 )
+-      type(superregion2), pointer, intent(inout) :: sregion1
+-      type(superregion2), pointer, intent(in) :: sregion2
++      type(superregion2), pointer :: sregion1
++      type(superregion2), pointer :: sregion2
+       integer :: n1, n2, i
+ 
+ !     Only do something if sregion2 actually has children.
+@@ -126,7 +126,7 @@
+ 
+ !   Routine to recursively deallocate memory for a super region.
+     recursive subroutine destroy_sregion ( sregion )
+-      type(superregion2), pointer, intent(inout) :: sregion
++      type(superregion2), pointer :: sregion
+       integer :: n, i
+ 
+ !     If the super region has children.
+@@ -159,7 +159,7 @@
+ !   Routine to recursively print all information about a super region tree
+ !   structure to stdout. 
+     recursive subroutine print_tree ( sregion )
+-      type(superregion2), pointer, intent(in) :: sregion
++      type(superregion2), pointer :: sregion
+       integer :: n, i
+       
+ !     Only do something if the super region pointer is associated with a
+@@ -201,7 +201,7 @@
+ !   the largest element smaller than the size of the super region in direction
+ !   dir. There is currently no check that this is indeed the case.
+     subroutine split_sregion ( sregion, dir, frac )
+-      ! type(superregion2), pointer, intent(in) :: sregion
++      ! type(superregion2), pointer :: sregion
+       type(superregion2), pointer :: sregion
+       integer, intent(in) :: dir
+       integer, dimension(:), intent(in) :: frac
+diff -r 0df125d4132d Carpet/Carpet/src/LoadBalanceReal/splitregions_recursively.F90
+--- a/Carpet/Carpet/src/LoadBalanceReal/splitregions_recursively.F90	Tue Nov 15 09:33:38 2011 -0800
++++ b/Carpet/Carpet/src/LoadBalanceReal/splitregions_recursively.F90	Wed Nov 16 14:26:16 2011 -0800
+@@ -106,7 +106,7 @@
+ contains
+   
+   recursive subroutine insert_region (sreg, cxx_tree, cxx_regs)
+-    type(superregion2), pointer, intent(in)  :: sreg
++    type(superregion2), pointer  :: sreg
+     CCTK_POINTER,                intent(in)  :: cxx_regs
+     CCTK_POINTER,                intent(out) :: cxx_tree
+     

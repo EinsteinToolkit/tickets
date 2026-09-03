@@ -1,0 +1,26 @@
+Index: sim
+===================================================================
+--- sim	(revision 1234)
++++ sim	(working copy)
+@@ -19,5 +19,21 @@
+     exit 1
+ fi
+ 
++PYCHECKERS=(pychecker pychecker-py26)
++for PYCHECKER in "${PYCHECKERS[@]}"; do
++    if which "$PYCHECKER" 2>/dev/null 1>/dev/null; then
++        "$PYCHECKER" -Q "$cmd"
++        break
++    fi
++done
++
++PYLINTS=(pylint pylint2.6)
++for PYLINT in "${PYLINTS[@]}"; do
++    if which "$PYLINT" 2>/dev/null 1>/dev/null; then
++        "$PYLINT" -r n "$cmd"
++        break
++    fi
++done
++
+ # Forward the call
+ exec python "$cmd" "$@"

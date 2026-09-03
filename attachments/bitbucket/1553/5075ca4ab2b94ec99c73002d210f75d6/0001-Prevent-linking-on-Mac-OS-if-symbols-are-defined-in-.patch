@@ -1,0 +1,28 @@
+From 379be285da21f9f3e4aaaa5f92d5be4af43277ec Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Tue, 11 Mar 2014 12:03:36 +0100
+Subject: [PATCH] Prevent linking on Mac OS if symbols are defined in more than
+ one library
+
+This prevents subtle bugs at runtime where the result of calling a function depends on the Cactus library link order.  See https://trac.einsteintoolkit.org/ticket/1553.
+---
+ lib/make/known-architectures/darwin | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/lib/make/known-architectures/darwin b/lib/make/known-architectures/darwin
+index edca50a..d15ed79 100644
+--- a/lib/make/known-architectures/darwin
++++ b/lib/make/known-architectures/darwin
+@@ -333,4 +333,9 @@ else
+   # Darwin has no native MPI, so we don't set any NATIVE_MPI_XXX variables.
+   # This is caught later on by lib/make/extras/MPI/NATIVE.
+ 
++  # Prevent linking if symbols are defined in multiple libraries
++  : ${CACTUSLIBLINKLINE='-L$(CCTK_LIBDIR) -filelist $(CCTK_LIBDIR)/LINKLIST,$(TOP)/build'}
++  : ${BEGIN_WHOLE_ARCHIVE_FLAGS='-L$(CCTK_LIBDIR)'}
++  : ${END_WHOLE_ARCHIVE_FLAGS=''}
++
+ fi
+-- 
+1.8.5.3
+

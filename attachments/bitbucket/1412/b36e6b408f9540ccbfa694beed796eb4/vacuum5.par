@@ -1,0 +1,224 @@
+
+
+################################################################################
+# Active thorns
+################################################################################
+
+ActiveThorns = "
+ADMBase
+Boundary
+Carpet
+CarpetIOScalar
+CarpetLib
+CarpetReduce
+CarpetRegrid2
+CartGrid3D
+CoordBase
+IOUtil
+InitBase
+LoopControl
+MoL
+ReflectionSymmetry
+RotatingSymmetry180
+Slab
+SpaceMask
+SymBase
+SystemStatistics
+Time
+Vectors
+"
+
+################################################################################
+# Grid structure
+################################################################################
+
+# Coarse grid (refinement level 0)
+CartGrid3D::type                        = "coordbase"
+Carpet::domain_from_coordbase           = yes
+CoordBase::domainsize                   = "minmax"
+CoordBase::xmax                         = 30.4
+CoordBase::ymax                         = 30.4
+CoordBase::zmax                         = 30.4
+CoordBase::xmin                         = 0
+CoordBase::ymin                         = -30.4
+CoordBase::zmin                         = 0
+CoordBase::dx                           = 0.8
+CoordBase::dy                           = 0.8
+CoordBase::dz                           = 0.8
+Driver::ghost_size                      = 5
+
+CoordBase::boundary_size_x_upper        = 5
+CoordBase::boundary_shiftout_x_upper    = 1
+CoordBase::boundary_size_y_upper        = 5
+CoordBase::boundary_shiftout_y_upper    = 1
+CoordBase::boundary_size_z_upper        = 5
+CoordBase::boundary_shiftout_z_upper    = 1
+
+CoordBase::boundary_size_x_lower        = 5
+CoordBase::boundary_shiftout_x_lower    = 1
+CoordBase::boundary_size_y_lower        = 5
+CoordBase::boundary_shiftout_y_lower    = 1
+CoordBase::boundary_size_z_lower        = 5
+CoordBase::boundary_shiftout_z_lower    = 1
+
+
+Time::timestep_method                   = "given"
+Time::timestep                          = 0.18
+Carpet::time_refinement_factors         = "[1,1,2,4,8,16,32,64,128,256]"
+
+ReflectionSymmetry::reflection_x        = no
+ReflectionSymmetry::reflection_y        = no
+ReflectionSymmetry::reflection_z        = yes
+ReflectionSymmetry::avoid_origin_x      = no
+ReflectionSymmetry::avoid_origin_y      = no
+ReflectionSymmetry::avoid_origin_z      = no
+
+CarpetRegrid2::symmetry_rotating180     = yes
+
+
+################################################################################
+# Mesh refinement
+################################################################################
+
+Carpet::max_refinement_levels           = 9
+CarpetRegrid2::num_centres              = 2
+CarpetRegrid2::num_levels_1             = 6
+CarpetRegrid2::position_x_1             = 3.0
+CarpetRegrid2::radius_1[1] = 9.600000
+CarpetRegrid2::radius_1[2] = 4.800000
+CarpetRegrid2::radius_1[3] = 2.400000
+CarpetRegrid2::radius_1[4] = 1.200000
+CarpetRegrid2::radius_1[5] = 0.600000
+CarpetRegrid2::num_levels_2             = 6
+CarpetRegrid2::position_x_2             = -3.0
+CarpetRegrid2::radius_2[1] = 9.600000
+CarpetRegrid2::radius_2[2] = 4.800000
+CarpetRegrid2::radius_2[3] = 2.400000
+CarpetRegrid2::radius_2[4] = 1.200000
+CarpetRegrid2::radius_2[5] = 0.600000
+
+Carpet::use_buffer_zones                = yes
+Carpet::prolongation_order_space        = 5
+Carpet::prolongation_order_time         = 2
+
+CarpetRegrid2::regrid_every             = 128
+CarpetRegrid2::verbose                  = yes
+Carpet::grid_coordinates_filename       = "carpet-grid.asc"
+
+################################################################################
+# Initial data
+################################################################################
+
+ADMBase::initial_data                   = "Cartesian Minkowski"
+ADMBase::initial_lapse                  = "one"
+ADMBase::initial_shift                  = "zero"
+ADMBase::initial_dtlapse                = "zero"
+ADMBase::initial_dtshift                = "zero"
+admbase::metric_timelevels = 3
+admbase::shift_timelevels = 3
+admbase::lapse_timelevels = 3
+
+Carpet::init_fill_timelevels            = yes
+InitBase::initial_data_setup_method     = "init_single_level"
+
+################################################################################
+# Evolution and boundary
+################################################################################
+
+#      GenericFD::jacobian_group = "Coordinates::jacobian"
+#      GenericFD::jacobian_derivative_group = "Coordinates::jacobian2"
+#      GenericFD::jacobian_identity_map = 0
+
+ADMBase::evolution_method         = "static"
+ADMBase::lapse_evolution_method   = "static"
+ADMBase::shift_evolution_method   = "static"
+ADMBase::dtlapse_evolution_method = "static"
+ADMBase::dtshift_evolution_method = "static"
+
+Boundary::radpower                           = 2
+
+################################################################################
+# BH tracking
+################################################################################
+
+################################################################################
+# Time integration
+################################################################################
+
+MoL::ODE_Method                         = "rk4"
+MoL::MoL_Intermediate_Steps             = 4
+MoL::MoL_Num_Scratch_Levels             = 1
+
+################################################################################
+# Interpolation
+################################################################################
+
+################################################################################
+# Psi4 computation
+################################################################################
+
+################################################################################
+# Psi4 mode decomposition
+################################################################################
+
+# Radii are chosen to be evenly spaced in 1/r as that is the variable
+# extrapolation is performed in
+
+################################################################################
+# Apparent Horizons
+################################################################################
+
+################################################################################
+# Spherical surfaces
+################################################################################
+
+################################################################################
+# Isolated Horizons
+################################################################################
+
+################################################################################
+# Correctness checking
+################################################################################
+
+Carpet::poison_new_timelevels           = no
+Carpet::check_for_poison                = no
+
+################################################################################
+# Timers
+################################################################################
+
+Cactus::cctk_timer_output               = full
+
+################################################################################
+# Output
+################################################################################
+
+Cactus::highlight_warning_messages      = "no"
+
+IO::out_dir                             = $parfile
+
+IOScalar::outScalar_every               = 256
+IOScalar::outScalar_reductions          = "minimum maximum average"
+IOScalar::outScalar_vars                = "SystemStatistics::process_memory_mb"
+
+################################################################################
+# Checkpointing and recovery
+################################################################################
+
+IO::checkpoint_ID                           = no
+IO::recover                                 = "autoprobe"
+IO::checkpoint_every_walltime_hours         = 3
+IO::out_proc_every                          = 2
+IO::checkpoint_keep                         = 1
+IO::checkpoint_on_terminate                 = yes
+IO::checkpoint_dir                          = "../checkpoints"
+IO::recover_dir                             = "../checkpoints"
+IO::abort_on_io_errors                      = yes
+
+################################################################################
+# Run termination
+################################################################################
+
+Cactus::terminate                               = time
+Cactus::cctk_final_time                         = 1200
+#Cactus::cctk_itlast                             = 256

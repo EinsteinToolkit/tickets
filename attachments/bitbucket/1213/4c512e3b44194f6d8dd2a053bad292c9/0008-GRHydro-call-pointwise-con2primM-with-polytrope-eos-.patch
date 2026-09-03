@@ -1,0 +1,53 @@
+From 75a6f2161504ddd04f7f8260eb3b69490e4b570f Mon Sep 17 00:00:00 2001
+From: Bruno Coutinho Mundim <bcmsma@astro.rit.edu>
+Date: Wed, 31 Oct 2012 22:38:57 -0700
+Subject: [PATCH 08/25] GRHydro: call pointwise con2primM with polytrope eos
+ handle deep inside AH upon inversion failure of gamma
+ law eos.
+
+---
+ src/GRHydro_Con2PrimM.F90 |   28 ++++++++++++++++++++++++++++
+ 1 file changed, 28 insertions(+)
+
+diff --git a/src/GRHydro_Con2PrimM.F90 b/src/GRHydro_Con2PrimM.F90
+index fd24f09..31ae4a1 100644
+--- a/src/GRHydro_Con2PrimM.F90
++++ b/src/GRHydro_Con2PrimM.F90
+@@ -344,6 +344,34 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+                    uxx,uxy,uxz,uyy,uyz,uzz,det, &
+                    epsnegative,GRHydro_C2P_failed(i,j,k))
+ 
++              if(sdet.ge.sqrtdet_thr) then
++                if(GRHydro_C2P_failed(i,j,k).ne.0) then
++                  GRHydro_C2P_failed(i,j,k) = 0
++
++                  rho_tmp = rho(i,j,k)
++                  press_tmp = press(i,j,k)
++                  eps_tmp = eps(i,j,k)
++                  velx_tmp = vup(i,j,k,1)
++                  vely_tmp = vup(i,j,k,2)
++                  velz_tmp = vup(i,j,k,3)
++                  w_lorentz_tmp = w_lorentz(i,j,k)
++                  Bvecx_tmp = Bprim(i,j,k,1)
++                  Bvecy_tmp = Bprim(i,j,k,2)
++                  Bvecz_tmp = Bprim(i,j,k,3)
++
++                  call GRHydro_Con2PrimM_pt(GRHydro_polytrope_handle, keytemp, &
++                       GRHydro_eos_rf_prec, local_gam(1), dens(i,j,k), &
++                       scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3), tau(i,j,k), &
++                       Bcons(i,j,k,1),Bcons(i,j,k,2),Bcons(i,j,k,3),xye(1), &
++                       xtemp(1),rho_tmp,velx_tmp,vely_tmp,velz_tmp,&
++                       eps_tmp,press_tmp,Bvecx_tmp,Bvecy_tmp,Bvecz_tmp,b2,&
++                       w_lorentz_tmp,g11(i,j,k),g12(i,j,k),g13(i,j,k),&
++                       g22(i,j,k),g23(i,j,k),g33(i,j,k), &
++                       uxx,uxy,uxz,uyy,uyz,uzz,det, &
++                       epsnegative,GRHydro_C2P_failed(i,j,k))
++                end if
++              end if
++
+            else    ! if(evolve_temper.eq.0) then
+ 
+               rho_tmp = rho(i,j,k)
+-- 
+1.7.10.4
+

@@ -1,0 +1,28 @@
+From ffd50db0fde9b2996873f5f07f43ebb106ecf837 Mon Sep 17 00:00:00 2001
+From: Erik Schnetter <schnetter@gmail.com>
+Date: Sun, 1 Dec 2013 11:24:11 -0500
+Subject: [PATCH 04/36] GRHydro: Simplify logical expression
+
+---
+ src/GRHydro_LastMoLPostStep.c | 5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/src/GRHydro_LastMoLPostStep.c b/src/GRHydro_LastMoLPostStep.c
+index 9e11f5a..b2354d8 100644
+--- a/src/GRHydro_LastMoLPostStep.c
++++ b/src/GRHydro_LastMoLPostStep.c
+@@ -28,10 +28,7 @@ void GRHydro_SetLastMoLPostStep(CCTK_ARGUMENTS)
+ 
+   // If counter becomes zero, the only thing left to do is to call PostStep!
+   // NOTE: MoL's counter is uninitialised during initial data setup!
+-  if (cctk_iteration == 0 || *MoL_Intermediate_Step == 0)
+-    *InLastMoLPostStep = 1;
+-  else
+-    *InLastMoLPostStep = 0;
++  *InLastMoLPostStep = cctk_iteration == 0 || *MoL_Intermediate_Step == 0;
+ }
+ 
+ void GRHydro_ClearLastMoLPostStep(CCTK_ARGUMENTS)
+-- 
+1.8.5.3
+

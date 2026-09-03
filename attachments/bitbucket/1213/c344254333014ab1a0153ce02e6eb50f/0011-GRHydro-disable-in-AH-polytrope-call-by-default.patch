@@ -1,0 +1,49 @@
+From 8df1b9851b854883b29aa5554de8905a31482f07 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Wed, 9 Jan 2013 18:46:42 -0800
+Subject: [PATCH 11/25] GRHydro: disable in-AH polytrope call by default
+
+---
+ param.ccl                 |    3 ++-
+ src/GRHydro_Con2PrimM.F90 |    4 ++--
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index 1b43741..56c8aea 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -354,7 +354,8 @@ int GRHydro_c2p_warnlevel "Warnlevel for Con2Prim warnings" STEERABLE=ALWAYS
+ REAL sqrtdet_thr "Threshold to apply cons rescalings deep inside the horizon" STEERABLE=ALWAYS
+ {
+  1.0:    :: "Larger values guarantees this sort of rescaling only deep inside the horizon"
+-} 30.0
++ -1.0    :: "Do not apply limit"
++} -1.0
+ 
+ REAL max_magnetic_to_gas_pressure_ratio "consider pressure to be magnetically dominated if magnetic pressure to gas pressure ratio is higher than this"
+ {
+diff --git a/src/GRHydro_Con2PrimM.F90 b/src/GRHydro_Con2PrimM.F90
+index 2ceef13..0d76503 100644
+--- a/src/GRHydro_Con2PrimM.F90
++++ b/src/GRHydro_Con2PrimM.F90
+@@ -270,7 +270,7 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+            if(evolve_temper.eq.0) then
+             
+ 
+-              if(sdet.ge.sqrtdet_thr) then
++              if(sqrtdet_thr.gt.0d0 .and. sdet.ge.sqrtdet_thr) then
+                     d2 = dens(i,j,k)**2
+                     s2 = uxx*scon(i,j,k,1)**2 + uyy*scon(i,j,k,2)**2 &
+                                               + uzz*scon(i,j,k,3)**2 &
+@@ -359,7 +359,7 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+                 local_pgam=log(xpress(1)/local_K)/log(xrho(1))
+                 sc = local_K*dens(i,j,k)
+ 
+-                if(sdet.ge.sqrtdet_thr) then
++                if(sqrtdet_thr.gt.0d0 .and. sdet.ge.sqrtdet_thr) then
+                   GRHydro_C2P_failed(i,j,k) = 0
+ 
+                   rho_tmp = rho(i,j,k)
+-- 
+1.7.10.4
+

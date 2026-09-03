@@ -1,0 +1,89 @@
+diff --git a/m/McLachlan_BSSN.m b/m/McLachlan_BSSN.m
+index a835560..e3f08d0 100644
+--- a/m/McLachlan_BSSN.m
++++ b/m/McLachlan_BSSN.m
+@@ -109,7 +109,7 @@ Map [DefineTensor,
+       alpha, A, beta, B, Atm, Atu, trA, Ats, trAts,
+       dottrK, dotXt,
+       cXt, cS, cA,
+-      e4phi, em4phi, ddetg, detgt, gtu, ddetgt, dgtu, ddgtu, Gtl, Gtlu, Gt,
++      e4phi, em4phi, ddetg, detgt, gtu, ddetgt, dgtu, ddgtu, Gtl, Gtlu, Gt, Ddetgt,
+       Rt, Rphi, gK,
+       T00, T0, T, rho, S,
+       x, y, z, r,
+@@ -407,7 +407,7 @@ convertToADMBaseDtLapseShiftCalc =
+   Schedule -> {"IN " <> thorn <> "_convertToADMBaseGroup"},
+   ConditionalOnKeyword -> {"dt_lapse_shift_method", "correct"},
+   Where -> Interior,
+-  Shorthands -> {dir[ua], detgt, gtu[ua,ub], eta, theta},
++  Shorthands -> {dir[ua], detgt, gtu[ua,ub], eta, theta, em4phi, Ddetgt[la]},
+   Equations -> 
+   {
+     dir[ua] -> Sign[beta[ua]],
+@@ -415,10 +415,15 @@ convertToADMBaseDtLapseShiftCalc =
+     detgt -> 1 (* detgtExpr *),
+     (* This leads to simpler code... *)
+     gtu[ua,ub]   -> 1/detgt detgtExpr MatrixInverse [gt[ua,ub]],
++    em4phi       -> IfThen[conformalMethod==CMW, phi^2, Exp[-4 phi]],
+     
+     eta -> etaExpr,
+     theta -> thetaExpr,
+-    
++
++    (* Ddetgt should be zero analytically, but we're not assuming it here. Change commenting to assume it.*)
++    Ddetgt[la] -> gtu[uk,ul] PD[gt[lk,ll],la],
++    (*Ddetgt[la] -> 0,*)
++ 
+     (* see RHS *)
+ (*
+     admdtalpha -> - harmonicF alpha^harmonicN
+@@ -431,11 +436,10 @@ convertToADMBaseDtLapseShiftCalc =
+                         (trK - IfCCZ4[2 Theta, 0])))
+                   + LapseAdvectionCoeff Upwind[beta[ua], alpha, la],
+     admdtbeta[ua] -> IfThen[harmonicShift,
+-                            - 1/2 gtu[ua,uj] phi alpha
+-                              (- 2 alpha PD[phi,lj]
+-                               + 2 phi PD[alpha,lj]
+-                               + gtu[uk,ul] phi alpha
+-                                 (PD[gt[lk,ll],lj] - 2 PD[gt[lj,lk],ll])),
++                            - 1/2 gtu[ua,uj] em4phi alpha
++                              (- 2 alpha IfThen[conformalMethod==CMW,1/phi,-2] PD[phi,lj]
++                               + 2 PD[alpha,lj]
++                               + alpha (Ddetgt[lj] - 2 gtu[uk,ul] PD[gt[lj,lk],ll])),
+                             (* else *)
+                             + theta ShiftGammaCoeff
+                               (+ ShiftBCoeff B[ua]
+@@ -540,7 +544,7 @@ evolCalc =
+                  e4phi, em4phi, cdphi[la], cdphi2[la,lb], g[la,lb], detg,
+                  gu[ua,ub], Ats[la,lb], trAts, eta, theta,
+                  rho, S[la], trS, fac1, fac2, dottrK, dotXt[ua],
+-                 epsdiss[ua], IfCCZ4[Z[ua]], IfCCZ4[dotTheta]},
++                 epsdiss[ua], IfCCZ4[Z[ua]], IfCCZ4[dotTheta], Ddetgt[la]},
+   Equations -> 
+   {
+     dir[ua] -> Sign[beta[ua]],
+@@ -721,15 +725,18 @@ evolCalc =
+     
+     eta -> etaExpr,
+     theta -> thetaExpr,
+-    
++
++    (* Ddetgt should be zero analytically, but we're not assuming it here. Change commenting to assume it.*)
++    Ddetgt[la] -> gtu[uk,ul] PD[gt[lk,ll],la],
++    (*Ddetgt[la] -> 0,*)
++
+     (* dot[beta[ua]] -> eta Xt[ua], *)
+     (* dot[beta[ua]] -> ShiftGammaCoeff alpha^ShiftAlphaPower B[ua], *)
+     dot[beta[ua]] -> IfThen[harmonicShift,
+-                            - 1/2 gtu[ua,uj] phi alpha
+-                              (- 2 alpha PD[phi,lj]
+-                               + 2 phi PD[alpha,lj]
+-                               + gtu[uk,ul] phi alpha
+-                                 (PD[gt[lk,ll],lj] - 2 PD[gt[lj,lk],ll])),
++                            - 1/2 gtu[ua,uj] em4phi alpha
++                              (- 2 alpha IfThen[conformalMethod==CMW,1/phi,-2] PD[phi,lj]
++                               + 2 PD[alpha,lj]
++                               + alpha (Ddetgt[lj] - 2 gtu[uk,ul] PD[gt[lj,lk],ll])),
+                             (* else *)
+                             + theta ShiftGammaCoeff
+                               (+ ShiftBCoeff B[ua]

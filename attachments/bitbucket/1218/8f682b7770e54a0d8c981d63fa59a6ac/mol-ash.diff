@@ -1,0 +1,201 @@
+Index: arrangements/CactusNumerical/MoL/src/GenericRK.c
+===================================================================
+--- arrangements/CactusNumerical/MoL/src/GenericRK.c	(revision 189)
++++ arrangements/CactusNumerical/MoL/src/GenericRK.c	(working copy)
+@@ -99,7 +99,7 @@
+   totalsize = 1;
+   for (arraydim = 0; arraydim < cctk_dim; arraydim++)
+   {
+-    totalsize *= cctk_lsh[arraydim];
++    totalsize *= cctk_ash[arraydim];
+   }
+ 
+   if (scratchspace_firstindex == -99)
+Index: arrangements/CactusNumerical/MoL/src/ICN.c
+===================================================================
+--- arrangements/CactusNumerical/MoL/src/ICN.c	(revision 189)
++++ arrangements/CactusNumerical/MoL/src/ICN.c	(working copy)
+@@ -105,7 +105,7 @@
+   totalsize = 1;
+   for (arraydim = 0; arraydim < cctk_dim; arraydim++)
+   {
+-    totalsize *= cctk_lsh[arraydim];
++    totalsize *= cctk_ash[arraydim];
+   }
+ 
+ #ifdef MOLDEBUG
+@@ -256,7 +256,7 @@
+   totalsize = 1;
+   for (arraydim = 0; arraydim < cctk_dim; arraydim++)
+   {
+-    totalsize *= cctk_lsh[arraydim];
++    totalsize *= cctk_ash[arraydim];
+   }
+ 
+ #ifdef MOLDEBUG
+Index: arrangements/CactusNumerical/MoL/src/InitialCopy.c
+===================================================================
+--- arrangements/CactusNumerical/MoL/src/InitialCopy.c	(revision 189)
++++ arrangements/CactusNumerical/MoL/src/InitialCopy.c	(working copy)
+@@ -104,11 +105,15 @@
+   totalsize = 1;
+   for (arraydim = 0; arraydim < cctk_dim; arraydim++)
+   {
+-    totalsize *= cctk_lsh[arraydim];
++    totalsize *= cctk_ash[arraydim];
+   }
+ 
+   for (var = 0; var < MoLNumEvolvedVariables; var++)
+@@ -526,12 +519,11 @@
+   totalsize = 1;
+   for (arraydim = 0; arraydim < cctk_dim; arraydim++)
+   {
+-    totalsize *= cctk_lsh[arraydim];
++    totalsize *= cctk_ash[arraydim];
+   }
+ 
+   for (var = 0; var < MoLNumEvolvedVariables; var++)
+   {
+-    
+     StorageOn = CCTK_QueryGroupStorageI(cctkGH,
+                                        CCTK_GroupIndexFromVarI(RHSVariableIndex[var]));
+     
+@@ -690,7 +668,7 @@
+   totalsize = 1;
+   for (arraydim = 0; arraydim < cctk_dim; arraydim++)
+   {
+-    totalsize *= cctk_lsh[arraydim];
++    totalsize *= cctk_ash[arraydim];
+   }
+ 
+   for (var = 0; var < MoLNumEvolvedVariables; var++)
+Index: arrangements/CactusNumerical/MoL/src/RK2-MR-2_1.c
+===================================================================
+--- arrangements/CactusNumerical/MoL/src/RK2-MR-2_1.c	(revision 189)
++++ arrangements/CactusNumerical/MoL/src/RK2-MR-2_1.c	(working copy)
+@@ -99,7 +99,7 @@
+   totalsize = 1;
+   for (arraydim = 0; arraydim < cctk_dim; arraydim++)
+   {
+-     totalsize *= cctk_lsh[arraydim];
++     totalsize *= cctk_ash[arraydim];
+   }
+ 
+   if (scratchspace_firstindex == -99)
+Index: arrangements/CactusNumerical/MoL/src/RK2.c
+===================================================================
+--- arrangements/CactusNumerical/MoL/src/RK2.c	(revision 189)
++++ arrangements/CactusNumerical/MoL/src/RK2.c	(working copy)
+@@ -103,7 +99,7 @@
+   totalsize = 1;
+   for (arraydim = 0; arraydim < cctk_dim; arraydim++)
+   {
+-    totalsize *= cctk_lsh[arraydim];
++    totalsize *= cctk_ash[arraydim];
+   }
+ 
+   switch (*MoL_Intermediate_Step)
+Index: arrangements/CactusNumerical/MoL/src/RK3.c
+===================================================================
+--- arrangements/CactusNumerical/MoL/src/RK3.c	(revision 189)
++++ arrangements/CactusNumerical/MoL/src/RK3.c	(working copy)
+@@ -106,7 +102,7 @@
+   totalsize = 1;
+   for (arraydim = 0; arraydim < cctk_dim; arraydim++)
+   {
+-    totalsize *= cctk_lsh[arraydim];
++    totalsize *= cctk_ash[arraydim];
+   }
+ 
+   switch (*MoL_Intermediate_Step)
+Index: arrangements/CactusNumerical/MoL/src/RK4-MR-2_1.c
+===================================================================
+--- arrangements/CactusNumerical/MoL/src/RK4-MR-2_1.c	(revision 189)
++++ arrangements/CactusNumerical/MoL/src/RK4-MR-2_1.c	(working copy)
+@@ -99,7 +99,7 @@
+   totalsize = 1;
+   for (arraydim = 0; arraydim < cctk_dim; arraydim++)
+   {
+-     totalsize *= cctk_lsh[arraydim];
++     totalsize *= cctk_ash[arraydim];
+   }
+ 
+   if (scratchspace_firstindex == -99)
+Index: arrangements/CactusNumerical/MoL/src/RK4-RK2.c
+===================================================================
+--- arrangements/CactusNumerical/MoL/src/RK4-RK2.c	(revision 189)
++++ arrangements/CactusNumerical/MoL/src/RK4-RK2.c	(working copy)
+@@ -54,7 +54,7 @@
+   int const step = MoL_Intermediate_Steps - *MoL_Intermediate_Step;
+   
+   int totalsize = 1;
+-  for (int d=0; d<cctk_dim; ++d) totalsize *= cctk_lsh[d];
++  for (int d=0; d<cctk_dim; ++d) totalsize *= cctk_ash[d];
+   
+   CCTK_REAL const dt = *Original_Delta_Time / cctkGH->cctk_timefac;
+   
+Index: arrangements/CactusNumerical/MoL/src/RK4.c
+===================================================================
+--- arrangements/CactusNumerical/MoL/src/RK4.c	(revision 189)
++++ arrangements/CactusNumerical/MoL/src/RK4.c	(working copy)
+@@ -99,14 +99,14 @@
+   totalsize = 1;
+   for (arraydim = 0; arraydim < cctk_dim; arraydim++)
+   {
+-    totalsize *= cctk_lsh[arraydim];
++    totalsize *= cctk_ash[arraydim];
+   }
+ 
+   if (scratchspace_firstindex == -99)
+Index: arrangements/CactusNumerical/MoL/src/RK45.c
+===================================================================
+--- arrangements/CactusNumerical/MoL/src/RK45.c	(revision 189)
++++ arrangements/CactusNumerical/MoL/src/RK45.c	(working copy)
+@@ -159,7 +159,7 @@
+   int totalsize = 1;
+   for (int arraydim = 0; arraydim < cctk_dim; arraydim++)
+   {
+-    totalsize *= cctk_lsh[arraydim];
++    totalsize *= cctk_ash[arraydim];
+   }  
+ 
+   /* Real GFs */
+Index: arrangements/CactusNumerical/MoL/src/RK65.c
+===================================================================
+--- arrangements/CactusNumerical/MoL/src/RK65.c	(revision 189)
++++ arrangements/CactusNumerical/MoL/src/RK65.c	(working copy)
+@@ -115,7 +115,7 @@
+   totalsize = 1;
+   for (arraydim = 0; arraydim < cctk_dim; arraydim++)
+   {
+-    totalsize *= cctk_lsh[arraydim];
++    totalsize *= cctk_ash[arraydim];
+   }  
+ 
+   /* Real GFs */
+Index: arrangements/CactusNumerical/MoL/src/RK87.c
+===================================================================
+--- arrangements/CactusNumerical/MoL/src/RK87.c	(revision 189)
++++ arrangements/CactusNumerical/MoL/src/RK87.c	(working copy)
+@@ -131,7 +124,7 @@
+   totalsize = 1;
+   for (arraydim = 0; arraydim < cctk_dim; arraydim++)
+   {
+-    totalsize *= cctk_lsh[arraydim];
++    totalsize *= cctk_ash[arraydim];
+   }  
+ 
+   if (scratchspace_firstindex == -99)
+Index: arrangements/CactusNumerical/MoL/src/SandR.c
+===================================================================
+--- arrangements/CactusNumerical/MoL/src/SandR.c	(revision 189)
++++ arrangements/CactusNumerical/MoL/src/SandR.c	(working copy)
+@@ -91,7 +91,7 @@
+   totalsize = 1;
+   for (arraydim = 0; arraydim < cctk_dim; arraydim++)
+   {
+-    totalsize *= cctk_lsh[arraydim];
++    totalsize *= cctk_ash[arraydim];
+   }
+ 
+   for (var = 0; var < MoLNumSandRVariables; var++) 

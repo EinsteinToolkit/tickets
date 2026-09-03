@@ -1,0 +1,17 @@
+Index: src/interpolate.c
+===================================================================
+--- src/interpolate.c	(revision 89)
++++ src/interpolate.c	(working copy)
+@@ -710,7 +710,11 @@
+               (numvars == DIM && vectorlength == DIM));
+       tensortype = &vector;
+       basevar = firstvar;
+-      var = (vi - basevar) / vectorlength;
++      if (numvars == vectorlength) {
++        var = (vi - basevar);
++      } else {
++        var = (vi - basevar) / vectorlength;
++      }
+     } else if (CCTK_EQUALS (tensortypealias, "4u")
+                || CCTK_EQUALS (tensortypealias, "4d"))
+     {

@@ -1,0 +1,314 @@
+From 34ea4b3232fe2bb58ec0d3af63add8d2b9b2c19f Mon Sep 17 00:00:00 2001
+From: Christian Reisswig <reisswig@scriwalker.(none)>
+Date: Wed, 27 Feb 2013 12:12:19 -0800
+Subject: [PATCH 01/11] GRHydro: implemented H viscosity for HLLE solver to
+ eliminate the carbuncle instability. Tested with
+ shocktube and TOV. Not yet tested for problem where
+ carbuncles occur.
+
+---
+ interface.ccl        |    6 ++
+ param.ccl            |    4 ++
+ schedule.ccl         |   18 +++++-
+ src/GRHydro_HLLE.F90 |  171 +++++++++++++++++++++++++++++++++++++++++++++++++-
+ 4 files changed, 195 insertions(+), 4 deletions(-)
+
+diff --git a/interface.ccl b/interface.ccl
+index 301c4c3..89cae27 100644
+--- a/interface.ccl
++++ b/interface.ccl
+@@ -747,3 +747,9 @@ CCTK_REAL Con2Prim_temps TYPE=GF tags='Prolongation="None" checkpoint="no"'
+   eos_dpdeps_temp, eos_dpdrho_temp
+ } "Temporaries for the conservative to primitive conversion"
+ 
++CCTK_REAL H_viscosity_temps TYPE=GF tags='Prolongation="None" checkpoint="no"'
++{
++  eos_c
++} "Temporaries for H viscosity"
++
++
+diff --git a/param.ccl b/param.ccl
+index 7074529..44f6b22 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -310,6 +310,10 @@ keyword numerical_viscosity "How to compute the numerical viscosity"
+   "normal"	:: "Normal numerical viscosity"
+ } "fast"
+ 
++boolean apply_H_viscosity "H viscosity is useful to fix the carbuncle instability seen at strong shocks"
++{
++} no
++
+ keyword bound "Which boundary condition to use - FIXME"
+ {
+   "flat"	:: "Zero order extrapolation"
+diff --git a/schedule.ccl b/schedule.ccl
+index 8227855..7ca61d3 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -264,6 +264,16 @@ if(CCTK_IsImplementationActive("Coordinates")) {
+ 
+ STORAGE: conformal_state
+ 
++
++###############################################
++### Storage for the H viscosity temporaries ###
++###############################################
++
++if (apply_H_viscosity)
++{
++   STORAGE: H_viscosity_temps
++}
++
+ ###############################
+ ### Register startup banner ###
+ ###############################
+@@ -1547,5 +1557,11 @@ if (constrain_to_1D) {
+ }
+ 
+ 
+-
++if (apply_H_viscosity) {
++  SCHEDULE H_viscosity in GRHydroRHS BEFORE FluxTerms
++  {
++    LANG: FORTRAN
++    OPTION: LOCAL
++  } "Compute local temporaries for H viscosity"
++}
+ 
+diff --git a/src/GRHydro_HLLE.F90 b/src/GRHydro_HLLE.F90
+index 3271ff9..da262d0 100644
+--- a/src/GRHydro_HLLE.F90
++++ b/src/GRHydro_HLLE.F90
+@@ -31,6 +31,118 @@
+ 
+ @@*/
+ 
++! eta across face in x-direction
++#define etaX(i,j,k, v, c) \
++  (0.5d0*(abs(v(i+1,j,k,0)-v(i,j,k,0)) + abs(c(i+1,j,k)-c(i,j,k))))
++
++! eta across face in x-direction
++#define etaY(i,j,k, v, c) \
++  (0.5d0*(abs(v(i,j+1,k,1)-v(i,j,k,1)) + abs(c(i,j+1,k)-c(i,j,k))))
++  
++! eta across face in x-direction
++#define etaZ(i,j,k, v, c) \
++  (0.5d0*(abs(v(i,j,k+1,2)-v(i,j,k,2)) + abs(c(i,j,k+1)-c(i,j,k))))
++
++  
++
++subroutine H_viscosity(CCTK_ARGUMENTS)
++  implicit none
++  
++  ! save memory when MP is not used
++  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
++  TARGET gaa, gab, gac, gbb, gbc, gcc
++  TARGET gxx, gxy, gxz, gyy, gyz, gzz
++  TARGET lvel, vel
++
++  DECLARE_CCTK_ARGUMENTS
++  DECLARE_CCTK_PARAMETERS
++  
++  integer :: i, j, k, nx, ny, nz
++  CCTK_REAL dpdrho,dpdeps, cs2
++  character*256 :: warnline
++  
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  
++! begin EOS Omni vars
++  integer :: n,keytemp,anyerr,keyerr(1)
++  real*8  :: xpress(1),xeps(1),xtemp(1),xye(1)
++  n = 1;keytemp = 0;anyerr = 0;keyerr(1) = 0
++  xpress = 0.0d0;xeps = 0.0d0;xtemp = 0.0d0;xye = 0.0d0
++! end EOS Omni vars
++
++  ! save memory when MP is not used
++  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++    g11 => gaa
++    g12 => gab
++    g13 => gac
++    g22 => gbb
++    g23 => gbc
++    g33 => gcc
++    vup => lvel
++  else
++    g11 => gxx
++    g12 => gxy
++    g13 => gxz
++    g22 => gyy
++    g23 => gyz
++    g33 => gzz
++    vup => vel
++  end if
++
++  nx = cctk_lsh(1)
++  ny = cctk_lsh(2)
++  nz = cctk_lsh(3)   
++
++  !$OMP PARALLEL DO PRIVATE(i,j,k,&
++  !$OMP anyerr, keyerr, keytemp,&
++  !$OMP warnline, xpress,xeps,xtemp,xye, dpdrho, dpdeps, cs2)
++  do k = 1, nz 
++    do j = 1, ny 
++      do i = 1, nx
++
++        ! set to zero initially
++        eos_c(i,j,k) = 0.0d0
++      
++        !do not compute if in atmosphere or in excised region
++        if ((atmosphere_mask(i,j,k) .ne. 0) .or. &
++            (hydro_excision_mask(i,j,k) .ne. 0)) cycle
++
++!!$  Set required fluid quantities
++        if (evolve_temper.ne.1) then
++
++           call EOS_Omni_press(GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,n,&
++	      rho(i,j,k),eps(i,j,k),xtemp,xye,xpress,keyerr,anyerr)
++
++	    call EOS_Omni_DPressByDEps(GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,n,&
++	      rho(i,j,k),eps(i,j,k),xtemp,xye,dpdeps,keyerr,anyerr)
++
++           call EOS_Omni_DPressByDRho(GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,n,&
++	      rho(i,j,k),eps(i,j,k),xtemp,xye,dpdrho,keyerr,anyerr)
++
++           cs2 = (dpdrho + xpress(1) * dpdeps / (rho(i,j,k)**2))/ &
++              (1.0d0 + eps(i,j,k) + xpress(1)/rho(i,j,k))
++
++           eos_c(i,j,k) = sqrt(cs2)
++         
++         else
++           
++           call EOS_Omni_cs2(GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,n,&
++              rho(i,j,k),eps(i,j,k),temperature(i,j,k),Y_e(i,j,k),cs2,keyerr,anyerr)
++  
++           eos_c(i,j,k) = sqrt(cs2)
++         
++         end if
++  
++       end do
++    end do
++  end do
++  
++end subroutine H_viscosity
++  
++  
+ subroutine GRHydro_HLLE(CCTK_ARGUMENTS)
+   USE GRHydro_Eigenproblem
+ 
+@@ -42,6 +154,7 @@ subroutine GRHydro_HLLE(CCTK_ARGUMENTS)
+   TARGET gxx, gxy, gxz, gyy, gyz, gzz
+   TARGET betaa, betab, betac
+   TARGET betax, betay, betaz
++  TARGET lvel, vel
+ 
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+@@ -51,17 +164,21 @@ subroutine GRHydro_HLLE(CCTK_ARGUMENTS)
+   CCTK_REAL, dimension(5) :: consp,consm_i,fplus,fminus,lamplus
+   CCTK_REAL, dimension(5) :: f1,lamminus
+   CCTK_REAL, dimension(5) :: qdiff
+-  CCTK_REAL ::  charmin, charmax, charpm,avg_alp,avg_det
++  CCTK_REAL ::  charmin, charmax, charpm,avg_alp,avg_det, etabar
+   CCTK_REAL :: gxxh, gxyh, gxzh, gyyh, gyzh, gzzh, uxxh, uxyh, &
+        uxzh, uyyh, uyzh, uzzh, avg_beta, usendh, alp_l, alp_r
+     
+   CCTK_INT :: type_bits, trivial, not_trivial
+ 
++  ! sign requires its arguments to be of identical KIND
++  CCTK_REAL, parameter :: one = 1d0
++  
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+   CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+   CCTK_REAL, DIMENSION(:,:,:), POINTER :: beta1, beta2, beta3
+-
++  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+     g11 => gaa
+     g12 => gab
+@@ -72,6 +189,7 @@ subroutine GRHydro_HLLE(CCTK_ARGUMENTS)
+     beta1 => betaa
+     beta2 => betab
+     beta3 => betac
++    vup => lvel
+   else
+     g11 => gxx
+     g12 => gxy
+@@ -82,6 +200,7 @@ subroutine GRHydro_HLLE(CCTK_ARGUMENTS)
+     beta1 => betax
+     beta2 => betay
+     beta3 => betaz
++    vup => vel
+   end if
+ 
+   if (flux_direction == 1) then
+@@ -111,7 +230,7 @@ subroutine GRHydro_HLLE(CCTK_ARGUMENTS)
+   !$OMP                     avg_det,gxxh,gxyh,gxzh,gyyh,gyzh,gzzh, &
+   !$OMP                     uxxh,uxyh,uxzh,uyyh,uyzh,uzzh,         &
+   !$OMP                     usendh, charmin, charmax, charpm, &
+-  !$OMP                     m)
++  !$OMP                     m,etabar)
+   do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil
+     do j = GRHydro_stencil, cctk_lsh(2) - GRHydro_stencil
+       do i = GRHydro_stencil, cctk_lsh(1) - GRHydro_stencil
+@@ -381,6 +500,52 @@ subroutine GRHydro_HLLE(CCTK_ARGUMENTS)
+           else
+             call CCTK_WARN(0, "Flux direction not x,y,z")
+           end if
++
++!!$        Compute H viscosity if requested
++          
++          if (apply_H_viscosity .ne. 0) then
++          
++            if (flux_direction == 1) then
++              etabar = max(etaX(i,j,k, vup, eos_c),&
++                           etaY(i,j,k, vup, eos_c),&
++                           etaY(i+1,j,k, vup, eos_c),&
++                           etaY(i,j-1,k, vup, eos_c),&
++                           etaY(i+1,j-1,k, vup, eos_c),&
++                           etaZ(i,j,k, vup, eos_c),&
++                           etaZ(i+1,j,k, vup, eos_c),&
++                           etaZ(i,j,k-1, vup, eos_c),&
++                           etaZ(i+1,j,k-1, vup, eos_c))
++            else if (flux_direction == 2) then
++              etabar = max(etaY(i,j,k, vup, eos_c),&
++                           etaX(i,j,k, vup, eos_c),&
++                           etaX(i,j+1,k, vup, eos_c),&
++                           etaX(i-1,j,k, vup, eos_c),&
++                           etaX(i-1,j+1,k, vup, eos_c),&
++                           etaZ(i,j,k, vup, eos_c),&
++                           etaZ(i,j+1,k, vup, eos_c),&
++                           etaZ(i,j,k-1, vup, eos_c),&
++                           etaZ(i,j+1,k-1, vup, eos_c))
++            else if (flux_direction == 3) then
++              etabar = max(etaZ(i,j,k, vup, eos_c),&
++                           etaX(i,j,k, vup, eos_c),&
++                           etaX(i,j,k+1, vup, eos_c),&
++                           etaX(i-1,j,k, vup, eos_c),&
++                           etaX(i-1,j,k+1, vup, eos_c),&
++                           etaY(i,j,k, vup, eos_c),&
++                           etaY(i,j,k+1, vup, eos_c),&
++                           etaY(i,j-1,k, vup, eos_c),&
++                           etaY(i,j-1,k+1, vup, eos_c))
++            else
++              call CCTK_WARN(0, "Flux direction not x,y,z")
++            end if
++            
++            ! modify eigenvalues of Roe's matrix by computed H viscosity
++            do m = 1,5
++               lamplus(m) = sign(one, lamplus(m))*max(abs(lamplus(m)), etabar)
++               lamminus(m) = sign(one, lamminus(m))*max(abs(lamminus(m)), etabar)
++            end do
++          endif
++          
+           
+ !!$        Find minimum and maximum wavespeeds
+       
+-- 
+1.7.10.4
+

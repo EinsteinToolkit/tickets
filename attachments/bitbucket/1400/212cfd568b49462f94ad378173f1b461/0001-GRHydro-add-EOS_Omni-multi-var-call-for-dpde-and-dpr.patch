@@ -1,0 +1,38 @@
+From 12b08e2aa4d12c0e7639e8cead0b380e919f7d2f Mon Sep 17 00:00:00 2001
+From: Christian David Ott <cott@zwicky-b.(none)>
+Date: Mon, 25 Mar 2013 23:00:52 -0700
+Subject: [PATCH 01/24] GRHydro: add EOS_Omni multi-var call for dpde and
+ dprho
+
+---
+ interface.ccl |   14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/interface.ccl b/interface.ccl
+index e074c2e..6fa145d 100644
+--- a/interface.ccl
++++ b/interface.ccl
+@@ -342,6 +342,20 @@ void FUNCTION EOS_Omni_DPressByDRho(CCTK_INT IN eoskey,         \
+ 
+ USES FUNCTION EOS_Omni_DPressByDRho
+ 
++void FUNCTION EOS_Omni_dpderho_dpdrhoe(CCTK_INT IN eoskey,         \
++                             CCTK_INT IN havetemp,              \
++                             CCTK_REAL IN rf_precision,         \
++                             CCTK_INT IN npoints,               \
++                             CCTK_REAL IN ARRAY rho,            \
++                             CCTK_REAL INOUT ARRAY eps,         \
++                             CCTK_REAL INOUT ARRAY temp,        \
++                             CCTK_REAL IN ARRAY ye,             \
++                             CCTK_REAL OUT ARRAY dpderho,       \
++                             CCTK_REAL OUT ARRAY dpdrhoe,       \
++                             CCTK_INT OUT ARRAY keyerr,         \
++                             CCTK_INT OUT anyerr)
++
++USES FUNCTION EOS_Omni_dpderho_dpdrhoe
+ 
+ void FUNCTION EOS_Omni_cs2(CCTK_INT IN eoskey,                  \
+ 			     CCTK_INT IN havetemp,              \
+-- 
+1.7.10.4
+

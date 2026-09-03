@@ -1,0 +1,45 @@
+From 17757bd56693a6195e44e9277f6015e3742eeb63 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Thu, 10 May 2012 16:49:18 -0700
+Subject: [PATCH 1/2] CarpetIOScalar: correct column labels
+
+when both one_file_per_group and all_reductions_in_one_file are active
+---
+ Carpet/CarpetIOScalar/src/ioscalar.cc |   20 ++++++++++----------
+ 1 file changed, 10 insertions(+), 10 deletions(-)
+
+diff --git a/Carpet/CarpetIOScalar/src/ioscalar.cc b/Carpet/CarpetIOScalar/src/ioscalar.cc
+index 9854c96..6dbb9ea 100644
+--- a/Carpet/CarpetIOScalar/src/ioscalar.cc
++++ b/Carpet/CarpetIOScalar/src/ioscalar.cc
+@@ -412,17 +412,17 @@ namespace CarpetIOScalar {
+                   = one_file_per_group ? CCTK_FirstVarIndexI(group) : n;
+                 int const numvars
+                   = one_file_per_group ? CCTK_NumVarsInGroupI(group) : 1;
+-                for (int n=firstvar; n<firstvar+numvars; ++n) {
+-                  if (all_reductions_in_one_file) {
+-                    for (list<info>::const_iterator jreduction = reductions.begin();
+-                         jreduction != reductions.end();
+-                         ++jreduction)
+-                    {
+-                      file << " " << col << ":" << CCTK_VarName(n) << "(" << jreduction->reduction << ")";
+-                      col += CarpetSimpleMPIDatatypeLength (vartype);
+-                    }
+-                  } else {
++                list<info>::const_iterator first_reduction
++                  = all_reductions_in_one_file ? reductions.begin() : ireduction;
++                list<info>::const_iterator end_reduction
++                  = all_reductions_in_one_file ? reductions.end() : ++list<info>::const_iterator(ireduction);
++                for (list<info>::const_iterator jreduction = first_reduction;
++                     jreduction != end_reduction;
++                     ++jreduction)
++                {
++                  for (int n=firstvar; n<firstvar+numvars; ++n) {
+                     file << " " << col << ":" << CCTK_VarName(n);
++                    if (all_reductions_in_one_file) file << "(" << jreduction->reduction << ")";
+                     col += CarpetSimpleMPIDatatypeLength (vartype);
+                   }
+                 }
+-- 
+1.7.10
+

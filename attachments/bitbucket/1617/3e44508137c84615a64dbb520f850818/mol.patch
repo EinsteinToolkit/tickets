@@ -1,0 +1,50 @@
+Index: interface.ccl
+===================================================================
+--- interface.ccl	(revision 222)
++++ interface.ccl	(working copy)
+@@ -1,4 +1,4 @@
+- Interface definition for thorn MoL
++# Interface definition for thorn MoL
+ # $Header$
+ 
+ implements: MethodOfLines
+@@ -153,6 +153,15 @@
+    CCTK_INT              IN on_device)
+ USES FUNCTION Accelerator_NotifyDataModified
+ 
++CCTK_INT FUNCTION Accelerator_RequireInvalidData \
++  (CCTK_POINTER_TO_CONST IN cctkGH,              \
++   CCTK_INT ARRAY        IN variables,           \
++   CCTK_INT ARRAY        IN rls,                 \
++   CCTK_INT ARRAY        IN tls,                 \
++   CCTK_INT              IN nvariables,          \
++   CCTK_INT              IN on_device)
++USES FUNCTION Accelerator_RequireInvalidData
++
+ private:
+ 
+ CCTK_REAL RKAlphaCoefficients \
+Index: src/Operators.c
+===================================================================
+--- src/Operators.c	(revision 222)
++++ src/Operators.c	(working copy)
+@@ -234,8 +234,8 @@
+   // Forward call to aliased function, if it is defined and if we are
+   // using the device (accelerator)
+   static int is_aliased = -1;
++  int is_device = 0;
+   if (is_aliased < 0) {
+-    int is_device = 0;
+     if (CCTK_IsFunctionAliased("Device_GetDevice")) {
+       is_device = Device_GetDevice(cctkGH) >= 0;
+     }
+@@ -248,6 +248,9 @@
+     return
+       LinearCombination(cctkGH, var, rl, tl, scale, srcs, tls, facts, nsrcs);
+   }
++  if (CCTK_IsFunctionAliased("Accelerator_RequireInvalidData")) {
++    Accelerator_RequireInvalidData(cctkGH, &var, &rl, &tl, 1, 0);
++  }
+   
+   // Determine grid variable size
+   int const dim = CCTK_GroupDimFromVarI(var);

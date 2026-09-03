@@ -1,0 +1,32 @@
+From deabe506a42e1f6e24547dc1470b3796a7c95d81 Mon Sep 17 00:00:00 2001
+From: "Christian D. Ott" <cott@tapir.caltech.edu>
+Date: Sat, 27 Jul 2013 16:24:52 -0700
+Subject: [PATCH 12/19] GRHydro: in c PPM routine, disable mistake
+
+---
+ src/GRHydro_PPM.c |    2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/GRHydro_PPM.c b/src/GRHydro_PPM.c
+index cfa57b1..e2ddd2c 100644
+--- a/src/GRHydro_PPM.c
++++ b/src/GRHydro_PPM.c
+@@ -72,6 +72,7 @@ void SimplePPM_1d_c(int* restrict nx,
+       (dmvelz[i] - dmvelz[i+1]) * onesixth;
+   }
+ 
++#if 0
+   for(int i=1;i<*nx-2;i++) {
+     rhoplus[i] = approx_at_cell_interface(rho,i);
+     epsplus[i] = approx_at_cell_interface(eps,i);
+@@ -79,6 +80,7 @@ void SimplePPM_1d_c(int* restrict nx,
+     velyplus[i] = approx_at_cell_interface(vely,i);
+     velzplus[i] = approx_at_cell_interface(velz,i);
+   }
++#endif
+ 
+   for(int i=1;i<*nx-2;i++) {
+     rhominus[i+1] = rhoplus[i];
+-- 
+1.7.10.4
+

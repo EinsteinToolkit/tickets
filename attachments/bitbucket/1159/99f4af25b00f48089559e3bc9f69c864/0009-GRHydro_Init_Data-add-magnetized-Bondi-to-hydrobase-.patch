@@ -1,0 +1,54 @@
+From 0fd9a1c50d6abbe812fee77d70ae3e28f7a1f4b5 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Fri, 12 Oct 2012 13:08:35 -0700
+Subject: [PATCH 09/13] GRHydro_Init_Data: add "magnetized Bondi" to
+ hydrobase::initial_bvec
+
+this is so that there is a proper initial_bvec setting rather than just
+"zero".
+---
+ param.ccl        |    1 +
+ src/CheckParam.c |   10 ++++++++--
+ 2 files changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index e36a67a..483f85b 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -31,6 +31,7 @@ EXTENDS KEYWORD initial_Bvec
+   "shocktube"  :: "Shocktube type"
+   "cylexp"     :: "Poloidal Magnetic Field"
+   "poloidalmagfield" :: "Poloidal Magnetic Field"
++  "magnetized Bondi" :: "radial magnetic field appropriate for Bondi test"
+ }
+ shares:ADMBase
+ 
+diff --git a/src/CheckParam.c b/src/CheckParam.c
+index 5e35538..e90abcf 100644
+--- a/src/CheckParam.c
++++ b/src/CheckParam.c
+@@ -50,13 +50,19 @@ void GRHydro_InitData_CheckParameters(CCTK_ARGUMENTS)
+   if(CCTK_Equals(Bvec_evolution_method,"GRHydro") && 
+      CCTK_Equals(initial_hydro,"hydro_bondi_solution") )
+     {
+-      CCTK_PARAMWARN("Please use set  initial_hydro=magnetized_bondi_solution instead to initialize the magnetic field correctly!");
++      CCTK_PARAMWARN("Please set initial_hydro='magnetized_bondi_solution' instead to initialize the magnetic field correctly!");
+     }
+ 
+   if(!CCTK_Equals(Bvec_evolution_method,"GRHydro") && 
+      CCTK_Equals(initial_hydro,"magnetized_bondi_solution") )
+     {
+-      CCTK_PARAMWARN("Please use set  initial_hydro=hydro_bondi_solution instead to NOT initialize the magnetic field!");
++      CCTK_PARAMWARN("Please set initial_hydro='hydro_bondi_solution' instead to NOT initialize the magnetic field!");
++    }
++
++  if((CCTK_Equals(initial_hydro,"magnetized_bondi_solution") || CCTK_Equals(initial_hydro,"magnetized_bondi_solution_iso")) &&
++     !CCTK_Equals(initial_Bvec, "magnetized Bondi") )
++    {
++      CCTK_PARAMWARN("Please set initial_Bec='magnetized Bondi' to properly initialize the magnetic field for Bondi solutions!");
+     }
+ 
+   if( CCTK_Equals(initial_hydro,"magnetized_bondi_solution") || CCTK_Equals(initial_hydro,"hydro_bondi_solution")  ) { 
+-- 
+1.7.10.4
+

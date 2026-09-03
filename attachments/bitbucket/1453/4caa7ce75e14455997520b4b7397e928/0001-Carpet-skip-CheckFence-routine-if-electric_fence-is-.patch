@@ -1,0 +1,43 @@
+From f72319910dfc52e4cb24388ad4b3127533105aba Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Fri, 11 Oct 2013 11:56:50 -0700
+Subject: [PATCH] Carpet: skip CheckFence routine if electric_fence is off
+
+enumerating the variables is expensive enough to show up in the timer
+output
+---
+ Carpet/Carpet/param.ccl           | 4 ++++
+ Carpet/Carpet/src/CallFunction.cc | 4 ++++
+ 2 files changed, 8 insertions(+)
+
+diff --git a/Carpet/Carpet/param.ccl b/Carpet/Carpet/param.ccl
+index 90aca4e..6e24a05 100644
+--- a/Carpet/Carpet/param.ccl
++++ b/Carpet/Carpet/param.ccl
+@@ -606,3 +606,7 @@ BOOLEAN adaptive_stepsize "Allow adaptive timestep sizes"
+ BOOLEAN use_unusedpoints_mask "Turn on storage and usage of 'unusedpoints_mask'" STEERABLE=recover
+ {
+ } "no"
++
++SHARES: CarpetLib
++
++USES BOOLEAN electric_fence
+diff --git a/Carpet/Carpet/src/CallFunction.cc b/Carpet/Carpet/src/CallFunction.cc
+index 224a663..494f286 100644
+--- a/Carpet/Carpet/src/CallFunction.cc
++++ b/Carpet/Carpet/src/CallFunction.cc
+@@ -473,7 +473,11 @@ namespace Carpet {
+ 
+   void CheckFence (cGH const * const cctkGH, cFunctionData * attribute)
+   {
++    DECLARE_CCTK_PARAMETERS;
++
+     if (is_meta_mode()) return; // meta mode has no accessible variables
++    // enumerating the grid variables is expensive
++    if (not electric_fence) return;
+ 
+     Timers::Timer timer("FenceCheck");
+     timer.start();
+-- 
+1.8.4.rc3
+

@@ -1,0 +1,42 @@
+From 2938aa666d17edf0384b5db958b0692324e4124e Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Thu, 28 Feb 2013 09:44:40 -0800
+Subject: [PATCH 1/2] CarpetIOHDF5: add separate option to control index
+ writing of checkpoint files
+
+---
+ Carpet/CarpetIOHDF5/param.ccl           |    4 ++++
+ Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc |    2 +-
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/Carpet/CarpetIOHDF5/param.ccl b/Carpet/CarpetIOHDF5/param.ccl
+index 75a7745..c2ee989 100644
+--- a/Carpet/CarpetIOHDF5/param.ccl
++++ b/Carpet/CarpetIOHDF5/param.ccl
+@@ -475,6 +475,10 @@ BOOLEAN use_checksums "Use checksums for the HDF5 data" STEERABLE = ALWAYS
+ {
+ } "no"
+ 
++BOOLEAN output_index_for_checkpoints "Output an index file for each checkpoint file" STEERABLE = ALWAYS
++{
++} "no"
++
+ BOOLEAN output_index "Output an index file for each output file" STEERABLE = ALWAYS
+ {
+ } "no"
+diff --git a/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc b/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
+index 27ce292..df3c0da 100644
+--- a/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
++++ b/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
+@@ -974,7 +974,7 @@ static void Checkpoint (const cGH* const cctkGH, int called_from)
+     // write metadata information
+     error_count += WriteMetadata (cctkGH, nioprocs, -1, -1, true, file);
+ 
+-    if (output_index) {
++    if (output_index_for_checkpoints) {
+ 
+       HDF5_ERROR (index_file = H5Fcreate (index_tempname,
+                                           H5F_ACC_TRUNC, H5P_DEFAULT,
+-- 
+1.7.10.4
+

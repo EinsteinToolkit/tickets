@@ -1,0 +1,128 @@
+From 00780e089ea5c1aed7ed8915a6bf9bee440d0421 Mon Sep 17 00:00:00 2001
+From: Josh Faber <jfaberrit@jafsmamacbook.main.ad.rit.edu>
+Date: Fri, 18 May 2012 16:22:00 -0400
+Subject: [PATCH 09/17] Revised parameters for advected loop test
+
+---
+ src/GRHydro_AdvectedLoopM.F90 |   72 ++++++++++++++++++++++++++++++++++-------
+ 1 file changed, 60 insertions(+), 12 deletions(-)
+
+diff --git a/src/GRHydro_AdvectedLoopM.F90 b/src/GRHydro_AdvectedLoopM.F90
+index 81a3ede..22775ed 100644
+--- a/src/GRHydro_AdvectedLoopM.F90
++++ b/src/GRHydro_AdvectedLoopM.F90
+@@ -67,7 +67,7 @@ subroutine GRHydro_AdvectedLoopM(CCTK_ARGUMENTS)
+   CCTK_REAL :: range_x,range_y,range_z,range_d
+   CCTK_REAL :: cos_theta, sin_theta, tan_theta
+   CCTK_REAL :: Bvecx_d, Bvecy_d, Bvecz_d
+-  CCTK_REAL :: x_d, y_d, z_d
++  CCTK_REAL :: x_d, y_d, z_d,diaglength
+   CCTK_REAL :: dx_d, dy_d, dz_d, dx_x, dz_x
+ 
+ !!$Adiabatic index for test:
+@@ -83,19 +83,47 @@ subroutine GRHydro_AdvectedLoopM(CCTK_ARGUMENTS)
+   rhoval   = 1.0d0
+   pressval = 3.0d0
+ 
++  if (CCTK_EQUALS(advectedloop_type,"2D")) then	
++
++
+ !!$ Vx, Vy and Vz values:
+-  if (CCTK_EQUALS(advectedloop_case,"V^z/=0")) then
+-   vxval=0.2d0/sqrt(6.0d0)
+-   vyval=0.5d0*vxval
+-   vzval=vyval
+-  else if (CCTK_EQUALS(advectedloop_case,"V^z=0")) then
+-   vxval=0.2d0/sqrt(6.0d0)
+-   vyval=0.5d0*vxval
+-   vzval=0.0d0
+-  else
+-   call CCTK_WARN(0,"V^z component case not recognized!")
+-  end if 
++    if (CCTK_EQUALS(advectedloop_case,"V^z/=0")) then
++
++!!$vxval=0.2d0/sqrt(6.0d0)
++!!$ This new choice yields a crossing time of exactly t=24
++!!$ assuming -1<x<1; -0.5<y<0.5
++     vxval=1.d0/12.d0
++     vyval=0.5d0*vxval
++     vzval=vyval
++
++    else if (CCTK_EQUALS(advectedloop_case,"V^z=0")) then
++!!$   vxval=0.2d0/sqrt(6.0d0)
++     vxval=1.d0/12.d0
++     vyval=0.5d0*vxval
++     vzval=0.0d0
++    else
++     call CCTK_WARN(0,"V^z component case not recognized!")
++    end if 
+     
++  else if (CCTK_EQUALS(advectedloop_type,"3D")) then	
++
++     vxval=0.2d0*sqrt(2.0d0)
++     vyval=0.2d0
++
++    if (CCTK_EQUALS(advectedloop_case,"V^z/=0")) then
++
++!!$vxval=0.2d0/sqrt(6.0d0)
++!!$ This new choice yields a crossing time of exactly t=5
++!!$ assuming -1<x<1; -0.5<y<0.5
++     vzval=0.1
++
++   else if (CCTK_EQUALS(advectedloop_case,"V^z=0")) then
++     vzval=0.0d0
++    else
++     call CCTK_WARN(0,"V^z component case not recognized!")
++    end if 
++
++  endif
+   nx = cctk_lsh(1)
+   ny = cctk_lsh(2)
+   nz = cctk_lsh(3)
+@@ -110,6 +138,9 @@ subroutine GRHydro_AdvectedLoopM(CCTK_ARGUMENTS)
+   range_z = (cctk_gsh(3)-1)*dz
+ 
+   range_d = sqrt(range_z**2+range_x**2)
++  diaglength = range_x*range_z/range_d
++
++!!$ For 3-d case, the grid is going to be assumed to be a cube
+ 
+   cos_theta = range_z/range_d
+   sin_theta = range_x/range_d
+@@ -162,16 +193,33 @@ subroutine GRHydro_AdvectedLoopM(CCTK_ARGUMENTS)
+ 
+            else if (CCTK_EQUALS(advectedloop_type,"3D")) then
+ 
++
++!!$  tangential velocity should be parallel to (1,1,1) plus a normal component (-1,0,1)
++
+              velx(i,j,k)=cos_theta*vxval-sin_theta*vzval
+              vely(i,j,k)=vyval
+              velz(i,j,k)=cos_theta*vzval+sin_theta*vxval
+ 
+              Bvecz_d=0.0d0
+ 
++!!$ x_d = (x+z)/sqrt(2) => x_d=0 is equivalent to x+z=0
++
+              x_d = cos_theta*x(i,j,k)+sin_theta*z(i,j,k)
+              y_d = y(i,j,k)
+              z_d = cos_theta*z(i,j,k)-sin_theta*x(i,j,k)
+           
++!!$ need to make x_d periodic!
++
++       	     if(x_d.gt.1.5*diaglength) then
++	        x_d=x_d-2.0*diaglength
++             else if (x_d.gt.0.5*diaglength .and. x_d.lt.1.5*diaglength) then
++	        x_d=x_d-diaglength
++	     else if(x_d.lt.-1.5*diaglength) then
++	        x_d=x_d+2.0*diaglength
++             else if (x_d.lt.(-0.5*diaglength) .and. x_d.gt.(-1.5*diaglength)) then
++	        x_d=x_d+diaglength
++             endif
++	
+              radius = sqrt(x_d**2+y_d**2)
+   
+              if (CCTK_EQUALS(advectedloop_delA,"Exact")) then
+-- 
+1.7.10.4
+

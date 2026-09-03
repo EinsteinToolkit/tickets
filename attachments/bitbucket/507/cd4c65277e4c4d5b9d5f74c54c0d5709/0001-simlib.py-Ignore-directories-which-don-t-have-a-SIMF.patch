@@ -1,0 +1,27 @@
+From a6b6c33ba4504810bad3d486f622a18a1eb3b994 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Wed, 17 Aug 2011 13:45:55 +0200
+Subject: [PATCH] simlib.py: Ignore directories which don't have a
+ SIMFACTORY/properties.ini file when listing simulations
+
+---
+ lib/simlib.py |    3 ++-
+ 1 files changed, 2 insertions(+), 1 deletions(-)
+
+diff --git a/lib/simlib.py b/lib/simlib.py
+index 8ca6872..803a0ce 100644
+--- a/lib/simlib.py
++++ b/lib/simlib.py
+@@ -393,7 +393,8 @@ def GetSimulations():
+     for simulation in os.listdir(base_dir):
+         simpath = BuildPath(base_dir, simulation)
+         if os.path.isdir(simpath):
+-            if simulation not in ['CACHE', 'TRASH']:
++            prop_path = BuildPath(base_dir, simulation, "SIMFACTORY", "properties.ini")
++            if simulation not in ['CACHE', 'TRASH'] and os.path.exists(prop_path):
+                 sims.append(simulation)
+     
+     #dprint("Simulations: %s" % sims)
+-- 
+1.7.5.4
+

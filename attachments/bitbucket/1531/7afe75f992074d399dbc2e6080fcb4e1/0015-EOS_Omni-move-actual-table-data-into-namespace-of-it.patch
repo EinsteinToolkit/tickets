@@ -1,0 +1,216 @@
+From 4bdfb49541926f3df075ae02b7e2e382afa53931 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Wed, 13 Nov 2013 16:10:07 -0800
+Subject: [PATCH 15/18] EOS_Omni: move actual table data into namespace of its
+ own
+
+---
+ src/nuc_eos_cxx/helpers.hh   |  9 +++++++++
+ src/nuc_eos_cxx/nuc_eos.hh   | 47 +++++++++++++++++++++++++-------------------
+ src/nuc_eos_cxx/readtable.cc | 23 ++++++++++++----------
+ 3 files changed, 49 insertions(+), 30 deletions(-)
+
+diff --git a/src/nuc_eos_cxx/helpers.hh b/src/nuc_eos_cxx/helpers.hh
+index c68ce7d..19e0a9e 100644
+--- a/src/nuc_eos_cxx/helpers.hh
++++ b/src/nuc_eos_cxx/helpers.hh
+@@ -79,6 +79,7 @@ void get_interp_spots(const double x,
+ 		      int* restrict idx) 
+ {
+   using namespace nuc_eos;
++  using namespace nuc_eos_private;
+ 
+   int ix = 1 + (int)( (x - logrho[0] - 1.0e-10) * drhoi );
+   int iy = 1 + (int)( (y - logtemp[0] - 1.0e-10) * dtempi );
+@@ -115,6 +116,7 @@ void get_interp_spots_linT_low(const double x,
+ 			       int* restrict idx) 
+ {
+   using namespace nuc_eos;
++  using namespace nuc_eos_private;
+ 
+   int ix = 1 + (int)( (x - logrho[0] - 1.0e-10) * drhoi );
+   int iy = 1;
+@@ -150,6 +152,7 @@ void get_interp_spots_linT_low_eps(const double x,
+ 				   int* restrict idx) 
+ {
+   using namespace nuc_eos;
++  using namespace nuc_eos_private;
+ 
+   int ix = 1 + (int)( (x - logrho[0] - 1.0e-10) * drhoi );
+   int iy = 1;
+@@ -185,6 +188,7 @@ void nuc_eos_C_linterp_one(const int* restrict idx,
+ 			   const int iv)
+ {
+   using namespace nuc_eos;
++  using namespace nuc_eos_private;
+ 
+   // helper variables
+   double fh[8], a[8];
+@@ -230,6 +234,7 @@ void nuc_eos_C_linterp_one_linT_low(const int* restrict idx,
+ 				    const int iv)
+ {
+   using namespace nuc_eos;
++  using namespace nuc_eos_private;
+ 
+   // helper variables
+   double fh[8], a[8];
+@@ -276,6 +281,7 @@ void nuc_eos_C_linterp_one_linT_low_eps(const int* restrict idx,
+ 
+ {
+   using namespace nuc_eos;
++  using namespace nuc_eos_private;
+ 
+   // helper variables
+   double fh[8], a[8];
+@@ -351,6 +357,7 @@ void bisection(const double lr,
+   // iv is the index of the variable we do the bisection on
+ 
+   using namespace nuc_eos;
++  using namespace nuc_eos_private;
+ 
+   int bcount = 0; 
+   int maxbcount = 80;
+@@ -464,6 +471,7 @@ void nuc_eos_findtemp(const double lr,
+ 		      int *keyerrt) {
+ 
+   using namespace nuc_eos;
++  using namespace nuc_eos_private;
+ 
+   // local variables
+   const int itmax = 200; // use at most 10 iterations, then go to bisection
+@@ -617,6 +625,7 @@ void nuc_eos_findtemp(const double lr,
+ 				  int *keyerrt) {
+ 
+     using namespace nuc_eos;
++    using namespace nuc_eos_private;
+ 
+     // local variables
+     const int itmax = 200; // use at most 10 iterations, then go to bisection
+diff --git a/src/nuc_eos_cxx/nuc_eos.hh b/src/nuc_eos_cxx/nuc_eos.hh
+index 6483d88..a42ee6a 100644
+--- a/src/nuc_eos_cxx/nuc_eos.hh
++++ b/src/nuc_eos_cxx/nuc_eos.hh
+@@ -20,28 +20,8 @@
+ 
+ namespace nuc_eos {
+ 
+-  extern int nrho;
+-  extern int ntemp;
+-  extern int nye;
+-
+-  extern double * restrict alltables;
+-  extern double * restrict epstable;
+-  extern double * restrict logrho;
+-  extern double * restrict logtemp;
+   extern double temp0, temp1;
+-  extern double dlintemp,dlintempi;
+-  extern double drholintempi;
+-  extern double dlintempyei;
+-  extern double drholintempyei;
+-  extern double * restrict yes;
+   extern double energy_shift;
+-  extern double dtemp, dtempi;
+-  extern double drho, drhoi;
+-  extern double dye, dyei;
+-  extern double drhotempi;
+-  extern double drhoyei;
+-  extern double dtempyei;
+-  extern double drhotempyei;
+ 
+ // min and max values
+ 
+@@ -77,4 +57,31 @@ namespace nuc_eos {
+                 i_Xh, i_Xn, i_Xp, i_Abar, i_Zbar, i_Gamma};
+ }
+ 
++namespace nuc_eos_private {
++
++// table data
++
++  extern int nrho;
++  extern int ntemp;
++  extern int nye;
++
++  extern double * restrict alltables;
++  extern double * restrict epstable;
++  extern double * restrict logrho;
++  extern double * restrict logtemp;
++  extern double dlintemp,dlintempi;
++  extern double drholintempi;
++  extern double dlintempyei;
++  extern double drholintempyei;
++  extern double * restrict yes;
++  extern double dtemp, dtempi;
++  extern double drho, drhoi;
++  extern double dye, dyei;
++  extern double drhotempi;
++  extern double drhoyei;
++  extern double dtempyei;
++  extern double drhotempyei;
++
++}
++
+ #endif // NUC_EOS_HH
+diff --git a/src/nuc_eos_cxx/readtable.cc b/src/nuc_eos_cxx/readtable.cc
+index 6c92d00..b0aef24 100644
+--- a/src/nuc_eos_cxx/readtable.cc
++++ b/src/nuc_eos_cxx/readtable.cc
+@@ -32,6 +32,18 @@ static int file_is_readable(const char* filename)
+ 
+ // define the variables
+ namespace nuc_eos {
++  double temp0, temp1;
++  double energy_shift;
++
++  double eos_rhomax, eos_rhomin;
++  double eos_tempmin, eos_tempmax;
++  double eos_yemin, eos_yemax;
++  
++  double c2p_tempmin;
++  double c2p_tempmax;
++
++}
++namespace nuc_eos_private {
+   int nrho;
+   int ntemp;
+   int nye;
+@@ -40,13 +52,11 @@ namespace nuc_eos {
+   double * restrict epstable;
+   double * restrict logrho;
+   double * restrict logtemp;
+-  double temp0, temp1;
+   double dlintemp, dlintempi;
+   double drholintempi;
+   double dlintempyei;
+   double drholintempyei;
+   double * restrict yes;
+-  double energy_shift;
+   double dtemp, dtempi;
+   double drho, drhoi;
+   double dye, dyei;
+@@ -54,14 +64,6 @@ namespace nuc_eos {
+   double drhoyei;
+   double dtempyei;
+   double drhotempyei;
+-  
+-  double eos_rhomax, eos_rhomin;
+-  double eos_tempmin, eos_tempmax;
+-  double eos_yemin, eos_yemax;
+-  
+-  double c2p_tempmin;
+-  double c2p_tempmax;
+-
+ }
+ 
+ 
+@@ -75,6 +77,7 @@ extern "C"
+ void nuc_eos_C_ReadTable(char* nuceos_table_name)
+ {
+   using namespace nuc_eos;
++  using namespace nuc_eos_private;
+ 
+   CCTK_VInfo(CCTK_THORNSTRING,"*******************************");
+   CCTK_VInfo(CCTK_THORNSTRING,"Reading nuc_eos table file:");
+-- 
+1.8.5.3
+

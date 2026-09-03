@@ -1,0 +1,567 @@
+From cfa5d410fcd4108905da282f0700c78e6b268967 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Mon, 29 Oct 2012 10:15:36 -0700
+Subject: [PATCH 2/8] GRHydro_Init_Data: implmented all of Bondi infall for KS
+ coords only
+
+---
+ src/GRHydro_Bondi.c  |   46 ++++++-----
+ src/GRHydro_BondiM.c |  207 ++++++++++++++++++++++++++++++++++++++++----------
+ 2 files changed, 195 insertions(+), 58 deletions(-)
+
+diff --git a/src/GRHydro_Bondi.c b/src/GRHydro_Bondi.c
+index e1b3d4c..9fefdf6 100644
+--- a/src/GRHydro_Bondi.c
++++ b/src/GRHydro_Bondi.c
+@@ -37,6 +37,7 @@
+ #include <math.h>
+ #include <stdio.h>
+ #include <stdlib.h>
++#include <assert.h>
+ 
+ // set to 1 to tracing output
+ #define LTRACE   1
+@@ -129,7 +130,7 @@ static void dxc_dxs_ks_calc(CCTK_REAL *x_cart, CCTK_REAL *x_spher, CCTK_REAL dxc
+ 
+   for( i = 0 ; i < NDIM ; i++ ) {
+     for( j = 0 ; j < NDIM ; j++ ) {
+-      dxc_dxs[0][i] = 0. ;
++      dxc_dxs[j][i] = 0. ;
+     }
+   }
+   
+@@ -339,7 +340,6 @@ static void iso_cart_to_bl_spher_pos(CCTK_REAL *x_cart, CCTK_REAL *x_spher)
+ ****************************************************************************/
+ static void setutcon(CCTK_REAL *vcon, CCTK_REAL gcov[][NDIM])
+ {
+-  int i,j;
+   CCTK_REAL d,b,c;
+   
+   d=gcov[TT][TT];
+@@ -367,7 +367,7 @@ static void setutcon(CCTK_REAL *vcon, CCTK_REAL gcov[][NDIM])
+ ****************************************************************************/
+ static void bl_gcov_func( CCTK_REAL *x, CCTK_REAL gcov[NDIM][NDIM])
+ {
+-  int i,j,k ;
++  int i,j ;
+   CCTK_REAL sth,cth,s2,r2,DD,mu ;
+   CCTK_REAL r,th;
+ 
+@@ -422,7 +422,6 @@ static void bl_gcov_func( CCTK_REAL *x, CCTK_REAL gcov[NDIM][NDIM])
+ static void set_bondi_parameters( CCTK_REAL M_in, CCTK_REAL Mdot_in,  CCTK_REAL rs_in, CCTK_REAL gam )
+ {
+ 
+-  CCTK_REAL my_pi, checkp; 
+   CCTK_REAL  gtemp; 
+ 
+   /* Set the solution-determining parameters:    */
+@@ -499,19 +498,18 @@ static int gnr_bondi( CCTK_REAL x[], int n,
+                       CCTK_REAL [][NEWT_DIM_B], CCTK_REAL *, 
+                       CCTK_REAL *, int) )
+ {
+-  CCTK_REAL f, df, dx[NEWT_DIM_B], x_old[NEWT_DIM_B], resid[NEWT_DIM_B], 
++  CCTK_REAL f, df, dx[NEWT_DIM_B], resid[NEWT_DIM_B], 
+     jac[NEWT_DIM_B][NEWT_DIM_B];
+-  CCTK_REAL errx, x_orig[NEWT_DIM_B];
+-  int    n_iter, id, jd, i_extra, doing_extra;
++  CCTK_REAL errx;
++  int    n_iter, id, i_extra, doing_extra;
+ 
+-  int   keep_iterating, i_increase;
++  int   keep_iterating;
+ 
+ 
+   // Initialize various parameters and variables:
+   errx = 1. ; 
+   df = f = 1.;
+   i_extra = doing_extra = 0;
+-  for( id = 0; id < n ; id++)  x_old[id] = x_orig[id] = x[id] ;
+ 
+   n_iter = 0;
+ 
+@@ -522,11 +520,7 @@ static int gnr_bondi( CCTK_REAL x[], int n,
+ 
+     (*funcd) (x, dx, resid, jac, &f, &df, n);  /* returns with new dx, f, df */
+ 
+-    /* Save old values before calculating the new: */
+     errx = 0.;
+-    for( id = 0; id < n ; id++) {
+-      x_old[id] = x[id] ;
+-    }
+ 
+     /* don't use line search : */
+     for( id = 0; id < n ; id++) {
+@@ -662,18 +656,20 @@ static int find_bondi_solution( CCTK_REAL r, CCTK_REAL *rho, CCTK_REAL *u, CCTK_
+ 
+   if( *rho < 0. ) {  
+     if( r > 0.9*rs && r < 1.1*rs ) { 
+-      rho_guess = rhos;
+-      *rho = rho_guess;
++      *rho = rhos;
+     }
+     else { 
+       //  rhotmp = (sqrt(Qdot) - 1.) * (gamma_eos - 1.) / ( gamma_eos * K );
+       //  rho_guess = pow( rhotmp , (1./(gamma_eos - 1.)) );
+       if(r < rs) {  ur = pow(r,-0.5)     ;  }
+       else       {  ur = 0.5*pow(r,-1.5) ;  }
+-      rho_guess = Mdot / (4.*M_PI * r * r * ur);
+-      *rho = rho_guess; 
++      *rho = Mdot / (4.*M_PI * r * r * ur); 
+     }
+-  } 
++  }
++
++  // safe guess value for multiple tries
++  rho_guess = *rho;
++  
+ 
+   // set global variables needed by residual function:
+   r_sol = r ; 
+@@ -783,6 +779,10 @@ static void  calc_vel_bondi( CCTK_REAL vtmp, CCTK_REAL x[NDIM], CCTK_REAL x_sphe
+     DLOOP2 { ucon[i] += dxc_dxs[i][j] * ucon_bl[j] ; }
+     break; 
+ 
++  default:
++    assert(0 && "Internal error");
++    return; /* NOTREACHED */
++
+   }
+   
+   return;
+@@ -1007,6 +1007,8 @@ void GRHydro_Bondi(CCTK_ARGUMENTS)
+ 	  while( (j < (nbondi-1)) && (bad_bondi[j]) ) { j++; }
+ 	  if( (j==(nbondi-1)) && bad_bondi[j] ) { 
+ 	    CCTK_WARN(CCTK_WARN_ABORT,"No available points with which to interpolate!\n");
++            ileft = 0; /* NOTREACED */
++            iright = 0; /* NOTREACHED */
+ 	  }
+ 	  else { 
+ 	    ileft = j ; 
+@@ -1016,6 +1018,7 @@ void GRHydro_Bondi(CCTK_ARGUMENTS)
+ 	    while( (j < (nbondi-1)) && (bad_bondi[j]) ) { j++; }
+ 	    if( (j==(nbondi-1)) && bad_bondi[j] ) { 
+ 	      CCTK_WARN(CCTK_WARN_ABORT,"Need another point to the right but cannot find one! \n");
++              iright = 0; /* NOTREACHED */
+ 	    }
+ 	    else { 
+ 	      iright = j ; 
+@@ -1036,6 +1039,7 @@ void GRHydro_Bondi(CCTK_ARGUMENTS)
+ 	    while( (j > 0) && (bad_bondi[j]) ) { j--; }
+ 	    if( (j==0) && bad_bondi[j] ) { 
+ 	      CCTK_WARN(CCTK_WARN_ABORT,"Need another point to the left but cannot find one! \n");
++              ileft = 0; /* NOTREACED */
+ 	    }
+ 	    else {
+ 	      ileft = j;
+@@ -1059,7 +1063,7 @@ void GRHydro_Bondi(CCTK_ARGUMENTS)
+ 
+ #if(LTRACE) 
+   for(i=0; i < nbondi; i++) {  
+-    CCTK_VWarn(CCTK_WARN_ALERT, __LINE__, __FILE__, CCTK_THORNSTRING,"radial-bondisoln %12d %26.16e %26.16e %26.16e %26.16e %12d \n",i,r_bondi[i],rho_bondi[i],u_bondi[i],v_bondi[i], bad_bondi[i]);  
++    CCTK_VWarn(CCTK_WARN_DEBUG, __LINE__, __FILE__, CCTK_THORNSTRING,"radial-bondisoln %12d %26.16e %26.16e %26.16e %26.16e \n",i,r_bondi[i],rho_bondi[i],u_bondi[i],v_bondi[i]);  
+   }
+ #endif
+ 
+@@ -1089,6 +1093,10 @@ void GRHydro_Bondi(CCTK_ARGUMENTS)
+       iso_cart_to_bl_spher_pos(xpos, x_spher); 
+       break; 
+ 
++    default:
++      assert(0 && "Internal error");
++      return; /* NOTREACHED */
++
+     }
+ 
+     rspher = x_spher[RR]; 
+diff --git a/src/GRHydro_BondiM.c b/src/GRHydro_BondiM.c
+index 0051499..4ff7e36 100644
+--- a/src/GRHydro_BondiM.c
++++ b/src/GRHydro_BondiM.c
+@@ -37,6 +37,7 @@
+ #include <math.h>
+ #include <stdio.h>
+ #include <stdlib.h>
++#include <assert.h>
+ 
+ // set to 1 to tracing output
+ #define LTRACE   1
+@@ -81,6 +82,9 @@
+ #define EXTRA_NEWT_ITER_B (2      )
+ #define SMALL_BONDI (1.e-20)
+ 
++//some math helpers
++#define SQR(x) ((x)*(x))
++
+ 
+ static CCTK_REAL  Mdot, rs, vs_sq, vs, cs_sq, cs, rhos, hs, K, Qdot, gamma_eos, r_sol;
+ static CCTK_REAL  M, a, asq, Msq; 
+@@ -121,7 +125,7 @@ static void bl_to_ks_con(CCTK_REAL *x, CCTK_REAL blcon[], CCTK_REAL kscon[] )
+         for  Kerr-Schild coordinates.
+ 
+  ******************************************************************************/
+-static void dxc_dxs_ks_calc(CCTK_REAL *x_cart, CCTK_REAL *x_spher, CCTK_REAL dxc_dxs[][NDIM] )
++static void dxc_dxs_ks_calc(CCTK_REAL *x_cart, CCTK_REAL *x_spher, CCTK_REAL dxc_dxs[NDIM][NDIM] )
+ {
+   int i, j; 
+   CCTK_REAL r, th, ph; 
+@@ -339,7 +343,6 @@ static void iso_cart_to_bl_spher_pos(CCTK_REAL *x_cart, CCTK_REAL *x_spher)
+ ****************************************************************************/
+ static void setutcon(CCTK_REAL *vcon, CCTK_REAL gcov[][NDIM])
+ {
+-  int i,j;
+   CCTK_REAL d,b,c;
+   
+   d=gcov[TT][TT];
+@@ -367,7 +370,7 @@ static void setutcon(CCTK_REAL *vcon, CCTK_REAL gcov[][NDIM])
+ ****************************************************************************/
+ static void bl_gcov_func( CCTK_REAL *x, CCTK_REAL gcov[NDIM][NDIM])
+ {
+-  int i,j,k ;
++  int i,j ;
+   CCTK_REAL sth,cth,s2,r2,DD,mu ;
+   CCTK_REAL r,th;
+ 
+@@ -415,15 +418,15 @@ static void bl_gcov_func( CCTK_REAL *x, CCTK_REAL gcov[NDIM][NDIM])
+    -- the Bondi solution here in is the isentropic, spherically symmetric, 
+        perfect fluid solution to Einstein's equations.  That is, we only 
+        assume an r-dependence, there's a in-going radial velocity only, 
+-       and the EOS are :  P = (G-1)*rho   and   P = K rho^G  
++       and the EOS are :  P = (G-1)*rho*eps   and   P = K rho^G  
+        where  K = const.  and  G is the adiabatic constant "gam".  
+ 
+ ***************************************************************************/
+ static void set_bondi_parameters( CCTK_REAL M_in, CCTK_REAL Mdot_in,  CCTK_REAL rs_in, CCTK_REAL gam )
+ {
+ 
+-  CCTK_REAL my_pi, checkp; 
+   CCTK_REAL  gtemp; 
++  static int first_call = 1;
+ 
+   /* Set the solution-determining parameters:    */
+   M    = M_in;
+@@ -454,20 +457,17 @@ static void set_bondi_parameters( CCTK_REAL M_in, CCTK_REAL Mdot_in,  CCTK_REAL
+   Qdot   = hs * hs * ( 1. - 3. * vs_sq ) ;
+   gamma_eos = gam;
+ 
+-#if( LTRACE ) 
+-  CCTK_VWarn(CCTK_WARN_DEBUG, __LINE__, __FILE__, CCTK_THORNSTRING,"\n#######################################################\n");         
+-  CCTK_VWarn(CCTK_WARN_DEBUG, __LINE__, __FILE__, CCTK_THORNSTRING,"Bondi Solution Parameters1: \n");					  
+-  CCTK_VWarn(CCTK_WARN_DEBUG, __LINE__, __FILE__, CCTK_THORNSTRING,"------------------------- \n\n");					  
+-  CCTK_VWarn(CCTK_WARN_DEBUG, __LINE__, __FILE__, CCTK_THORNSTRING,"M  = %28.20e     Mdot = %28.20e     rs   = %28.20e  \n",M,Mdot,rs);	  
+-  CCTK_VWarn(CCTK_WARN_DEBUG, __LINE__, __FILE__, CCTK_THORNSTRING,"vs = %28.20e     cs   = %28.20e     rhos = %28.20e  \n",vs,cs,rhos);	  
+-  CCTK_VWarn(CCTK_WARN_DEBUG, __LINE__, __FILE__, CCTK_THORNSTRING,"hs = %28.20e     K    = %28.20e     Qdot = %28.20e   \n",hs,K,Qdot);	  
+-  CCTK_VWarn(CCTK_WARN_DEBUG, __LINE__, __FILE__, CCTK_THORNSTRING,"gam= %28.20e     r_sol= %28.20e       \n",gamma_eos, r_sol);		  
+-  CCTK_VWarn(CCTK_WARN_DEBUG, __LINE__, __FILE__, CCTK_THORNSTRING,"rs   = : %28.20e \n", rs) ;						  
+-  CCTK_VWarn(CCTK_WARN_DEBUG, __LINE__, __FILE__, CCTK_THORNSTRING,"urs  = : %28.20e \n", vs) ;						  
+-  CCTK_VWarn(CCTK_WARN_DEBUG, __LINE__, __FILE__, CCTK_THORNSTRING,"rhos = : %28.20e \n", rhos) ;					  
+-  CCTK_VWarn(CCTK_WARN_DEBUG, __LINE__, __FILE__, CCTK_THORNSTRING,"K    = : %28.20e \n", K) ;						  
+-  CCTK_VWarn(CCTK_WARN_DEBUG, __LINE__, __FILE__, CCTK_THORNSTRING,"#######################################################\n\n");	  
+-#endif
++  if( first_call ) {
++    CCTK_VInfo(CCTK_THORNSTRING,"#######################################################");         
++    CCTK_VInfo(CCTK_THORNSTRING,"Bondi Solution Parameters1: ");					  
++    CCTK_VInfo(CCTK_THORNSTRING,"-------------------------");					  
++    CCTK_VInfo(CCTK_THORNSTRING,"M  = %28.20e     Mdot = %28.20e     rs   = %28.20e",M,Mdot,rs);	  
++    CCTK_VInfo(CCTK_THORNSTRING,"vs = %28.20e     cs   = %28.20e     rhos = %28.20e",vs,cs,rhos);	  
++    CCTK_VInfo(CCTK_THORNSTRING,"hs = %28.20e     K    = %28.20e     Qdot = %28.20e",hs,K,Qdot);	  
++    CCTK_VInfo(CCTK_THORNSTRING,"gam= %28.20e     r_sol= %28.20e",gamma_eos, r_sol);		  
++    CCTK_VInfo(CCTK_THORNSTRING,"#######################################################");	  
++    first_call = 0;
++  }
+ 
+   return;
+   
+@@ -499,19 +499,18 @@ static int gnr_bondi( CCTK_REAL x[], int n,
+ 			      CCTK_REAL [][NEWT_DIM_B], CCTK_REAL *, 
+ 			      CCTK_REAL *, int) )
+ {
+-  CCTK_REAL f, df, dx[NEWT_DIM_B], x_old[NEWT_DIM_B], resid[NEWT_DIM_B], 
++  CCTK_REAL f, df, dx[NEWT_DIM_B], resid[NEWT_DIM_B], 
+     jac[NEWT_DIM_B][NEWT_DIM_B];
+-  CCTK_REAL errx, x_orig[NEWT_DIM_B];
+-  int    n_iter, id, jd, i_extra, doing_extra;
++  CCTK_REAL errx;
++  int    n_iter, id, i_extra, doing_extra;
+ 
+-  int   keep_iterating, i_increase;
++  int   keep_iterating;
+ 
+ 
+   // Initialize various parameters and variables:
+   errx = 1. ; 
+   df = f = 1.;
+   i_extra = doing_extra = 0;
+-  for( id = 0; id < n ; id++)  x_old[id] = x_orig[id] = x[id] ;
+ 
+   n_iter = 0;
+ 
+@@ -522,11 +521,7 @@ static int gnr_bondi( CCTK_REAL x[], int n,
+ 
+     (*funcd) (x, dx, resid, jac, &f, &df, n);  /* returns with new dx, f, df */
+ 
+-    /* Save old values before calculating the new: */
+     errx = 0.;
+-    for( id = 0; id < n ; id++) {
+-      x_old[id] = x[id] ;
+-    }
+ 
+     /* don't use line search : */
+     for( id = 0; id < n ; id++) {
+@@ -662,19 +657,21 @@ static int find_bondi_solution( CCTK_REAL r, CCTK_REAL *rho, CCTK_REAL *u, CCTK_
+ 
+   if( *rho < 0. ) {  
+     if( r > 0.9*rs && r < 1.1*rs ) { 
+-      rho_guess = rhos;
+-      *rho = rho_guess;
++      *rho = rhos;
+     }
+     else { 
+       //  rhotmp = (sqrt(Qdot) - 1.) * (gamma_eos - 1.) / ( gamma_eos * K );
+       //  rho_guess = pow( rhotmp , (1./(gamma_eos - 1.)) );
+       if(r < rs) {  ur = pow(r,-0.5)     ;  }
+       else       {  ur = 0.5*pow(r,-1.5) ;  }
+-      rho_guess = Mdot / (4.*M_PI * r * r * ur);
+-      *rho = rho_guess; 
++      *rho = Mdot / (4.*M_PI * r * r * ur); 
+     }
+   } 
+ 
++  // safe guess value for multiple tries
++  rho_guess = *rho;
++  
++
+   // set global variables needed by residual function:
+   r_sol = r ; 
+ 
+@@ -735,12 +732,115 @@ static int find_bondi_solution( CCTK_REAL r, CCTK_REAL *rho, CCTK_REAL *u, CCTK_
+ 
+ /***********************************************************************************/
+ /***********************************************************************************
++  calc_b_bondi():
++  ---------
++   -- calculates the contravariant magnetic vector Bcons from the amplitude of the 
++        radial component of the contravariant magnetic field vector Boyer-Lindquist coordinates.  
++
++***********************************************************************************/
++#if 0
++static void  calc_b_bondi( CCTK_REAL B0, CCTK_REAL vtmp, CCTK_REAL x[NDIM], CCTK_REAL x_spher[NDIM],  CCTK_REAL bcon[NDIM] )
++{
++  int i,j;
++  CCTK_REAL  bcon_bl[NDIM] = {0.}; // F^{ab} = (b^a u^b - b^b u^a)
++  CCTK_REAL  bcon_ks[NDIM];
++  CCTK_REAL  gcov[NDIM][NDIM];
++  CCTK_REAL  r_iso;
++  CCTK_REAL dxc_dxs[NDIM][NDIM];
++  CCTK_REAL f_bl = 1. - 2*M/x[RR];
++  CCTK_REAL sqrt_detg_bl = SQR(x[RR])*sin(x[TH])/sqrt(f_bl);
++  CCTK_REAL lapse_bl = sqrt(f_bl);
++
++  CCTK_REAL  ucon_bl[NDIM] = {0.};
++  CCTK_REAL  w_lorentz_bl; // Lorentz factor in Boyer-Lindquist coords
++
++  assert(a == 0.);
++
++  ucon_bl[RR] = -vtmp;
++
++  /* Find time component of 4-velocity: */
++  bl_gcov_func( x_spher, gcov );
++  setutcon( ucon_bl, gcov );
++  w_lorentz_bl = lapse_bl*ucon_bl[TT];
++
++  /* Find time component of 4-velocity: */
++  bcon_bl[RR] = B0*SQR(M)*w_lorentz_bl/sqrt_detg_bl;                                // -- " --
++  bcon_bl[TT] = -gcov[RR][RR]/gcov[TT][TT] * bcon_bl[RR] * ucon_bl[RR]/ucon_bl[TT]; // Equ A16 of Villiers&Hawley (corrected)
++
++  switch( coord_type ) {
++  
++  case COORD_BOYERLINDQUIST :
++    dxc_dxs_bl_calc(x, x_spher, dxc_dxs );
++    DLOOP1 { bcon[i] = 0.; } 
++    DLOOP2 { bcon[i] += dxc_dxs[i][j] * bcon_bl[j] ; }
++    break;
++
++
++  case COORD_KERRSCHILD    :
++    bl_to_ks_con(x_spher,bcon_bl,bcon_ks); 
++    dxc_dxs_ks_calc(x, x_spher, dxc_dxs );
++    DLOOP1 { bcon[i] = 0.; } 
++    DLOOP2 { bcon[i] += dxc_dxs[i][j] * bcon_ks[j] ; }
++    break;
++
++
++  case COORD_ISOTROPIC     :
++    r_iso = x_spher[TT]; 
++    bcon_bl[RR] /=  1. + 0.25 * (asq-Msq) / (r_iso*r_iso)  ;    /* BL to Isotropic coordinate transformation */
++    /* I believe we can use BL's cartesian transformation, while using BL's radius : */
++    dxc_dxs_iso_calc(x, x_spher, dxc_dxs );
++    DLOOP1 { bcon[i] = 0.; } 
++    DLOOP2 { bcon[i] += dxc_dxs[i][j] * bcon_bl[j] ; }
++    break; 
++
++  }
++  
++  return;
++}
++#endif
++static void  calc_b_bondi( CCTK_REAL B0, CCTK_REAL vtmp, CCTK_REAL x[NDIM], CCTK_REAL x_spher[NDIM],  CCTK_REAL ucon[NDIM], CCTK_REAL bcon[NDIM])
++{
++  int i,j;
++  CCTK_REAL  bcon_spher[NDIM] = {0.}; // F^{ab} = (b^a u^b - b^b u^a)
++  CCTK_REAL  ucon_spher[NDIM] = {0.};
++  CCTK_REAL dxc_dxs[NDIM][NDIM];
++
++  assert(a == 0.);
++  assert(coord_type == COORD_KERRSCHILD);
++
++  // Schwarzschild and spherical Kerr-Schild (Anil's Eddington coords) ^r components are identical
++  ucon_spher[RR] = -vtmp;
++  ucon_spher[TT] = (x_spher[RR] + (x_spher[RR]+2*M) * SQR(ucon_spher[RR])) / ( sqrt( (x_spher[RR]-2*M+x_spher[RR]*SQR(ucon_spher[RR]))*x_spher[RR] ) - 2*M*ucon_spher[RR] );
++
++  // Schwarzschild and Kerr-Schild ^t components differ since t_KS = t_SW + 2*M*ln(r/(2*M)-1)
++  // NB: we remove the sin(theta) factor from detg_BL  since it factors out of the divergence operator 
++  bcon_spher[RR] = B0*SQR(M)/SQR(x_spher[RR]) *  // Equ A16 of Villiers&Hawley plus explict compuation of detg_BL and W_BL
++                   sqrt(1-2*M/x_spher[RR] + SQR(ucon_spher[RR]));
++  bcon_spher[TT] = B0*SQR(M)/SQR(x_spher[RR]) * 
++                   (4*SQR(M) - SQR(ucon_spher[RR])*(SQR(x_spher[RR]+2*M*x_spher[RR]))) / 
++                   (2*M*sqrt(SQR(x_spher[RR])-2*M*x_spher[RR]+SQR(x_spher[RR]*ucon_spher[RR])) - 
++                    ucon_spher[RR]*SQR(x_spher[RR]));
++
++  dxc_dxs_ks_calc(x, x_spher, dxc_dxs );
++
++  DLOOP1 { bcon[i] = 0.; } 
++  DLOOP2 { bcon[i] += dxc_dxs[i][j] * bcon_spher[j] ; }
++
++  DLOOP1 { ucon[i] = 0.; } 
++  DLOOP2 { ucon[i] += dxc_dxs[i][j] * ucon_spher[j] ; }
++
++  return;
++}
++
++/***********************************************************************************/
++/***********************************************************************************
+   calc_vel_bondi():
+   ---------
+    -- calculates the 4-velocity from the amplitude of the 
+         radial component of the 4-velocity in Boyer-Lindquist coordinates.  
+ 
+ ***********************************************************************************/
++#if 0
+ static void  calc_vel_bondi( CCTK_REAL vtmp, CCTK_REAL x[NDIM], CCTK_REAL x_spher[NDIM],  CCTK_REAL ucon[NDIM] )
+ {
+   int i,j;
+@@ -783,10 +883,15 @@ static void  calc_vel_bondi( CCTK_REAL vtmp, CCTK_REAL x[NDIM], CCTK_REAL x_sphe
+     DLOOP2 { ucon[i] += dxc_dxs[i][j] * ucon_bl[j] ; }
+     break; 
+ 
++  default:
++    assert(0 && "Internal error");
++    return; /* NOTREACHED */
++
+   }
+   
+   return;
+ }
++#endif
+ 
+ /***********************************************************************************/
+ /***********************************************************************************
+@@ -800,7 +905,7 @@ void GRHydro_BondiM(CCTK_ARGUMENTS)
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+   CCTK_REAL det;
+-  CCTK_REAL rhotmp, utmp, vtmp, rspher, xpos[NDIM], x_spher[NDIM], ucon[NDIM];
++  CCTK_REAL rhotmp, utmp, vtmp, rspher, xpos[NDIM], x_spher[NDIM], ucon[NDIM], bcon[NDIM];
+   int retval;
+   CCTK_REAL  *r_bondi, *logr_bondi, *rho_bondi, *u_bondi, *v_bondi;
+   CCTK_REAL  dlogr,logrmin;
+@@ -818,6 +923,12 @@ void GRHydro_BondiM(CCTK_ARGUMENTS)
+ #    define   sx(i_) scon[i_ + 0*size]
+ #    define   sy(i_) scon[i_ + 1*size]
+ #    define   sz(i_) scon[i_ + 2*size]
++#    define Bconsx(i_) Bcons[i_ + 0*size]
++#    define Bconsy(i_) Bcons[i_ + 1*size]
++#    define Bconsz(i_) Bcons[i_ + 2*size]
++#    define Bvecx(i_) Bvec[i_ + 0*size]
++#    define Bvecy(i_) Bvec[i_ + 1*size]
++#    define Bvecz(i_) Bvec[i_ + 2*size]
+ 
+   if( CCTK_EQUALS(bondi_coordinates,"Boyer-Lindquist") ) { 
+     coord_type = COORD_BOYERLINDQUIST ;
+@@ -986,7 +1097,6 @@ void GRHydro_BondiM(CCTK_ARGUMENTS)
+     xpos[YY] = y[i] ;
+     xpos[ZZ] = z[i] ;
+ 
+-
+     switch( coord_type ) {
+   
+     case COORD_BOYERLINDQUIST :
+@@ -997,11 +1107,14 @@ void GRHydro_BondiM(CCTK_ARGUMENTS)
+       ks_cart_to_ks_spher_pos( xpos, x_spher);
+       break;
+ 
+-
+     case COORD_ISOTROPIC     :
+       iso_cart_to_bl_spher_pos(xpos, x_spher); 
+       break; 
+ 
++    default:
++      assert(0 && "Internal error");
++      return; /* NOTREACHED */
++
+     }
+ 
+     rspher = x_spher[RR]; 
+@@ -1032,7 +1145,7 @@ void GRHydro_BondiM(CCTK_ARGUMENTS)
+ 
+     rho[i] = rhotmp;
+     eps[i] = utmp/rhotmp;
+-    calc_vel_bondi(vtmp, xpos, x_spher, ucon);
++    calc_b_bondi(bondi_bmag, vtmp, xpos, x_spher, ucon, bcon);
+ 
+     det = 1./alp[i];   /* temp var */
+ 
+@@ -1040,15 +1153,25 @@ void GRHydro_BondiM(CCTK_ARGUMENTS)
+     vely(i) = (ucon[YY]/ucon[TT] + betay[i]) * det;
+     velz(i) = (ucon[ZZ]/ucon[TT] + betaz[i]) * det;
+ 
++    w_lorentz[i] = 1./sqrt(1-(gxx[i]*SQR(velx(i))+gyy[i]*SQR(vely(i))+gzz[i]*SQR(velz(i))+
++                              2*(gxy[i]*velx(i)*vely(i)+gxz[i]*velx(i)*velz(i)+gyz[i]*vely(i)*velz(i))) );
++
++    Bvecx(i) = w_lorentz[i]*bcon[XX] - alp[i]*bcon[TT]*ucon[XX];
++    Bvecy(i) = w_lorentz[i]*bcon[YY] - alp[i]*bcon[TT]*ucon[YY];
++    Bvecz(i) = w_lorentz[i]*bcon[ZZ] - alp[i]*bcon[TT]*ucon[ZZ];
+ 
+     SpatialDet(gxx[i],gxy[i],gxz[i],gyy[i],gyz[i],gzz[i],&det);
+ 
+-      Prim2ConGen(*GRHydro_eos_handle,gxx[i],gxy[i],
++      Prim2ConGenM(*GRHydro_eos_handle,gxx[i],gxy[i],
+ 		  gxz[i],gyy[i],gyz[i],gzz[i],
+ 		  det, &dens[i],&sx(i),&sy(i),&sz(i),
+-		  &tau[i],rho[i],
++		  &tau[i],
++                  &Bconsx(i),&Bconsy(i),&Bconsz(i),
++		  rho[i],
+ 		  velx(i),vely(i),velz(i),
+-		  eps[i],&press[i],&w_lorentz[i]);
++		  eps[i],&press[i],
++                  Bvecx(i),Bvecy(i),Bvecz(i),
++                  &w_lorentz[i]);
+ 
+   }
+ 
+@@ -1061,6 +1184,12 @@ void GRHydro_BondiM(CCTK_ARGUMENTS)
+ #    undef sx
+ #    undef sy
+ #    undef sz
++#    undef Bconsx
++#    undef Bconsy
++#    undef Bconsz
++#    undef Bvecx
++#    undef Bvecy
++#    undef Bvecz
+ 
+ 
+   return;
+-- 
+1.7.10.4
+

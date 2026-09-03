@@ -1,0 +1,37 @@
+From 3faf92324eb1e5fa63097af7c11ecb93a186f4d0 Mon Sep 17 00:00:00 2001
+From: Barry Wardell <barry.wardell@gmail.com>
+Date: Sat, 4 Feb 2012 23:49:10 +0000
+Subject: [PATCH] Update Kranc-specific code.
+
+---
+ src/vectors.h |    8 +++++---
+ 1 files changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/src/vectors.h b/src/vectors.h
+index 2761202..efb992a 100644
+--- a/src/vectors.h
++++ b/src/vectors.h
+@@ -315,9 +315,6 @@ struct vecprops<CCTK_REAL8> {
+ #  define KRANC_DIFF_FUNCTIONS
+ #endif
+ 
+-#undef Pi
+-#define Pi (ToReal(M_PI))
+-
+ #undef ToReal
+ #define ToReal(x) (vec_set1((CCTK_REAL)(x)))
+ 
+@@ -325,5 +322,10 @@ struct vecprops<CCTK_REAL8> {
+ #define Sign(x) -999999999      // poison
+ 
+ 
++#undef KRANC_GFOFFSET3D
++#define KRANC_GFOFFSET3D(var,i,j,k)                                     \
++  vec_loadu_maybe3((i),(j),(k),                                         \
++                   *(CCTK_REAL const*)&                                 \
++                   ((char const*)(var))[cdi*(i)+cdj*(j)+cdk*(k)])
+ 
+ #endif  // #ifndef VECTORS_H
+-- 
+1.7.7.4
+

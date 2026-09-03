@@ -1,0 +1,146 @@
+Index: interface.ccl
+===================================================================
+--- interface.ccl	(revision 226)
++++ interface.ccl	(working copy)
+@@ -15,6 +15,7 @@
+ USES INCLUDE: FishEye.h
+ USES INCLUDE: SpaceMask.h
+ USES INCLUDE HEADER: carpet.hh
++USES INCLUDE HEADER: loopcontrol.h
+ 
+ ###############################################################
+ ###  Provided functions. These are mainly to allow RNSID    ###
+Index: src/GRHydro_Con2Prim.F90
+===================================================================
+--- src/GRHydro_Con2Prim.F90	(revision 226)
++++ src/GRHydro_Con2Prim.F90	(working copy)
+@@ -14,6 +14,7 @@
+ #include "SpaceMask.h"
+ #include "GRHydro_Interfaces.h"
+ #include "GRHydro_Macros.h"
++#include "loopcontrol.h"
+ 
+  /*@@
+    @routine    Conservative2Primitive
+@@ -43,13 +44,14 @@
+ subroutine Conservative2Primitive(CCTK_ARGUMENTS)
+ 
+   use Con2Prim_fortran_interfaces
++  use loopcontrol
+ 
+   implicit none
+   
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+-  integer :: i, j, k, itracer, nx, ny, nz
++  integer :: itracer, nx, ny, nz
+   CCTK_REAL :: uxx, uxy, uxz, uyy, uyz, uzz, det, pmin, epsmin
+   logical :: epsnegative
+   character(len=100) warnline
+@@ -60,6 +62,8 @@
+   CCTK_REAL :: local_min_tracer
+   CCTK_REAL :: local_perc_ptol
+ 
++  LC_DECLARE3(Conservative2Primitive, i,j,k)
++
+ ! begin EOS Omni vars
+   integer :: n,keytemp,anyerr,keyerr(1)
+   real*8  :: xpress,xeps,xtemp,xye 
+@@ -87,11 +91,13 @@
+   call EOS_Omni_EpsFromPress(GRHydro_polytrope_handle,keytemp,GRHydro_eos_rf_prec,n,&
+        GRHydro_rho_min,xeps,xtemp,xye,pmin,epsmin,keyerr,anyerr)
+ 
+-  !$OMP PARALLEL DO PRIVATE(i,j,itracer,&
+-  !$OMP uxx, uxy, uxz, uyy, uyz, uzz, det, epsnegative)
+-  do k = 1, nz 
+-    do j = 1, ny 
+-      do i = 1, nx
++  !$OMP PARALLEL PRIVATE(i,j,itracer,&
++  !$OMP uxx, uxy, uxz, uyy, uyz, uzz, det, epsnegative, &
++  !$OMP LC_PRIVATE3(Conservative2Primitive))
++  LC_LOOP3(Conservative2Primitive, i,j,k, 1,1,1, nx,ny,nz, cctk_lsh(1),cctk_lsh(2),cctk_lsh(3))
++  !do k = 1, nz 
++  !  do j = 1, ny 
++  !    do i = 1, nx
+ 
+         !do not compute if in atmosphere or in excised region
+         if (SpaceMask_CheckStateBitsF90(space_mask, i, j, k, type_bits, atmosphere) .or. &
+@@ -252,10 +258,11 @@
+ #endif          
+ 
+         end if
+-      end do
+-    end do
+-  end do
+-  !$OMP END PARALLEL DO
++  !    end do
++  !  end do
++  !end do
++  LC_ENDLOOP3(Conservative2Primitive)
++  !$OMP END PARALLEL
+ 
+   return
+   
+@@ -1120,19 +1127,23 @@
+ 
+ subroutine Conservative2PrimitivePolytype(CCTK_ARGUMENTS)
+   
++  use loopcontrol
++
+   implicit none
+   
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+-  integer :: i, j, k, itracer, nx, ny, nz
++  integer :: itracer, nx, ny, nz
+   CCTK_REAL :: uxx, uxy, uxz, uyy, uyz, uzz, det
+ 
+   CCTK_INT :: type_bits, atmosphere
+   CCTK_INT :: type2_bits
+ 
+   CCTK_REAL :: local_min_tracer
+-!  character(len=400) :: warnline
++!  character(len=400) :: warnline
++  LC_DECLARE3(Conservative2PrimitivePolytype, i,j,k)
++  integer :: OMP_GET_THREAD_NUM
+ 
+                                                                                
+   call SpaceMask_GetTypeBits(type_bits, "Hydro_Atmosphere")
+@@ -1153,11 +1164,13 @@
+ !!$  do k = GRHydro_stencil + 1, nz - GRHydro_stencil
+ !!$    do j = GRHydro_stencil + 1, ny - GRHydro_stencil
+ !!$      do i = GRHydro_stencil + 1, nx - GRHydro_stencil
+-  !$OMP PARALLEL DO PRIVATE(i,j,itracer,&
+-  !$OMP uxx, uxy, uxz, uyy, uyz, uzz, det)
+-  do k = 1, nz
+-    do j = 1, ny
+-      do i = 1, nx
++  !$OMP PARALLEL PRIVATE(i,j,itracer,&
++  !$OMP uxx, uxy, uxz, uyy, uyz, uzz, det, &
++  !$OMP LC_PRIVATE3(Conservative2PrimitivePolytype))
++  LC_LOOP3(Conservative2PrimitivePolytype, i,j,k, 1,1,1, nx,ny,nz, cctk_lsh(1),cctk_lsh(2),cctk_lsh(3))
++  !do k = 1, nz
++  !  do j = 1, ny
++  !    do i = 1, nx
+ 
+         !do not compute if in atmosphere or in an excised region
+         if (SpaceMask_CheckStateBitsF90(space_mask, i, j, k, type_bits, atmosphere) .or. &
+@@ -1194,11 +1207,11 @@
+              uxx,uxy,uxz,uyy,uyz,uzz,det,x(i,j,k),y(i,j,k), &
+              z(i,j,k),r(i,j,k),GRHydro_rho_min, GRHydro_reflevel, GRHydro_C2P_failed(i,j,k))
+                 
+-      end do
+-    end do
+-  end do
+-
+-  !$OMP END PARALLEL DO
++  !    end do
++  !  end do
++  !end do
++  LC_ENDLOOP3(Conservative2PrimitivePolytype)
++  !$OMP END PARALLEL
+   
+   return
+ 

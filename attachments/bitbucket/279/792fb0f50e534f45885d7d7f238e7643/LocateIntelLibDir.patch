@@ -1,0 +1,15 @@
+Index: darwin
+===================================================================
+--- darwin	(revision 4684)
++++ darwin	(working copy)
+@@ -277,6 +277,10 @@
+ 
+       intel_dir="$(dirname $(dirname $(which $F90)))"
+ 
++      if [ ! -d "$intel_dir/lib" -a -d "$(dirname $intel_dir)/lib" ]; then
++          intel_dir="$(dirname $intel_dir)"
++      fi
++
+       # add the libpath
+       : ${LIBDIRS="$intel_dir/lib"}
+       : ${LIBS='ifcore imf svml m'}

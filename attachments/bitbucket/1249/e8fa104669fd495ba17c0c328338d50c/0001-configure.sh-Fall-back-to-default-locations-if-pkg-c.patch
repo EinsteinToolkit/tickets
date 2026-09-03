@@ -1,0 +1,53 @@
+From e043be4d22278e53a4b078fab044c76486635396 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Thu, 7 Feb 2013 11:34:49 +0100
+Subject: [PATCH] configure.sh: Fall back to default locations if pkg-config
+ is not available
+
+---
+ configure.sh | 24 +++++++++++++-----------
+ 1 file changed, 13 insertions(+), 11 deletions(-)
+ mode change 100644 => 100755 configure.sh
+
+diff --git a/configure.sh b/configure.sh
+old mode 100644
+new mode 100755
+index e28fcf2..8acd266
+--- a/configure.sh
++++ b/configure.sh
+@@ -168,19 +168,21 @@ then
+ fi
+ 
+ 
+-
+-#HWLOC_INC_DIRS="${HWLOC_DIR}/include"
+-#HWLOC_LIB_DIRS="${HWLOC_DIR}/lib"
+-#HWLOC_LIBS='hwloc'
+-
+-export PKG_CONFIG_PATH=${HWLOC_DIR}/lib/pkgconfig:${PCIUTILS_DIR}/lib/pkgconfig:${PKG_CONFIG_PATH}
+-
+ # Check that pkg-config works
+-pkg-config hwloc
++if ! pkg-config hwloc; then
++    echo "BEGIN MESSAGE"
++    echo "pkg-config not found; attempting to use reasonable defaults"
++    echo "END MESSAGE"
+ 
+-HWLOC_INC_DIRS="$(echo '' $(pkg-config hwloc --static --cflags 2>/dev/null || pkg-config hwloc --cflags) '' | sed -e 's+ -I/include + +g;s+ -I/usr/include + +g;s+ -I/usr/local/include + +g' | sed -e 's/ -I/ /g')"
+-HWLOC_LIB_DIRS="$(echo '' $(pkg-config hwloc --static --libs 2>/dev/null || pkg-config hwloc --libs) '' | sed -e 's/ -l[^ ]*/ /g' | sed -e 's+ -L/lib + +g;s+ -L/lib64 + +g;s+ -L/usr/lib + +g;s+ -L/usr/lib64 + +g;s+ -L/usr/local/lib + +g;s+ -L/usr/local/lib64 + +g' | sed -e 's/ -L/ /g')"
+-HWLOC_LIBS="$(echo '' $(pkg-config hwloc --static --libs 2>/dev/null || pkg-config hwloc --libs) '' | sed -e 's/ -[^l][^ ]*/ /g' | sed -e 's/ -l/ /g')"
++    HWLOC_INC_DIRS="${HWLOC_DIR}/include"
++    HWLOC_LIB_DIRS="${HWLOC_DIR}/lib"
++    HWLOC_LIBS='hwloc'
++else
++    export PKG_CONFIG_PATH=${HWLOC_DIR}/lib/pkgconfig:${PCIUTILS_DIR}/lib/pkgconfig:${PKG_CONFIG_PATH}
++    HWLOC_INC_DIRS="$(echo '' $(pkg-config hwloc --static --cflags 2>/dev/null || pkg-config hwloc --cflags) '' | sed -e 's+ -I/include + +g;s+ -I/usr/include + +g;s+ -I/usr/local/include + +g' | sed -e 's/ -I/ /g')"
++    HWLOC_LIB_DIRS="$(echo '' $(pkg-config hwloc --static --libs 2>/dev/null || pkg-config hwloc --libs) '' | sed -e 's/ -l[^ ]*/ /g' | sed -e 's+ -L/lib + +g;s+ -L/lib64 + +g;s+ -L/usr/lib + +g;s+ -L/usr/lib64 + +g;s+ -L/usr/local/lib + +g;s+ -L/usr/local/lib64 + +g' | sed -e 's/ -L/ /g')"
++    HWLOC_LIBS="$(echo '' $(pkg-config hwloc --static --libs 2>/dev/null || pkg-config hwloc --libs) '' | sed -e 's/ -[^l][^ ]*/ /g' | sed -e 's/ -l/ /g')"
++fi
+ 
+ # Add libnuma manually, if necessary
+ if grep -q ' -lnuma ' ${HWLOC_DIR}/lib/libhwloc.la; then
+-- 
+1.8.0
+

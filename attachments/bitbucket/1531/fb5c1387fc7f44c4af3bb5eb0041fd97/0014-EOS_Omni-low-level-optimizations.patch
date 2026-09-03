@@ -1,0 +1,606 @@
+From cd004b8d98c95722d90638fde3fe356b8781633f Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Tue, 12 Nov 2013 18:07:52 -0800
+Subject: [PATCH 14/18] EOS_Omni: low-level optimizations
+
+* use log-rules to transform base 10 logs to natural ones
+  faster and hopefully more accurate
+* optimize away a division when computing cs2
+* optimize bracketing test to (a-a1)*(a-a2)<0
+* replace divisions by multiplication by inverse
+* use CCTK_BUILTIN_EXPECT to indicate likely outcome
+  this should help branch prediction since the compiler can put the the
+  less likely branch into the unfavorable location.
+* remove superfluous if statements
+  whenever we leave a itmax loop regularly we iterated for too long
+* explicitly replace x/y by x*1./y
+---
+ src/nuc_eos_cxx/helpers.hh                 | 101 ++++++++++++++---------------
+ src/nuc_eos_cxx/nuc_eos_dpdrhoe_dpderho.cc |   6 +-
+ src/nuc_eos_cxx/nuc_eos_full.cc            |  12 ++--
+ src/nuc_eos_cxx/nuc_eos_press.cc           |   8 +--
+ src/nuc_eos_cxx/nuc_eos_press_cs2.cc       |  12 ++--
+ src/nuc_eos_cxx/nuc_eos_short.cc           |  18 ++---
+ src/nuc_eos_cxx/readtable.cc               |  12 ++--
+ 7 files changed, 85 insertions(+), 84 deletions(-)
+
+diff --git a/src/nuc_eos_cxx/helpers.hh b/src/nuc_eos_cxx/helpers.hh
+index f8537b4..c68ce7d 100644
+--- a/src/nuc_eos_cxx/helpers.hh
++++ b/src/nuc_eos_cxx/helpers.hh
+@@ -18,24 +18,24 @@ int checkbounds(const double xrho,
+   // 105 -- rho too high
+   // 106 -- rho too low
+ 
+-  if(xrho > eos_rhomax) {
++  if(CCTK_BUILTIN_EXPECT(xrho > eos_rhomax, false)) {
+     return 105;
+   }
+-  if(xrho < eos_rhomin) {
++  if(CCTK_BUILTIN_EXPECT(xrho < eos_rhomin, false)) {
+     return 106;
+   }
+-  if(xye > eos_yemax) {
++  if(CCTK_BUILTIN_EXPECT(xye > eos_yemax, false)) {
+     return 101;
+   }
+-  if(xye < eos_yemin) {
++  if(CCTK_BUILTIN_EXPECT(xye < eos_yemin, false)) {
+     // this is probably not pure and should be removed
+     fprintf(stderr,"xye: %15.6E eos_yemin: %15.6E\n",xye,eos_yemin);
+     return 102;
+   }
+-  if(xtemp > eos_tempmax) {
++  if(CCTK_BUILTIN_EXPECT(xtemp > eos_tempmax, false)) {
+     return 103;
+   }
+-  if(xtemp < eos_tempmin) {
++  if(CCTK_BUILTIN_EXPECT(xtemp < eos_tempmin, false)) {
+     return 104;
+   }
+   return 0;
+@@ -53,16 +53,16 @@ int checkbounds_kt0_noTcheck(const double xrho,
+   // 105 -- rho too high
+   // 106 -- rho too low
+ 
+-  if(xrho > eos_rhomax) {
++  if(CCTK_BUILTIN_EXPECT(xrho > eos_rhomax, false)) {
+     return 105;
+   }
+-  if(xrho < eos_rhomin) {
++  if(CCTK_BUILTIN_EXPECT(xrho < eos_rhomin, false)) {
+     return 106;
+   }
+-  if(xye > eos_yemax) {
++  if(CCTK_BUILTIN_EXPECT(xye > eos_yemax, false)) {
+     return 101;
+   }
+-  if(xye < eos_yemin) {
++  if(CCTK_BUILTIN_EXPECT(xye < eos_yemin, false)) {
+     return 102;
+   }
+   return 0;
+@@ -331,10 +331,12 @@ double linterp2D(const double *restrict xs,
+   // then interpolate in y
+   // assume rectangular grid
+   
+-  double t1 = (fs[1]-fs[0])/(xs[1]-xs[0]) * (x - xs[0]) + fs[0];
+-  double t2 = (fs[3]-fs[2])/(xs[1]-xs[0]) * (x - xs[0]) + fs[2];
++  double dxi = 1./(xs[1]-xs[0]);
++  double dyi = 1./(ys[1]-ys[0]); // x*1./y uses faster instructions than x/y
++  double t1 = (fs[1]-fs[0])*dxi * (x - xs[0]) + fs[0];
++  double t2 = (fs[3]-fs[2])*dxi * (x - xs[0]) + fs[2];
+ 
+-  return (t2 - t1)/(ys[1]-ys[0]) * (y-ys[0]) + t1;
++  return (t2 - t1)*dyi * (y-ys[0]) + t1;
+ }
+ 
+ static inline __attribute__((always_inline))
+@@ -359,6 +361,8 @@ void bisection(const double lr,
+   const double dltp = log(1.2);
+   const double dltm = log(0.8);
+ 
++  const double leps0_prec = leps0*prec;
++
+   // temporary local vars
+   double lt, lt1, lt2;
+   double ltmin = logtemp[0];
+@@ -404,7 +408,7 @@ void bisection(const double lr,
+ #endif
+ 
+     bcount++;
+-    if(bcount >= maxbcount) {
++    if(CCTK_BUILTIN_EXPECT(bcount >= maxbcount, false)) {
+       *keyerrt = 667;
+       return;
+     }
+@@ -432,22 +436,20 @@ void bisection(const double lr,
+     nuc_eos_C_linterp_one(idx,delx,dely,delz,&f2a,iv); 
+     
+     fmid=f2a-leps0;
+-    if(fmid <= 0.0) lt=ltmid;
++    if(CCTK_BUILTIN_EXPECT(fmid <= 0.0, false)) lt=ltmid;
+ #if DEBUG
+     fprintf(stderr,"bisection step 2 it %d, fmid: %15.6E f2a: %15.6E lt: %15.6E ltmid: %15.6E dlt: %15.6E\n",
+ 	    it,fmid,f2a,lt,ltmid,dlt);
+ #endif
+ 
+-    if(fabs(1.0-f2a/leps0) <= prec) {
++    if(CCTK_BUILTIN_EXPECT(fabs(leps0-f2a) <= leps0_prec, false)) {
+       *ltout = ltmid;
+       return;
+     }
+   } // for it = 0
+ 
+-  if(it >= itmax-1) {
+-    *keyerrt = 667;
+-    return;
+-  }
++  *keyerrt = 667;
++  return;
+ } // bisection
+ 
+ 
+@@ -465,7 +467,7 @@ void nuc_eos_findtemp(const double lr,
+ 
+   // local variables
+   const int itmax = 200; // use at most 10 iterations, then go to bisection
+-  double dlepsdlt; // derivative dlogeps/dlogT
++  double dlepsdlti; // 1 / derivative dlogeps/dlogT
+   double ldt;
+   double leps,leps0; // temp vars for eps
+   double ltn, lt; // temp vars for temperature
+@@ -489,6 +491,7 @@ void nuc_eos_findtemp(const double lr,
+   fprintf(stderr,"it: %d t: %15.6E leps: %15.6E eps0: %15.6E del: %15.6E\n",
+ 	  it,lt, leps,leps0,fabs(leps-leps0)/(fabs(leps0)));
+ #endif
++  // TODO: profile this to see which outcome is more likely
+   if(fabs(leps-leps0) < prec*fabs(leps0)) {
+     *ltout = lt0;
+     return;
+@@ -548,8 +551,7 @@ void nuc_eos_findtemp(const double lr,
+ 
+     // Check if we are already bracketing the input internal
+     // energy. If so, interpolate for new T.
+-    if( (leps0 >= epst1 && leps0 <= epst2) 
+-	|| (leps0 <= epst1 && leps0 >=epst2)) {
++    if(CCTK_BUILTIN_EXPECT((leps0 - epst1) * (leps0 - epst2) <= 0., false)) {
+       
+       *ltout = (logtemp[itemp]-logtemp[itemp-1]) / (epst2 - epst1) * 
+ 	(leps0 - epst1) + logtemp[itemp-1];
+@@ -559,8 +561,8 @@ void nuc_eos_findtemp(const double lr,
+ 
+     // well, then do a Newton-Raphson step
+     // first, guess the derivative
+-    dlepsdlt = (epst2-epst1)/(logtemp[itemp]-logtemp[itemp-1]);
+-    ldt = -(leps - leps0) / dlepsdlt * fac;
++    dlepsdlti = (logtemp[itemp]-logtemp[itemp-1])/(epst2-epst1);
++    ldt = -(leps - leps0) * dlepsdlti * fac;
+ 
+     ltn = MIN(MAX(lt + ldt,ltmin),ltmax);
+     lt = ltn;
+@@ -578,7 +580,7 @@ void nuc_eos_findtemp(const double lr,
+     if(oerr < err) fac *= 0.9;
+     oerr = err;
+ 
+-    if(err < prec*fabs(leps0)) {
++    if(CCTK_BUILTIN_EXPECT(err < prec*fabs(leps0), false)) {
+       *ltout = lt;
+       return;
+     }
+@@ -587,20 +589,18 @@ void nuc_eos_findtemp(const double lr,
+ 
+   } // while(it < itmax)
+ 
+-  if(it >= itmax - 1) {
+-    // try bisection
+-    // bisection(lr, lt0, ye, leps0, ltout, 1, prec, keyerrt);
++  // try bisection
++  // bisection(lr, lt0, ye, leps0, ltout, 1, prec, keyerrt);
+ #if DEBUG
+-    fprintf(stderr, "Failed to converge. This is bad. Trying bisection!\n");
++  fprintf(stderr, "Failed to converge. This is bad. Trying bisection!\n");
+ #endif
+-    bisection(lr,lt0,ye,leps0,prec,ltout,1,keyerrt);
++  bisection(lr,lt0,ye,leps0,prec,ltout,1,keyerrt);
+ #if DEBUG
+-    if(*keyerrt==667) {
+-      fprintf(stderr,"This is worse. Bisection failed!\n");
+-      abort();
+-    }      
++  if(*keyerrt==667) {
++    fprintf(stderr,"This is worse. Bisection failed!\n");
++    abort();
++  }      
+ #endif
+-  }
+ 
+ 
+   return;
+@@ -620,7 +620,7 @@ void nuc_eos_findtemp(const double lr,
+ 
+     // local variables
+     const int itmax = 200; // use at most 10 iterations, then go to bisection
+-    double dentdlt; // derivative dentropy/dlogT
++    double dentdlti; // 1 / derivative dentropy/dlogT
+     double ldt;
+     double ent,ent0; // temp vars for eps
+     double ltn, lt; // temp vars for temperature
+@@ -644,7 +644,7 @@ void nuc_eos_findtemp(const double lr,
+     fprintf(stderr,"it: %d t: %15.6E leps: %15.6E eps0: %15.6E del: %15.6E\n",
+ 	    it,lt,ent,ent0,fabs(ent-ent0)/(fabs(ent0)));
+ #endif
+-    if(fabs(ent-ent0) < prec*fabs(ent0)) {
++    if(CCTK_BUILTIN_EXPECT(fabs(ent-ent0) < prec*fabs(ent0), false)) {
+       *ltout = lt0;
+       return;
+     }
+@@ -703,8 +703,7 @@ void nuc_eos_findtemp(const double lr,
+ 
+       // Check if we are already bracketing the input internal
+       // energy. If so, interpolate for new T.
+-      if( (ent0 >= ent1 && ent0 <= ent2) 
+-	  || (ent0 <= ent1 && ent0 >= ent2)) {
++      if(CCTK_BUILTIN_EXPECT((ent0 - ent1) * (ent0 - ent2) <= 0., false)) {
+       
+ 	*ltout = (logtemp[itemp]-logtemp[itemp-1]) / (ent2 - ent1) * 
+ 	  (ent0 - ent1) + logtemp[itemp-1];
+@@ -714,8 +713,8 @@ void nuc_eos_findtemp(const double lr,
+ 
+       // well, then do a Newton-Raphson step
+       // first, guess the derivative
+-      dentdlt = (ent2-ent1)/(logtemp[itemp]-logtemp[itemp-1]);
+-      ldt = -(ent - ent0) / dentdlt * fac;
++      dentdlti = (logtemp[itemp]-logtemp[itemp-1])/(ent2-ent1);
++      ldt = -(ent - ent0) * dentdlti * fac;
+ 
+       ltn = MIN(MAX(lt + ldt,ltmin),ltmax);
+       lt = ltn;
+@@ -733,7 +732,7 @@ void nuc_eos_findtemp(const double lr,
+       if(oerr < err) fac *= 0.9;
+       oerr = err;
+ 
+-      if(err < prec*fabs(ent0)) {
++      if(CCTK_BUILTIN_EXPECT(err < prec*fabs(ent0), false)) {
+ 	*ltout = lt;
+ 	return;
+       }
+@@ -742,19 +741,17 @@ void nuc_eos_findtemp(const double lr,
+ 
+     } // while(it < itmax)
+ 
+-    if(it >= itmax - 1) {
+-      // try bisection
++    // try bisection
+ #if DEBUG
+-      fprintf(stderr, "Failed to converge. This is bad. Trying bisection!\n");
++    fprintf(stderr, "Failed to converge. This is bad. Trying bisection!\n");
+ #endif
+-      bisection(lr,lt0,ye,ent0,prec,ltout,2,keyerrt);
++    bisection(lr,lt0,ye,ent0,prec,ltout,2,keyerrt);
+ #if DEBUG
+-      if(*keyerrt==667) {
+-	fprintf(stderr,"This is worse. Bisection failed!\n");
+-	abort();
+-      }      
++    if(*keyerrt==667) {
++      fprintf(stderr,"This is worse. Bisection failed!\n");
++      abort();
++    }      
+ #endif
+-    }
+ 
+ 
+     return;
+diff --git a/src/nuc_eos_cxx/nuc_eos_dpdrhoe_dpderho.cc b/src/nuc_eos_cxx/nuc_eos_dpdrhoe_dpderho.cc
+index 1ff15eb..c4f4c1f 100644
+--- a/src/nuc_eos_cxx/nuc_eos_dpdrhoe_dpderho.cc
++++ b/src/nuc_eos_cxx/nuc_eos_dpdrhoe_dpderho.cc
+@@ -30,7 +30,7 @@ void CCTK_FNAME(nuc_eos_m_kt0_dpdrhoe_dpderho)(const int *restrict n_in,
+     // Note that this code now requires that the
+     // temperature guess be within the table bounds
+     keyerr[i] = checkbounds_kt0_noTcheck(rho[i], ye[i]);
+-    if(keyerr[i] != 0) {
++    if(CCTK_BUILTIN_EXPECT(keyerr[i] != 0, false)) {
+       *anyerr = 1;
+     }
+   }
+@@ -45,7 +45,7 @@ void CCTK_FNAME(nuc_eos_m_kt0_dpdrhoe_dpderho)(const int *restrict n_in,
+     const double lt = log(MIN(MAX(temp[i],eos_tempmin),eos_tempmax));
+     double ltout;
+     const double epstot = eps[i]+energy_shift;
+-    if(epstot>0.0e0) {
++    if(CCTK_BUILTIN_EXPECT(epstot>0.0e0, true)) {
+       // this is the standard scenario; eps is larger than zero
+       // and we can operate with logarithmic tables
+       const double lxeps = log(epstot);
+@@ -61,7 +61,7 @@ void CCTK_FNAME(nuc_eos_m_kt0_dpdrhoe_dpderho)(const int *restrict n_in,
+       keyerr[i] = 667;
+     } // epstot > 0.0
+ 
+-    if(keyerr[i]) {
++    if(CCTK_BUILTIN_EXPECT(keyerr[i] != 0, false)) {
+       // now try negative temperature treatment
+       double eps0, eps1;
+       int idx[8];
+diff --git a/src/nuc_eos_cxx/nuc_eos_full.cc b/src/nuc_eos_cxx/nuc_eos_full.cc
+index 57f0776..cc0d4ec 100644
+--- a/src/nuc_eos_cxx/nuc_eos_full.cc
++++ b/src/nuc_eos_cxx/nuc_eos_full.cc
+@@ -39,7 +39,7 @@ void CCTK_FNAME(nuc_eos_m_kt1_full)(const int *restrict n_in,
+   for(int i=0;i<n;i++) {
+     // check if we are fine
+     keyerr[i] = checkbounds(rho[i], temp[i], ye[i]);
+-    if(keyerr[i] != 0) {
++    if(CCTK_BUILTIN_EXPECT(keyerr[i] != 0, false)) {
+       *anyerr = 1;
+     }
+   }
+@@ -148,7 +148,7 @@ void CCTK_FNAME(nuc_eos_m_kt1_full)(const int *restrict n_in,
+     prs[i] = exp(prs[i]);
+     eps[i] = exp(eps[i]) - energy_shift;
+ #if HAVEGR
+-    cs2[i] = cs2[i] / (1.0 + eps[i] + prs[i]/rho[i]);
++    cs2[i] = rho[i] * cs2[i] / (rho[i] + rho[i] * eps[i] + prs[i]);
+ #endif
+   }
+ 
+@@ -194,7 +194,7 @@ void CCTK_FNAME(nuc_eos_m_kt0_full)(const int *restrict n_in,
+     // Note that this code now requires that the
+     // temperature guess be within the table bounds
+     keyerr[i] = checkbounds_kt0_noTcheck(rho[i], ye[i]);
+-    if(keyerr[i] != 0) {
++    if(CCTK_BUILTIN_EXPECT(keyerr[i] != 0, false)) {
+       *anyerr = 1;
+     }
+   }
+@@ -209,7 +209,7 @@ void CCTK_FNAME(nuc_eos_m_kt0_full)(const int *restrict n_in,
+     const double lt = log(MIN(MAX(temp[i],eos_tempmin),eos_tempmax));
+     double ltout;
+     const double epstot = eps[i]+energy_shift;
+-    if(epstot>0.0e0) {
++    if(CCTK_BUILTIN_EXPECT(epstot>0.0e0, true)) {
+       // this is the standard scenario; eps is larger than zero
+       // and we can operate with logarithmic tables
+       const double lxeps = log(epstot);
+@@ -225,7 +225,7 @@ void CCTK_FNAME(nuc_eos_m_kt0_full)(const int *restrict n_in,
+     } // epstot > 0.0
+ 
+ 
+-    if(keyerr[i]) {
++    if(CCTK_BUILTIN_EXPECT(keyerr[i] != 0, false)) {
+       *anyerr=1;
+     } else {
+       temp[i] = exp(ltout);
+@@ -318,7 +318,7 @@ void CCTK_FNAME(nuc_eos_m_kt0_full)(const int *restrict n_in,
+   for(int i=0;i<n;i++) {
+     prs[i] = exp(prs[i]);
+ #if HAVEGR
+-    cs2[i] = cs2[i] / (1.0 + eps[i] + prs[i]/rho[i]);
++    cs2[i] = rho[i]*cs2[i] / (rho[i] + rho[i]*eps[i] + prs[i]);
+ #endif
+   }
+ 
+diff --git a/src/nuc_eos_cxx/nuc_eos_press.cc b/src/nuc_eos_cxx/nuc_eos_press.cc
+index 52c3168..9a2f5a0 100644
+--- a/src/nuc_eos_cxx/nuc_eos_press.cc
++++ b/src/nuc_eos_cxx/nuc_eos_press.cc
+@@ -25,7 +25,7 @@ void CCTK_FNAME(nuc_eos_m_kt1_press_eps)(const int *restrict n_in,
+   for(int i=0;i<n;i++) {
+     // check if we are fine
+     keyerr[i] = checkbounds(rho[i], temp[i], ye[i]);
+-    if(keyerr[i] != 0) {
++    if(CCTK_BUILTIN_EXPECT(keyerr[i] != 0, false)) {
+       *anyerr = 1;
+     }
+   }
+@@ -87,7 +87,7 @@ void CCTK_FNAME(nuc_eos_m_kt0_press)(const int *restrict n_in,
+     // Note that this code now requires that the
+     // temperature guess be within the table bounds
+     keyerr[i] = checkbounds_kt0_noTcheck(rho[i], ye[i]);
+-    if(keyerr[i] != 0) {
++    if(CCTK_BUILTIN_EXPECT(keyerr[i] != 0, false)) {
+       *anyerr = 1;
+     }
+   }
+@@ -103,7 +103,7 @@ void CCTK_FNAME(nuc_eos_m_kt0_press)(const int *restrict n_in,
+     const double lt = log(MIN(MAX(temp[i],eos_tempmin),eos_tempmax));
+     double ltout;
+     const double epstot = eps[i]+energy_shift;
+-    if(epstot>0.0e0) {
++    if(CCTK_BUILTIN_EXPECT(epstot>0.0e0, true)) {
+       // this is the standard scenario; eps is larger than zero
+       // and we can operate with logarithmic tables
+       const double lxeps = log(epstot);
+@@ -119,7 +119,7 @@ void CCTK_FNAME(nuc_eos_m_kt0_press)(const int *restrict n_in,
+       keyerr[i] = 667;
+     } // epstot > 0.0
+ 
+-    if(keyerr[i]) {
++    if(CCTK_BUILTIN_EXPECT(keyerr[i] != 0, false)) {
+       // now try negative temperature treatment
+       double eps0, eps1;
+       int idx[8];
+diff --git a/src/nuc_eos_cxx/nuc_eos_press_cs2.cc b/src/nuc_eos_cxx/nuc_eos_press_cs2.cc
+index 2652ac5..35de771 100644
+--- a/src/nuc_eos_cxx/nuc_eos_press_cs2.cc
++++ b/src/nuc_eos_cxx/nuc_eos_press_cs2.cc
+@@ -26,7 +26,7 @@ void CCTK_FNAME(nuc_eos_m_kt1_press_eps_cs2)(const int *restrict n_in,
+   for(int i=0;i<n;i++) {
+     // check if we are fine
+     keyerr[i] = checkbounds(rho[i], temp[i], ye[i]);
+-    if(keyerr[i] != 0) {
++    if(CCTK_BUILTIN_EXPECT(keyerr[i] != 0, false)) {
+       *anyerr = 1;
+     }
+   }
+@@ -63,7 +63,7 @@ void CCTK_FNAME(nuc_eos_m_kt1_press_eps_cs2)(const int *restrict n_in,
+     prs[i] = exp(prs[i]);
+     eps[i] = exp(eps[i]) - energy_shift;
+ #if HAVEGR
+-    cs2[i] = cs2[i] / (1.0 + eps[i] + prs[i]/rho[i]);
++    cs2[i] = rho[i] * cs2[i] / (rho[i] + rho[i] * eps[i] + prs[i]);
+ #endif
+   }
+ 
+@@ -96,7 +96,7 @@ void CCTK_FNAME(nuc_eos_m_kt0_press_cs2)(const int *restrict n_in,
+     // Note that this code now requires that the
+     // temperature guess be within the table bounds
+     keyerr[i] = checkbounds_kt0_noTcheck(rho[i], ye[i]);
+-    if(keyerr[i] != 0) {
++    if(CCTK_BUILTIN_EXPECT(keyerr[i] != 0, false)) {
+       *anyerr = 1;
+     }
+   }
+@@ -112,7 +112,7 @@ void CCTK_FNAME(nuc_eos_m_kt0_press_cs2)(const int *restrict n_in,
+     const double lt = log(MIN(MAX(temp[i],eos_tempmin),eos_tempmax));
+     double ltout;
+     const double epstot = eps[i]+energy_shift;
+-    if(epstot>0.0e0) {
++    if(CCTK_BUILTIN_EXPECT(epstot>0.0e0, true)) {
+       // this is the standard scenario; eps is larger than zero
+       // and we can operate with logarithmic tables
+       const double lxeps = log(epstot);
+@@ -124,7 +124,7 @@ void CCTK_FNAME(nuc_eos_m_kt0_press_cs2)(const int *restrict n_in,
+       keyerr[i] = 667;
+     } // epstot > 0.0
+ 
+-    if(keyerr[i]) {
++    if(CCTK_BUILTIN_EXPECT(keyerr[i] != 0, false)) {
+       // now try negative temperature treatment
+       double eps0, eps1;
+       int idx[8];
+@@ -175,7 +175,7 @@ void CCTK_FNAME(nuc_eos_m_kt0_press_cs2)(const int *restrict n_in,
+   for(int i=0;i<n;i++) {
+     prs[i] = exp(prs[i]);
+ #if HAVEGR
+-    cs2[i] = cs2[i] / (1.0 + eps[i] + prs[i]/rho[i]);
++    cs2[i] = rho[i] * cs2[i] / (rho[i] + rho[i]*eps[i] + prs[i]);
+ #endif
+   }
+ 
+diff --git a/src/nuc_eos_cxx/nuc_eos_short.cc b/src/nuc_eos_cxx/nuc_eos_short.cc
+index 0e6347e..89444a2 100644
+--- a/src/nuc_eos_cxx/nuc_eos_short.cc
++++ b/src/nuc_eos_cxx/nuc_eos_short.cc
+@@ -31,7 +31,7 @@ void CCTK_FNAME(nuc_eos_m_kt1_short)(const int *restrict n_in,
+   for(int i=0;i<n;i++) {
+     // check if we are fine
+     keyerr[i] = checkbounds(rho[i], temp[i], ye[i]);
+-    if(keyerr[i] != 0) {
++    if(CCTK_BUILTIN_EXPECT(keyerr[i] != 0, false)) {
+       *anyerr = 1;
+     }
+   }
+@@ -94,7 +94,7 @@ void CCTK_FNAME(nuc_eos_m_kt1_short)(const int *restrict n_in,
+     prs[i] = exp(prs[i]);
+     eps[i] = exp(eps[i]) - energy_shift;
+ #if HAVEGR
+-    cs2[i] = cs2[i] / (1.0 + eps[i] + prs[i]/rho[i]);
++    cs2[i] = rho[i] * cs2[i] / (rho[i] + rho[i]*eps[i] + prs[i]);
+ #endif
+   }
+ 
+@@ -131,7 +131,7 @@ extern "C"
+     // Note that this code now requires that the
+     // temperature guess be within the table bounds
+     keyerr[i] = checkbounds_kt0_noTcheck(rho[i], ye[i]);
+-    if(keyerr[i] != 0) {
++    if(CCTK_BUILTIN_EXPECT(keyerr[i] != 0, false)) {
+       *anyerr = 1;
+     }
+   }
+@@ -146,7 +146,7 @@ extern "C"
+     const double lt = log(MIN(MAX(temp[i],eos_tempmin),eos_tempmax));
+     double ltout;
+     const double epstot = eps[i]+energy_shift;
+-    if(epstot>0.0e0) {
++    if(CCTK_BUILTIN_EXPECT(epstot>0.0e0, true)) {
+       // this is the standard scenario; eps is larger than zero
+       // and we can operate with logarithmic tables
+       const double lxeps = log(epstot);
+@@ -163,7 +163,7 @@ extern "C"
+     } // epstot > 0.0
+ 
+ 
+-    if(keyerr[i]) {
++    if(CCTK_BUILTIN_EXPECT(keyerr[i] != 0, false)) {
+       *anyerr = 1;
+     } else {
+       temp[i] = exp(ltout);
+@@ -211,7 +211,7 @@ extern "C"
+   for(int i=0;i<n;i++) {
+     prs[i] = exp(prs[i]);
+ #if HAVEGR
+-    cs2[i] = cs2[i] / (1.0 + eps[i] + prs[i]/rho[i]);
++    cs2[i] = rho[i] * cs2[i] / (rho[i] + rho[i] * eps[i] + prs[i]);
+ #endif
+   }
+ 
+@@ -247,7 +247,7 @@ extern "C"
+       // Note that this code now requires that the
+       // temperature guess be within the table bounds
+       keyerr[i] = checkbounds_kt0_noTcheck(rho[i], ye[i]);
+-      if(keyerr[i] != 0) {
++    if(CCTK_BUILTIN_EXPECT(keyerr[i] != 0, false)) {
+ 	*anyerr = 1;
+       }
+     }
+@@ -264,7 +264,7 @@ extern "C"
+       nuc_eos_findtemp_entropy(lr,lt,ye[i],ent[i],*prec,
+ 			       (double *restrict)(&ltout),&keyerr[i]);
+ 
+-      if(keyerr[i]) {
++      if(CCTK_BUILTIN_EXPECT(keyerr[i] != 0, false)) {
+         *anyerr = 1;
+       } else {
+ 	temp[i] = exp(ltout);
+@@ -313,7 +313,7 @@ extern "C"
+       prs[i] = exp(prs[i]);
+       eps[i] = exp(eps[i]) - energy_shift;
+ #if HAVEGR
+-      cs2[i] = cs2[i] / (1.0 + eps[i] + prs[i]/rho[i]);
++      cs2[i] = rho[i] * cs2[i] / (rho[i] + rho[i] * eps[i] + prs[i]);
+ #endif
+     }
+ 
+diff --git a/src/nuc_eos_cxx/readtable.cc b/src/nuc_eos_cxx/readtable.cc
+index 84ab4fa..6c92d00 100644
+--- a/src/nuc_eos_cxx/readtable.cc
++++ b/src/nuc_eos_cxx/readtable.cc
+@@ -194,11 +194,15 @@ void nuc_eos_C_ReadTable(char* nuceos_table_name)
+   // pressure
+   energy_shift = energy_shift * EPSGF;
+   for(int i=0;i<nrho;i++) {
+-    logrho[i] = log(pow(10.0,logrho[i]) * RHOGF);
++    // rewrite:
++    //logrho[i] = log(pow(10.0,logrho[i]) * RHOGF);
++    // by using log(a^b*c) = b*log(a)+log(c)
++    logrho[i] = logrho[i] * log(10.) + log(RHOGF);
+   }
+ 
+   for(int i=0;i<ntemp;i++) {
+-    logtemp[i] = log(pow(10.0,logtemp[i]));
++    //logtemp[i] = log(pow(10.0,logtemp[i]));
++    logtemp[i] = logtemp[i]*log(10.0);
+   }
+ 
+   // allocate epstable; a linear-scale eps table
+@@ -214,12 +218,12 @@ void nuc_eos_C_ReadTable(char* nuceos_table_name)
+ 
+     { // pressure
+       int idx = 0 + NTABLES*i;
+-      alltables[idx] = log(pow(10.0,alltables[idx])*PRESSGF);
++      alltables[idx] = alltables[idx] * log(10.0) + log(PRESSGF);
+     }
+ 
+     { // eps
+       int idx = 1 + NTABLES*i;
+-      alltables[idx] = log(pow(10.0,alltables[idx])*EPSGF);
++      alltables[idx] = alltables[idx] * log(10.0) + log(EPSGF);
+       epstable[i] = exp(alltables[idx]);
+     }
+ 
+-- 
+1.8.5.3
+

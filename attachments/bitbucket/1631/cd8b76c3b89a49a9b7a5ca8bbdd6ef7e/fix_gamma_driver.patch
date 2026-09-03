@@ -1,0 +1,47 @@
+From dc0567b2daa945afbbd740f626889ed19293f170 Mon Sep 17 00:00:00 2001
+From: Jonah Miller <DrLoco3000@gmail.com>
+Date: Sun, 15 Jun 2014 16:49:45 -0400
+Subject: [PATCH] Fixed BSSN formulation to avoid divide-by-zero erros when
+ gamma driver is set to zero
+
+---
+ m/BSSN.m |   16 ++++++++++------
+ 1 file changed, 10 insertions(+), 6 deletions(-)
+
+diff --git a/m/BSSN.m b/m/BSSN.m
+index a5d8c93..f877c14 100644
+--- a/m/BSSN.m
++++ b/m/BSSN.m
+@@ -810,11 +810,14 @@ BSSNFromADMBaseCalc = {
+     (* See RHS *)
+     (* Note: cannot have (shiftFormulation == shiftharmonic && evolveB) *)
+     (* TODO: check this *)
+-    B[ua]        -> IfB[1 / (shiftGammaCoeffValue admalpha^shiftAlphaPower)
+-                        (+ admdtbeta[ua]
+-                         - IfThen[advectShift!=0,
+-                                  Upwind[admbeta[ub], admbeta[ua] ,lb],
+-                                  0]),
++    B[ua]        -> IfB[IfThen[shiftGammaCoeffValue!=0.0,
++			       1 / (shiftGammaCoeffValue
++				    admalpha^shiftAlphaPower)
++			       (+ admdtbeta[ua]
++				- IfThen[advectShift!=0,
++					 Upwind[admbeta[ub], admbeta[ua] ,lb],
++					 0]),
++			       0],
+                         0]}};
+ 
+ 
+@@ -1163,7 +1166,8 @@ FromBSSNCalc = {
+                                0]
+                       - (betaDriverValue
+                          (+ B[ua]
+-                          + IfThen[fixAdvectionTerms!=0 && advectShift!=0,
++                          + IfThen[fixAdvectionTerms!=0 && advectShift!=0 &&
++				   shiftGammaCoeffValue!=0.0,
+                                    Upwind[beta[ub], beta[ua], lb] /
+                                    (shiftGammaCoeffValue alpha^shiftAlphaPower),
+                                    0]))
+-- 
+1.7.10.4
+

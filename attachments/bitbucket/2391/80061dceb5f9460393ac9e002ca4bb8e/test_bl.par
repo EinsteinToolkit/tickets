@@ -1,0 +1,91 @@
+!DESC "1+log sliced 4 BL black holes"
+
+#Required thorns
+ActiveThorns = "Boundary Time ADMBase ADMAnalysis CoordGauge ADMMacros SpaceMask StaticConformal CartGrid3D CoordBase SymBase  IDanalyticBH IOUtil iobasic localreduce"
+
+ActiveThorns = "Carpet CarpetLib CarpetInterp CarpetReduce CarpetSlab"
+
+
+# GENERAL 
+CartGrid3D::type = "coordbase"
+
+Carpet::verbose           = no
+Carpet::veryverbose       = no
+Carpet::schedule_barriers = no
+Carpet::storage_verbose   = no
+#Carpet::timers_verbose    = no
+CarpetLib::output_bboxes  = no
+
+Carpet::domain_from_coordbase = yes
+Carpet::max_refinement_levels = 1
+
+driver::ghost_size       = 4
+Carpet::use_buffer_zones = yes
+
+Carpet::prolongation_order_space = 5
+Carpet::prolongation_order_time  = 2
+
+Carpet::convergence_level = 0
+
+Carpet::init_fill_timelevels = yes
+#Carpet::init_3_timelevels = yes
+
+Carpet::poison_new_timelevels = yes
+CarpetLib::poison_new_memory  = yes
+
+Carpet::output_timers_every      = 512
+CarpetLib::print_timestats_every = 512
+CarpetLib::print_memstats_every  = 512
+
+CoordBase::domainsize = "minmax"
+
+CoordBase::xmin =   -2.0
+CoordBase::ymin =   -2.0
+CoordBase::zmin =   -2.0
+CoordBase::xmax =   +2.0
+CoordBase::ymax =   +2.0
+CoordBase::zmax =   +2.0
+CoordBase::dx   =    0.03125
+CoordBase::dy   =    0.03125
+CoordBase::dz   =    0.03125
+
+CoordBase::boundary_size_x_lower     = 4
+CoordBase::boundary_size_y_lower     = 4
+CoordBase::boundary_size_z_lower     = 4
+CoordBase::boundary_size_x_upper     = 4
+CoordBase::boundary_size_y_upper     = 4
+CoordBase::boundary_size_z_upper     = 4
+
+time::dtfac                =  0.25 
+
+admbase::initial_data     = "bl_bh" 
+
+idanalyticbh::bl_nbh       = 2
+idanalyticbh::bl_x0_1      = 0
+idanalyticbh::bl_y0_1      = 0
+idanalyticbh::bl_z0_1      = 1.0
+idanalyticbh::bl_M_1       = 0.5
+idanalyticbh::bl_x0_2      = 0
+idanalyticbh::bl_y0_2      = 0
+idanalyticbh::bl_z0_2      =-1.0
+idanalyticbh::bl_M_2       = 0.5
+
+cactus::cctk_itlast        = 0
+
+IO::out_dir               = "test_bl"
+
+
+# # do not use the new scheme for names of output files
+# IO::new_filename_scheme = "no"
+
+ActiveThorns = "WeylScal4 MoL"
+WeylScal4::offset                    = 1e-8 
+WeylScal4::fd_order                  = "4th" 
+WeylScal4::verbose                   = 0 
+
+ActiveThorns = "IOASCII"
+IOASCII::out3D_every = 64
+IOASCII::out3D_vars  = "
+        WEYLSCAL4::Psi4r
+        WEYLSCAL4::Psi4i
+"

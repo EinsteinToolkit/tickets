@@ -1,0 +1,16 @@
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 53)
++++ schedule.ccl	(working copy)
+@@ -184,6 +184,11 @@
+   schedule HydroBase_InitExcisionMask in HydroBase_ExcisionMaskSetup
+   {
+     LANG: C
++    # GLOBAL is global-early in INITIAL and Post_Recover_Variables
++    # GLOBAL is global-late in PostRegrid and PostRegridInitial
++    # since we would always like to run before any possibly local routine
++    # modifying the mask, we run global-early
++    OPTIONS: global-early loop-local
+   } "Initialize hydro excision mask to 'no excision everywhere'"
+ 
+   schedule GROUP HydroBase_ExcisionHasBeenSet at CCTK_PostStep

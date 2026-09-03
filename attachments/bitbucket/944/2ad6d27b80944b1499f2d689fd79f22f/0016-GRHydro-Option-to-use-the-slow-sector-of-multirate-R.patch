@@ -1,0 +1,289 @@
+From 9143308edaf1dcc86d4314f4dc1e22a45918bcce Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Sun, 3 Jun 2012 21:30:47 -0700
+Subject: [PATCH 1/3] GRHydro: Option to use the slow sector of multirate RK
+ methods.
+
+NOTE: This patch requires support from MoL.
+
+Patch by Christian Reisswig.
+---
+ interface.ccl               |    9 +++++++
+ param.ccl                   |   19 +++++++++++++
+ schedule.ccl                |   63 ++++++++++++++++++++++++++++++-------------
+ src/GRHydro_RegisterVars.cc |   41 +++++++++++++++++++++++++---
+ 4 files changed, 111 insertions(+), 21 deletions(-)
+
+diff --git a/interface.ccl b/interface.ccl
+index 79ce24c..a47757e 100644
+--- a/interface.ccl
++++ b/interface.ccl
+@@ -205,15 +205,21 @@ PROVIDES FUNCTION Prim2ConPolyM WITH prim2conpolytypeM LANGUAGE Fortran
+ 
+ CCTK_INT FUNCTION MoLRegisterEvolved(CCTK_INT IN EvolvedIndex, \
+                                          CCTK_INT IN RHSIndex)
++CCTK_INT FUNCTION MoLRegisterEvolvedSlow(CCTK_INT IN EvolvedIndex, \
++                                         CCTK_INT IN RHSIndexSlow)
+ CCTK_INT FUNCTION MoLRegisterConstrained(CCTK_INT IN ConstrainedIndex)
+ CCTK_INT FUNCTION MoLRegisterEvolvedGroup(CCTK_INT IN EvolvedIndex, \
+                                           CCTK_INT IN RHSIndex)
++CCTK_INT FUNCTION MoLRegisterEvolvedGroupSlow(CCTK_INT IN EvolvedIndex, \
++                                          CCTK_INT IN RHSIndexSlow)
+ CCTK_INT FUNCTION MoLRegisterConstrainedGroup(CCTK_INT IN ConstrainedIndex)
+ CCTK_INT FUNCTION MoLRegisterSaveAndRestoreGroup(CCTK_INT IN SandRIndex)
+ 
+ USES FUNCTION MoLRegisterEvolved
++USES FUNCTION MoLRegisterEvolvedSlow
+ USES FUNCTION MoLRegisterConstrained
+ USES FUNCTION MoLRegisterEvolvedGroup
++USES FUNCTION MoLRegisterEvolvedGroupSlow
+ USES FUNCTION MoLRegisterConstrainedGroup
+ USES FUNCTION MoLRegisterSaveAndRestoreGroup
+ 
+@@ -486,6 +492,9 @@ private:
+ int GRHydro_reflevel type = SCALAR tags='checkpoint="no"' "Refinement level GRHydro is working on right now"
+ int InLastMoLPostStep type = SCALAR tags='checkpoint="no"' "Flag to indicate if we are currently in the last MoL_PostStep"
+ 
++int execute_MoL_Step type = SCALAR tags='checkpoint="no"' "Flag indicating whether we use the slow sector of multirate RK time integration"
++int execute_MoL_PostStep type = SCALAR tags='checkpoint="no"' "Flag indicating whether we use the slow sector of multirate RK time integration"
++
+ real GRHydro_con_bext type = GF Timelevels = 1 tags='Prolongation="None" checkpoint="no"'
+ {
+   densplus, sxplus, syplus, szplus, tauplus,
+diff --git a/param.ccl b/param.ccl
+index 75f26c2..a89d8cc 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -50,6 +50,7 @@ EXTENDS KEYWORD temperature_evolution_method ""
+ shares: MethodOfLines
+ 
+ USES CCTK_INT MoL_Num_Evolved_Vars
++USES CCTK_INT MoL_Num_Evolved_Vars_Slow
+ USES CCTK_INT MoL_Num_Constrained_Vars
+ USES CCTK_INT MoL_Num_SaveAndRestore_Vars
+ USES CCTK_INT MoL_Max_Evolved_Array_Size 
+@@ -76,9 +77,16 @@ CCTK_INT GRHydro_hydro_excision "Turns excision automatically on in HydroBase" A
+ 
+ CCTK_INT GRHydro_MaxNumEvolvedVars "The maximum number of evolved variables used by GRHydro" ACCUMULATOR-BASE=MethodofLines::MoL_Num_Evolved_Vars
+ {
++  0             :: "when using multirate"
+   5:10		:: "dens scon[3] tau Bvec[3] psidc ye"
+ } 5
+ 
++CCTK_INT GRHydro_MaxNumEvolvedVarsSlow "The maximum number of evolved variables used by GRHydro" ACCUMULATOR-BASE=MethodofLines::MoL_Num_Evolved_Vars_Slow
++{
++  0             :: "do not use multirate"
++  5:10		:: "dens scon[3] tau Bvec[3] psidc ye"
++} 0
++
+ #  7  primitives (rho,press,eps,w_lorentz,vel)
+ # 10  Tmunu
+ #  3  Bvec
+@@ -640,6 +648,17 @@ BOOLEAN sync_conserved_only "Only sync evolved conserved quantities during evolu
+ } no
+ 
+ 
++restricted:
++# This uses the slow sector of MoL multirate methods.
++# Since the CFL requirements for hydro are less demanding,
++# it is possible to get a significant speed up by
++# using a lower order time integration such as RK2, while the spacetime
++# is still integrated with an RK4
++BOOLEAN use_MoL_slow_multirate_sector "Whether to make use of MoL's slow multirate sector"
++{
++} no
++private:
++
+ 
+ 
+ BOOLEAN verbose "Some debug output"
+diff --git a/schedule.ccl b/schedule.ccl
+index 5af3568..910283e 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -7,6 +7,44 @@
+ #######################################################################
+ 
+ #################################################
++### Storage for MoL execution flag            ###
++#################################################
++
++STORAGE: execute_MoL_Step
++STORAGE: execute_MoL_PostStep
++
++# Set execution flags initially to "True"
++SCHEDULE GRHydro_Reset_Execution_Flags AT CCTK_BASEGRID
++{
++  LANG: C
++  OPTIONS: GLOBAL
++} "Initially set execution flags to 'YEAH, Execute'!"
++
++# When using MoL with multirate, we need to set execution flags for each MoL step!
++if (use_MoL_slow_multirate_sector)
++{
++   SCHEDULE GRHydro_Set_Execution_Flags IN MoL_Step AFTER MoL_DecrementCounter BEFORE MoL_PostStepModify
++   {
++      LANG: C
++      OPTIONS: LEVEL
++   } "Check if we need to execute RHS / Post-step calculation"
++   
++   SCHEDULE GRHydro_Reset_Execution_Flags IN MoL_StartStep AFTER MoL_SetCounter
++   {
++      LANG: C
++      OPTIONS: LEVEL
++   } "Reset execution flags to 'YEAH, Execute'!"
++   
++   SCHEDULE GRHydro_Reset_Execution_Flags IN MoL_Evolution AFTER MoL_FinishLoop
++   {
++      LANG: C
++      OPTIONS: LEVEL
++   } "Reset execution flags to 'YEAH, Execute'!"
++}
++
++
++
++#################################################
+ ### Storage for the extra timelevels for the  ###
+ ### use of MoL with Einstein                  ###
+ #################################################
+@@ -543,31 +581,20 @@ if(CCTK_IsImplementationActive("Coordinates")) {
+   } "Transform ADM metric, extr. curv. and shift to local tensor basis."
+ 
+ 
+-  schedule GRHydroTransformADMToLocalBasis IN ADMBase_SetADMVars
++  schedule GRHydroTransformADMToLocalBasis IN ADMBase_SetADMVars IF GRHydro::execute_MoL_Step
+   {
+      LANG: C
+   } "Transform metric and shift to local tensor basis."
+ 
+-  #schedule GRHydroTransformADMToLocalBasis IN CTG_Convert_to_ADM AFTER CTGBase_Convert_CTG_to_ADM
+-  #{
+-  #   LANG: C
+-  #} "Transform metric and shift to local tensor basis."
+-
+-
+-  #schedule GRHydroTransformADMToLocalBasis IN MoL_Step BEFORE MoL_CalcRHS
+-  #{
+-  #   LANG: C
+-  #} "Transform metric and shift to local tensor basis."
+-
+ 
+-  schedule GRHydroTransformPrimToGlobalBasis IN HydroBase_PostStep AFTER HydroBase_Con2Prim
++  schedule GRHydroTransformPrimToGlobalBasis IN HydroBase_PostStep AFTER HydroBase_Con2Prim IF GRHydro::execute_MoL_PostStep
+   {
+      LANG: C
+   } "Transform primitive vars to global tensor basis."
+ }
+ 
+ 
+-schedule group GRHydroRHS IN HydroBase_RHS
++schedule group GRHydroRHS IN HydroBase_RHS IF GRHydro::execute_MoL_Step
+ {
+   STORAGE:GRHydro_scalars
+ } "Calculate the update terms"
+@@ -936,7 +963,7 @@ if (CCTK_Equals(GRHydro_eos_type,"General"))
+ 
+   if(CCTK_Equals(Bvec_evolution_method,"GRHydro"))
+   {
+-    schedule Conservative2PrimitiveM IN HydroBase_Con2Prim AS Con2Prim
++    schedule Conservative2PrimitiveM IN HydroBase_Con2Prim AS Con2Prim IF GRHydro::execute_MoL_PostStep
+     {
+       LANG: Fortran
+     } "Convert back to primitive variables (general) - MHD version"
+@@ -946,7 +973,7 @@ if (CCTK_Equals(GRHydro_eos_type,"General"))
+       LANG: Fortran
+     } "Convert initial data given in primive variables to conserved variables - MHD version"
+   } else {
+-    schedule Conservative2Primitive IN HydroBase_Con2Prim AS Con2Prim
++    schedule Conservative2Primitive IN HydroBase_Con2Prim AS Con2Prim IF GRHydro::execute_MoL_PostStep
+     {
+       LANG: Fortran
+     } "Convert back to primitive variables (general)"
+@@ -1028,7 +1055,7 @@ schedule group ApplyBCs AS GRHydro_ApplyAtmosphereMaskBCs in GRHydro_AtmosphereM
+ # Now synchronize other evolution variables
+ if (!sync_conserved_only)
+ {
+-   schedule GRHydro_Boundaries IN HydroBase_Select_Boundaries AS GRHydro_Bound
++   schedule GRHydro_Boundaries IN HydroBase_Select_Boundaries AS GRHydro_Bound IF GRHydro::execute_MoL_PostStep
+    {
+       LANG: Fortran
+       OPTIONS: LEVEL
+@@ -1055,7 +1082,7 @@ if (!sync_conserved_only)
+ }
+ else
+ {
+-    schedule GRHydro_Boundaries IN HydroBase_Select_Boundaries AS GRHydro_Bound
++    schedule GRHydro_Boundaries IN HydroBase_Select_Boundaries AS GRHydro_Bound IF GRHydro::execute_MoL_PostStep
+     {
+       LANG: Fortran
+       OPTIONS: LEVEL
+diff --git a/src/GRHydro_RegisterVars.cc b/src/GRHydro_RegisterVars.cc
+index 0a3c330..227bc34 100644
+--- a/src/GRHydro_RegisterVars.cc
++++ b/src/GRHydro_RegisterVars.cc
+@@ -21,7 +21,11 @@ extern "C" CCTK_INT GRHydro_UseGeneralCoordinates(const cGH * cctkGH);
+ //       future, a check can simply be inserted here.
+ static void register_evolved(string v1, string v2)
+ {
+-  MoLRegisterEvolvedGroup(CCTK_GroupIndex(v1.c_str()), CCTK_GroupIndex(v2.c_str()));
++  DECLARE_CCTK_PARAMETERS;
++  if (use_MoL_slow_multirate_sector)
++     MoLRegisterEvolvedGroupSlow(CCTK_GroupIndex(v1.c_str()), CCTK_GroupIndex(v2.c_str()));
++  else
++     MoLRegisterEvolvedGroup(CCTK_GroupIndex(v1.c_str()), CCTK_GroupIndex(v2.c_str()));
+ }
+ static void register_constrained(string v1)
+ {
+@@ -42,12 +46,14 @@ extern "C" void GRHydro_Register(CCTK_ARGUMENTS)
+   const int general_coordinates = GRHydro_UseGeneralCoordinates(cctkGH);
+ 
+   // We need some aliased functions, so we first check if they are available
+-  string needed_funs[5] = {"MoLRegisterEvolvedGroup",
++  string needed_funs[7] = {"MoLRegisterEvolvedGroup",
++                           "MoLRegisterEvolvedGroupSlow",
+                            "MoLRegisterConstrainedGroup",
+                            "MoLRegisterSaveAndRestoreGroup",
+                            "MoLRegisterEvolved",
++                           "MoLRegisterEvolvedSlow",
+                            "MoLRegisterConstrained"};
+-  for (int i = 0; i < 5; i++)
++  for (int i = 0; i < 7; i++)
+     if (!CCTK_IsFunctionAliased(needed_funs[i].c_str()))
+       CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+                  "The function \"%s\" has not been aliased!",
+@@ -154,3 +160,32 @@ extern "C" void GRHydro_Register(CCTK_ARGUMENTS)
+   }
+ }
+ 
++
++
++void GRHydro_Set_Execution_Flags(CCTK_ARGUMENTS)
++{
++   DECLARE_CCTK_ARGUMENTS;
++   
++   const int index1 = CCTK_VarIndex("MoL::MoL_SlowStep");
++   const int index2 = CCTK_VarIndex("MoL::MoL_SlowPostStep");
++   
++   if (index1 < 0 || index2 < 0)
++   {
++      CCTK_WARN(0, "Error: MoL does not provide MoL_SlowStep or MoL_SlowPostStep. Does your MoL thorn support multirate RK?");
++   }
++   
++   *execute_MoL_Step =     *((CCTK_INT *) (CCTK_VarDataPtrI(cctkGH, 0, index1)));
++   *execute_MoL_PostStep = *((CCTK_INT *) (CCTK_VarDataPtrI(cctkGH, 0, index2)));
++}
++
++void GRHydro_Reset_Execution_Flags(CCTK_ARGUMENTS)
++{
++   DECLARE_CCTK_ARGUMENTS;
++   
++   *execute_MoL_Step = 1;
++   *execute_MoL_PostStep = 1;
++}
++
++
++
++
+-- 
+1.7.10.4
+

@@ -1,0 +1,37 @@
+From 149974ff6650ac7ec42efbeaacb6a92cc5bc0280 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Sat, 3 Dec 2011 17:19:56 +0100
+Subject: [PATCH] Ignore comments and blank lines in test output files
+
+Previously the content of comment lines was ignored.  This commit
+causes comment lines and blank lines to be ignored completely,
+allowing differing numbers of each to compare as "the same".
+---
+ lib/sbin/RunTestUtils.pl |   10 +++++++---
+ 1 files changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/lib/sbin/RunTestUtils.pl b/lib/sbin/RunTestUtils.pl
+index 92c37d9..21c570c 100644
+--- a/lib/sbin/RunTestUtils.pl
++++ b/lib/sbin/RunTestUtils.pl
+@@ -1107,10 +1107,14 @@ sub CompareTestFiles
+ 
+         while ($oline = <INORIG>)
+         {
+-          $nline = <INNEW>;
++          # ignore comment lines and newlines
++          next if ($oline =~ /^\s*["\#\n]/);
+ 
+-          # ignore comment lines
+-          next if (($oline =~ /^\s*["\#]/) && ($nline =~ /^\s*["\#]/));
++          do
++          {
++              $nline = <INNEW>;
++          }
++          while ($nline =~ /^\s*["\#\n]/);
+ 
+           # Now lets see if they differ.
+           $numlines++;
+-- 
+1.7.4.4
+

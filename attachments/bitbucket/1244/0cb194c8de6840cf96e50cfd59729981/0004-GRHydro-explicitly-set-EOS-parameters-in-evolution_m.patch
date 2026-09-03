@@ -1,0 +1,37 @@
+From a8c92e7a482fc8015e5274342941b11a2e92093e Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Sat, 26 Jan 2013 12:03:39 -0800
+Subject: [PATCH 04/11] GRHydro: explicitly set EOS parameters in
+ evolution_mask test
+
+remove unused Thorn from ActiveThorns.
+---
+ test/tov_carpetevolutionmask.par |    8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/test/tov_carpetevolutionmask.par b/test/tov_carpetevolutionmask.par
+index 39dabd6..a86b8ef 100644
+--- a/test/tov_carpetevolutionmask.par
++++ b/test/tov_carpetevolutionmask.par
+@@ -1,5 +1,5 @@
+-!DESC "Carpet mesh refined, one TOV, synchronize only conservatives"
+-ActiveThorns = "time MoL coordbase symbase cartgrid3d ioutil boundary admbase staticconformal spacemask admcoupling coordgauge admmacros hydrobase grhydro grhydro_initdata tovsolver eos_omni Constants LocalReduce Carpet CarpetLib CarpetInterp CarpetReduce CarpetIOScalar CarpetIOBasic LoopControl TmunuBase InitBase CarpetRegrid2 ReflectionSymmetry CarpetIOASCII CarpetEvolutionMask"
++!DESC "Carpet mesh refined, one TOV, polytrope, test evolution mask"
++ActiveThorns = "time MoL coordbase symbase cartgrid3d ioutil boundary admbase staticconformal spacemask admcoupling coordgauge admmacros hydrobase grhydro grhydro_initdata tovsolver eos_omni Constants Carpet CarpetLib CarpetInterp CarpetReduce CarpetIOScalar CarpetIOBasic LoopControl TmunuBase InitBase CarpetRegrid2 ReflectionSymmetry CarpetIOASCII CarpetEvolutionMask"
+ 
+ TmunuBase::stress_energy_storage	=	yes
+ TmunuBase::stress_energy_at_RHS		=	yes
+@@ -90,6 +90,10 @@ tovsolver::TOV_Gamma[0]       = 2.0
+ tovsolver::TOV_K[0]           = 100.0
+ tovsolver::TOV_Combine_Method = "maximum"
+ 
++eos_omni::poly_gamma=2.0
++eos_omni::poly_gamma_ini=2.0
++eos_omni::poly_k=100.
++
+ Carpet::prolongation_order_space  = 3
+ Carpet::prolongation_order_time   = 2
+ 
+-- 
+1.7.10.4
+

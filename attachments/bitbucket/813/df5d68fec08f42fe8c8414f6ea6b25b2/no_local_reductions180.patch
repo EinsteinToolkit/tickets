@@ -1,0 +1,169 @@
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 74)
++++ schedule.ccl	(working copy)
+@@ -10,6 +10,12 @@
+   LANG: C
+ } "Register symmetry boundaries"
+ 
++SCHEDULE Rot180_ComputeLevelExtent IN BoundaryConditions BEFORE Rot180_ApplyBC
++{
++  LANG: C
++  OPTIONS: LEVEL
++} "Compute extent of level"
++
+ SCHEDULE Rot180_ApplyBC IN BoundaryConditions
+ {
+   LANG: C
+Index: src/rotatingsymmetry180.c
+===================================================================
+--- src/rotatingsymmetry180.c	(revision 74)
++++ src/rotatingsymmetry180.c	(working copy)
+@@ -14,6 +14,10 @@
+ #include <stdlib.h>
+ #include <string.h>
+ 
++/* bbox, lbnd and ubnd of combined level box */
++static int global_bbox[6];
++static int global_lbnd[3], global_ubnd[3];
++static int time_of_extent_computation = -1;
+ 
+ 
+ int BndRot180VI (cGH const * restrict const cctkGH,
+@@ -32,8 +36,6 @@
+   
+   int (* restrict paritiess)[3];
+   
+-  int global_bbox[6];
+-  int global_lbnd[3], global_ubnd[3];
+   int fake_bbox[6];
+   
+   CCTK_REAL x0[3], dx[3];
+@@ -61,7 +63,7 @@
+   for (var=0; var<nvars; ++var) {
+     assert (vis[var]>=0 && vis[var]<CCTK_NumVars());
+   }
+-  
++
+   if (verbose) {
+     for (var=0; var<nvars; ++var) {
+       fullname = CCTK_FullName(vis[var]);
+@@ -267,44 +269,8 @@
+   } /* for var */
+   
+   {
+-#if 0
+-    int min_handle, max_handle;
+-    CCTK_REAL local[6], global[6];
+-    min_handle = CCTK_ReductionArrayHandle ("minimum");
+-    if (min_handle<0) CCTK_WARN (0, "Could not obtain reduction handle");
+-    max_handle = CCTK_ReductionArrayHandle ("maximum");
+-    if (max_handle<0) CCTK_WARN (0, "Could not obtain reduction handle");
+-    
+-    for (d=0; d<6; ++d) local[d] = cctkGH->cctk_bbox[d];
+-    ierr = CCTK_ReduceLocArrayToArray1D
+-      (cctkGH, -1, max_handle, local, global, 6, CCTK_VARIABLE_REAL);
+-    for (d=0; d<6; ++d) global_bbox[d] = (int)global[d];
+-    
+-    for (d=0; d<3; ++d) local[d] = cctkGH->cctk_lbnd[d];
+-    ierr = CCTK_ReduceLocArrayToArray1D
+-      (cctkGH, -1, min_handle, local, global, 3, CCTK_VARIABLE_REAL);
+-    for (d=0; d<3; ++d) global_lbnd[d] = (int)global[d];
+-    
+-    for (d=0; d<3; ++d) local[d] = cctkGH->cctk_ubnd[d];
+-    ierr = CCTK_ReduceLocArrayToArray1D
+-      (cctkGH, -1, max_handle, local, global, 3, CCTK_VARIABLE_REAL);
+-    for (d=0; d<3; ++d) global_ubnd[d] = (int)global[d];
+-#else
+-    int max_handle;
+-    CCTK_INT local[12], global[12];
+-    max_handle = CCTK_ReductionArrayHandle ("maximum");
+-    if (max_handle<0) CCTK_WARN (0, "Could not obtain reduction handle");
+-    
+-    for (d=0; d<6; ++d) local[  d] =  cctkGH->cctk_bbox[d];
+-    for (d=0; d<3; ++d) local[6+d] = -cctkGH->cctk_lbnd[d];
+-    for (d=0; d<3; ++d) local[9+d] =  cctkGH->cctk_ubnd[d];
+-    ierr = CCTK_ReduceLocArrayToArray1D
+-      (cctkGH, -1, max_handle, local, global, 12, CCTK_VARIABLE_INT);
+-    for (d=0; d<6; ++d) global_bbox[d] =  global[  d];
+-    for (d=0; d<3; ++d) global_lbnd[d] = -global[6+d];
+-    for (d=0; d<3; ++d) global_ubnd[d] =  global[9+d];
+-#endif
+-    
++    assert(time_of_extent_computation == cctk_iteration);
++  
+     for (d=0; d<3; ++d) {
+       fake_bbox[2*d  ] = data.lbnd[d] == global_lbnd[d];
+       fake_bbox[2*d+1] = data.ubnd[d] == global_ubnd[d];
+@@ -732,6 +698,71 @@
+ 
+ 
+ 
++void Rot180_ComputeLevelExtent (CCTK_ARGUMENTS)
++{
++  DECLARE_CCTK_ARGUMENTS;
++  
++  int nvars;
++
++  assert (cctkGH);
++  
++  nvars = Boundary_SelectedGVs (cctkGH, 0, 0, 0, 0, 0, 0);
++  assert (nvars>=0);
++  
++  if (nvars==0) return;
++  
++  {
++#if 0
++    int min_handle, max_handle;
++    int d;                        /* 0..group.dim-1 */
++    int ierr;
++    CCTK_REAL local[6], global[6];
++    min_handle = CCTK_ReductionArrayHandle ("minimum");
++    if (min_handle<0) CCTK_WARN (0, "Could not obtain reduction handle");
++    max_handle = CCTK_ReductionArrayHandle ("maximum");
++    if (max_handle<0) CCTK_WARN (0, "Could not obtain reduction handle");
++    
++    for (d=0; d<6; ++d) local[d] = cctkGH->cctk_bbox[d];
++    ierr = CCTK_ReduceLocArrayToArray1D
++      (cctkGH, -1, max_handle, local, global, 6, CCTK_VARIABLE_REAL);
++    for (d=0; d<6; ++d) global_bbox[d] = (int)global[d];
++    
++    for (d=0; d<3; ++d) local[d] = cctkGH->cctk_lbnd[d];
++    ierr = CCTK_ReduceLocArrayToArray1D
++      (cctkGH, -1, min_handle, local, global, 3, CCTK_VARIABLE_REAL);
++    for (d=0; d<3; ++d) global_lbnd[d] = (int)global[d];
++    
++    for (d=0; d<3; ++d) local[d] = cctkGH->cctk_ubnd[d];
++    ierr = CCTK_ReduceLocArrayToArray1D
++      (cctkGH, -1, max_handle, local, global, 3, CCTK_VARIABLE_REAL);
++    for (d=0; d<3; ++d) global_ubnd[d] = (int)global[d];
++#else
++    int max_handle;
++    int d;                        /* 0..group.dim-1 */
++    int ierr;
++    CCTK_INT local[12], global[12];
++    max_handle = CCTK_ReductionArrayHandle ("maximum");
++    if (max_handle<0) CCTK_WARN (0, "Could not obtain reduction handle");
++    
++    for (d=0; d<6; ++d) local[  d] =  cctkGH->cctk_bbox[d];
++    for (d=0; d<3; ++d) local[6+d] = -cctkGH->cctk_lbnd[d];
++    for (d=0; d<3; ++d) local[9+d] =  cctkGH->cctk_ubnd[d];
++    ierr = CCTK_ReduceLocArrayToArray1D
++      (cctkGH, -1, max_handle, local, global, 12, CCTK_VARIABLE_INT);
++    assert(!ierr);
++    for (d=0; d<6; ++d) global_bbox[d] =  global[  d];
++    for (d=0; d<3; ++d) global_lbnd[d] = -global[6+d];
++    for (d=0; d<3; ++d) global_ubnd[d] =  global[9+d];
++
++    /* record when we ran to have some sanity check against using old data in
++     * global variables */
++    time_of_extent_computation = cctk_iteration;
++#endif
++  }
++}
++
++
++
+ void Rot180_ApplyBC (CCTK_ARGUMENTS)
+ {
+   DECLARE_CCTK_ARGUMENTS;

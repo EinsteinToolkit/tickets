@@ -1,0 +1,34 @@
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 33)
++++ param.ccl	(working copy)
+@@ -22,7 +22,7 @@
+ 
+ 
+ 
+-BOOLEAN poison_boundaries "Fill the symmetry boundary with a poison value before the symmetry is applied, and check afterwards whether it has been overwritten" STEERABLE=always
++BOOLEAN poison_boundaries "Fill the symmetry boundary with a poison value before the symmetry is applied" STEERABLE=always
+ {
+ } "no"
+ 
+@@ -30,3 +30,7 @@
+ {
+   0:255 :: "Must fit into a byte.  Use 0 for zero, 255 for nan, and e.g. 113 for a large value."
+ } 254
++
++BOOLEAN check_boundaries "Check the boundaries for poison" STEERABLE=always
++{
++} "no"
+Index: src/periodic.c
+===================================================================
+--- src/periodic.c	(revision 33)
++++ src/periodic.c	(working copy)
+@@ -231,7 +231,7 @@
+   
+   free (xferinfo);
+   
+-  if (poison_boundaries) {
++  if (check_boundaries) {
+     /* check destination grid points for poison */
+     
+     char poison[vartypesize];

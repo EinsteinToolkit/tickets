@@ -1,0 +1,47 @@
+From 6f0c5d52260f31a96ba052d503e797704e8172b6 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Fri, 31 Jan 2014 08:32:10 -0800
+Subject: [PATCH 30/36] GRHydro: rewrite MHD rhs in symmetric way
+
+---
+ src/GRHydro_CalcUpdate.F90 | 24 ++++++++++++------------
+ 1 file changed, 12 insertions(+), 12 deletions(-)
+
+diff --git a/src/GRHydro_CalcUpdate.F90 b/src/GRHydro_CalcUpdate.F90
+index eee7d14..e365a36 100644
+--- a/src/GRHydro_CalcUpdate.F90
++++ b/src/GRHydro_CalcUpdate.F90
+@@ -303,18 +303,18 @@ subroutine UpdateCalculation(CCTK_ARGUMENTS)
+     do k = GRHydro_stencil + 1, cctk_lsh(3) - GRHydro_stencil
+       do j = GRHydro_stencil + 1, cctk_lsh(2) - GRHydro_stencil
+         do i = GRHydro_stencil + 1, cctk_lsh(1) - GRHydro_stencil
+-          Bconsrhs(i,j,k,1) = - 0.5d0 * (Evec(i-1,j  ,k-1,2)-Evec(i-1,j  ,k  ,2)) / CCTK_DELTA_SPACE(3) &
+-                              - 0.5d0 * (Evec(i-1,j  ,k  ,3)-Evec(i-1,j-1,k  ,3)) / CCTK_DELTA_SPACE(2) &
+-                              - 0.5d0 * (Evec(i  ,j  ,k-1,2)-Evec(i  ,j  ,k  ,2)) / CCTK_DELTA_SPACE(3) &
+-                              - 0.5d0 * (Evec(i  ,j  ,k  ,3)-Evec(i  ,j-1,k  ,3)) / CCTK_DELTA_SPACE(2)
+-          Bconsrhs(i,j,k,2) = - 0.5d0 * (Evec(i-1,j-1,k  ,3)-Evec(i  ,j-1,k  ,3)) / CCTK_DELTA_SPACE(1) &
+-                              - 0.5d0 * (Evec(i  ,j-1,k  ,1)-Evec(i  ,j-1,k-1,1)) / CCTK_DELTA_SPACE(3) &
+-                              - 0.5d0 * (Evec(i-1,j  ,k  ,3)-Evec(i  ,j  ,k  ,3)) / CCTK_DELTA_SPACE(1) &
+-                              - 0.5d0 * (Evec(i  ,j  ,k  ,1)-Evec(i  ,j  ,k-1,1)) / CCTK_DELTA_SPACE(3)
+-          Bconsrhs(i,j,k,3) = - 0.5d0 * (Evec(i  ,j-1,k-1,1)-Evec(i  ,j  ,k-1,1)) / CCTK_DELTA_SPACE(2) &
+-                              - 0.5d0 * (Evec(i  ,j  ,k-1,2)-Evec(i-1,j  ,k-1,2)) / CCTK_DELTA_SPACE(1) &
+-                              - 0.5d0 * (Evec(i  ,j-1,k  ,1)-Evec(i  ,j  ,k  ,1)) / CCTK_DELTA_SPACE(2) &
+-                              - 0.5d0 * (Evec(i  ,j  ,k  ,2)-Evec(i-1,j  ,k  ,2)) / CCTK_DELTA_SPACE(1)
++          Bconsrhs(i,j,k,1) = - 0.5d0 * ((Evec(i-1,j  ,k-1,2)-Evec(i-1,j  ,k  ,2)) &
++                                       + (Evec(i  ,j  ,k-1,2)-Evec(i  ,j  ,k  ,2))) / CCTK_DELTA_SPACE(3) &
++                              - 0.5d0 * ((Evec(i-1,j  ,k  ,3)-Evec(i-1,j-1,k  ,3)) &
++                                       + (Evec(i  ,j  ,k  ,3)-Evec(i  ,j-1,k  ,3))) / CCTK_DELTA_SPACE(2)
++          Bconsrhs(i,j,k,2) = - 0.5d0 * ((Evec(i-1,j-1,k  ,3)-Evec(i  ,j-1,k  ,3)) &
++                                       + (Evec(i-1,j  ,k  ,3)-Evec(i  ,j  ,k  ,3))) / CCTK_DELTA_SPACE(1) &
++                              - 0.5d0 * ((Evec(i  ,j-1,k  ,1)-Evec(i  ,j-1,k-1,1)) &
++                                       + (Evec(i  ,j  ,k  ,1)-Evec(i  ,j  ,k-1,1))) / CCTK_DELTA_SPACE(3)
++          Bconsrhs(i,j,k,3) = - 0.5d0 * ((Evec(i  ,j-1,k-1,1)-Evec(i  ,j  ,k-1,1)) &
++                                       + (Evec(i  ,j-1,k  ,1)-Evec(i  ,j  ,k  ,1))) / CCTK_DELTA_SPACE(2) &
++                              - 0.5d0 * ((Evec(i  ,j  ,k-1,2)-Evec(i-1,j  ,k-1,2)) &
++                                       + (Evec(i  ,j  ,k  ,2)-Evec(i-1,j  ,k  ,2))) / CCTK_DELTA_SPACE(1)
+         enddo
+       enddo
+     enddo
+-- 
+1.9.0
+

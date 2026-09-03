@@ -1,0 +1,575 @@
+From 6e6955f1fdb51f3b8eec386831d3c997cb6eb148 Mon Sep 17 00:00:00 2001
+From: Christian Ott <cott@tapir.caltech.edu>
+Date: Sat, 6 Jul 2013 13:03:58 -0700
+Subject: [PATCH 01/18] add barotropic tabular EOS functionality for initial
+ data using eosDriver.py output
+
+---
+ interface.ccl                        |  15 ++
+ param.ccl                            |  20 +++
+ schedule.ccl                         |   9 ++
+ src/EOS_Omni_BarotropicReadTable.F90 |  93 +++++++++++
+ src/EOS_Omni_Handles.c               |   2 +
+ src/EOS_Omni_Module.F90              |  19 +++
+ src/EOS_Omni_SingleVarCalls.F90      | 291 ++++++++++++++++++++++++++++++++++-
+ src/make.code.defn                   |   3 +-
+ 8 files changed, 450 insertions(+), 2 deletions(-)
+ create mode 100644 src/EOS_Omni_BarotropicReadTable.F90
+
+diff --git a/interface.ccl b/interface.ccl
+index f652f69..e5f5e86 100644
+--- a/interface.ccl
++++ b/interface.ccl
+@@ -129,6 +129,21 @@ void FUNCTION EOS_Omni_RhoFromPressEpsTempEnt(CCTK_INT IN eoskey,   \
+ 
+ PROVIDES FUNCTION EOS_Omni_RhoFromPressEpsTempEnt WITH EOS_Omni_EOS_RhoFromPressEpsTempEnt LANGUAGE Fortran
+ 
++void FUNCTION EOS_Omni_PressEpsTempYe_from_Rho(CCTK_INT IN eoskey,         \
++			     CCTK_INT IN havetemp,       \
++			     CCTK_REAL IN rf_precision,  \
++                             CCTK_INT IN npoints,        \
++			     CCTK_REAL IN ARRAY rho,     \
++			     CCTK_REAL OUT ARRAY eps,  \
++			     CCTK_REAL OUT ARRAY temp, \
++			     CCTK_REAL OUT ARRAY ye,      \
++			     CCTK_REAL OUT ARRAY press,  \
++			     CCTK_INT OUT ARRAY keyerr,  \
++                             CCTK_INT OUT anyerr)
++
++PROVIDES FUNCTION EOS_Omni_PressEpsTempYe_from_Rho WITH EOS_Omni_EOS_PressEpsTempYe_from_Rho LANGUAGE Fortran
++
++
+ ################################################################################
+ # short and long and specific calls
+ 
+diff --git a/param.ccl b/param.ccl
+index 456cb4d..4392c30 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -66,6 +66,26 @@ BOOLEAN coldeos_use_thermal_gamma_law "use an additional thermal gamma?"
+ {
+ } "Yes"
+ 
++################ barotropic tabulated EOS + gamma-Law
++
++STRING barotropiceos_table_name "table name for barotropic EOS (ASCII)" 
++{
++ .* :: "Can be anything"
++} "blah.asc"
++
++BOOLEAN barotropiceos_read_table "Read in barotropic EOS table?" 
++{
++} "No"
++
++BOOLEAN barotropiceos_use_thermal_gamma_law "use an additional thermal gamma?"
++{
++} "Yes"
++
++REAL barotropiceos_gammath "thermal gamma for barotropic EOS"
++{
++ 1.0:* :: "something"
++} 2.0
++
+ ################ Finite-Temperature Nuclear EOS
+ 
+ BOOLEAN nuceos_read_table "Read in EOS table?" STEERABLE=RECOVER
+diff --git a/schedule.ccl b/schedule.ccl
+index d445705..0317eab 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -34,3 +34,12 @@ if (coldeos_read_table)
+     OPTIONS: global
+   } "Read Cold EOS ASCII table"
+ }
++
++if (barotropiceos_read_table)
++{
++  SCHEDULE EOS_OMNI_BarotropicReadTable AT CCTK_BASEGRID
++  {
++    LANG: Fortran
++    OPTIONS: global
++  } "Read barotropic EOS ASCII table"
++}
+diff --git a/src/EOS_Omni_BarotropicReadTable.F90 b/src/EOS_Omni_BarotropicReadTable.F90
+new file mode 100644
+index 0000000..fe040b3
+--- /dev/null
++++ b/src/EOS_Omni_BarotropicReadTable.F90
+@@ -0,0 +1,93 @@
++#include "cctk.h"
++#include "cctk_Parameters.h"
++#include "cctk_Arguments.h"
++#include "cctk_Functions.h"
++
++
++subroutine EOS_Omni_BarotropicReadTable(CCTK_ARGUMENTS)
++
++  use EOS_Omni_Module
++  implicit none
++
++  DECLARE_CCTK_ARGUMENTS
++  DECLARE_CCTK_PARAMETERS
++  DECLARE_CCTK_FUNCTIONS
++
++  character(len=512) :: warnline
++  character(len=256) :: eosfilename
++  CCTK_INT :: slength, count
++  LOGICAL :: tablethere
++  CCTK_INT :: lnrho,lnye,lntemp
++  CCTK_REAL :: temp_press, buffer1
++  integer :: i, iostatus
++
++  ! convert file name to fortran string
++  call CCTK_FortranString ( slength, barotropiceos_table_name, &
++       eosfilename )
++
++  ! read and parse EOS table file
++  inquire(file=trim(adjustl(eosfilename)),exist=tablethere)
++
++  if(.not.tablethere) then
++     write(warnline,"(A10,A,A15)") "EOS file ", trim(adjustl(eosfilename)), " does not exist!" 
++     call CCTK_WARN(0,warnline)
++  endif
++
++  ! read header
++  open(unit=667,file=trim(adjustl(eosfilename)),form="formatted")
++  read(667,*) buffer1
++
++  barotropiceos_energyshift = buffer1*eps_gf
++
++  if(barotropiceos_use_thermal_gamma_law.ne.1) then
++     barotropiceos_thfac = 0.0d0
++  endif
++
++  ! figure out how many entries we have
++  count = 0
++  do
++     read(667,*,iostat=iostatus) buffer1
++     if(iostatus .ne. 0) exit
++     count = count + 1
++  enddo
++  close(667)
++  barotropiceos_nrho = count
++
++  allocate(barotropiceos_logrho(barotropiceos_nrho))
++  allocate(barotropiceos_logpress(barotropiceos_nrho))
++  allocate(barotropiceos_logeps(barotropiceos_nrho))
++  allocate(barotropiceos_temp(barotropiceos_nrho))
++  allocate(barotropiceos_ye(barotropiceos_nrho))
++
++  ! now read everything
++  open(unit=667,file=trim(adjustl(eosfilename)),form="formatted")
++  read(667,*) buffer1
++  do i=1,barotropiceos_nrho
++     read(667,*) barotropiceos_logrho(i), &
++          barotropiceos_logpress(i),barotropiceos_logeps(i),barotropiceos_ye(i),&
++          barotropiceos_temp(i)
++!     read(667,"(E23.14,E23.14,E23.14)") barotropiceos_logrho(i), &
++!          barotropiceos_logpress(i),barotropiceos_logeps(i),barotropiceos_temp(i),&
++!          barotropiceos_ye(i)
++  enddo
++  close(667)
++
++
++  barotropiceos_logrho(:) = log10(10.0d0**barotropiceos_logrho(:) * rho_gf)
++
++  barotropiceos_rhomax = 10.0**barotropiceos_logrho(barotropiceos_nrho)
++  barotropiceos_rhomin = 10.0**barotropiceos_logrho(1)
++  
++  ! set up drhos
++  barotropiceos_dlrho = barotropiceos_logrho(2)-barotropiceos_logrho(1)
++  barotropiceos_dlrhoi = 1.0d0/barotropiceos_dlrho
++
++  ! set up low_kappa to be able to extrapolate to very low densities
++  ! we are using gamma=2
++  barotropiceos_low_gamma = 2.0d0
++  temp_press = 10.0**barotropiceos_logpress(1)
++  barotropiceos_low_kappa = temp_press / &
++       ((10.0d0**barotropiceos_logrho(1))**barotropiceos_low_gamma)
++
++
++end subroutine EOS_Omni_BarotropicReadTable
+diff --git a/src/EOS_Omni_Handles.c b/src/EOS_Omni_Handles.c
+index 1ecd349..675026b 100644
+--- a/src/EOS_Omni_Handles.c
++++ b/src/EOS_Omni_Handles.c
+@@ -14,6 +14,8 @@ CCTK_INT EOS_Omni_GetHandle_(CCTK_STRING name)
+         return 4;
+     if (CCTK_EQUALS(name, "cold_tabulated"))
+         return 5;
++    if (CCTK_EQUALS(name, "barotropic_tabulated"))
++        return 6;
+     return 0;
+ }
+ 
+diff --git a/src/EOS_Omni_Module.F90 b/src/EOS_Omni_Module.F90
+index 908614e..2855e9f 100644
+--- a/src/EOS_Omni_Module.F90
++++ b/src/EOS_Omni_Module.F90
+@@ -44,4 +44,23 @@ module EOS_Omni_Module
+   real*8, allocatable :: coldeos_gamma(:)
+   real*8, allocatable :: coldeos_cs2(:)
+ 
++
++  ! stuff for the barotropic tabulated EOS with a gamma law
++  ! set by the reader routine
++  integer :: barotropiceos_nrho = 0
++  real*8 :: barotropiceos_rhomin = 0.0d0
++  real*8 :: barotropiceos_rhomax = 0.0d0
++  real*8 :: barotropiceos_low_kappa = 0.0d0
++  real*8 :: barotropiceos_low_gamma = 0.0d0
++  real*8 :: barotropiceos_kappa = 0.0d0
++  real*8 :: barotropiceos_thfac = 1.0d0
++  real*8 :: barotropiceos_dlrho = 1.0d0
++  real*8 :: barotropiceos_dlrhoi = 1.0d0
++  real*8 :: barotropiceos_energyshift = 0.0d0
++  real*8, allocatable :: barotropiceos_logrho(:)
++  real*8, allocatable :: barotropiceos_logpress(:)
++  real*8, allocatable :: barotropiceos_logeps(:)
++  real*8, allocatable :: barotropiceos_temp(:)
++  real*8, allocatable :: barotropiceos_ye(:)
++
+ end module EOS_Omni_Module
+diff --git a/src/EOS_Omni_SingleVarCalls.F90 b/src/EOS_Omni_SingleVarCalls.F90
+index be80a1e..85e20c6 100644
+--- a/src/EOS_Omni_SingleVarCalls.F90
++++ b/src/EOS_Omni_SingleVarCalls.F90
+@@ -152,6 +152,54 @@ subroutine EOS_Omni_EOS_Press(eoskey,keytemp,rf_precision,npoints,&
+            press(i) = press_cold + press_th
+         enddo
+ 
++     case (6)
++        ! barotropic tabular EOS with gamma law
++        do i=1,npoints
++           if(rho(i).lt.barotropiceos_rhomin) then
++              press(i) = barotropiceos_low_kappa * rho(i)**barotropiceos_low_gamma
++              eps(i) = press(i) / (barotropiceos_low_gamma - 1.0) / rho(i) 
++              cycle
++           else if(rho(i).gt.barotropiceos_rhomax) then
++              keyerr(i) = 103
++              anyerr = 1
++           else
++              xrho = log10(rho(i))
++              ir = 2 + &
++                   INT( (xrho - barotropiceos_logrho(1) - 1.0d-10) &
++                   * barotropiceos_dlrhoi )
++           endif
++           ir = max(2, min(ir,barotropiceos_nrho))
++
++           xprs = (barotropiceos_logpress(ir) - barotropiceos_logpress(ir-1)) / &
++                (barotropiceos_logrho(ir) - barotropiceos_logrho(ir-1)) * &
++                (xrho - barotropiceos_logrho(ir-1)) + barotropiceos_logpress(ir-1)
++
++           xenr = (barotropiceos_logeps(ir) - barotropiceos_logeps(ir-1)) / &
++                (barotropiceos_logrho(ir) - barotropiceos_logrho(ir-1)) * &
++                (xrho - barotropiceos_logrho(ir-1)) + barotropiceos_logeps(ir-1)
++
++           xtemp = (barotropiceos_temp(ir) - barotropiceos_temp(ir-1)) / &
++                (barotropiceos_logrho(ir) - barotropiceos_logrho(ir-1)) * &
++                (xrho - barotropiceos_logrho(ir-1)) + barotropiceos_temp(ir-1)
++
++           xye = (barotropiceos_ye(ir) - barotropiceos_ye(ir-1)) / &
++                (barotropiceos_logrho(ir) - barotropiceos_logrho(ir-1)) * &
++                (xrho - barotropiceos_logrho(ir-1)) + barotropiceos_ye(ir-1)
++
++           press_cold = 10.0**xprs
++           eps_cold = 10.0**xenr - barotropiceos_energyshift
++
++           if(keytemp.eq.0) then
++              eps_th = max(0.0d0,eps(i) - eps_cold)
++           else if (keytemp.eq.1) then
++              eps_th = 0.0d0
++              eps(i) = eps_cold
++           endif
++           press_th = coldeos_thfac*(barotropiceos_gammath - 1.0d0)*rho(i)*eps_th
++           press(i) = press_cold + press_th
++
++        enddo
++
+      case DEFAULT
+         write(warnstring,*) "eoskey ",eoskey," not implemented!"
+         call CCTK_WARN(0,warnstring)
+@@ -322,6 +370,58 @@ subroutine EOS_Omni_EOS_PressOMP(eoskey,keytemp,rf_precision,npoints,&
+         enddo
+         !$OMP END PARALLEL DO
+ 
++     case (6)
++        ! barotropic tabular EOS with gamma law
++        !$OMP PARALLEL DO PRIVATE(xrho,xprs,xenr,xye,ir, &
++        !$OMP press_cold,eps_cold,eps_th,press_th)
++        do i=1,npoints
++           if(rho(i).lt.barotropiceos_rhomin) then
++              press(i) = barotropiceos_low_kappa * rho(i)**barotropiceos_low_gamma
++              eps(i) = press(i) / (barotropiceos_low_gamma - 1.0) / rho(i) 
++              cycle
++           else if(rho(i).gt.barotropiceos_rhomax) then
++              keyerr(i) = 103
++              anyerr = 1
++           else
++              xrho = log10(rho(i))
++              ir = 2 + &
++                   INT( (xrho - barotropiceos_logrho(1) - 1.0d-10) &
++                   * barotropiceos_dlrhoi )
++           endif
++           ir = max(2, min(ir,barotropiceos_nrho))
++
++           xprs = (barotropiceos_logpress(ir) - barotropiceos_logpress(ir-1)) / &
++                (barotropiceos_logrho(ir) - barotropiceos_logrho(ir-1)) * &
++                (xrho - barotropiceos_logrho(ir-1)) + barotropiceos_logpress(ir-1)
++
++           xenr = (barotropiceos_logeps(ir) - barotropiceos_logeps(ir-1)) / &
++                (barotropiceos_logrho(ir) - barotropiceos_logrho(ir-1)) * &
++                (xrho - barotropiceos_logrho(ir-1)) + barotropiceos_logeps(ir-1)
++
++           xtemp = (barotropiceos_temp(ir) - barotropiceos_temp(ir-1)) / &
++                (barotropiceos_logrho(ir) - barotropiceos_logrho(ir-1)) * &
++                (xrho - barotropiceos_logrho(ir-1)) + barotropiceos_temp(ir-1)
++
++           xye = (barotropiceos_ye(ir) - barotropiceos_ye(ir-1)) / &
++                (barotropiceos_logrho(ir) - barotropiceos_logrho(ir-1)) * &
++                (xrho - barotropiceos_logrho(ir-1)) + barotropiceos_ye(ir-1)
++
++           press_cold = 10.0**xprs
++           eps_cold = 10.0**xenr - barotropiceos_energyshift
++
++           if(keytemp.eq.0) then
++              eps_th = max(0.0d0,eps(i) - eps_cold)
++           else if (keytemp.eq.1) then
++              eps_th = 0.0d0
++              eps(i) = eps_cold
++           endif
++           press_th = coldeos_thfac*(barotropiceos_gammath - 1.0d0)*rho(i)*eps_th
++           press(i) = press_cold + press_th
++
++        enddo
++        !$OMP END PARALLEL DO
++
++
+      case DEFAULT
+         write(warnstring,*) "eoskey ",eoskey," not implemented!"
+         call CCTK_WARN(0,warnstring)
+@@ -987,7 +1087,7 @@ subroutine EOS_Omni_EOS_RhoFromPressEpsTempEnt(eoskey,&
+         enddo
+         
+      case (5)
+-        ! cold tabulate EOS
++        ! cold tabulated EOS
+         ! deal only with case in which thermal pressure is zero
+         if(keytemp.ne.1) then
+            call CCTK_WARN(0,"finding rho(press) for tabulated cold EOS only possible if keytemp=1")
+@@ -1081,9 +1181,198 @@ subroutine EOS_Omni_EOS_RhoFromPressEpsTempEnt(eoskey,&
+ 
+         enddo
+ 
++     case (6)
++        ! barotropic tabulated EOS
++        ! deal only with case in which thermal pressure is zero
++        if(keytemp.ne.1) then
++           call CCTK_WARN(0,"finding rho(press) for tabulated barotropic EOS only possible if keytemp=1")
++        endif
++
++        do i=1,npoints
++           fac = 1.0d0
++           counter = 0
++           cont = .true.
++           xprs = press(i) 
++           press_guess = xprs
++           rho_guess = rho(i) 
++           do while(cont)
++              counter = counter + 1
++              rho_guess2 = rho_guess * 1.0001d0
++
++              ! press 2
++              if(rho_guess2.lt.barotropiceos_rhomin) then
++                 keyerr(i) = 104
++                 anyerr = 1
++              else if(rho_guess2.gt.barotropiceos_rhomax) then
++                 keyerr(i) = 103
++                 anyerr = 1
++              else
++                 xrho = log10(rho_guess2)
++                 ir = 2 + INT( (xrho - barotropiceos_logrho(1) - 1.0d-10) * barotropiceos_dlrhoi )
++              endif
++              ir = max(2, min(ir,barotropiceos_nrho))
++           
++              xprs = (barotropiceos_logpress(ir) - barotropiceos_logpress(ir-1)) / &
++                   (barotropiceos_logrho(ir) - barotropiceos_logrho(ir-1)) * &
++                   (xrho - barotropiceos_logrho(ir-1)) + barotropiceos_logpress(ir-1)
++              
++              press_guess2 = 10.0d0**xprs
++              ! end press 2
++              ! press 1
++              if(rho_guess.lt.barotropiceos_rhomin) then
++                 keyerr(i) = 104
++                 anyerr = 1
++              else if(rho_guess.gt.barotropiceos_rhomax) then
++                 keyerr(i) = 103
++                 anyerr = 1
++              else
++                 xrho = log10(rho_guess)
++                 ir = 2 + INT( (xrho - barotropiceos_logrho(1) - 1.0d-10) * barotropiceos_dlrhoi )
++              endif
++              ir = max(2, min(ir,barotropiceos_nrho))
++           
++              xprs = (barotropiceos_logpress(ir) - barotropiceos_logpress(ir-1)) / &
++                (barotropiceos_logrho(ir) - barotropiceos_logrho(ir-1)) * &
++                (xrho - barotropiceos_logrho(ir-1)) + barotropiceos_logpress(ir-1)
++
++              press_guess = 10.0d0**xprs
++              ! end press 1
++
++ !             write(6,"(i7,1P10E15.6)") counter, rho_guess, press_guess, press_guess2, press(i)
++
++              ! derivative
++              mydpdrho = (press_guess2-press_guess)/(rho_guess2-rho_guess)
++              if (mydpdrho.lt.0.0d0) then
++                 !$OMP CRITICAL
++                 write(warnstring,"(A25,1P10E15.6)") "Issue with table, dpdrho.lt.0",&
++                      rho_guess,rho_guess2
++                 call CCTK_WARN(0,warnstring)
++                 !$OMP END CRITICAL
++              endif
++              
++              if (abs(1.0d0-press_guess/press(i)).lt.rf_precision) then
++                 cont = .false.
++                 rho(i) = rho_guess
++                 xenr = (barotropiceos_logeps(ir) - barotropiceos_logeps(ir-1)) / &
++                      (barotropiceos_logrho(ir) - barotropiceos_logrho(ir-1)) * &
++                      (xrho - barotropiceos_logrho(ir-1)) + barotropiceos_logeps(ir-1)
++                 eps(i) = 10.0d0**xenr - barotropiceos_energyshift
++              else
++                 if (fac*(press(i)-press_guess)/mydpdrho/rho_guess.gt.0.1d0) then
++                    rho_guess = 0.99d0*rho_guess
++                 else
++                    rho_guess = rho_guess + fac*(press(i)-press_guess)/mydpdrho
++                 endif
++              endif
++
++              if (counter.gt.100) then
++                 fac = 0.01d0
++              endif
++
++              if (rho_guess.lt.1.0d-15.or.counter.gt.100000) then
++!                 !$OMP CRITICAL
++!                 write(warnstring,"(A25,1P10E15.6)") "rho(p) issue", rho_guess,press(i),press_guess
++!                 call CCTK_WARN(0,warnstring)
++!                 !$OMP END CRITICAL
++                 keyerr(i) = 473
++                 anyerr = 1
++                 return
++              endif
++           enddo
++
++        enddo
++
+      case DEFAULT
+         write(warnstring,*) "eoskey ",eoskey," not implemented!"
+         call CCTK_WARN(0,warnstring)
+      end select
+ 
+ end subroutine EOS_Omni_EOS_RhoFromPressEpsTempEnt
++
++
++subroutine EOS_Omni_EOS_PressEpsTempYe_from_Rho(eoskey,keytemp,rf_precision,npoints,&
++                              rho,eps,temp,ye,press,keyerr,anyerr)
++
++  use EOS_Omni_Module
++  implicit none
++  DECLARE_CCTK_PARAMETERS
++
++  CCTK_INT, intent(in)     :: eoskey,keytemp,npoints
++  CCTK_INT, intent(out)    :: keyerr(npoints)
++  CCTK_INT, intent(out)    :: anyerr
++  CCTK_REAL, intent(in)    :: rf_precision
++  CCTK_REAL, intent(in)    :: rho(npoints)
++  CCTK_REAL, intent(out)   :: eps(npoints), ye(npoints) 
++  CCTK_REAL, intent(out)   :: temp(npoints),press(npoints)
++
++  ! local vars
++  integer          :: i
++  character(256)   :: warnstring
++  ! temporary vars for nuc_eos
++  real*8           :: xrho,xye,xtemp,xenr
++  real*8           :: xprs
++  integer :: ir
++  real*8 :: press_cold, press_th
++  real*8 :: eps_cold, eps_th
++
++  anyerr    = 0
++  keyerr(:) = 0
++
++  select case (eoskey)
++     case (6)
++        ! barotropic tabular EOS with gamma law
++        do i=1,npoints
++           if(rho(i).lt.barotropiceos_rhomin) then
++              press(i) = barotropiceos_low_kappa * rho(i)**barotropiceos_low_gamma
++              eps(i) = press(i) / (barotropiceos_low_gamma - 1.0) / rho(i) 
++              cycle
++           else if(rho(i).gt.barotropiceos_rhomax) then
++              keyerr(i) = 103
++              anyerr = 1
++           else
++              xrho = log10(rho(i))
++              ir = 2 + &
++                   INT( (xrho - barotropiceos_logrho(1) - 1.0d-10) &
++                   * barotropiceos_dlrhoi )
++           endif
++           ir = max(2, min(ir,barotropiceos_nrho))
++
++           xprs = (barotropiceos_logpress(ir) - barotropiceos_logpress(ir-1)) / &
++                (barotropiceos_logrho(ir) - barotropiceos_logrho(ir-1)) * &
++                (xrho - barotropiceos_logrho(ir-1)) + barotropiceos_logpress(ir-1)
++
++           xenr = (barotropiceos_logeps(ir) - barotropiceos_logeps(ir-1)) / &
++                (barotropiceos_logrho(ir) - barotropiceos_logrho(ir-1)) * &
++                (xrho - barotropiceos_logrho(ir-1)) + barotropiceos_logeps(ir-1)
++
++           xtemp = (barotropiceos_temp(ir) - barotropiceos_temp(ir-1)) / &
++                (barotropiceos_logrho(ir) - barotropiceos_logrho(ir-1)) * &
++                (xrho - barotropiceos_logrho(ir-1)) + barotropiceos_temp(ir-1)
++
++           xye = (barotropiceos_ye(ir) - barotropiceos_ye(ir-1)) / &
++                (barotropiceos_logrho(ir) - barotropiceos_logrho(ir-1)) * &
++                (xrho - barotropiceos_logrho(ir-1)) + barotropiceos_ye(ir-1)
++
++           press_cold = 10.0**xprs
++           eps_cold = 10.0**xenr - barotropiceos_energyshift
++
++           if(keytemp.eq.0) then
++              eps_th = max(0.0d0,eps(i) - eps_cold)
++           else if (keytemp.eq.1) then
++              eps_th = 0.0d0
++              eps(i) = eps_cold
++           endif
++           press_th = coldeos_thfac*(barotropiceos_gammath - 1.0d0)*rho(i)*eps_th
++           press(i) = press_cold + press_th
++
++           temp(i) = xtemp
++           ye(i) = xye
++
++        enddo
++
++     case DEFAULT
++        write(warnstring,*) "eoskey ",eoskey," not implemented for EOS_Omni_EOS_PressEpsTempYe_from_Rho!"
++        call CCTK_WARN(0,warnstring)
++     end select
++
++   end subroutine EOS_Omni_EOS_PressEpsTempYe_from_Rho
+diff --git a/src/make.code.defn b/src/make.code.defn
+index f23abc5..02799bc 100644
+--- a/src/make.code.defn
++++ b/src/make.code.defn
+@@ -3,7 +3,8 @@
+ # Source files in this directory
+ SRCS = EOS_Omni_Module.F90 EOS_Omni_Startup.F90 EOS_Omni_SingleVarCalls.F90 \
+        EOS_Omni_SingleVarCalls_harm.F90 EOS_Omni_Handles.c \
+-       EOS_Omni_MultiVarCalls.F90 EOS_Omni_ColdEOSReadTable.F90
++       EOS_Omni_MultiVarCalls.F90 EOS_Omni_ColdEOSReadTable.F90  \
++       EOS_Omni_BarotropicReadTable.F90	
+ 
+ # Subdirectories containing source files
+ SUBDIRS = nuc_eos
+-- 
+1.8.5.3
+

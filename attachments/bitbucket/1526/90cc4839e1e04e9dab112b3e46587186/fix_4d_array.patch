@@ -1,0 +1,210 @@
+Index: src/Array.F
+===================================================================
+--- src/Array.F	(revision 65)
++++ src/Array.F	(working copy)
+@@ -20,16 +20,16 @@
+       DECLARE_CCTK_ARGUMENTS
+       DECLARE_CCTK_FUNCTIONS
+ 
+-      integer i,j,k,ierr
++      integer i,j,k,m,ierr
+       integer myproc
+-      integer lsh_1d(1),lsh_2d(2),lsh_3d(3)
+-      integer gsh_1d(1),gsh_2d(2),gsh_3d(3)
+-      integer lbnd_1d(1),lbnd_2d(2),lbnd_3d(3)
+-      integer ubnd_1d(1),ubnd_2d(2),ubnd_3d(3)
+-      integer nghostzones_1d(1),nghostzones_2d(2),nghostzones_3d(3)
+-      integer bbox_1d(2),bbox_2d(4),bbox_3d(6)
+-      integer varindex1,varindex2,varindex3
+-      integer groupindex1,groupindex2,groupindex3
++      integer lsh_1d(1),lsh_2d(2),lsh_3d(3),lsh_4d(4)
++      integer gsh_1d(1),gsh_2d(2),gsh_3d(3),gsh_4d(4)
++      integer lbnd_1d(1),lbnd_2d(2),lbnd_3d(3),lbnd_4d(4)
++      integer ubnd_1d(1),ubnd_2d(2),ubnd_3d(3),ubnd_4d(4)
++      integer nghostzones_1d(1),nghostzones_2d(2),nghostzones_3d(3),nghostzones_4d(4)
++      integer bbox_1d(2),bbox_2d(4),bbox_3d(6),bbox_4d(8)
++      integer varindex1,varindex2,varindex3,varindex4
++      integer groupindex1,groupindex2,groupindex3,groupindex4
+ 
+       print *
+       print *,"In SetUpFortranArrays"
+@@ -39,9 +39,11 @@
+       call CCTK_VarIndex(varindex1,"testarrays::gf1d")
+       call CCTK_VarIndex(varindex2,"testarrays::gf2d")
+       call CCTK_VarIndex(varindex3,"testarrays::gf3d")
++      call CCTK_VarIndex(varindex4,"testarrays::gf4d")
+       call CCTK_GroupIndex(groupindex1,"testarrays::foo1d")
+       call CCTK_GroupIndex(groupindex2,"testarrays::foo2d")
+       call CCTK_GroupIndex(groupindex3,"testarrays::foo3d")
++      call CCTK_GroupIndex(groupindex4,"testarrays::foo4d")
+ 
+       print *,"Checking array queries"
+       print *,"----------------------"
+@@ -75,6 +77,15 @@
+       call CCTK_GrouplshVI(ierr,cctkGH,3,lsh_3d,varindex3)
+       print *,lsh_3d(1),lsh_3d(2),lsh_3d(3)
+ 
++      call CCTK_GrouplshGN(ierr,cctkGH,4,lsh_4d,"testarrays::foo4d")
++      print *,lsh_4d(1),lsh_4d(2),lsh_4d(3),lsh_4d(4)
++      call CCTK_GrouplshVN(ierr,cctkGH,4,lsh_4d,"testarrays::gf4d")
++      print *,lsh_4d(1),lsh_4d(2),lsh_4d(3),lsh_4d(4)
++      call CCTK_GrouplshGI(ierr,cctkGH,4,lsh_4d,groupindex4)
++      print *,lsh_4d(1),lsh_4d(2),lsh_4d(3),lsh_4d(4)
++      call CCTK_GrouplshVI(ierr,cctkGH,4,lsh_4d,varindex4)
++      print *,lsh_4d(1),lsh_4d(2),lsh_4d(3),lsh_4d(4)
++
+       print *
+       print *,"Global shape (GN/VN/GI/VI) ..."
+       call CCTK_GroupgshGN(ierr,cctkGH,1,gsh_1d,"testarrays::foo1d")
+@@ -104,6 +115,15 @@
+       call CCTK_GroupgshVI(ierr,cctkGH,3,gsh_3d,varindex3)
+       print *,gsh_3d(1),gsh_3d(2),gsh_3d(3)
+ 
++      call CCTK_GroupgshGN(ierr,cctkGH,4,gsh_4d,"testarrays::foo4d")
++      print *,gsh_4d(1),gsh_4d(2),gsh_4d(3),gsh_4d(4)
++      call CCTK_GroupgshVN(ierr,cctkGH,4,gsh_4d,"testarrays::gf4d")
++      print *,gsh_4d(1),gsh_4d(2),gsh_4d(3),gsh_4d(4)
++      call CCTK_GroupgshGI(ierr,cctkGH,4,gsh_4d,groupindex4)
++      print *,gsh_4d(1),gsh_4d(2),gsh_4d(3),gsh_4d(4)
++      call CCTK_GroupgshVI(ierr,cctkGH,4,gsh_4d,varindex4)
++      print *,gsh_4d(1),gsh_4d(2),gsh_4d(3),gsh_4d(4)
++
+       print *
+       print *,"Lower bounds (GN/VN/GI/VI) ..."
+       call CCTK_GrouplbndGN(ierr,cctkGH,1,lbnd_1d,"testarrays::foo1d")
+@@ -133,6 +153,15 @@
+       call CCTK_GrouplbndVI(ierr,cctkGH,3,lbnd_3d,varindex3)
+       print *,lbnd_3d(1),lbnd_3d(2),lbnd_3d(3)
+ 
++      call CCTK_GrouplbndGN(ierr,cctkGH,4,lbnd_4d,"testarrays::foo4d")
++      print *,lbnd_4d(1),lbnd_4d(2),lbnd_4d(3),lbnd_4d(4)
++      call CCTK_GrouplbndVN(ierr,cctkGH,4,lbnd_4d,"testarrays::gf4d")
++      print *,lbnd_4d(1),lbnd_4d(2),lbnd_4d(3),lbnd_4d(4)
++      call CCTK_GrouplbndGI(ierr,cctkGH,4,lbnd_4d,groupindex4)
++      print *,lbnd_4d(1),lbnd_4d(2),lbnd_4d(3),lbnd_4d(4)
++      call CCTK_GrouplbndVI(ierr,cctkGH,4,lbnd_4d,varindex4)
++      print *,lbnd_4d(1),lbnd_4d(2),lbnd_4d(3),lbnd_4d(4)
++
+       print *
+       print *,"Upper bounds (GN/VN/GI/VI) ..."
+       call CCTK_GroupubndGN(ierr,cctkGH,1,ubnd_1d,"testarrays::foo1d")
+@@ -162,6 +191,15 @@
+       call CCTK_GroupubndVI(ierr,cctkGH,3,ubnd_3d,varindex3)
+       print *,ubnd_3d(1),ubnd_3d(2),ubnd_3d(3)
+ 
++      call CCTK_GroupubndGN(ierr,cctkGH,4,ubnd_4d,"testarrays::foo4d")
++      print *,ubnd_4d(1),ubnd_4d(2),ubnd_4d(3),ubnd_4d(4)
++      call CCTK_GroupubndVN(ierr,cctkGH,4,ubnd_4d,"testarrays::gf4d")
++      print *,ubnd_4d(1),ubnd_4d(2),ubnd_4d(3),ubnd_4d(4)
++      call CCTK_GroupubndGI(ierr,cctkGH,4,ubnd_4d,groupindex4)
++      print *,ubnd_4d(1),ubnd_4d(2),ubnd_4d(3),ubnd_4d(4)
++      call CCTK_GroupubndVI(ierr,cctkGH,4,ubnd_4d,varindex4)
++      print *,ubnd_4d(1),ubnd_4d(2),ubnd_4d(3),ubnd_4d(4)
++
+       print *
+       print *,"Ghostzones (GN/VN/GI/VI) ..."
+       call CCTK_GroupnghostzonesGN(ierr,cctkGH,1,nghostzones_1d,"testarrays::foo1d")
+@@ -191,6 +229,15 @@
+       call CCTK_GroupnghostzonesVI(ierr,cctkGH,3,nghostzones_3d,varindex3)
+       print *,nghostzones_3d(1),nghostzones_3d(2),nghostzones_3d(3)
+ 
++      call CCTK_GroupnghostzonesGN(ierr,cctkGH,4,nghostzones_4d,"testarrays::foo4d")
++      print *,nghostzones_4d(1),nghostzones_4d(2),nghostzones_4d(3),nghostzones_4d(4)
++      call CCTK_GroupnghostzonesVN(ierr,cctkGH,4,nghostzones_4d,"testarrays::gf4d")
++      print *,nghostzones_4d(1),nghostzones_4d(2),nghostzones_4d(3),nghostzones_4d(4)
++      call CCTK_GroupnghostzonesGI(ierr,cctkGH,4,nghostzones_4d,groupindex4)
++      print *,nghostzones_4d(1),nghostzones_4d(2),nghostzones_4d(3),nghostzones_4d(4)
++      call CCTK_GroupnghostzonesVI(ierr,cctkGH,4,nghostzones_4d,varindex4)
++      print *,nghostzones_4d(1),nghostzones_4d(2),nghostzones_4d(3),nghostzones_4d(4)
++
+       print *
+       print *,"Bounding box (GN/VN/GI/VI) ..."
+       call CCTK_GroupbboxGN(ierr,cctkGH,2,bbox_1d,"testarrays::foo1d")
+@@ -224,6 +271,19 @@
+       print *,bbox_3d(1),bbox_3d(2),bbox_3d(3),
+      &     bbox_3d(4),bbox_3d(5),bbox_3d(6)
+ 
++      call CCTK_GroupbboxGN(ierr,cctkGH,8,bbox_4d,"testarrays::foo4d")
++      print *,bbox_4d(1),bbox_4d(2),bbox_4d(3),
++     &     bbox_4d(4),bbox_4d(5),bbox_4d(6),bbox_4d(7),bbox_4d(8)
++      call CCTK_GroupbboxVN(ierr,cctkGH,8,bbox_4d,"testarrays::gf4d")
++      print *,bbox_4d(1),bbox_4d(2),bbox_4d(3),
++     &     bbox_4d(4),bbox_4d(5),bbox_4d(6),bbox_4d(7),bbox_4d(8)
++      call CCTK_GroupbboxGI(ierr,cctkGH,8,bbox_4d,groupindex4)
++      print *,bbox_4d(1),bbox_4d(2),bbox_4d(3),
++     &     bbox_4d(4),bbox_4d(5),bbox_4d(6),bbox_4d(7),bbox_4d(8)
++      call CCTK_GroupbboxVI(ierr,cctkGH,8,bbox_4d,varindex4)
++      print *,bbox_4d(1),bbox_4d(2),bbox_4d(3),
++     &     bbox_4d(4),bbox_4d(5),bbox_4d(6),bbox_4d(7),bbox_4d(8)
++
+       print *
+       print *,"1D Array size is ",lsh_1d(1)
+       do i=1,lsh_1d(1)
+@@ -246,6 +306,18 @@
+             end do
+          end do
+       end do
++
++      print *,"4D Array size is ",lsh_4d(1),lsh_4d(2),lsh_4d(3),lsh_4d(4)
++      do i=1,lsh_4d(1)
++         do j=1,lsh_4d(2)
++            do k=1,lsh_4d(3)
++               do m=1,lsh_4d(4)
++                 gf4d(i,j,k,m) = (lbnd_4d(1)+i)*(lbnd_4d(2)+j)*
++     &                (lbnd_4d(3)+k)*(lbnd_4d(4)+m)
++               end do
++            end do
++         end do
++      end do
+       
+       end subroutine SetUpFortranArrays
+ 
+@@ -257,9 +329,9 @@
+       DECLARE_CCTK_ARGUMENTS
+       DECLARE_CCTK_PARAMETERS
+ 
+-      integer i,j,k,ierr
+-      integer lsh_1d(1),lsh_2d(2),lsh_3d(3)
+-      integer nghostzones_1d(1),nghostzones_2d(2),nghostzones_3d(3)
++      integer i,j,k,m,ierr
++      integer lsh_1d(1),lsh_2d(2),lsh_3d(3),lsh_4d(4)
++      integer nghostzones_1d(1),nghostzones_2d(2),nghostzones_3d(3),nghostzones_4d(4)
+ 
+       print *
+       print *,"In UseFortranArrays"
+@@ -268,10 +340,12 @@
+       call CCTK_GrouplshGN(ierr,cctkGH,1,lsh_1d,"testarrays::foo1d")
+       call CCTK_GrouplshGN(ierr,cctkGH,2,lsh_2d,"testarrays::foo2d")
+       call CCTK_GrouplshGN(ierr,cctkGH,3,lsh_3d,"testarrays::foo3d")
++      call CCTK_GrouplshGN(ierr,cctkGH,4,lsh_4d,"testarrays::foo4d")
+ 
+       call CCTK_GroupnghostzonesGN(ierr,cctkGH,1,nghostzones_1d,"testarrays::foo1d")
+       call CCTK_GroupnghostzonesGN(ierr,cctkGH,2,nghostzones_2d,"testarrays::foo2d")
+       call CCTK_GroupnghostzonesGN(ierr,cctkGH,3,nghostzones_3d,"testarrays::foo3d")
++      call CCTK_GroupnghostzonesGN(ierr,cctkGH,4,nghostzones_4d,"testarrays::foo4d")
+ 
+ c     1D Array
+ c     ========
+@@ -306,6 +380,22 @@
+       print *,"Syncing 3D array ..."
+       call CCTK_SyncGroup(ierr,cctkGH,"testarrays::foo3d")
+       print *
++      
++c     4D ARRAY
++c     ========
++      print *,"4D Array size is ",lsh_4d(1),lsh_4d(2),lsh_4d(3),lsh_4d(4)
++      do i=1+nghostzones_4d(1),lsh_4d(1)-nghostzones_4d(1)
++         do j=1+nghostzones_4d(2),lsh_4d(2)-nghostzones_4d(2)
++            do k=1+nghostzones_4d(3),lsh_4d(3)-nghostzones_4d(3)
++               do m=1+nghostzones_4d(4),lsh_4d(4)-nghostzones_4d(4)
++                  gf4d(i,j,k,m)=gf4d(i,j,k,m)+1
++               end do
++            end do
++         end do
++      end do
++      print *,"Syncing 4D array ..."
++      call CCTK_SyncGroup(ierr,cctkGH,"testarrays::foo4d")
++      print *
+ 
+       end subroutine UseFortranArrays
+ 

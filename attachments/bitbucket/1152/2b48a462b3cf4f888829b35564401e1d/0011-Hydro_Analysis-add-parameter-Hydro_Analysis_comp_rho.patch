@@ -1,0 +1,80 @@
+From 90c1b5c8c038ba1da7155aef7685ca0aae4cc627 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Thu, 15 Mar 2012 01:10:56 -0700
+Subject: [PATCH 11/12] Hydro_Analysis: add parameter
+ Hydro_Analysis_comp_rho_max_every controlling how
+ often to look for the density maximum
+
+---
+ param.ccl            |    6 ++++++
+ src/Hydro_Analysis.c |   16 +++++++++++++++-
+ 2 files changed, 21 insertions(+), 1 deletion(-)
+
+diff --git a/param.ccl b/param.ccl
+index a73b004..35180a5 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -4,6 +4,12 @@ BOOLEAN Hydro_Analysis_comp_rho_max "Look for the value and location of the maxi
+ {
+ } "false"
+ 
++INT Hydro_Analysis_comp_rho_max_every "How often to look  for the value and location of the maximum of rho" STEERABLE = recover
++{
++  0:0 :: "Never"
++  1:* :: "every so often"
++} 1
++
+ # the following is useful eg. when using cell-centering where there might not
+ # be a grid point at the centre of the star and initially several equally valid
+ # maxima might be clustered around it.
+diff --git a/src/Hydro_Analysis.c b/src/Hydro_Analysis.c
+index f870cd4..7fe0a13 100644
+--- a/src/Hydro_Analysis.c
++++ b/src/Hydro_Analysis.c
+@@ -53,7 +53,9 @@ void Hydro_Analysis_Reduction(CCTK_ARGUMENTS)
+   if (handle_sum < 0)
+     CCTK_WARN(0, "Unable to get reduction handle 'sum'.");
+ 
+-  if (Hydro_Analysis_comp_rho_max)
++  if (Hydro_Analysis_comp_rho_max && 
++      Hydro_Analysis_comp_rho_max_every != 0 &&
++      cctk_iteration % Hydro_Analysis_comp_rho_max_every == 0)
+   {
+     if (CCTK_Reduce(cctkGH, -1, handle_max, 1, CCTK_VARIABLE_REAL,
+                     Hydro_Analysis_rho_max, 1,
+@@ -90,6 +92,10 @@ void Hydro_Analysis_LocationSearch_Setup(CCTK_ARGUMENTS)
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+ 
++  if(Hydro_Analysis_comp_rho_max_every == 0 ||
++     cctk_iteration % Hydro_Analysis_comp_rho_max_every != 0)
++    return;
++
+   local_rho_max_loc[0] = 0.0;
+   local_rho_max_loc[1] = 0.0;
+   local_rho_max_loc[2] = 0.0;
+@@ -100,6 +106,10 @@ void Hydro_Analysis_LocationSearch_Search(CCTK_ARGUMENTS)
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+ 
++  if(Hydro_Analysis_comp_rho_max_every == 0 ||
++     cctk_iteration % Hydro_Analysis_comp_rho_max_every != 0)
++    return;
++
+   /* Look for the location of the global maximum.
+    * This algorithm will have problems when that occurs at more than
+    * one location. */
+@@ -154,6 +164,10 @@ void Hydro_Analysis_LocationSearch_Combine(CCTK_ARGUMENTS)
+ 
+   CCTK_REAL global_rho_max_loc[4];
+ 
++  if(Hydro_Analysis_comp_rho_max_every == 0 ||
++     cctk_iteration % Hydro_Analysis_comp_rho_max_every != 0)
++    return;
++
+   /* At this point at least one MPI process should have the location set.
+    * The others should have a value of 0.0, so that the sum reduction
+    * gives the value on each MPI process. This however is not true sometimes
+-- 
+1.7.10.4
+

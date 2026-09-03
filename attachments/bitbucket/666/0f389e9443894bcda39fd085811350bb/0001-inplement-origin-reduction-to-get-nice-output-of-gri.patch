@@ -1,0 +1,118 @@
+# HG changeset patch
+# User Roland Haas <rhaas@caltech.edu>
+# Date 1321306059 28800
+# Branch origin reduction
+# Node ID 73ea2d88ecf938016d80dee55c8fa99d6a831415
+# Parent  049fbbb1c76dbe96eeeee4857833c1362adff643
+CarpetReduce: inplement origin reduction to get nice output of grid scalars
+
+  this is only usesful for grid scalars and will return the value of the
+  scalar on some (undefined) processor. If they are all the same (and they
+  should) then is a simple way to get CarpetIOScalar to output timeseries
+  data.
+
+diff -r 049fbbb1c76d -r 73ea2d88ecf9 Carpet/CarpetReduce/src/reduce.cc
+--- a/Carpet/CarpetReduce/src/reduce.cc	Wed Nov 09 16:25:13 2011 -0800
++++ b/Carpet/CarpetReduce/src/reduce.cc	Mon Nov 14 13:27:39 2011 -0800
+@@ -408,7 +408,7 @@
+   // Poor man's RTTI
+   enum ared { do_count, do_minimum, do_maximum, do_product, do_sum,
+               do_sum_abs, do_sum_squared, do_sum_abs_squared, do_average,
+-              do_norm1, do_norm2, do_norm_inf };
++              do_norm1, do_norm2, do_norm_inf, do_origin };
+   
+   
+   
+@@ -589,6 +589,20 @@
+     MPI_Op mpi_op () const { return MPI_MAX; }
+   };
+   
++  struct origin : reduction {
++    origin () { }
++    ared thered () const { return do_origin; }
++    bool uses_cnt () const { return false; }
++    template<class T>
++    struct op {
++      static inline void initialise (T& /*accum*/, T& /*cnt*/) { /* do nothing */ }
++      static inline void reduce (T& accum, T& /*cnt*/, const T& val, const CCTK_REAL /*weight*/) { accum = T(val); }
++      static inline void combine (T& accum, T& /*cnt*/, const T& accum2, const T& /*cnt2*/) { accum = accum2; }
++      static inline void finalise (T& /*accum*/, const T& /*cnt*/) { }
++    };
++    MPI_Op mpi_op () const { return MPI_MAX; /* something "transfer-like" */ }
++  };
++  
+   
+   
+   template<class T,class OP>
+@@ -787,6 +801,7 @@
+ 	  INITIALISE(norm1,T);			\
+ 	  INITIALISE(norm2,T);			\
+ 	  INITIALISE(norm_inf,T);		\
++	  INITIALISE(origin,T);                 \
+ 	default:				\
+ 	  assert (0);				\
+ 	}					\
+@@ -936,6 +951,7 @@
+ 	  REDUCE(norm1,T);			\
+ 	  REDUCE(norm2,T);			\
+ 	  REDUCE(norm_inf,T);			\
++	  REDUCE(origin,T);			\
+ 	default:				\
+ 	  assert (0);				\
+ 	}					\
+@@ -1044,6 +1060,7 @@
+ 	    FINALISE(norm1,T);			\
+ 	    FINALISE(norm2,T);			\
+ 	    FINALISE(norm_inf,T);		\
++	    FINALISE(origin,T);	        	\
+ 	  default:				\
+ 	    assert (0);				\
+ 	  }					\
+@@ -1541,6 +1558,7 @@
+   REDUCTION(norm1          , norm1          , 0);
+   REDUCTION(norm2          , norm2          , 0);
+   REDUCTION(norm_inf       , norm_inf       , 0);
++  REDUCTION(origin         , origin         , 0);
+   
+   REDUCTION(icount          , count          , 1);
+   REDUCTION(iminimum        , minimum        , 1);
+@@ -1554,6 +1572,7 @@
+   REDUCTION(inorm1          , norm1          , 1);
+   REDUCTION(inorm2          , norm2          , 1);
+   REDUCTION(inorm_inf       , norm_inf       , 1);
++  REDUCTION(iorigin         , origin         , 1);
+   
+ #undef REDUCTION
+   
+@@ -1573,6 +1592,7 @@
+     CCTK_RegisterReductionOperator (norm1_GVs,           "norm1");
+     CCTK_RegisterReductionOperator (norm2_GVs,           "norm2");
+     CCTK_RegisterReductionOperator (norm_inf_GVs,        "norm_inf");
++    CCTK_RegisterReductionOperator (origin_GVs,          "origin");
+     
+     CCTK_RegisterReductionOperator (icount_GVs,           "icount");
+     CCTK_RegisterReductionOperator (iminimum_GVs,         "iminimum");
+@@ -1586,6 +1606,7 @@
+     CCTK_RegisterReductionOperator (inorm1_GVs,           "inorm1");
+     CCTK_RegisterReductionOperator (inorm2_GVs,           "inorm2");
+     CCTK_RegisterReductionOperator (inorm_inf_GVs,        "inorm_inf");
++    CCTK_RegisterReductionOperator (iorigin_GVs,          "iorigin");
+     
+     CCTK_RegisterReductionArrayOperator (count_arrays,           "count");
+     CCTK_RegisterReductionArrayOperator (minimum_arrays,         "minimum");
+@@ -1599,6 +1620,7 @@
+     CCTK_RegisterReductionArrayOperator (norm1_arrays,           "norm1");
+     CCTK_RegisterReductionArrayOperator (norm2_arrays,           "norm2");
+     CCTK_RegisterReductionArrayOperator (norm_inf_arrays,        "norm_inf");
++    CCTK_RegisterReductionArrayOperator (origin_arrays,          "origin");
+     
+     CCTK_RegisterReductionArrayOperator (icount_arrays,           "icount");
+     CCTK_RegisterReductionArrayOperator (iminimum_arrays,         "iminimum");
+@@ -1612,6 +1634,7 @@
+     CCTK_RegisterReductionArrayOperator (inorm1_arrays,           "inorm1");
+     CCTK_RegisterReductionArrayOperator (inorm2_arrays,           "inorm2");
+     CCTK_RegisterReductionArrayOperator (inorm_inf_arrays,        "inorm_inf");
++    CCTK_RegisterReductionArrayOperator (iorigin_arrays,          "iorigin");
+     
+     return 0;
+   }

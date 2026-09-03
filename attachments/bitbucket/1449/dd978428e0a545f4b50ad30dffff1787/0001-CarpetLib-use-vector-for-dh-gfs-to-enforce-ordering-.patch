@@ -1,0 +1,181 @@
+From fb03baee0d76248b6d43d27d81e31b58b77f96a9 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Tue, 8 Oct 2013 14:57:20 -0700
+Subject: [PATCH] CarpetLib: use vector for dh::gfs to enforce ordering by
+ varindex
+
+some parts of the code assume that these containers are traversed in the
+order or variables indices
+---
+ Carpet/CarpetLib/src/defs.cc |  3 ++-
+ Carpet/CarpetLib/src/dh.cc   | 40 ++++++++++++++++++++++++++++------------
+ Carpet/CarpetLib/src/dh.hh   |  7 ++++++-
+ 3 files changed, 36 insertions(+), 14 deletions(-)
+
+diff --git a/Carpet/CarpetLib/src/defs.cc b/Carpet/CarpetLib/src/defs.cc
+index 02474b8..89cddd9 100644
+--- a/Carpet/CarpetLib/src/defs.cc
++++ b/Carpet/CarpetLib/src/defs.cc
+@@ -343,8 +343,8 @@ template size_t memoryof (rvect const & v);
+ //template size_t memoryof (list<ivect> const & l);
+ template size_t memoryof (set<dh*> const & l);
+ template size_t memoryof (set<gh*> const & l);
+-template size_t memoryof (set<gdata*> const & l);
+ template size_t memoryof (set<ggf*> const & l);
++template size_t memoryof (set<gdata*> const & l);
+ template size_t memoryof (set<th*> const & l);
+ template size_t memoryof (stack<void*> const & s);
+ template size_t memoryof (vector<bool> const & v);
+@@ -352,6 +352,7 @@ template size_t memoryof (vector<int> const & v);
+ //template size_t memoryof (vector<CCTK_REAL> const & v);
+ template size_t memoryof (vector<dh*> const & v);
+ template size_t memoryof (vector<gh*> const & v);
++template size_t memoryof (vector<ggf*> const & v);
+ template size_t memoryof (vector<bbox<int,1> > const & v);
+ template size_t memoryof (vector<bbox<int,2> > const & v);
+ template size_t memoryof (vector<bbox<int,3> > const & v);
+diff --git a/Carpet/CarpetLib/src/dh.cc b/Carpet/CarpetLib/src/dh.cc
+index 43189a3..f021508 100644
+--- a/Carpet/CarpetLib/src/dh.cc
++++ b/Carpet/CarpetLib/src/dh.cc
+@@ -5,6 +5,9 @@
+ #include <cstddef>
+ #include <sstream>
+ 
++#include <algorithm>
++#include <functional>
++
+ #include <Timer.hh>
+ 
+ #include "mpi_string.hh"
+@@ -137,7 +140,8 @@ dh::
+ ~dh ()
+ {
+   CHECKPOINT;
+-  assert (gfs.empty());
++  assert (find_if(gfs.begin(), gfs.end(),
++                  bind1st(not_equal_to<ggf*>(), NULL)) == gfs.end());
+   h.erase (this);
+   alldh.erase (this);
+ }
+@@ -2115,8 +2119,9 @@ regrid (bool const do_init)
+     cout << "memoryof(dh.fast_boxes)=" << memoryof(fast_boxes) << eol;
+     int gfcount = 0;
+     size_t gfmemory = 0;
+-    for (set<ggf*>::const_iterator gfi = gfs.begin(); gfi != gfs.end(); ++ gfi)
++    for (vector<ggf*>::const_iterator gfi = gfs.begin(); gfi != gfs.end(); ++ gfi)
+     {
++      if (not *gfi) continue;
+       ++ gfcount;
+       gfmemory += memoryof(**gfi);
+     }
+@@ -2200,39 +2205,45 @@ recompose (int const rl, bool const do_prolongate)
+   static Timers::Timer timer ("CarpetLib::dh::recompose");
+   timer.start ();
+   
+-  for (set<ggf*>::iterator f=gfs.begin(); f!=gfs.end(); ++f) {
++  for (vector<ggf*>::iterator f=gfs.begin(); f!=gfs.end(); ++f) {
++    if (not *f) continue;
+     (*f)->recompose_crop ();
+   }
+   
+   if (combine_recompose) {
+     // Recompose all grid functions of this refinement levels at once.
+     // This may be faster, but requires more memory.
+-    for (set<ggf*>::iterator f=gfs.begin(); f!=gfs.end(); ++f) {
++    for (vector<ggf*>::iterator f=gfs.begin(); f!=gfs.end(); ++f) {
++      if (not *f) continue;
+       (*f)->recompose_allocate (rl);
+     }
+     // TODO: If this works, rename do_prolongate to do_init here, and
+     // remove the do_prolongate parameter from ggf::recompose_fill
+ #if 0
+     for (comm_state state; not state.done(); state.step()) {
+-      for (set<ggf*>::iterator f=gfs.begin(); f!=gfs.end(); ++f) {
++      for (vector<ggf*>::iterator f=gfs.begin(); f!=gfs.end(); ++f) {
++        if (not *f) continue;
+         (*f)->recompose_fill (state, rl, do_prolongate);
+       }
+     }
+ #endif
+     if (do_prolongate) {
+       for (comm_state state; not state.done(); state.step()) {
+-        for (set<ggf*>::iterator f=gfs.begin(); f!=gfs.end(); ++f) {
++        for (vector<ggf*>::iterator f=gfs.begin(); f!=gfs.end(); ++f) {
++          if (not *f) continue;
+           (*f)->recompose_fill (state, rl, true);
+         }
+       }
+     }
+-    for (set<ggf*>::iterator f=gfs.begin(); f!=gfs.end(); ++f) {
++    for (vector<ggf*>::iterator f=gfs.begin(); f!=gfs.end(); ++f) {
++      if (not *f) continue;
+       (*f)->recompose_free_old (rl);
+     }
+   } else {
+     // Recompose the grid functions sequentially.  This may be slower,
+     // but requires less memory.  This is the default.
+-    for (set<ggf*>::iterator f=gfs.begin(); f!=gfs.end(); ++f) {
++    for (vector<ggf*>::iterator f=gfs.begin(); f!=gfs.end(); ++f) {
++      if (not *f) continue;
+       (*f)->recompose_allocate (rl);
+ #if 0
+       for (comm_state state; not state.done(); state.step()) {
+@@ -2259,7 +2270,10 @@ dh::
+ insert (ggf * const f)
+ {
+   CHECKPOINT;
+-  gfs.insert (f);
++  assert (f);
++  if (gfs.size() < size_t(f->varindex+1))
++    gfs.resize (size_t(f->varindex+1));
++  gfs.at(size_t(f->varindex)) = f;
+ }
+ 
+ void
+@@ -2267,7 +2281,8 @@ dh::
+ erase (ggf * const f)
+ {
+   CHECKPOINT;
+-  gfs.erase (f);
++  assert (gfs.at (size_t(f->varindex)));
++  gfs.at (size_t(f->varindex)) = NULL;
+ }
+ 
+ 
+@@ -2750,11 +2765,12 @@ output (ostream & os)
+      << "gfs={";
+   {
+     bool isfirst = true;
+-    for (set<ggf*>::const_iterator
++    for (vector<ggf*>::const_iterator
+            f = gfs.begin(); f != gfs.end(); ++ f, isfirst = false)
+     {
++      if (not *f) continue;
+       if (not isfirst) os << ",";
+-      os << *f;
++      os << **f;
+     }
+   }
+   os << "}";
+diff --git a/Carpet/CarpetLib/src/dh.hh b/Carpet/CarpetLib/src/dh.hh
+index b558b01..67b009f 100644
+--- a/Carpet/CarpetLib/src/dh.hh
++++ b/Carpet/CarpetLib/src/dh.hh
+@@ -248,7 +248,12 @@ public:                         // should be readonly
+   level_mboxes level_boxes;     // grid hierarchy [ml][rl]
+   fast_mboxes fast_boxes;       // grid hierarchy [ml][rl][p]
+   
+-  set<ggf*> gfs;                // all grid functions
++private:
++
++  // this needs to be sorted by varindex so that when iteration through the
++  // container in order with a forward iterator, vector leaders are processed
++  // first
++  vector<ggf*> gfs;             // all grid functions [varindex]
+   
+ public:
+   
+-- 
+1.8.4.rc3
+

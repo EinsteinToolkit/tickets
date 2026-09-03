@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# This runscript is used internally by simfactory as a template during the
+# sim setup and sim setup-silent commands
+# Edit at your own risk
+
+echo "Preparing:"
+set -x                          # Output commands
+set -e                          # Abort on errors
+
+cd /public/home/guolj/nr/etk/simulations/projectdns_maxwell_65_300_1_11251505_/output-0000-active
+
+echo "Checking:"
+pwd
+hostname
+date
+
+echo "Environment:"
+export CACTUS_NUM_PROCS=8
+export CACTUS_NUM_THREADS=24
+export GMON_OUT_PREFIX=gmon.out
+export OMP_NUM_THREADS=24
+env | sort > SIMFACTORY/ENVIRONMENT
+
+echo "Starting:"
+export CACTUS_STARTTIME=$(date +%s)
+echo "fuck"
+if [ ${CACTUS_NUM_PROCS} = 1 ]; then
+    if [ 0 -eq 0 ]; then
+   	  /public/home/guolj/nr/etk/simulations/projectdns_maxwell_65_300_1_11251505_/SIMFACTORY/exe/cactus_sim -L 3 /public/home/guolj/nr/etk/simulations/projectdns_maxwell_65_300_1_11251505_/output-0000/dns.par
+    else
+   	  gdb --args /public/home/guolj/nr/etk/simulations/projectdns_maxwell_65_300_1_11251505_/SIMFACTORY/exe/cactus_sim -L 3 /public/home/guolj/nr/etk/simulations/projectdns_maxwell_65_300_1_11251505_/output-0000/dns.par
+    fi
+else
+	mpirun -np 8 -hostfile /public/home/guolj/nr/etk/hostfile /public/home/guolj/nr/etk/simulations/projectdns_maxwell_65_300_1_11251505_/SIMFACTORY/exe/cactus_sim -L 3 /public/home/guolj/nr/etk/simulations/projectdns_maxwell_65_300_1_11251505_/output-0000/dns.par
+fi
+
+echo "Stopping:"
+date
+echo "Done."

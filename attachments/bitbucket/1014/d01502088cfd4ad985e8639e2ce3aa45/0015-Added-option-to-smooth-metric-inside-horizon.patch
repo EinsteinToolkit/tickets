@@ -1,0 +1,60 @@
+From 94006f91d8f9dddf8b3981a92c5590dd5cea6049 Mon Sep 17 00:00:00 2001
+From: Josh Faber <jfaberrit@jafsmamacbook.main.ad.rit.edu>
+Date: Wed, 6 Jun 2012 14:13:26 -0400
+Subject: [PATCH 15/17] Added option to smooth metric inside horizon
+
+Signed-off-by: Bruno Coutinho Mundim <bcmsma@astro.rit.edu>
+---
+ param.ccl                 |    4 ++++
+ src/GRHydro_Bondi_new.F90 |   13 +++++++++++--
+ 2 files changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index 950be6d..29f7c29 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -97,6 +97,10 @@ REAL shock_radius "Radius of sperical shock"
+   0.0:*   :: "Anything positive"
+ } 1.0
+ 
++BOOLEAN use_smooth_puncture_data "Smooth puncture solution inside R=M using 4th order matching polynomial"
++{
++} "no"
++
+ BOOLEAN change_shock_direction "Change the shock direction"
+ { 
+ } "no"
+diff --git a/src/GRHydro_Bondi_new.F90 b/src/GRHydro_Bondi_new.F90
+index 31e7c43..bc059f6 100644
+--- a/src/GRHydro_Bondi_new.F90
++++ b/src/GRHydro_Bondi_new.F90
+@@ -55,7 +55,7 @@ subroutine GRHydro_Bondi_Iso(CCTK_ARGUMENTS)
+   CCTK_REAL :: M, Msq, Mdot, rs, gam, rmin_bondi, rmax_bondi, cs_sq,cs,vs_sq,vs,rhos,gtemp,hs, Kval, Qdot
+   CCTK_REAL :: logrmin,dlogr,rhotmp,utmp,vtmp,rspher
+   CCTK_REAL :: r_bondi(N_points), logr_bondi(N_points), rho_bondi(N_points), u_bondi(N_points), v_bondi(N_points)
+-  CCTK_REAL :: drhodr, det, rhocheck, rhocheck2, riso, rnew, rsch, ucheck
++  CCTK_REAL :: drhodr, det, rhocheck, rhocheck2, riso, rnew, rsch, ucheck, psinew
+   CCTK_REAL :: uiso, uisocheck, vcheck, ucheck2, vcheck2, xhat,yhat, zhat, xp, yp, zp
+ 
+   !!$set_bondi_parameters
+@@ -169,7 +169,16 @@ subroutine GRHydro_Bondi_Iso(CCTK_ARGUMENTS)
+            yhat = yp/riso
+            zhat = zp/riso
+            
+-           if(riso < 1.0e-7) then
++           if(use_smooth_puncture_data.ne.0 .and. riso.lt.M) then
++              psinew=2.875 - 5*(riso/M)**2 + 6*(riso/M)**4
++              gxx(i,j,k) = psinew**4
++              gyy(i,j,k) = psinew**4
++              gzz(i,j,k) = psinew**4
++              gxy(i,j,k) = 0.0
++              gxz(i,j,k) = 0.0
++              gyz(i,j,k) = 0.0
++
++           else if(riso < 1.0e-7) then
+               gxx(i,j,k) = 1.0e4
+               gyy(i,j,k) = 1.0e4
+               gzz(i,j,k) = 1.0e4
+-- 
+1.7.10.4
+

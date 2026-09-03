@@ -1,0 +1,42 @@
+From 521e1cd1eb413b67dbf5c83ece6c5ef55e2dcbd5 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@aei.mpg.de>
+Date: Thu, 20 Aug 2015 09:55:31 +0200
+Subject: [PATCH] CarpetLib: fix handling of ENOVOL operator
+
+---
+ CarpetLib/src/data.cc | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/CarpetLib/src/data.cc b/CarpetLib/src/data.cc
+index 755cdf7..0d9234d 100644
+--- a/CarpetLib/src/data.cc
++++ b/CarpetLib/src/data.cc
+@@ -1395,6 +1395,7 @@ transfer_restrict (data const * const src,
+   case op_copy:
+   case op_Lagrange:
+   case op_ENO:
++  case op_ENOVOL:
+   case op_WENO:
+   case op_TVD:
+   case op_Lagrange_monotone:
+@@ -1433,7 +1434,8 @@ transfer_restrict (data const * const src,
+         }
+         if (use_higher_order_restriction and
+             transport_operator != op_WENO and 
+-            transport_operator != op_ENO) { // HACK
++            transport_operator != op_ENO and
++            transport_operator != op_ENOVOL) { // HACK
+           switch (restriction_order_space) {
+           case 1:
+             // Don't use call_operator, because we parallelise ourselves
+@@ -1676,6 +1678,7 @@ time_interpolate (vector <data *> const & srcs,
+   }
+     
+   case op_ENO:
++  case op_ENOVOL:
+   case op_WENO:
+   case op_TVD:
+   case op_Lagrange_monotone: {
+-- 
+2.5.0
+

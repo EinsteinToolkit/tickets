@@ -1,0 +1,159 @@
+Index: qc0-mclachlan.par
+===================================================================
+--- qc0-mclachlan.par	(revision 31)
++++ qc0-mclachlan.par	(working copy)
+@@ -4,7 +4,7 @@
+ Cactus::highlight_warning_messages = no
+ 
+ Cactus::terminate       = "time"
+-Cactus::cctk_final_time = 100.0
++Cactus::cctk_final_time = 200.0
+ 
+ 
+ 
+@@ -32,8 +32,10 @@
+ 
+ ActiveThorns = "Slab"
+ 
++ActiveThorns = "TGRtensor"
+ 
+ 
++
+ ActiveThorns = "SummationByParts"
+ 
+ SummationByParts::order = 4
+@@ -331,6 +333,26 @@
+ 
+ 
+ 
++ActiveThorns = "WeylScal4 Multipole"
++WeylScal4::offset                    = 1e-8 
++WeylScal4::fd_order                  = "4th" 
++WeylScal4::verbose                   = 0 
++
++Multipole::nradii = 8
++Multipole::out_every = 128
++Multipole::radius[0] = 15
++Multipole::radius[1] = 30
++Multipole::radius[2] = 40
++Multipole::radius[3] = 50
++Multipole::radius[4] = 60
++Multipole::radius[5] = 70
++Multipole::radius[6] = 80
++Multipole::radius[7] = 90
++Multipole::variables = "WeylScal4::Psi4r{sw=-2 cmplx='WeylScal4::Psi4i' name='Psi4'}"
++Multipole::l_mode = 4
++Multipole::m_mode = 4
++
++
+ ActiveThorns = "AHFinderDirect"
+ 
+ AHFinderDirect::find_every = 128
+@@ -390,6 +412,23 @@
+ 
+ 
+ 
++ActiveThorns = "QuasiLocalMeasures"
++
++QuasiLocalMeasures::verbose              = yes
++QuasiLocalMeasures::interpolator         = "Lagrange polynomial interpolation"
++QuasiLocalMeasures::interpolator_options = "order=4"
++QuasiLocalMeasures::spatial_order        = 4
++
++QuasiLocalMeasures::num_surfaces     = 6
++QuasiLocalMeasures::surface_index[0] = 0
++QuasiLocalMeasures::surface_index[1] = 1
++QuasiLocalMeasures::surface_index[2] = 2
++QuasiLocalMeasures::surface_index[3] = 3
++QuasiLocalMeasures::surface_index[4] = 4
++QuasiLocalMeasures::surface_index[5] = 5
++
++
++
+ ActiveThorns = "CarpetIOBasic"
+ 
+ IOBasic::outInfo_every      = 128
+@@ -397,6 +436,8 @@
+ IOBasic::outInfo_vars       = "
+         Carpet::physical_time_per_hour
+         ML_ADMConstraints::H
++        SphericalSurface::sf_radius
++        QuasiLocalMeasures::qlm_spin[0]
+ "
+ 
+ 
+@@ -414,9 +455,19 @@
+         ADMBase::shift
+         ADMBase::dtlapse
+         ADMBase::dtshift
++        WEYLSCAL4::Psi4r
++        WEYLSCAL4::Psi4i
+         ML_ADMConstraints::ML_Ham
+         ML_ADMConstraints::ML_mom
+         SphericalSurface::sf_radius
++        QuasiLocalMeasures::qlm_newman_penrose
++        QuasiLocalMeasures::qlm_weyl_scalars
++        QuasiLocalMeasures::qlm_ricci_scalars
++        QuasiLocalMeasures::qlm_twometric
++        QuasiLocalMeasures::qlm_killing_vector
++        QuasiLocalMeasures::qlm_killed_twometric
++        QuasiLocalMeasures::qlm_invariant_coordinates
++        QuasiLocalMeasures::qlm_3determinant
+ "
+ 
+ 
+@@ -438,6 +489,8 @@
+         ADMBase::shift
+         ADMBase::dtlapse
+         ADMBase::dtshift
++        WEYLSCAL4::Psi4r
++        WEYLSCAL4::Psi4i
+         ML_ADMConstraints::ML_Ham
+         ML_ADMConstraints::ML_mom
+         SphericalSurface::sf_active
+@@ -446,6 +499,11 @@
+         SphericalSurface::sf_radius
+         SphericalSurface::sf_origin
+         SphericalSurface::sf_coordinate_descriptors
++        QuasiLocalMeasures::qlm_state
++        QuasiLocalMeasures::qlm_grid_int
++        QuasiLocalMeasures::qlm_grid_real
++        QuasiLocalMeasures::qlm_scalars
++        QuasiLocalMeasures::qlm_multipole_moments
+ "
+ 
+ IOASCII::out1D_every = 128
+@@ -457,9 +515,24 @@
+         ADMBase::shift
+         ADMBase::dtlapse
+         ADMBase::dtshift
++        WEYLSCAL4::Psi4r
++        WEYLSCAL4::Psi4i
+         ML_ADMConstraints::ML_Ham
+         ML_ADMConstraints::ML_mom
+         SphericalSurface::sf_radius
++        QuasiLocalMeasures::qlm_shapes
++        QuasiLocalMeasures::qlm_coordinates
++        QuasiLocalMeasures::qlm_tetrad_l
++        QuasiLocalMeasures::qlm_tetrad_n
++        QuasiLocalMeasures::qlm_tetrad_m
++        QuasiLocalMeasures::qlm_newman_penrose
++        QuasiLocalMeasures::qlm_weyl_scalars
++        QuasiLocalMeasures::qlm_ricci_scalars
++        QuasiLocalMeasures::qlm_twometric
++        QuasiLocalMeasures::qlm_killing_vector
++        QuasiLocalMeasures::qlm_killed_twometric
++        QuasiLocalMeasures::qlm_invariant_coordinates
++        QuasiLocalMeasures::qlm_3determinant
+ "
+ 
+ IOASCII::out2D_every = 128
+@@ -485,6 +558,8 @@
+         ADMBase::shift
+         ADMBase::dtlapse
+         ADMBase::dtshift
++        WEYLSCAL4::Psi4r
++        WEYLSCAL4::Psi4i
+         ML_ADMConstraints::ML_Ham
+         ML_ADMConstraints::ML_mom
+ "

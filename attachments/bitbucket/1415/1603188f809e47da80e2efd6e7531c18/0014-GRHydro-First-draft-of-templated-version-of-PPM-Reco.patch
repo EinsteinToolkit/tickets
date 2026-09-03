@@ -1,0 +1,589 @@
+From b5b270a7112c273a4c12b646a2de322f94f4b463 Mon Sep 17 00:00:00 2001
+From: Josh Faber <jfaberrit@jfaber3.local>
+Date: Sun, 28 Jul 2013 13:57:45 -0400
+Subject: [PATCH 14/19] GRHydro: First draft of templated version of PPM
+ Reconstruction call,
+
+Mostly involves slicing and unslicing 3-d grids into 1-d segments
+and calling the new templated routines in GRHydro_PPM.cc
+---
+ src/GRHydro_PPMReconstruct_drv_opt.cc |  521 +++++++++++++++++++++++++++++++++
+ src/GRHydro_PPM_opt.h                 |   38 +++
+ 2 files changed, 559 insertions(+)
+ create mode 100644 src/GRHydro_PPMReconstruct_drv_opt.cc
+ create mode 100644 src/GRHydro_PPM_opt.h
+
+diff --git a/src/GRHydro_PPMReconstruct_drv_opt.cc b/src/GRHydro_PPMReconstruct_drv_opt.cc
+new file mode 100644
+index 0000000..43df1b6
+--- /dev/null
++++ b/src/GRHydro_PPMReconstruct_drv_opt.cc
+@@ -0,0 +1,521 @@
++#include <cmath>
++#include <algorithm>
++#include <vector>
++#include "cctk.h"
++#include "cctk_Parameters.h"
++#include "cctk_Arguments.h"
++#include "cctk_Functions.h"
++#define MIN(a,b) (((a)<(b))?(a):(b))
++#define MAX(a,b) (((a)>(b))?(a):(b))
++
++#include "SpaceMask.h"
++#include "GRHydro_PPM_opt.h"
++
++//#define velx(i,j,k) vup(i,j,k,1)
++//#define vely(i,j,k) vup(i,j,k,2)
++//#define velz(i,j,k) vup(i,j,k,3)
++//#define sx(i,j,k) scon(i,j,k,1)
++//#define sy(i,j,k) scon(i,j,k,2)
++//#define sz(i,j,k) scon(i,j,k,3)
++
++using namespace std;
++
++extern "C" CCTK_INT GRHydro_UseGeneralCoordinates(const cGH * cctkGH);
++
++void oned_slice(int npt,int nstart,int nstride,CCTK_REAL* vec3d,vector<CCTK_REAL> vec1d)
++{
++  int i;
++  for (i=0; i<npt; i++)vec1d[i] = vec3d[nstart+i*nstride];
++  return;
++}
++
++void oned_unslice(int npt,int nstart,int nstride,vector<CCTK_REAL> vec1d,CCTK_REAL* vec3d)
++{
++  int i;
++  for (i=0; i<npt; i++)vec3d[nstart+i*nstride]=vec1d[i];
++  return;
++}
++
++/*
++  Cases that must be considered:
++  * basic hydro
++  * hydro + temperature + ye
++  * hydro + ye
++  * basic mhd
++  * mhd + temperature + ye 
++  * mhd + ye 
++  * mppm (not supported right now)
++  * not supporting trivial_rp
++  * with or without divergence cleaning
++ */
++
++void GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
++{
++  DECLARE_CCTK_ARGUMENTS;
++  DECLARE_CCTK_PARAMETERS;
++
++  CCTK_REAL * restrict g11, * restrict g12, *restrict g13;
++  CCTK_REAL * restrict g22, * restrict g23, *restrict g33;
++  CCTK_REAL * restrict beta1, * restrict beta2, * restrict beta3;
++  CCTK_REAL * restrict vup;
++
++  //Multipatch related pointers
++  if(GRHydro_UseGeneralCoordinates(cctkGH)) {
++    g11=gaa;
++    g12=gab;
++    g13=gac;
++    g22=gbb;
++    g23=gbc;
++    g33=gcc;
++    beta1=betaa;
++    beta2=betab;
++    beta3=betac;
++    vup=lvel;
++  } else {
++    g11=gxx;
++    g12=gxy;
++    g13=gxz;
++    g22=gyy;
++    g23=gyz;
++    g33=gzz;
++    beta1=betax;
++    beta2=betay;
++    beta3=betaz;
++    vup=vel;
++  }
++
++  int nx=cctk_lsh[0];
++  int ny=cctk_lsh[1];
++  int nz=cctk_lsh[2];
++  int nxy=nx*ny;
++  int nxyz=nxy*nz;
++
++  //Is there a more efficient way?
++  int nmax_xyz=MAX(nx,MAX(ny,nz));
++
++  int type_bitsx,type_bitsy,type_bitsz;
++  // UNUSED:   int trivialx,trivialy,trivialz;
++  int not_trivialx,not_trivialy,not_trivialz;
++
++  type_bitsx = SpaceMask_GetTypeBits("Hydro_RiemannProblemX");
++  //  trivialx = SpaceMask_GetStateBits("Hydro_RiemannProblemX","trivial");
++  not_trivialx = SpaceMask_GetStateBits("Hydro_RiemannProblemX","not_trivial");
++
++  type_bitsy = SpaceMask_GetTypeBits("Hydro_RiemannProblemY");
++  //  trivialy = SpaceMask_GetStateBits("Hydro_RiemannProblemY","trivial");
++  not_trivialy = SpaceMask_GetStateBits("Hydro_RiemannProblemY","not_trivial");
++
++  type_bitsz = SpaceMask_GetTypeBits("Hydro_RiemannProblemZ");
++  //  trivialz = SpaceMask_GetStateBits("Hydro_RiemannProblemZ","trivial");
++  not_trivialz = SpaceMask_GetStateBits("Hydro_RiemannProblemZ","not_trivial");
++    
++  // ENHANCED PPM IS NOT IMPLEMENTED
++  //   logical :: apply_enhanced_ppm
++  //   ! if use_enhanced_ppm, allow old PPM on one level
++  //   if (GRHydro_oppm_reflevel .eq. (-1) .or. &
++  //        GRHydro_reflevel .ne. GRHydro_oppm_reflevel) then
++  //      apply_enhanced_ppm = use_enhanced_ppm .ne. 0
++  //   else
++  //      apply_enhanced_ppm = .false.
++  //   end if
++  
++  
++  int i,j,k;
++  vector<CCTK_REAL> rho1d(nmax_xyz);
++
++  vector<CCTK_REAL> velx1d(nmax_xyz);
++  vector<CCTK_REAL> vely1d(nmax_xyz);
++  vector<CCTK_REAL> velz1d(nmax_xyz);
++  vector<CCTK_REAL> eps1d(nmax_xyz);
++  vector<CCTK_REAL> temp1d(nmax_xyz);
++  vector<CCTK_REAL> ye1d(nmax_xyz);
++  vector<CCTK_REAL> press1d(nmax_xyz);
++  vector<CCTK_REAL> Bvcx1d(nmax_xyz);
++  vector<CCTK_REAL> Bvcy1d(nmax_xyz);
++  vector<CCTK_REAL> Bvcz1d(nmax_xyz);
++  vector<CCTK_REAL> psidc1d(nmax_xyz);
++
++  vector<CCTK_REAL> rho1d_plus(nmax_xyz);
++  vector<CCTK_REAL> velx1d_plus(nmax_xyz);
++  vector<CCTK_REAL> vely1d_plus(nmax_xyz);
++  vector<CCTK_REAL> velz1d_plus(nmax_xyz);
++  vector<CCTK_REAL> eps1d_plus(nmax_xyz);
++  vector<CCTK_REAL> temp1d_plus(nmax_xyz);
++  vector<CCTK_REAL> ye1d_plus(nmax_xyz);
++  vector<CCTK_REAL> Bvcx1d_plus(nmax_xyz);
++  vector<CCTK_REAL> Bvcy1d_plus(nmax_xyz);
++  vector<CCTK_REAL> Bvcz1d_plus(nmax_xyz);
++  vector<CCTK_REAL> psidc1d_plus(nmax_xyz);
++
++  vector<CCTK_REAL> rho1d_minus(nmax_xyz);
++  vector<CCTK_REAL> velx1d_minus(nmax_xyz);
++  vector<CCTK_REAL> vely1d_minus(nmax_xyz);
++  vector<CCTK_REAL> velz1d_minus(nmax_xyz);
++  vector<CCTK_REAL> eps1d_minus(nmax_xyz);
++  vector<CCTK_REAL> temp1d_minus(nmax_xyz);
++  vector<CCTK_REAL> ye1d_minus(nmax_xyz);
++  vector<CCTK_REAL> Bvcx1d_minus(nmax_xyz);
++  vector<CCTK_REAL> Bvcy1d_minus(nmax_xyz);
++  vector<CCTK_REAL> Bvcz1d_minus(nmax_xyz);
++  vector<CCTK_REAL> psidc1d_minus(nmax_xyz);
++
++  int npt,nstart,nstride;
++
++  //index = i + j*nx + k*nx*ny;
++
++// !!$ PPM starts:
++  if (flux_direction[0] == 1){
++    //          !$OMP PARALLEL DO PRIVATE(i, j, k)
++    
++    for(k = GRHydro_stencil-1; k < nz - GRHydro_stencil; k++) {
++      for(j = GRHydro_stencil-1; j < ny - GRHydro_stencil; j++) {
++        
++        //For reference, the slicing call is:
++        //void oned_slice(int npt,int nstart,int nstride,CCTK_REAL* vec3d,CCTK_REAL* vec1d)
++        nstart=nx*(j+k*ny);
++        
++        oned_slice(nx,nstart,1,rho,rho1d);
++        
++        oned_slice(nx,nstart,       1,vup,velx1d);
++        oned_slice(nx,nstart+nxyz,  1,vup,velx1d);
++        oned_slice(nx,nstart+2*nxyz,1,vup,velx1d);
++        
++        oned_slice(nx,nstart,1,eps,eps1d);
++        oned_slice(nx,nstart,1,press,press1d);
++        
++        if(Y_e!=NULL) {
++          oned_slice(nx,nstart,1,Y_e,ye1d);
++          if(temperature!=NULL){
++            oned_slice(nx,nstart,1,temperature,temp1d);
++          } 
++        }
++        
++        if(Bvec!=NULL) {
++          oned_slice(nx,nstart,       1,Bvec,Bvcx1d);
++          oned_slice(nx,nstart+nxyz,  1,Bvec,Bvcy1d);
++          oned_slice(nx,nstart+2*nxyz,1,Bvec,Bvcz1d);
++          if(clean_divergence) {
++            oned_slice(nx,nstart,1,psidc,psidc1d);
++          }
++        } else if (CCTK_Equals(Bvec_evolution_method,"GRHydro_Avec")) {
++          CCTK_WARN(0, "Someone needs to figure out which variables to pass for Avec");
++        }
++        
++        //This needs to be fixed into a loop for the the template version!
++        //WE'll need booleans arguments corresponding to the following 
++        //ppm1d_cxx<do_temp,do_ye,do_mhd,clean_divergence,ppm_detect>
++        
++        ppm1d_cxx<true,true,true,true,true>
++          (nx,CCTK_DELTA_SPACE(0),
++           &rho1d[0],&velx1d[0],&vely1d[0],&velz1d[0],&eps1d[0],&press1d[0],&temp1d[0],
++           &ye1d[0],&Bvcx1d[0],&Bvcy1d[0],&Bvcz1d[0],&psidc1d[0],
++           &rho1d_minus[0],&velx1d_minus[0],&vely1d_minus[0],&velz1d_minus[0],&eps1d_minus[0],&temp1d_minus[0],
++           &ye1d_minus[0],&Bvcx1d_minus[0],&Bvcy1d_minus[0],&Bvcz1d_minus[0],&psidc1d_minus[0],
++           &rho1d_plus[0],&velx1d_plus[0],&vely1d_plus[0],&velz1d_plus[0],&eps1d_plus[0],&temp1d_plus[0],
++           &ye1d_plus[0],&Bvcx1d_plus[0],&Bvcy1d_plus[0],&Bvcz1d_plus[0],&psidc1d_plus[0]);
++        
++        
++        oned_unslice(nx,nstart,1,rho1d_minus,rhominus);
++        oned_unslice(nx,nstart,1,rho1d_plus,rhoplus);
++        
++        oned_unslice(nx,nstart,1,velx1d_minus,velxminus);
++        oned_unslice(nx,nstart,1,vely1d_minus,velyminus);
++        oned_unslice(nx,nstart,1,velz1d_minus,velzminus);
++        oned_unslice(nx,nstart,1,velx1d_plus,velxplus);
++        oned_unslice(nx,nstart,1,vely1d_plus,velyplus);
++        oned_unslice(nx,nstart,1,velz1d_plus,velzplus);
++        
++        oned_unslice(nx,nstart,1,eps1d_minus,epsminus);
++        oned_unslice(nx,nstart,1,eps1d_plus,epsplus);
++        
++        if(CCTK_Equals(Y_e_evolution_method,"GRHydro")) {
++          oned_unslice(nx,nstart,1,ye1d_minus,Y_e_minus);
++          oned_unslice(nx,nstart,1,ye1d_plus,Y_e_plus);
++          if(CCTK_Equals(temperature_evolution_method,"GRHydro")) {
++            oned_unslice(nx,nstart,1,temp1d_minus,tempminus);
++            oned_unslice(nx,nstart,1,temp1d_plus,tempplus);
++          }
++        }
++        
++        if(CCTK_Equals(Bvec_evolution_method,"GRHydro")) {
++          oned_unslice(nx,nstart,1,Bvcx1d_minus,Bvecxminus);
++          oned_unslice(nx,nstart,1,Bvcy1d_minus,Bvecyminus);
++          oned_unslice(nx,nstart,1,Bvcz1d_minus,Bveczminus);
++          oned_unslice(nx,nstart,1,Bvcx1d_plus,Bvecxplus);
++          oned_unslice(nx,nstart,1,Bvcy1d_plus,Bvecyplus);
++          oned_unslice(nx,nstart,1,Bvcz1d_plus,Bveczplus);
++          if(clean_divergence) {
++            oned_unslice(nx,nstart,1,psidc1d_minus,psidcminus);
++            oned_unslice(nx,nstart,1,psidc1d_plus,psidcplus);
++          }
++        }
++        for (i=0; i<nx; i++) {
++          SpaceMask_SetStateBits(space_mask, i+j*nx+k*nx*ny, type_bitsx, not_trivialx);
++        }
++      }
++    }  
++    //          !$OMP END PARALLEL DO
++
++  } else if (flux_direction[0]==2) {
++
++    //          !$OMP PARALLEL DO PRIVATE(i, j, k)
++    //Make sure to doublecheck the bounds here!
++    for(k = GRHydro_stencil-1; k < nz - GRHydro_stencil; k++) {
++      for(j = GRHydro_stencil-1; j < nx - GRHydro_stencil; j++) {
++        
++        nstart=j+k*nx*ny;
++        
++        oned_slice(ny,nstart,nx,rho,rho1d);
++        
++        oned_slice(ny,nstart,       nx,vup,velx1d);
++        oned_slice(ny,nstart+nxyz,  nx,vup,velx1d);
++        oned_slice(ny,nstart+2*nxyz,nx,vup,velx1d);
++        
++        oned_slice(ny,nstart,nx,eps,eps1d);
++        oned_slice(ny,nstart,nx,press,press1d);
++        
++        if(Y_e!=NULL) {
++          oned_slice(ny,nstart,nx,Y_e,ye1d);
++          if(temperature!=NULL){
++            oned_slice(ny,nstart,nx,temperature,temp1d);
++          } 
++        }
++        
++        if(Bvec!=NULL) {
++          oned_slice(ny,nstart,       nx,Bvec,Bvcx1d);
++          oned_slice(ny,nstart+nxyz,  nx,Bvec,Bvcy1d);
++          oned_slice(ny,nstart+2*nxyz,nx,Bvec,Bvcz1d);
++          if(clean_divergence) {
++            oned_slice(ny,nstart,nx,psidc,psidc1d);
++          }
++        } else if (CCTK_Equals(Bvec_evolution_method,"GRHydro_Avec")) {
++          CCTK_WARN(0, "Someone needs to figure out which variables to pass for Avec");
++        }
++        
++        //This needs to be fixed into a loop for the the template version!
++        //WE'll need booleans arguments corresponding to the following 
++        //ppm1d_cxx<do_temp,do_ye,do_mhd,clean_divergence,ppm_detect>
++        
++        ppm1d_cxx<true,true,true,true,true>
++          (ny,CCTK_DELTA_SPACE(1),
++           &rho1d[0],&vely1d[0],&velz1d[0],&velx1d[0],&eps1d[0],&press1d[0],&temp1d[0],
++           &ye1d[0],&Bvcy1d[0],&Bvcz1d[0],&Bvcx1d[0],&psidc1d[0],
++           &rho1d_minus[0],&vely1d_minus[0],&velz1d_minus[0],&velx1d_minus[0],&eps1d_minus[0],&temp1d_minus[0],
++           &ye1d_minus[0],&Bvcy1d_minus[0],&Bvcz1d_minus[0],&Bvcx1d_minus[0],&psidc1d_minus[0],
++           &rho1d_plus[0],&vely1d_plus[0],&velz1d_plus[0],&velx1d_plus[0],&eps1d_plus[0],&temp1d_plus[0],
++           &ye1d_plus[0],&Bvcy1d_plus[0],&Bvcz1d_plus[0],&Bvcx1d_plus[0],&psidc1d_plus[0]);
++        
++        
++        oned_unslice(ny,nstart,nx,rho1d_minus,rhominus);
++        oned_unslice(ny,nstart,nx,rho1d_plus,rhoplus);
++        
++        oned_unslice(ny,nstart,nx,velx1d_minus,velxminus);
++        oned_unslice(ny,nstart,nx,vely1d_minus,velyminus);
++        oned_unslice(ny,nstart,nx,velz1d_minus,velzminus);
++        oned_unslice(ny,nstart,nx,velx1d_plus,velxplus);
++        oned_unslice(ny,nstart,nx,vely1d_plus,velyplus);
++        oned_unslice(ny,nstart,nx,velz1d_plus,velzplus);
++        
++        oned_unslice(ny,nstart,nx,eps1d_minus,epsminus);
++        oned_unslice(ny,nstart,nx,eps1d_plus,epsplus);
++        
++        if(CCTK_Equals(Y_e_evolution_method,"GRHydro")) {
++          oned_unslice(ny,nstart,nx,ye1d_minus,Y_e_minus);
++          oned_unslice(ny,nstart,nx,ye1d_plus,Y_e_plus);
++          if(CCTK_Equals(temperature_evolution_method,"GRHydro")) {
++            oned_unslice(ny,nstart,nx,temp1d_minus,tempminus);
++            oned_unslice(ny,nstart,nx,temp1d_plus,tempplus);
++          }
++        }
++        
++        if(CCTK_Equals(Bvec_evolution_method,"GRHydro")) {
++          oned_unslice(ny,nstart,nx,Bvcx1d_minus,Bvecxminus);
++          oned_unslice(ny,nstart,nx,Bvcy1d_minus,Bvecyminus);
++          oned_unslice(ny,nstart,nx,Bvcz1d_minus,Bveczminus);
++          oned_unslice(ny,nstart,nx,Bvcx1d_plus,Bvecxplus);
++          oned_unslice(ny,nstart,nx,Bvcy1d_plus,Bvecyplus);
++          oned_unslice(ny,nstart,nx,Bvcz1d_plus,Bveczplus);
++          if(clean_divergence) {
++            oned_unslice(ny,nstart,nx,psidc1d_minus,psidcminus);
++            oned_unslice(ny,nstart,nx,psidc1d_plus,psidcplus);
++          }
++        }
++        for (i=0; i<ny; i++) {
++          SpaceMask_SetStateBits(space_mask, j+i*nx+k*nx*ny, type_bitsy, not_trivialy);
++        }
++        
++      }
++    }
++    //          !$OMP END PARALLEL DO
++    
++  } else if (flux_direction[0]==3) {
++
++    //          !$OMP PARALLEL DO PRIVATE(i, j, k)
++    //Make sure to doublecheck the bounds here!
++    for(k = GRHydro_stencil-1; k < ny - GRHydro_stencil; k++) {
++      for(j = GRHydro_stencil-1; j < nx - GRHydro_stencil; j++) {
++        
++        nstart=j+k*nx;
++
++        oned_slice(nz,nstart,nxy,rho,rho1d);
++        
++        oned_slice(nz,nstart,       nxy,vup,velx1d);
++        oned_slice(nz,nstart+nxyz,  nxy,vup,velx1d);
++        oned_slice(nz,nstart+2*nxyz,nxy,vup,velx1d);
++        
++        oned_slice(nz,nstart,nxy,eps,eps1d);
++        oned_slice(nz,nstart,nxy,press,press1d);
++        
++        if(Y_e!=NULL) {
++          oned_slice(nz,nstart,nxy,Y_e,ye1d);
++          if(temperature!=NULL){
++            oned_slice(nz,nstart,nxy,temperature,temp1d);
++          } 
++        }
++        
++        if(Bvec!=NULL) {
++          oned_slice(nz,nstart,       nxy,Bvec,Bvcx1d);
++          oned_slice(nz,nstart+nxyz,  nxy,Bvec,Bvcy1d);
++          oned_slice(nz,nstart+2*nxyz,nxy,Bvec,Bvcz1d);
++          if(clean_divergence) {
++            oned_slice(nz,nstart,nxy,psidc,psidc1d);
++          }
++        } else if (CCTK_Equals(Bvec_evolution_method,"GRHydro_Avec")) {
++          CCTK_WARN(0, "Someone needs to figure out which variables to pass for Avec");
++        }
++        
++        //This needs to be fixed into a loop for the the template version!
++        //WE'll need booleans arguments corresponding to the following 
++        //ppm1d_cxx<do_temp,do_ye,do_mhd,clean_divergence,ppm_detect>
++        
++        ppm1d_cxx<true,true,true,true,true>
++          (ny,CCTK_DELTA_SPACE(1),
++           &rho1d[0],&velz1d[0],&velx1d[0],&vely1d[0],&eps1d[0],&press1d[0],&temp1d[0],
++           &ye1d[0],&Bvcz1d[0],&Bvcx1d[0],&Bvcy1d[0],&psidc1d[0],
++           &rho1d_minus[0],&velz1d_minus[0],&velx1d_minus[0],&vely1d_minus[0],&eps1d_minus[0],&temp1d_minus[0],
++           &ye1d_minus[0],&Bvcz1d_minus[0],&Bvcx1d_minus[0],&Bvcy1d_minus[0],&psidc1d_minus[0],
++           &rho1d_plus[0],&velz1d_plus[0],&velx1d_plus[0],&vely1d_plus[0],&eps1d_plus[0],&temp1d_plus[0],
++           &ye1d_plus[0],&Bvcz1d_plus[0],&Bvcx1d_plus[0],&Bvcy1d_plus[0],&psidc1d_plus[0]);
++        
++        
++        oned_unslice(nz,nstart,nxy,rho1d_minus,rhominus);
++        oned_unslice(nz,nstart,nxy,rho1d_plus,rhoplus);
++        
++        oned_unslice(nz,nstart,nxy,velx1d_minus,velxminus);
++        oned_unslice(nz,nstart,nxy,vely1d_minus,velyminus);
++        oned_unslice(nz,nstart,nxy,velz1d_minus,velzminus);
++        oned_unslice(nz,nstart,nxy,velx1d_plus,velxplus);
++        oned_unslice(nz,nstart,nxy,vely1d_plus,velyplus);
++        oned_unslice(nz,nstart,nxy,velz1d_plus,velzplus);
++        
++        oned_unslice(nz,nstart,nxy,eps1d_minus,epsminus);
++        oned_unslice(nz,nstart,nxy,eps1d_plus,epsplus);
++        
++        if(CCTK_Equals(Y_e_evolution_method,"GRHydro")) {
++          oned_unslice(nz,nstart,nxy,ye1d_minus,Y_e_minus);
++          oned_unslice(nz,nstart,nxy,ye1d_plus,Y_e_plus);
++          if(CCTK_Equals(temperature_evolution_method,"GRHydro")) {
++            oned_unslice(nz,nstart,nxy,temp1d_minus,tempminus);
++            oned_unslice(nz,nstart,nxy,temp1d_plus,tempplus);
++          }
++        }
++        
++        if(CCTK_Equals(Bvec_evolution_method,"GRHydro")) {
++          oned_unslice(nz,nstart,nxy,Bvcx1d_minus,Bvecxminus);
++          oned_unslice(nz,nstart,nxy,Bvcy1d_minus,Bvecyminus);
++          oned_unslice(nz,nstart,nxy,Bvcz1d_minus,Bveczminus);
++          oned_unslice(nz,nstart,nxy,Bvcx1d_plus,Bvecxplus);
++          oned_unslice(nz,nstart,nxy,Bvcy1d_plus,Bvecyplus);
++          oned_unslice(nz,nstart,nxy,Bvcz1d_plus,Bveczplus);
++          if(clean_divergence) {
++            oned_unslice(nz,nstart,nxy,psidc1d_minus,psidcminus);
++            oned_unslice(nz,nstart,nxy,psidc1d_plus,psidcplus);
++          }
++        }
++        for (i=0; i<nz; i++) {
++          SpaceMask_SetStateBits(space_mask, j+k*nx+i*nx*ny, type_bitsz, not_trivialz);
++        }
++        
++      }
++    }
++    //          !$OMP END PARALLEL DO
++    
++
++  }
++}
++
++
++//            trivial_rp(:,j,k) = .false.
++//            call PPMtyc(nx,CCTK_DELTA_SPACE(1),rho(:,j,k),velx(:,j,k),&
++//                 vely(:,j,k),velz(:,j,k),eps(:,j,k),temperature(:,j,k),Y_e(:,j,k),&
++//                 press(:,j,k),rhominus(:,j,k),&
++//                 velxminus(:,j,k),velyminus(:,j,k),velzminus(:,j,k),&
++//                 epsminus(:,j,k),tempminus(:,j,k), y_e_minus(:,j,k),&
++//                 rhoplus(:,j,k),&
++//                 velxplus(:,j,k),velyplus(:,j,k),velzplus(:,j,k),&
++//                 epsplus(:,j,k),tempplus(:,j,k),y_e_plus(:,j,k))
++//              do i = 1, nx
++//                 if (trivial_rp(i,j,k)) then
++//                   SpaceMask_SetStateBitsF90(space_mask, i, j, k, type_bitsx, trivialx)
++//                 else
++//                   SpaceMask_SetStateBitsF90(space_mask, i, j, k, type_bitsx, not_trivialx)
++//                 end if
++//              end do
++//            end do
++//          end do
++//          !$OMP END PARALLEL DO
++//       else if (flux_direction == 2) then
++//         !$OMP PARALLEL DO PRIVATE(i, j, k)
++//         do k = GRHydro_stencil, nz - GRHydro_stencil + 1
++//           do j = GRHydro_stencil, nx - GRHydro_stencil + 1
++//            trivial_rp(j,:,k) = .false.
++//            call PPMtyc(ny,CCTK_DELTA_SPACE(2),rho(j,:,k),&
++//                 vely(j,:,k),velz(j,:,k),velx(j,:,k),&
++//                 eps(j,:,k),temperature(j,:,k),Y_e(j,:,k), &
++//                 press(j,:,k),rhominus(j,:,k),&
++//                 velyminus(j,:,k),velzminus(j,:,k),velxminus(j,:,k),&
++//                 epsminus(j,:,k),tempminus(j,:,k), y_e_minus(j,:,k),rhoplus(j,:,k),&
++//                 velyplus(j,:,k),velzplus(j,:,k),velxplus(j,:,k),&
++//                 epsplus(j,:,k),tempplus(j,:,k),y_e_plus(j,:,k))
++//             do i = 1, ny
++//               if (trivial_rp(j,i,k)) then
++//                  SpaceMask_SetStateBitsF90(space_mask, j, i, k, type_bitsy, trivialy)
++//               else
++//                  SpaceMask_SetStateBitsF90(space_mask, j, i, k, type_bitsy, not_trivialy)
++//               end if
++//             end do
++//           end do
++//         end do
++//         !$OMP END PARALLEL DO
++
++//     else if (flux_direction == 3) then
++//         !$OMP PARALLEL DO PRIVATE(i, j, k)
++//         do k = GRHydro_stencil, ny - GRHydro_stencil + 1
++//           do j = GRHydro_stencil, nx - GRHydro_stencil + 1
++//            trivial_rp(j,k,:) = .false.
++//            call PPMtyc(nz,CCTK_DELTA_SPACE(3),rho(j,k,:),&
++//                 velz(j,k,:),velx(j,k,:),vely(j,k,:),&
++//                 eps(j,k,:),temperature(j,k,:),Y_e(j,k,:), press(j,k,:),rhominus(j,k,:),&
++//                 velzminus(j,k,:),velxminus(j,k,:),velyminus(j,k,:),&
++//                 epsminus(j,k,:),tempminus(j,k,:),y_e_minus(j,k,:),rhoplus(j,k,:),&
++//                 velzplus(j,k,:),velxplus(j,k,:),velyplus(j,k,:),&
++//                 epsplus(j,k,:),tempplus(j,k,:),y_e_plus(j,k,:))
++//             do i = 1, nz
++//               if (trivial_rp(j,k,i)) then
++//                 SpaceMask_SetStateBitsF90(space_mask, j, k, i, type_bitsz, trivialz)
++//               else
++//                 SpaceMask_SetStateBitsF90(space_mask, j, k, i, type_bitsz, not_trivialz)
++//               end if
++//             end do
++//           end do
++//         end do
++//         !$OMP END PARALLEL DO
++//     else
++//       call CCTK_WARN(0, "Flux direction not x,y,z")
++//     end if
++// !!$ PPM ends.
++
++//   deallocate(trivial_rp)
++
++// end subroutine GRHydro_PPMReconstruct_drv
++
+diff --git a/src/GRHydro_PPM_opt.h b/src/GRHydro_PPM_opt.h
+new file mode 100644
+index 0000000..9f3f51b
+--- /dev/null
++++ b/src/GRHydro_PPM_opt.h
+@@ -0,0 +1,38 @@
++template<bool do_temp, bool do_ye, bool do_mhd, 
++	 bool dc_flag, bool do_ppm_detect>
++static void ppm1d_cxx(const int nx, 
++		      const double dx, 
++		      const double* restrict rho, 
++		      const double* restrict velx,
++		      const double* restrict vely, 
++		      const double* restrict velz, 
++		      const double* restrict eps, 
++		      const double* restrict press,
++		      const double* restrict temp,
++		      const double* restrict ye,
++		      const double* restrict Bvcx,
++		      const double* restrict Bvcy,
++		      const double* restrict Bvcz,
++		      const double* restrict psidc,
++		      double* restrict rhominus, 
++		      double* restrict velxminus, 
++		      double* restrict velyminus,
++		      double* restrict velzminus, 
++		      double* restrict epsminus, 
++		      double* restrict tempminus, 
++		      double* restrict yeminus, 
++		      double* restrict Bvcxminus,
++		      double* restrict Bvcyminus,
++		      double* restrict Bvczminus,
++		      double* restrict psidcminus,
++		      double* restrict rhoplus, 
++		      double* restrict velxplus, 
++		      double* restrict velyplus,
++		      double* restrict velzplus, 
++		      double* restrict epsplus,
++		      double* restrict tempplus, 
++		      double* restrict yeplus,
++		      double* restrict Bvcxplus,
++		      double* restrict Bvcyplus,
++		      double* restrict Bvczplus,
++		      double* restrict psidcplus);
+-- 
+1.7.10.4
+

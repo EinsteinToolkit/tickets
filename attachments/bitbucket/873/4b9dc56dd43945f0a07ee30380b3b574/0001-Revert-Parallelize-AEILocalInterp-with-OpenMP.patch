@@ -1,0 +1,1897 @@
+From c6471b9f2d2e052a021dfa218a84ba111db58d71 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Fri, 18 May 2012 02:46:36 +0200
+Subject: [PATCH] Revert "Parallelize AEILocalInterp with OpenMP"
+
+This reverts the previous commit (r55).  See discussion in
+https://trac.einsteintoolkit.org/ticket/873.  Essentially, this causes
+some test cases to fail with error messages that we don't understand,
+so we are reverting this commit for the upcoming release until we
+understand this.
+---
+ src/InterpLocalUniform.c   |  158 ++++++++++++------------
+ src/InterpLocalUniform.h   |   56 ++++----
+ src/common/evaluate.c      |   64 +++++-----
+ src/common/evaluate.h      |   64 +++++-----
+ src/common/load-template.c |   38 ++++--
+ src/common/load-template.h |   32 +++---
+ src/common/store.c         |   64 +++++-----
+ src/common/store.h         |   64 +++++-----
+ src/molecule_posn.c        |    2 +-
+ src/template.c             |  293 +++++++++++++++++++++-----------------------
+ src/template.h             |   36 +++---
+ src/util.c                 |    1 +
+ 12 files changed, 435 insertions(+), 437 deletions(-)
+
+diff --git a/src/InterpLocalUniform.c b/src/InterpLocalUniform.c
+index 0d0ff63..3d35b2c 100644
+--- a/src/InterpLocalUniform.c
++++ b/src/InterpLocalUniform.c
+@@ -104,21 +104,21 @@ static
+ 			 int N_dims,
+ 			 int param_table_handle,
+ 		       /***** coordinate system *****/
+-			 const CCTK_REAL *restrict coord_origin,
+-			 const CCTK_REAL *restrict coord_delta,
++			 const CCTK_REAL coord_origin[],
++			 const CCTK_REAL coord_delta[],
+ 		       /***** interpolation points *****/
+ 			 int N_interp_points,
+ 			 int interp_coords_type_code,
+-			 const void *restrict const *restrict interp_coords,
++			 const void *const interp_coords[],
+ 		       /***** input arrays *****/
+ 			 int N_input_arrays,
+-			 const CCTK_INT *restrict input_array_dims,
+-			 const CCTK_INT *restrict input_array_type_codes,
+-			 const void *restrict const *restrict input_arrays,
++			 const CCTK_INT input_array_dims[],
++			 const CCTK_INT input_array_type_codes[],
++			 const void *const input_arrays[],
+ 		       /***** output arrays *****/
+ 			 int N_output_arrays,
+-			 const CCTK_INT *restrict output_array_type_codes,
+-			 void *restrict const *restrict output_arrays);
++			 const CCTK_INT output_array_type_codes[],
++			 void *const output_arrays[]);
+ 
+ static
+   void check_boundary_tolerances
+@@ -127,48 +127,48 @@ static
+ 	 const CCTK_REAL boundary_extrapolation_tolerance[MAX_N_BOUNDARIES]);
+ static
+   int get_error_point_info(int param_table_handle,
+-			   struct error_info *restrict p_error_info);
++			   struct error_info *p_error_info);
+ static
+   int get_and_decode_molecule_family
+ 	(int param_table_handle,
+-	 int buffer_size, char *restrict molecule_family_string_buffer,
+-	 enum molecule_family *restrict p_molecule_family);
++	 int buffer_size, char molecule_family_string_buffer[],
++	 enum molecule_family *p_molecule_family);
+ static
+   int get_molecule_positions
+ 	(int param_table_handle,
+-	 int N_dims, CCTK_INT *restrict molecule_positions_array[MAX_N_DIMS]);
++	 int N_dims, CCTK_INT* molecule_positions_array[MAX_N_DIMS]);
+ static
+   int get_Jacobian_info(int param_table_handle,
+ 			int N_dims, int N_output_arrays,
+-			struct Jacobian_info *restrict p_Jacobian_info);
++			struct Jacobian_info* p_Jacobian_info);
+ static
+   int set_error_info(int param_table_handle,
+-		     struct error_info *restrict p_error_info);
++		     struct error_info* p_error_info);
+ static
+   int set_molecule_structure
+ 	(int param_table_handle,
+-	 const struct molecule_structure_flags *restrict p_molecule_structure_flags);
++	 const struct molecule_structure_flags* p_molecule_structure_flags);
+ static
+   int set_molecule_min_max_m
+ 	(int param_table_handle,
+ 	 int N_dims,
+-	 const struct molecule_min_max_m_info *restrict p_molecule_min_max_m_info);
++	 const struct molecule_min_max_m_info* p_molecule_min_max_m_info);
+ 
+ static
+-  int get_and_check_INT(int param_table_handle, const char *restrict name,
++  int get_and_check_INT(int param_table_handle, const char name[],
+ 			bool mandatory_flag, int default_value,
+ 			bool check_range_flag, int min_value, int max_value,
+-			const char *restrict max_value_string,
+-			CCTK_INT *restrict p_value);
++			const char max_value_string[],
++			CCTK_INT* p_value);
+ static
+-  int get_INT_array(int param_table_handle, const char *restrict name,
++  int get_INT_array(int param_table_handle, const char name[],
+ 		    bool default_flag, int default_value,
+-		    int N, CCTK_INT *restrict buffer,
+-		    bool *restrict p_value_not_set);
++		    int N, CCTK_INT buffer[],
++		    bool* p_value_not_set);
+ static
+-  int get_REAL_array(int param_table_handle, const char *restrict name,
++  int get_REAL_array(int param_table_handle, const char name[],
+ 		      CCTK_REAL default_value,
+-		      int N, CCTK_REAL *restrict buffer);
++		      int N, CCTK_REAL buffer[]);
+ 
+ /**************************************/
+ 
+@@ -424,21 +424,21 @@ static const p_interp_fn_t p_interp_fn_table[N_INTERP_OPERATORS]
+ int AEILocalInterp_U_Lagrange_TP(int N_dims,
+ 				 int param_table_handle,
+ 				 /***** coordinate system *****/
+-				 const CCTK_REAL *restrict coord_origin,
+-				 const CCTK_REAL *restrict coord_delta,
++				 const CCTK_REAL coord_origin[],
++				 const CCTK_REAL coord_delta[],
+ 				 /***** interpolation points *****/
+ 				 int N_interp_points,
+ 				 int interp_coords_type_code,
+-				 const void *restrict const *restrict interp_coords,
++				 const void *const interp_coords[],
+ 				 /***** input arrays *****/
+ 				 int N_input_arrays,
+-				 const CCTK_INT *restrict input_array_dims,
+-				 const CCTK_INT *restrict input_array_type_codes,
+-				 const void *restrict const *restrict input_arrays,
++				 const CCTK_INT input_array_dims[],
++				 const CCTK_INT input_array_type_codes[],
++				 const void *const input_arrays[],
+ 				 /***** output arrays *****/
+ 				 int N_output_arrays,
+-				 const CCTK_INT *restrict output_array_type_codes,
+-				 void *restrict const *restrict output_arrays)
++				 const CCTK_INT output_array_type_codes[],
++				 void *const output_arrays[])
+ {
+ return InterpLocalUniform(interp_operator_Lagrange_TP,
+ 			  "Lagrange polynomial interpolation (tensor product)",
+@@ -492,21 +492,21 @@ return InterpLocalUniform(interp_operator_Lagrange_TP,
+ int AEILocalInterp_U_Lagrange_MD(int N_dims,
+ 				int param_table_handle,
+ 				/***** coordinate system *****/
+-				const CCTK_REAL *restrict coord_origin,
+-				const CCTK_REAL *restrict coord_delta,
++				const CCTK_REAL coord_origin[],
++				const CCTK_REAL coord_delta[],
+ 				/***** interpolation points *****/
+ 				int N_interp_points,
+ 				int interp_coords_type_code,
+-				const void *restrict const *restrict interp_coords,
++				const void *const interp_coords[],
+ 				/***** input arrays *****/
+ 				int N_input_arrays,
+-				const CCTK_INT *restrict input_array_dims,
+-				const CCTK_INT *restrict input_array_type_codes,
+-				const void *restrict const *restrict input_arrays,
++				const CCTK_INT input_array_dims[],
++				const CCTK_INT input_array_type_codes[],
++				const void *const input_arrays[],
+ 				/***** output arrays *****/
+ 				int N_output_arrays,
+-				const CCTK_INT *restrict output_array_type_codes,
+-				void *restrict const *restrict output_arrays)
++				const CCTK_INT output_array_type_codes[],
++				void *const output_arrays[])
+ {
+ return InterpLocalUniform(interp_operator_Lagrange_MD,
+ 			  "Lagrange polynomial interpolation (maximum degree)",
+@@ -553,21 +553,21 @@ return InterpLocalUniform(interp_operator_Lagrange_MD,
+ int AEILocalInterp_U_Hermite(int N_dims,
+ 			    int param_table_handle,
+ 			    /***** coordinate system *****/
+-			    const CCTK_REAL *restrict coord_origin,
+-			    const CCTK_REAL *restrict coord_delta,
++			    const CCTK_REAL coord_origin[],
++			    const CCTK_REAL coord_delta[],
+ 			    /***** interpolation points *****/
+ 			    int N_interp_points,
+ 			    int interp_coords_type_code,
+-			    const void *restrict const *restrict interp_coords,
++			    const void *const interp_coords[],
+ 			    /***** input arrays *****/
+ 			    int N_input_arrays,
+-			    const CCTK_INT *restrict input_array_dims,
+-			    const CCTK_INT *restrict input_array_type_codes,
+-			    const void *restrict const *restrict input_arrays,
++			    const CCTK_INT input_array_dims[],
++			    const CCTK_INT input_array_type_codes[],
++			    const void *const input_arrays[],
+ 			    /***** output arrays *****/
+ 			    int N_output_arrays,
+-			    const CCTK_INT *restrict output_array_type_codes,
+-			    void *restrict const *restrict output_arrays)
++			    const CCTK_INT output_array_type_codes[],
++			    void *const output_arrays[])
+ {
+ return InterpLocalUniform(interp_operator_Hermite,
+ 			  "Hermite polynomial interpolation",
+@@ -1029,21 +1029,21 @@ static
+ 			 int N_dims,
+ 			 int param_table_handle,
+ 		       /***** coordinate system *****/
+-			 const CCTK_REAL *restrict coord_origin,
+-			 const CCTK_REAL *restrict coord_delta,
++			 const CCTK_REAL coord_origin[],
++			 const CCTK_REAL coord_delta[],
+ 		       /***** interpolation points *****/
+ 			 int N_interp_points,
+ 			 int interp_coords_type_code,
+-			 const void *restrict const *restrict interp_coords,
++			 const void *const interp_coords[],
+ 		       /***** input arrays *****/
+ 			 int N_input_arrays,
+-			 const CCTK_INT *restrict input_array_dims,
+-			 const CCTK_INT *restrict input_array_type_codes,
+-			 const void *restrict const *restrict input_arrays,
++			 const CCTK_INT input_array_dims[],
++			 const CCTK_INT input_array_type_codes[],
++			 const void *const input_arrays[],
+ 		       /***** output arrays *****/
+ 			 int N_output_arrays,
+-			 const CCTK_INT *restrict output_array_type_codes,
+-			 void *restrict const *restrict output_arrays)
++			 const CCTK_INT output_array_type_codes[],
++			 void *const output_arrays[])
+ {
+ /*
+  * Implementation Note:
+@@ -1396,7 +1396,7 @@ if (value_not_set)
+ /**************************************/
+ 
+   {
+-CCTK_INT *restrict const operation_codes
++CCTK_INT* const operation_codes
+ 	= (CCTK_INT*) malloc(N_output_arrays1 * sizeof(CCTK_INT));
+ if (operation_codes == NULL)
+    then {
+@@ -1423,8 +1423,8 @@ if (status != 0)
+  */
+ 
+   {
+-struct molecule_min_max_m_info *restrict p_molecule_min_max_m_info = NULL;
+-struct molecule_min_max_m_info           molecule_min_max_m_info;
++struct molecule_min_max_m_info* p_molecule_min_max_m_info = NULL;
++struct molecule_min_max_m_info  molecule_min_max_m_info;
+ 
+ /* molecule min/max m */
+ status1 = Util_TableQueryValueInfo(param_table_handle,
+@@ -1452,8 +1452,8 @@ if (status1 && status2)
+    then p_molecule_min_max_m_info = &molecule_min_max_m_info;
+ 
+   {
+-CCTK_INT *restrict *restrict p_molecule_positions = NULL;
+-CCTK_INT *restrict           molecule_positions_array[MAX_N_DIMS];
++CCTK_INT** p_molecule_positions = NULL;
++CCTK_INT*  molecule_positions_array[MAX_N_DIMS];
+ 
+ /* are we doing a molecule-positions query? */
+ status = Util_TableQueryValueInfo(param_table_handle,
+@@ -1491,8 +1491,8 @@ if (status)
+  */
+ 
+   {
+-struct Jacobian_info *restrict p_Jacobian_info = NULL;
+-struct Jacobian_info           Jacobian_info;
++struct Jacobian_info* p_Jacobian_info = NULL;
++struct Jacobian_info  Jacobian_info;
+ Jacobian_info.Jacobian_pointer = NULL;
+ Jacobian_info.Jacobian_offset = NULL;
+ 
+@@ -1794,7 +1794,7 @@ int ibndry;
+  */
+ static
+   int get_error_point_info(int param_table_handle,
+-			   struct error_info *restrict p_error_info)
++			   struct error_info *p_error_info)
+ {
+ CCTK_POINTER per_point_status;
+ int status;
+@@ -1864,8 +1864,8 @@ return 0;						/*** NORMAL RETURN ***/
+ static
+   int get_and_decode_molecule_family
+ 	(int param_table_handle,
+-	 int buffer_size, char *restrict molecule_family_string_buffer,
+-	 enum molecule_family *restrict p_molecule_family)
++	 int buffer_size, char molecule_family_string_buffer[],
++	 enum molecule_family *p_molecule_family)
+ {
+ enum molecule_family molecule_family;
+ int status;
+@@ -1938,7 +1938,7 @@ return 0;						/*** NORMAL RETURN ***/
+ static
+   int get_molecule_positions
+ 	(int param_table_handle,
+-	 int N_dims, CCTK_INT *restrict molecule_positions_array[MAX_N_DIMS])
++	 int N_dims, CCTK_INT* molecule_positions_array[MAX_N_DIMS])
+ {
+ CCTK_POINTER molecule_positions_temp[MAX_N_DIMS];
+ int status;
+@@ -1988,7 +1988,7 @@ return 0;						/*** NORMAL RETURN ***/
+ static
+   int get_Jacobian_info(int param_table_handle,
+ 			int N_dims, int N_output_arrays,
+-			struct Jacobian_info *restrict p_Jacobian_info)
++			struct Jacobian_info* p_Jacobian_info)
+ {
+ /* padded array size, cf. InterpLocalUniform() header comments */
+ const int N_output_arrays1 = N_output_arrays + 1;
+@@ -2106,7 +2106,7 @@ return 0;						/*** NORMAL RETURN ***/
+  */
+ static
+   int set_error_info(int param_table_handle,
+-		     struct error_info *restrict p_error_info)
++		     struct error_info* p_error_info)
+ {
+ if (p_error_info->found_per_point_status)
+    then {
+@@ -2146,7 +2146,7 @@ return 0;						/*** NORMAL RETURN ***/
+ static
+   int set_molecule_structure
+ 	(int param_table_handle,
+-	 const struct molecule_structure_flags *restrict p_molecule_structure_flags)
++	 const struct molecule_structure_flags* p_molecule_structure_flags)
+ {
+ const int status1
+    = Util_TableSetInt(param_table_handle,
+@@ -2198,7 +2198,7 @@ static
+   int set_molecule_min_max_m
+ 	(int param_table_handle,
+ 	 int N_dims,
+-	 const struct molecule_min_max_m_info *restrict p_molecule_min_max_m_info)
++	 const struct molecule_min_max_m_info* p_molecule_min_max_m_info)
+ {
+ const int status1
+    = Util_TableSetIntArray(param_table_handle,
+@@ -2251,11 +2251,11 @@ return 0;						/*** NORMAL RETURN ***/
+  * This function returns 0 for ok, or the (nonzero) return code for error.
+  */
+ static
+-  int get_and_check_INT(int param_table_handle, const char *restrict name,
++  int get_and_check_INT(int param_table_handle, const char name[],
+ 			bool mandatory_flag, int default_value,
+ 			bool check_range_flag, int min_value, int max_value,
+-			const char *restrict max_value_string,
+-			CCTK_INT *restrict p_value)
++			const char max_value_string[],
++			CCTK_INT* p_value)
+ {
+ CCTK_INT value;
+ 
+@@ -2353,10 +2353,10 @@ return 0;						/*** NORMAL RETURN ***/
+  * positive or negative!
+  */
+ static
+-  int get_INT_array(int param_table_handle, const char *restrict name,
++  int get_INT_array(int param_table_handle, const char name[],
+ 		    bool default_flag, int default_value,
+-		    int N, CCTK_INT *restrict buffer,
+-		    bool *restrict p_value_not_set)
++		    int N, CCTK_INT buffer[],
++		    bool* p_value_not_set)
+ {
+ const int status
+ 	= Util_TableGetIntArray(param_table_handle,
+@@ -2433,9 +2433,9 @@ return 0;						/*** NORMAL RETURN ***/
+  * positive or negative!
+  */
+ static
+-  int get_REAL_array(int param_table_handle, const char *restrict name,
++  int get_REAL_array(int param_table_handle, const char name[],
+ 		     CCTK_REAL default_value,
+-		     int N, CCTK_REAL *restrict buffer)
++		     int N, CCTK_REAL buffer[])
+ {
+ const int status
+ 	= Util_TableGetRealArray(param_table_handle,
+diff --git a/src/InterpLocalUniform.h b/src/InterpLocalUniform.h
+index f31fd25..6d84cbb 100644
+--- a/src/InterpLocalUniform.h
++++ b/src/InterpLocalUniform.h
+@@ -131,7 +131,7 @@ struct	error_info
+ 
+ 	/* NULL pointer to skip per-point status, or */
+ 	/* --> array of size N_interp_points to be set to per-point status */
+-	CCTK_INT *restrict per_point_status;
++	CCTK_INT* per_point_status;
+ 
+ 	/* count of the number of points in error */
+ 	CCTK_INT error_count;
+@@ -153,8 +153,8 @@ struct	molecule_min_max_m_info
+ 
+ struct	Jacobian_info
+ 	{
+-	CCTK_REAL *restrict *restrict Jacobian_pointer;
+-	CCTK_INT *restrict            Jacobian_offset;
++	CCTK_REAL** Jacobian_pointer;
++	CCTK_INT*   Jacobian_offset;
+ 	CCTK_INT Jacobian_interp_point_stride;
+ 	CCTK_INT Jacobian_m_strides[MAX_N_DIMS];
+ 	CCTK_INT Jacobian_part_stride;
+@@ -196,57 +196,57 @@ int AEILocalInterp_U_Startup(void);
+ int AEILocalInterp_U_Lagrange_TP(int N_dims,
+ 				 int param_table_handle,
+ 				 /***** coordinate system *****/
+-				 const CCTK_REAL *restrict coord_origin,
+-				 const CCTK_REAL *restrict coord_delta,
++				 const CCTK_REAL coord_origin[],
++				 const CCTK_REAL coord_delta[],
+ 				 /***** interpolation points *****/
+ 				 int N_interp_points,
+ 				 int interp_coords_type_code,
+-				 const void *restrict const *restrict interp_coords,
++				 const void *const interp_coords[],
+ 				 /***** input arrays *****/
+ 				 int N_input_arrays,
+-				 const CCTK_INT *restrict input_array_dims,
+-				 const CCTK_INT *restrict input_array_type_codes,
+-				 const void *restrict const *restrict input_arrays,
++				 const CCTK_INT input_array_dims[],
++				 const CCTK_INT input_array_type_codes[],
++				 const void *const input_arrays[],
+ 				 /***** output arrays *****/
+ 				 int N_output_arrays,
+-				 const CCTK_INT *restrict output_array_type_codes,
+-				 void *restrict const *restrict output_arrays);
++				 const CCTK_INT output_array_type_codes[],
++				 void *const output_arrays[]);
+ int AEILocalInterp_U_Lagrange_MD(int N_dims,
+ 				 int param_table_handle,
+ 				 /***** coordinate system *****/
+-				 const CCTK_REAL *restrict coord_origin,
+-				 const CCTK_REAL *restrict coord_delta,
++				 const CCTK_REAL coord_origin[],
++				 const CCTK_REAL coord_delta[],
+ 				 /***** interpolation points *****/
+ 				 int N_interp_points,
+ 				 int interp_coords_type_code,
+-				 const void *restrict const *restrict interp_coords,
++				 const void *const interp_coords[],
+ 				 /***** input arrays *****/
+ 				 int N_input_arrays,
+-				 const CCTK_INT *restrict input_array_dims,
+-				 const CCTK_INT *restrict input_array_type_codes,
+-				 const void *restrict const *restrict input_arrays,
++				 const CCTK_INT input_array_dims[],
++				 const CCTK_INT input_array_type_codes[],
++				 const void *const input_arrays[],
+ 				 /***** output arrays *****/
+ 				 int N_output_arrays,
+-				 const CCTK_INT *restrict output_array_type_codes,
+-				 void *restrict const *restrict output_arrays);
++				 const CCTK_INT output_array_type_codes[],
++				 void *const output_arrays[]);
+ int AEILocalInterp_U_Hermite(int N_dims,
+ 			     int param_table_handle,
+ 			     /***** coordinate system *****/
+-			     const CCTK_REAL *restrict coord_origin,
+-			     const CCTK_REAL *restrict coord_delta,
++			     const CCTK_REAL coord_origin[],
++			     const CCTK_REAL coord_delta[],
+ 			     /***** interpolation points *****/
+ 			     int N_interp_points,
+ 			     int interp_coords_type_code,
+-			     const void *restrict const *restrict interp_coords,
++			     const void *const interp_coords[],
+ 			     /***** input arrays *****/
+ 			     int N_input_arrays,
+-			     const CCTK_INT *restrict input_array_dims,
+-			     const CCTK_INT *restrict input_array_type_codes,
+-			     const void *restrict const *restrict input_arrays,
++			     const CCTK_INT input_array_dims[],
++			     const CCTK_INT input_array_type_codes[],
++			     const void *const input_arrays[],
+ 			     /***** output arrays *****/
+ 			     int N_output_arrays,
+-			     const CCTK_INT *restrict output_array_type_codes,
+-			     void *restrict const *restrict output_arrays);
++			     const CCTK_INT output_array_type_codes[],
++			     void *const output_arrays[]);
+ 
+ /* functions in "molecule_posn.c" */
+ int AEILocalInterp_molecule_posn(fp grid_origin, fp grid_delta,
+@@ -258,7 +258,7 @@ int AEILocalInterp_molecule_posn(fp grid_origin, fp grid_delta,
+ 				 fp boundary_extrapolation_tolerance_max,
+ 				 fp x,
+ 				 int debug,
+-				 int *restrict i_center, fp *restrict x_rel);
++				 int* i_center, fp* x_rel);
+ 
+ /* functions in "util.c" */
+ int AEILocalInterp_decode_N_parts(int type_code);
+diff --git a/src/common/evaluate.c b/src/common/evaluate.c
+index 3c814e4..60156b3 100644
+--- a/src/common/evaluate.c
++++ b/src/common/evaluate.c
+@@ -13,43 +13,43 @@
+  * 1-D routines
+  */
+ 
+-fp AEILocalInterp_eval_1dcube2(const struct coeffs_struct_1d_cube_size2 *restrict const coeffs,
+-			       const struct data_struct_1d_cube_size2 *restrict const data)
++fp AEILocalInterp_eval_1dcube2(const struct coeffs_struct_1d_cube_size2 *coeffs,
++			       const struct data_struct_1d_cube_size2 *data)
+ {
+ return
+   #include "1d.cube.size2/evaluate-molecule.c"
+ }
+ 
+-fp AEILocalInterp_eval_1dcube3(const struct coeffs_struct_1d_cube_size3 *restrict const coeffs,
+-			       const struct data_struct_1d_cube_size3 *restrict const data)
++fp AEILocalInterp_eval_1dcube3(const struct coeffs_struct_1d_cube_size3 *coeffs,
++			       const struct data_struct_1d_cube_size3 *data)
+ {
+ return
+   #include "1d.cube.size3/evaluate-molecule.c"
+ }
+ 
+-fp AEILocalInterp_eval_1dcube4(const struct coeffs_struct_1d_cube_size4 *restrict const coeffs,
+-			       const struct data_struct_1d_cube_size4 *restrict const data)
++fp AEILocalInterp_eval_1dcube4(const struct coeffs_struct_1d_cube_size4 *coeffs,
++			       const struct data_struct_1d_cube_size4 *data)
+ {
+ return
+   #include "1d.cube.size4/evaluate-molecule.c"
+ }
+ 
+-fp AEILocalInterp_eval_1dcube5(const struct coeffs_struct_1d_cube_size5 *restrict const coeffs,
+-			       const struct data_struct_1d_cube_size5 *restrict const data)
++fp AEILocalInterp_eval_1dcube5(const struct coeffs_struct_1d_cube_size5 *coeffs,
++			       const struct data_struct_1d_cube_size5 *data)
+ {
+ return
+   #include "1d.cube.size5/evaluate-molecule.c"
+ }
+ 
+-fp AEILocalInterp_eval_1dcube6(const struct coeffs_struct_1d_cube_size6 *restrict const coeffs,
+-			       const struct data_struct_1d_cube_size6 *restrict const data)
++fp AEILocalInterp_eval_1dcube6(const struct coeffs_struct_1d_cube_size6 *coeffs,
++			       const struct data_struct_1d_cube_size6 *data)
+ {
+ return
+   #include "1d.cube.size6/evaluate-molecule.c"
+ }
+ 
+-fp AEILocalInterp_eval_1dcube7(const struct coeffs_struct_1d_cube_size7 *restrict const coeffs,
+-			       const struct data_struct_1d_cube_size7 *restrict const data)
++fp AEILocalInterp_eval_1dcube7(const struct coeffs_struct_1d_cube_size7 *coeffs,
++			       const struct data_struct_1d_cube_size7 *data)
+ {
+ return
+   #include "1d.cube.size7/evaluate-molecule.c"
+@@ -61,36 +61,36 @@ return
+  * 2-D routines
+  */
+ 
+-fp AEILocalInterp_eval_2dcube2(const struct coeffs_struct_2d_cube_size2 *restrict const coeffs,
+-			       const struct data_struct_2d_cube_size2 *restrict const data)
++fp AEILocalInterp_eval_2dcube2(const struct coeffs_struct_2d_cube_size2 *coeffs,
++			       const struct data_struct_2d_cube_size2 *data)
+ {
+ return
+   #include "2d.cube.size2/evaluate-molecule.c"
+ }
+ 
+-fp AEILocalInterp_eval_2dcube3(const struct coeffs_struct_2d_cube_size3 *restrict const coeffs,
+-			       const struct data_struct_2d_cube_size3 *restrict const data)
++fp AEILocalInterp_eval_2dcube3(const struct coeffs_struct_2d_cube_size3 *coeffs,
++			       const struct data_struct_2d_cube_size3 *data)
+ {
+ return
+   #include "2d.cube.size3/evaluate-molecule.c"
+ }
+ 
+-fp AEILocalInterp_eval_2dcube4(const struct coeffs_struct_2d_cube_size4 *restrict const coeffs,
+-			       const struct data_struct_2d_cube_size4 *restrict const data)
++fp AEILocalInterp_eval_2dcube4(const struct coeffs_struct_2d_cube_size4 *coeffs,
++			       const struct data_struct_2d_cube_size4 *data)
+ {
+ return
+   #include "2d.cube.size4/evaluate-molecule.c"
+ }
+ 
+-fp AEILocalInterp_eval_2dcube5(const struct coeffs_struct_2d_cube_size5 *restrict const coeffs,
+-			       const struct data_struct_2d_cube_size5 *restrict const data)
++fp AEILocalInterp_eval_2dcube5(const struct coeffs_struct_2d_cube_size5 *coeffs,
++			       const struct data_struct_2d_cube_size5 *data)
+ {
+ return
+   #include "2d.cube.size5/evaluate-molecule.c"
+ }
+ 
+-fp AEILocalInterp_eval_2dcube6(const struct coeffs_struct_2d_cube_size6 *restrict const coeffs,
+-			       const struct data_struct_2d_cube_size6 *restrict const data)
++fp AEILocalInterp_eval_2dcube6(const struct coeffs_struct_2d_cube_size6 *coeffs,
++			       const struct data_struct_2d_cube_size6 *data)
+ {
+ return
+   #include "2d.cube.size6/evaluate-molecule.c"
+@@ -102,36 +102,36 @@ return
+  * 3-D routines
+  */
+ 
+-fp AEILocalInterp_eval_3dcube2(const struct coeffs_struct_3d_cube_size2 *restrict const coeffs,
+-			       const struct data_struct_3d_cube_size2 *restrict const data)
++fp AEILocalInterp_eval_3dcube2(const struct coeffs_struct_3d_cube_size2 *coeffs,
++			       const struct data_struct_3d_cube_size2 *data)
+ {
+ return
+   #include "3d.cube.size2/evaluate-molecule.c"
+ }
+ 
+-fp AEILocalInterp_eval_3dcube3(const struct coeffs_struct_3d_cube_size3 *restrict const coeffs,
+-			       const struct data_struct_3d_cube_size3 *restrict const data)
++fp AEILocalInterp_eval_3dcube3(const struct coeffs_struct_3d_cube_size3 *coeffs,
++			       const struct data_struct_3d_cube_size3 *data)
+ {
+ return
+   #include "3d.cube.size3/evaluate-molecule.c"
+ }
+ 
+-fp AEILocalInterp_eval_3dcube4(const struct coeffs_struct_3d_cube_size4 *restrict const coeffs,
+-			       const struct data_struct_3d_cube_size4 *restrict const data)
++fp AEILocalInterp_eval_3dcube4(const struct coeffs_struct_3d_cube_size4 *coeffs,
++			       const struct data_struct_3d_cube_size4 *data)
+ {
+ return
+   #include "3d.cube.size4/evaluate-molecule.c"
+ }
+ 
+-fp AEILocalInterp_eval_3dcube5(const struct coeffs_struct_3d_cube_size5 *restrict const coeffs,
+-			       const struct data_struct_3d_cube_size5 *restrict const data)
++fp AEILocalInterp_eval_3dcube5(const struct coeffs_struct_3d_cube_size5 *coeffs,
++			       const struct data_struct_3d_cube_size5 *data)
+ {
+ return
+   #include "3d.cube.size5/evaluate-molecule.c"
+ }
+ 
+-fp AEILocalInterp_eval_3dcube6(const struct coeffs_struct_3d_cube_size6 *restrict const coeffs,
+-			       const struct data_struct_3d_cube_size6 *restrict const data)
++fp AEILocalInterp_eval_3dcube6(const struct coeffs_struct_3d_cube_size6 *coeffs,
++			       const struct data_struct_3d_cube_size6 *data)
+ {
+ return
+   #include "3d.cube.size6/evaluate-molecule.c"
+diff --git a/src/common/evaluate.h b/src/common/evaluate.h
+index a7c6e53..4e2046a 100644
+--- a/src/common/evaluate.h
++++ b/src/common/evaluate.h
+@@ -8,37 +8,37 @@
+  *	"structs.h"
+  */
+ 
+-fp AEILocalInterp_eval_1dcube2(const struct coeffs_struct_1d_cube_size2 *restrict coeffs,
+-			       const struct data_struct_1d_cube_size2 *restrict data);
+-fp AEILocalInterp_eval_1dcube3(const struct coeffs_struct_1d_cube_size3 *restrict coeffs,
+-			       const struct data_struct_1d_cube_size3 *restrict data);
+-fp AEILocalInterp_eval_1dcube4(const struct coeffs_struct_1d_cube_size4 *restrict coeffs,
+-			       const struct data_struct_1d_cube_size4 *restrict data);
+-fp AEILocalInterp_eval_1dcube5(const struct coeffs_struct_1d_cube_size5 *restrict coeffs,
+-			       const struct data_struct_1d_cube_size5 *restrict data);
+-fp AEILocalInterp_eval_1dcube6(const struct coeffs_struct_1d_cube_size6 *restrict coeffs,
+-			       const struct data_struct_1d_cube_size6 *restrict data);
+-fp AEILocalInterp_eval_1dcube7(const struct coeffs_struct_1d_cube_size7 *restrict coeffs,
+-			       const struct data_struct_1d_cube_size7 *restrict data);
++fp AEILocalInterp_eval_1dcube2(const struct coeffs_struct_1d_cube_size2 *coeffs,
++			       const struct data_struct_1d_cube_size2 *data);
++fp AEILocalInterp_eval_1dcube3(const struct coeffs_struct_1d_cube_size3 *coeffs,
++			       const struct data_struct_1d_cube_size3 *data);
++fp AEILocalInterp_eval_1dcube4(const struct coeffs_struct_1d_cube_size4 *coeffs,
++			       const struct data_struct_1d_cube_size4 *data);
++fp AEILocalInterp_eval_1dcube5(const struct coeffs_struct_1d_cube_size5 *coeffs,
++			       const struct data_struct_1d_cube_size5 *data);
++fp AEILocalInterp_eval_1dcube6(const struct coeffs_struct_1d_cube_size6 *coeffs,
++			       const struct data_struct_1d_cube_size6 *data);
++fp AEILocalInterp_eval_1dcube7(const struct coeffs_struct_1d_cube_size7 *coeffs,
++			       const struct data_struct_1d_cube_size7 *data);
+ 
+-fp AEILocalInterp_eval_2dcube2(const struct coeffs_struct_2d_cube_size2 *restrict coeffs,
+-			       const struct data_struct_2d_cube_size2 *restrict data);
+-fp AEILocalInterp_eval_2dcube3(const struct coeffs_struct_2d_cube_size3 *restrict coeffs,
+-			       const struct data_struct_2d_cube_size3 *restrict data);
+-fp AEILocalInterp_eval_2dcube4(const struct coeffs_struct_2d_cube_size4 *restrict coeffs,
+-			       const struct data_struct_2d_cube_size4 *restrict data);
+-fp AEILocalInterp_eval_2dcube5(const struct coeffs_struct_2d_cube_size5 *restrict coeffs,
+-			       const struct data_struct_2d_cube_size5 *restrict data);
+-fp AEILocalInterp_eval_2dcube6(const struct coeffs_struct_2d_cube_size6 *restrict coeffs,
+-			       const struct data_struct_2d_cube_size6 *restrict data);
++fp AEILocalInterp_eval_2dcube2(const struct coeffs_struct_2d_cube_size2 *coeffs,
++			       const struct data_struct_2d_cube_size2 *data);
++fp AEILocalInterp_eval_2dcube3(const struct coeffs_struct_2d_cube_size3 *coeffs,
++			       const struct data_struct_2d_cube_size3 *data);
++fp AEILocalInterp_eval_2dcube4(const struct coeffs_struct_2d_cube_size4 *coeffs,
++			       const struct data_struct_2d_cube_size4 *data);
++fp AEILocalInterp_eval_2dcube5(const struct coeffs_struct_2d_cube_size5 *coeffs,
++			       const struct data_struct_2d_cube_size5 *data);
++fp AEILocalInterp_eval_2dcube6(const struct coeffs_struct_2d_cube_size6 *coeffs,
++			       const struct data_struct_2d_cube_size6 *data);
+ 
+-fp AEILocalInterp_eval_3dcube2(const struct coeffs_struct_3d_cube_size2 *restrict coeffs,
+-			       const struct data_struct_3d_cube_size2 *restrict data);
+-fp AEILocalInterp_eval_3dcube3(const struct coeffs_struct_3d_cube_size3 *restrict coeffs,
+-			       const struct data_struct_3d_cube_size3 *restrict data);
+-fp AEILocalInterp_eval_3dcube4(const struct coeffs_struct_3d_cube_size4 *restrict coeffs,
+-			       const struct data_struct_3d_cube_size4 *restrict data);
+-fp AEILocalInterp_eval_3dcube5(const struct coeffs_struct_3d_cube_size5 *restrict coeffs,
+-			       const struct data_struct_3d_cube_size5 *restrict data);
+-fp AEILocalInterp_eval_3dcube6(const struct coeffs_struct_3d_cube_size6 *restrict coeffs,
+-			       const struct data_struct_3d_cube_size6 *restrict data);
++fp AEILocalInterp_eval_3dcube2(const struct coeffs_struct_3d_cube_size2 *coeffs,
++			       const struct data_struct_3d_cube_size2 *data);
++fp AEILocalInterp_eval_3dcube3(const struct coeffs_struct_3d_cube_size3 *coeffs,
++			       const struct data_struct_3d_cube_size3 *data);
++fp AEILocalInterp_eval_3dcube4(const struct coeffs_struct_3d_cube_size4 *coeffs,
++			       const struct data_struct_3d_cube_size4 *data);
++fp AEILocalInterp_eval_3dcube5(const struct coeffs_struct_3d_cube_size5 *coeffs,
++			       const struct data_struct_3d_cube_size5 *data);
++fp AEILocalInterp_eval_3dcube6(const struct coeffs_struct_3d_cube_size6 *coeffs,
++			       const struct data_struct_3d_cube_size6 *data);
+diff --git a/src/common/load-template.c b/src/common/load-template.c
+index 5e197f7..5caa23b 100644
+--- a/src/common/load-template.c
++++ b/src/common/load-template.c
+@@ -16,28 +16,35 @@
+ #undef  DATA
+ #define DATA	DATA_REAL
+ 
++void LOAD_FUNCTION_NAME(r)(const CCTK_REAL *ptr,
++			   INT_STRIDE_IJK,
++			  struct DATA_STRUCT *data)
++{
++#include LOAD_DATA_FILE_NAME
++}
++
+ #ifdef HAVE_CCTK_REAL4
+-  void LOAD_FUNCTION_NAME(r4)(const CCTK_REAL4 *restrict const ptr,
++  void LOAD_FUNCTION_NAME(r4)(const CCTK_REAL4 *ptr,
+ 			      INT_STRIDE_IJK,
+-			      struct DATA_STRUCT *restrict const data)
++			      struct DATA_STRUCT *data)
+   {
+   #include LOAD_DATA_FILE_NAME
+   }
+ #endif
+ 
+ #ifdef HAVE_CCTK_REAL8
+-  void LOAD_FUNCTION_NAME(r8)(const CCTK_REAL8 *restrict const ptr,
++  void LOAD_FUNCTION_NAME(r8)(const CCTK_REAL8 *ptr,
+ 			      INT_STRIDE_IJK,
+-			      struct DATA_STRUCT *restrict const data)
++			      struct DATA_STRUCT *data)
+   {
+   #include LOAD_DATA_FILE_NAME
+   }
+ #endif
+ 
+ #ifdef HAVE_CCTK_REAL16
+-  void LOAD_FUNCTION_NAME(r16)(const CCTK_REAL16 *restrict const ptr,
++  void LOAD_FUNCTION_NAME(r16)(const CCTK_REAL16 *ptr,
+ 				INT_STRIDE_IJK,
+-				struct DATA_STRUCT *restrict const data)
++				struct DATA_STRUCT *data)
+   {
+   #include LOAD_DATA_FILE_NAME
+   }
+@@ -52,28 +59,35 @@
+ #undef  DATA
+ #define DATA	DATA_COMPLEX
+ 
++void LOAD_FUNCTION_NAME(c)(const CCTK_REAL (*ptr)[COMPLEX_N_PARTS],
++			   INT_STRIDE_IJK, int part,
++			   struct DATA_STRUCT *data)
++{
++#include LOAD_DATA_FILE_NAME
++}
++
+ #ifdef HAVE_CCTK_COMPLEX8
+-  void LOAD_FUNCTION_NAME(c8)(const CCTK_REAL4 (*restrict const ptr)[COMPLEX_N_PARTS],
++  void LOAD_FUNCTION_NAME(c8)(const CCTK_REAL4 (*ptr)[COMPLEX_N_PARTS],
+ 			      INT_STRIDE_IJK, int part,
+-			      struct DATA_STRUCT *restrict const data)
++			      struct DATA_STRUCT *data)
+   {
+   #include LOAD_DATA_FILE_NAME
+   }
+ #endif
+ 
+ #ifdef HAVE_CCTK_COMPLEX16
+-  void LOAD_FUNCTION_NAME(c16)(const CCTK_REAL8 (*restrict const ptr)[COMPLEX_N_PARTS],
++  void LOAD_FUNCTION_NAME(c16)(const CCTK_REAL8 (*ptr)[COMPLEX_N_PARTS],
+ 				INT_STRIDE_IJK, int part,
+-				struct DATA_STRUCT *restrict const data)
++				struct DATA_STRUCT *data)
+   {
+   #include LOAD_DATA_FILE_NAME
+   }
+ #endif
+ 
+ #ifdef HAVE_CCTK_COMPLEX32
+-  void LOAD_FUNCTION_NAME(c32)(const CCTK_REAL16 (*restrict const ptr)[COMPLEX_N_PARTS],
++  void LOAD_FUNCTION_NAME(c32)(const CCTK_REAL16 (*ptr)[COMPLEX_N_PARTS],
+ 				INT_STRIDE_IJK, int part,
+-				struct DATA_STRUCT *restrict const data)
++				struct DATA_STRUCT *data)
+   {
+   #include LOAD_DATA_FILE_NAME
+   }
+diff --git a/src/common/load-template.h b/src/common/load-template.h
+index f4b7bf3..08cdfd4 100644
+--- a/src/common/load-template.h
++++ b/src/common/load-template.h
+@@ -18,26 +18,26 @@
+  * load-data routines for real datatypes
+  */
+ 
+-void LOAD_FUNCTION_NAME(r)(const CCTK_REAL *restrict ptr,
++void LOAD_FUNCTION_NAME(r)(const CCTK_REAL *ptr,
+ 			   INT_STRIDE_IJK,
+-			   struct DATA_STRUCT *restrict data);
++			   struct DATA_STRUCT *data);
+ 
+ #ifdef HAVE_CCTK_REAL4
+-  void LOAD_FUNCTION_NAME(r4)(const CCTK_REAL4 *restrict ptr,
++  void LOAD_FUNCTION_NAME(r4)(const CCTK_REAL4 *ptr,
+ 			      INT_STRIDE_IJK,
+-			      struct DATA_STRUCT *restrict data);
++			      struct DATA_STRUCT *data);
+ #endif
+ 
+ #ifdef HAVE_CCTK_REAL8
+-  void LOAD_FUNCTION_NAME(r8)(const CCTK_REAL8 *restrict ptr,
++  void LOAD_FUNCTION_NAME(r8)(const CCTK_REAL8 *ptr,
+ 			      INT_STRIDE_IJK,
+-			      struct DATA_STRUCT *restrict data);
++			      struct DATA_STRUCT *data);
+ #endif
+ 
+ #ifdef HAVE_CCTK_REAL16
+-  void LOAD_FUNCTION_NAME(r16)(const CCTK_REAL16 *restrict ptr,
++  void LOAD_FUNCTION_NAME(r16)(const CCTK_REAL16 *ptr,
+ 				INT_STRIDE_IJK,
+-				struct DATA_STRUCT *restrict data);
++				struct DATA_STRUCT *data);
+ #endif
+ 
+ /******************************************************************************/
+@@ -46,24 +46,24 @@ void LOAD_FUNCTION_NAME(r)(const CCTK_REAL *restrict ptr,
+  * load-data routines for complex datatypes
+  */
+ 
+-void LOAD_FUNCTION_NAME(c)(const CCTK_REAL (*restrict ptr)[COMPLEX_N_PARTS],
++void LOAD_FUNCTION_NAME(c)(const CCTK_REAL (*ptr)[COMPLEX_N_PARTS],
+ 			   INT_STRIDE_IJK, int part,
+-			   struct DATA_STRUCT *restrict data);
++			   struct DATA_STRUCT *data);
+ 
+ #ifdef HAVE_CCTK_COMPLEX8
+-  void LOAD_FUNCTION_NAME(c8)(const CCTK_REAL4 (*restrict ptr)[COMPLEX_N_PARTS],
++  void LOAD_FUNCTION_NAME(c8)(const CCTK_REAL4 (*ptr)[COMPLEX_N_PARTS],
+ 			      INT_STRIDE_IJK, int part,
+-			      struct DATA_STRUCT *restrict data);
++			      struct DATA_STRUCT *data);
+ #endif
+ 
+ #ifdef HAVE_CCTK_COMPLEX16
+-  void LOAD_FUNCTION_NAME(c16)(const CCTK_REAL8 (*restrict ptr)[COMPLEX_N_PARTS],
++  void LOAD_FUNCTION_NAME(c16)(const CCTK_REAL8 (*ptr)[COMPLEX_N_PARTS],
+ 				INT_STRIDE_IJK, int part,
+-				struct DATA_STRUCT *restrict data);
++				struct DATA_STRUCT *data);
+ #endif
+ 
+ #ifdef HAVE_CCTK_COMPLEX32
+-  void LOAD_FUNCTION_NAME(c32)(const CCTK_REAL16 (*restrict ptr)[COMPLEX_N_PARTS],
++  void LOAD_FUNCTION_NAME(c32)(const CCTK_REAL16 (*ptr)[COMPLEX_N_PARTS],
+ 				INT_STRIDE_IJK, int part,
+-				struct DATA_STRUCT *restrict data);
++				struct DATA_STRUCT *data);
+ #endif
+diff --git a/src/common/store.c b/src/common/store.c
+index 1d414fe..3ed6003 100644
+--- a/src/common/store.c
++++ b/src/common/store.c
+@@ -17,48 +17,48 @@
+ #define COEFF(mi)	Jacobian_ptr[Jacobian_mi_stride*mi]
+ 
+ void AEILocalInterp_store_1dcube2
+-      (fp factor, const struct coeffs_struct_1d_cube_size2 *restrict const coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_1d_cube_size2 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride)
+ {
+ #include "1d.cube.size2/store-coeffs.c"
+ }
+ 
+ void AEILocalInterp_store_1dcube3
+-      (fp factor, const struct coeffs_struct_1d_cube_size3 *restrict const coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_1d_cube_size3 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride)
+ {
+ #include "1d.cube.size3/store-coeffs.c"
+ }
+ 
+ void AEILocalInterp_store_1dcube4
+-      (fp factor, const struct coeffs_struct_1d_cube_size4 *restrict const coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_1d_cube_size4 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride)
+ {
+ #include "1d.cube.size4/store-coeffs.c"
+ }
+ 
+ void AEILocalInterp_store_1dcube5
+-      (fp factor, const struct coeffs_struct_1d_cube_size5 *restrict const coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_1d_cube_size5 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride)
+ {
+ #include "1d.cube.size5/store-coeffs.c"
+ }
+ 
+ void AEILocalInterp_store_1dcube6
+-      (fp factor, const struct coeffs_struct_1d_cube_size6 *restrict const coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_1d_cube_size6 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride)
+ {
+ #include "1d.cube.size6/store-coeffs.c"
+ }
+ 
+ void AEILocalInterp_store_1dcube7
+-      (fp factor, const struct coeffs_struct_1d_cube_size7 *restrict const coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_1d_cube_size7 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride)
+ {
+ #include "1d.cube.size7/store-coeffs.c"
+@@ -75,40 +75,40 @@ void AEILocalInterp_store_1dcube7
+ 				      + Jacobian_mj_stride*mj ]
+ 
+ void AEILocalInterp_store_2dcube2
+-      (fp factor, const struct coeffs_struct_2d_cube_size2 *restrict const coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_2d_cube_size2 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride, int Jacobian_mj_stride)
+ {
+ #include "2d.cube.size2/store-coeffs.c"
+ }
+ 
+ void AEILocalInterp_store_2dcube3
+-      (fp factor, const struct coeffs_struct_2d_cube_size3 *restrict const coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_2d_cube_size3 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride, int Jacobian_mj_stride)
+ {
+ #include "2d.cube.size3/store-coeffs.c"
+ }
+ 
+ void AEILocalInterp_store_2dcube4
+-      (fp factor, const struct coeffs_struct_2d_cube_size4 *restrict const coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_2d_cube_size4 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride, int Jacobian_mj_stride)
+ {
+ #include "2d.cube.size4/store-coeffs.c"
+ }
+ 
+ void AEILocalInterp_store_2dcube5
+-      (fp factor, const struct coeffs_struct_2d_cube_size5 *restrict const coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_2d_cube_size5 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride, int Jacobian_mj_stride)
+ {
+ #include "2d.cube.size5/store-coeffs.c"
+ }
+ 
+ void AEILocalInterp_store_2dcube6
+-      (fp factor, const struct coeffs_struct_2d_cube_size6 *restrict const coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_2d_cube_size6 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride, int Jacobian_mj_stride)
+ {
+ #include "2d.cube.size6/store-coeffs.c"
+@@ -126,40 +126,40 @@ void AEILocalInterp_store_2dcube6
+ 				      + Jacobian_mk_stride*mk ]
+ 
+ void AEILocalInterp_store_3dcube2
+-      (fp factor, const struct coeffs_struct_3d_cube_size2 *restrict const coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_3d_cube_size2 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride, int Jacobian_mj_stride, int Jacobian_mk_stride)
+ {
+ #include "3d.cube.size2/store-coeffs.c"
+ }
+ 
+ void AEILocalInterp_store_3dcube3
+-      (fp factor, const struct coeffs_struct_3d_cube_size3 *restrict const coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_3d_cube_size3 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride, int Jacobian_mj_stride, int Jacobian_mk_stride)
+ {
+ #include "3d.cube.size3/store-coeffs.c"
+ }
+ 
+ void AEILocalInterp_store_3dcube4
+-      (fp factor, const struct coeffs_struct_3d_cube_size4 *restrict const coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_3d_cube_size4 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride, int Jacobian_mj_stride, int Jacobian_mk_stride)
+ {
+ #include "3d.cube.size4/store-coeffs.c"
+ }
+ 
+ void AEILocalInterp_store_3dcube5
+-      (fp factor, const struct coeffs_struct_3d_cube_size5 *restrict const coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_3d_cube_size5 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride, int Jacobian_mj_stride, int Jacobian_mk_stride)
+ {
+ #include "3d.cube.size5/store-coeffs.c"
+ }
+ 
+ void AEILocalInterp_store_3dcube6
+-      (fp factor, const struct coeffs_struct_3d_cube_size6 *restrict const coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_3d_cube_size6 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride, int Jacobian_mj_stride, int Jacobian_mk_stride)
+ {
+ #include "3d.cube.size6/store-coeffs.c"
+diff --git a/src/common/store.h b/src/common/store.h
+index 678d663..e042552 100644
+--- a/src/common/store.h
++++ b/src/common/store.h
+@@ -9,68 +9,68 @@
+  */
+ 
+ void AEILocalInterp_store_1dcube2
+-      (fp factor, const struct coeffs_struct_1d_cube_size2 *restrict coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_1d_cube_size2 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride);
+ void AEILocalInterp_store_1dcube3
+-      (fp factor, const struct coeffs_struct_1d_cube_size3 *restrict coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_1d_cube_size3 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride);
+ void AEILocalInterp_store_1dcube4
+-      (fp factor, const struct coeffs_struct_1d_cube_size4 *restrict coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_1d_cube_size4 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride);
+ void AEILocalInterp_store_1dcube5
+-      (fp factor, const struct coeffs_struct_1d_cube_size5 *restrict coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_1d_cube_size5 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride);
+ void AEILocalInterp_store_1dcube6
+-      (fp factor, const struct coeffs_struct_1d_cube_size6 *restrict coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_1d_cube_size6 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride);
+ void AEILocalInterp_store_1dcube7
+-      (fp factor, const struct coeffs_struct_1d_cube_size7 *restrict coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_1d_cube_size7 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride);
+ 
+ void AEILocalInterp_store_2dcube2
+-      (fp factor, const struct coeffs_struct_2d_cube_size2 *restrict coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_2d_cube_size2 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride, int Jacobian_mj_stride);
+ void AEILocalInterp_store_2dcube3
+-      (fp factor, const struct coeffs_struct_2d_cube_size3 *restrict coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_2d_cube_size3 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride, int Jacobian_mj_stride);
+ void AEILocalInterp_store_2dcube4
+-      (fp factor, const struct coeffs_struct_2d_cube_size4 *restrict coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_2d_cube_size4 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride, int Jacobian_mj_stride);
+ void AEILocalInterp_store_2dcube5
+-      (fp factor, const struct coeffs_struct_2d_cube_size5 *restrict coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_2d_cube_size5 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride, int Jacobian_mj_stride);
+ void AEILocalInterp_store_2dcube6
+-      (fp factor, const struct coeffs_struct_2d_cube_size6 *restrict coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_2d_cube_size6 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride, int Jacobian_mj_stride);
+ 
+ void AEILocalInterp_store_3dcube2
+-      (fp factor, const struct coeffs_struct_3d_cube_size2 *restrict coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_3d_cube_size2 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride, int Jacobian_mj_stride, int Jacobian_mk_stride);
+ void AEILocalInterp_store_3dcube3
+-      (fp factor, const struct coeffs_struct_3d_cube_size3 *restrict coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_3d_cube_size3 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride, int Jacobian_mj_stride, int Jacobian_mk_stride);
+ void AEILocalInterp_store_3dcube4
+-      (fp factor, const struct coeffs_struct_3d_cube_size4 *restrict coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_3d_cube_size4 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride, int Jacobian_mj_stride, int Jacobian_mk_stride);
+ void AEILocalInterp_store_3dcube5
+-      (fp factor, const struct coeffs_struct_3d_cube_size5 *restrict coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_3d_cube_size5 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride, int Jacobian_mj_stride, int Jacobian_mk_stride);
+ void AEILocalInterp_store_3dcube6
+-      (fp factor, const struct coeffs_struct_3d_cube_size6 *restrict coeffs,
+-       fp *restrict Jacobian_ptr,
++      (fp factor, const struct coeffs_struct_3d_cube_size6 *coeffs,
++       fp Jacobian_ptr[],
+        int Jacobian_mi_stride, int Jacobian_mj_stride, int Jacobian_mk_stride);
+diff --git a/src/molecule_posn.c b/src/molecule_posn.c
+index e6528ad..553a176 100644
+--- a/src/molecule_posn.c
++++ b/src/molecule_posn.c
+@@ -188,7 +188,7 @@ int AEILocalInterp_molecule_posn(fp grid_origin, fp grid_delta,
+ 				 fp boundary_extrapolation_tolerance_max,
+ 				 fp x,
+ 				 int debug,
+-				 int *restrict i_center, fp *restrict x_rel)
++				 int* i_center, fp* x_rel)
+ {
+ /*
+  * ***** IMPORTANT *****
+diff --git a/src/template.c b/src/template.c
+index 9c012c4..a22401e 100644
+--- a/src/template.c
++++ b/src/template.c
+@@ -217,43 +217,43 @@
+ 
+ #ifdef HAVE_OP_I
+   static
+-    void compute_coeffs_I(FP_XYZ, struct COEFFS_STRUCT *restrict coeffs_I);
++    void compute_coeffs_I(FP_XYZ, struct COEFFS_STRUCT *coeffs_I);
+ #endif
+ #ifdef HAVE_OP_DX
+   static
+-    void compute_coeffs_dx(FP_XYZ, struct COEFFS_STRUCT *restrict coeffs_dx);
++    void compute_coeffs_dx(FP_XYZ, struct COEFFS_STRUCT *coeffs_dx);
+ #endif
+ #ifdef HAVE_OP_DY
+   static
+-    void compute_coeffs_dy(FP_XYZ, struct COEFFS_STRUCT *restrict coeffs_dy);
++    void compute_coeffs_dy(FP_XYZ, struct COEFFS_STRUCT *coeffs_dy);
+ #endif
+ #ifdef HAVE_OP_DZ
+   static
+-    void compute_coeffs_dz(FP_XYZ, struct COEFFS_STRUCT *restrict coeffs_dz);
++    void compute_coeffs_dz(FP_XYZ, struct COEFFS_STRUCT *coeffs_dz);
+ #endif
+ #ifdef HAVE_OP_DXX
+   static
+-    void compute_coeffs_dxx(FP_XYZ, struct COEFFS_STRUCT *restrict coeffs_dxx);
++    void compute_coeffs_dxx(FP_XYZ, struct COEFFS_STRUCT *coeffs_dxx);
+ #endif
+ #ifdef HAVE_OP_DXY
+   static
+-    void compute_coeffs_dxy(FP_XYZ, struct COEFFS_STRUCT *restrict coeffs_dxy);
++    void compute_coeffs_dxy(FP_XYZ, struct COEFFS_STRUCT *coeffs_dxy);
+ #endif
+ #ifdef HAVE_OP_DXZ
+   static
+-    void compute_coeffs_dxz(FP_XYZ, struct COEFFS_STRUCT *restrict coeffs_dxz);
++    void compute_coeffs_dxz(FP_XYZ, struct COEFFS_STRUCT *coeffs_dxz);
+ #endif
+ #ifdef HAVE_OP_DYY
+   static
+-    void compute_coeffs_dyy(FP_XYZ, struct COEFFS_STRUCT *restrict coeffs_dyy);
++    void compute_coeffs_dyy(FP_XYZ, struct COEFFS_STRUCT *coeffs_dyy);
+ #endif
+ #ifdef HAVE_OP_DYZ
+   static
+-    void compute_coeffs_dyz(FP_XYZ, struct COEFFS_STRUCT *restrict coeffs_dyz);
++    void compute_coeffs_dyz(FP_XYZ, struct COEFFS_STRUCT *coeffs_dyz);
+ #endif
+ #ifdef HAVE_OP_DZZ
+   static
+-    void compute_coeffs_dzz(FP_XYZ, struct COEFFS_STRUCT *restrict coeffs_dzz);
++    void compute_coeffs_dzz(FP_XYZ, struct COEFFS_STRUCT *coeffs_dzz);
+ #endif
+ 
+ /******************************************************************************/
+@@ -335,38 +335,38 @@
+ 
+   @@*/
+ int FUNCTION_NAME(/***** coordinate system *****/
+-		  const CCTK_REAL *restrict coord_origin,
+-		  const CCTK_REAL *restrict coord_delta,
++		  const CCTK_REAL coord_origin[],
++		  const CCTK_REAL coord_delta[],
+ 		  /***** interpolation points *****/
+ 		  int N_interp_points,
+ 		  int interp_coords_type_code,
+-		  const void *restrict const *restrict interp_coords,
+-		  const CCTK_INT *restrict N_boundary_points_to_omit,
+-		  const CCTK_REAL *restrict boundary_off_centering_tolerance,
+-		  const CCTK_REAL *restrict boundary_extrapolation_tolerance,
++		  const void* const interp_coords[],
++		  const CCTK_INT N_boundary_points_to_omit[],
++		  const CCTK_REAL boundary_off_centering_tolerance[],
++		  const CCTK_REAL boundary_extrapolation_tolerance[],
+ 		  /***** input arrays *****/
+ 		  int N_input_arrays,
+-		  const CCTK_INT *restrict input_array_offsets,
+-		  const CCTK_INT *restrict input_array_strides,
+-		  const CCTK_INT *restrict input_array_min_subscripts,
+-		  const CCTK_INT *restrict input_array_max_subscripts,
+-		  const CCTK_INT *restrict input_array_type_codes,
+-		  const void *restrict const *restrict input_arrays,
++		  const CCTK_INT input_array_offsets[],
++		  const CCTK_INT input_array_strides[],
++		  const CCTK_INT input_array_min_subscripts[],
++		  const CCTK_INT input_array_max_subscripts[],
++		  const CCTK_INT input_array_type_codes[],
++		  const void* const input_arrays[],
+ 		  /***** output arrays *****/
+ 		  int N_output_arrays,
+-		  const CCTK_INT *restrict output_array_type_codes,
+-		  void* const *restrict output_arrays,
++		  const CCTK_INT output_array_type_codes[],
++		  void* const output_arrays[],
+ 		  /***** operation info *****/
+-		  const CCTK_INT *restrict operand_indices,
+-		  const CCTK_INT *restrict operation_codes,
++		  const CCTK_INT operand_indices[],
++		  const CCTK_INT operation_codes[],
+ 		  /***** debugging *****/
+ 		  int debug, FILE* log_fp,
+ 		  /***** other return results *****/
+ 		  struct error_info* error_info,
+ 		  struct molecule_structure_flags* molecule_structure_flags,
+ 		  struct molecule_min_max_m_info* molecule_min_max_m_info,
+-		  CCTK_INT *restrict const *restrict molecule_positions,
+-		  struct Jacobian_info *restrict Jacobian_info)
++		  CCTK_INT* const molecule_positions[],
++		  struct Jacobian_info* Jacobian_info)
+ {
+ /*
+  * ***** Naming conventions *****
+@@ -824,7 +824,6 @@ if (debug > 0)
+ 	fflush(stdout);
+ 	}
+ 
+-#pragma omp parallel for
+     for (pt = 0 ; pt < N_interp_points ; ++pt)
+     {
+     /* this struct holds a molecule-sized piece of a single */
+@@ -872,7 +871,7 @@ if (debug > 0)
+      * from the interp_coords[] arrays
+      * FIXME: Maybe it would be better (faster) to do this
+      *	  with N_DIMS open-coded calls on a function?
+-     *	  But then we'd have to have a sentinel value
++     *	  But then we'd have to have a sentinal value
+      *	  return for the unknown-type-code error case.
+      *	  Yuk! :( :(
+      */
+@@ -886,11 +885,16 @@ if (debug > 0)
+ 
+ 	switch	(interp_coords_type_code)
+ 		{
++	case CCTK_VARIABLE_REAL:
++		  {
++		const CCTK_REAL *const interp_coords_ptr_real
++			= (const CCTK_REAL *) interp_coords_ptr;
++		interp_coords_fp[axis] = interp_coords_ptr_real[pt];
++		break;
++		  }
++
+ 	#ifdef HAVE_CCTK_REAL4
+ 	case CCTK_VARIABLE_REAL4:
+-        #ifdef CCTK_REAL_PRECISION_4
+-	case CCTK_VARIABLE_REAL:
+-        #endif
+ 		  {
+ 		const CCTK_REAL4 *const interp_coords_ptr_real4
+ 			= (const CCTK_REAL4 *) interp_coords_ptr;
+@@ -901,9 +905,6 @@ if (debug > 0)
+ 
+ 	#ifdef HAVE_CCTK_REAL8
+ 	case CCTK_VARIABLE_REAL8:
+-        #ifdef CCTK_REAL_PRECISION_8
+-	case CCTK_VARIABLE_REAL:
+-        #endif
+ 		  {
+ 		const CCTK_REAL8 *const interp_coords_ptr_real8
+ 			= (const CCTK_REAL8 *) interp_coords_ptr;
+@@ -914,9 +915,6 @@ if (debug > 0)
+ 
+ 	#ifdef HAVE_CCTK_REAL16
+ 	case CCTK_VARIABLE_REAL16:
+-        #ifdef CCTK_REAL_PRECISION_16
+-	case CCTK_VARIABLE_REAL:
+-        #endif
+ 		  {
+ 		/* FIXME: maybe we should warn (once per cactus run) */
+ 		/*        that we may be doing arithmetic in lower */
+@@ -937,9 +935,7 @@ if (debug > 0)
+ 			   ,
+ 			   interp_coords_type_code);
+ 							/*NOTREACHED*/
+-#pragma omp critical
+-                return_status = UTIL_ERROR_BAD_INPUT;
+-                goto next_iteration;
++		return UTIL_ERROR_BAD_INPUT;	/*** ERROR RETURN ***/
+ 		/* end of switch (interp_coords_type_code) */
+ 		}
+ 
+@@ -1156,12 +1152,8 @@ if (debug > 0)
+ #endif
+ 		    }
+ 
+-	    if (this_point_status < 0)
+-	       then {
+-#pragma omp critical
+-		    if (this_point_status < return_status)
+-		       then return_status = this_point_status;
+-		    }
++	    if (this_point_status < return_status)
++	       then return_status = this_point_status;
+ 
+ 	    if (debug >= 6)
+ 	       then {
+@@ -1301,13 +1293,13 @@ if (debug > 0)
+ 	 * execute the ***load*** the first time in the test at the
+ 	 * top of the  part  loop below
+ 	 */
+-	const void *restrict input_array_ptr__last_load = NULL;
++	const void* input_array_ptr__last_load = NULL;
+ 	int part__last_load = -1;
+ 
+ 	    for (out = 0 ; out < N_output_arrays ; ++out)
+ 	    {
+ 	    const int in = operand_indices[out];
+-	    const void *restrict const input_array_ptr = input_arrays[in];
++	    const void* const input_array_ptr = input_arrays[in];
+ 
+ 	    /*
+  	     * ***decode*** the output array datatype
+@@ -1331,9 +1323,7 @@ CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
+ 	   ,
+ 	   out, (int) output_array_type_codes[out], N_output_parts);
+ 								/*NOTREACHED*/
+-#pragma omp critical
+-                    return_status = UTIL_ERROR_BAD_INPUT;
+-                    goto next_iteration;
++		    return UTIL_ERROR_BAD_INPUT;	/*** ERROR RETURN ***/
+ 		    }
+ 
+ 	      {
+@@ -1371,9 +1361,8 @@ CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
+ 	   in, (int) input_array_type_codes[in], N_input_parts,
+ 	   out, (int) output_array_type_codes[out], N_output_parts);
+ 								/*NOTREACHED*/
+-#pragma omp critical
+-                                return_status = UTIL_ERROR_BAD_INPUT;
+-                                goto next_iteration;
++				return UTIL_ERROR_BAD_INPUT;
++							/*** ERROR RETURN ***/
+ 				}
+ 
+ 			/*
+@@ -1386,32 +1375,13 @@ CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
+ 					       + input_array_offsets[in];
+ 			switch	(input_array_type_codes[in])
+ 				{
+-#ifdef HAVE_CCTK_REAL4
+-case CCTK_VARIABLE_REAL4:
+-#ifdef CCTK_REAL_PRECISION_4
+-case CCTK_VARIABLE_REAL:
+-#endif
+-	  {
+-	const CCTK_REAL4 *restrict const input_array_ptr_real4
+-		= ((const CCTK_REAL4 *) input_array_ptr) + input_posn;
+-	LOAD_DATA_REAL4(input_array_ptr_real4,
+-			STRIDE_IJK,
+-			&data);
+-	break;
+-	  }
+-#endif
+-
+-#ifdef HAVE_CCTK_REAL8
+-case CCTK_VARIABLE_REAL8:
+-#ifdef CCTK_REAL_PRECISION_8
+ case CCTK_VARIABLE_REAL:
+-#endif
+ 	  {
+-	const CCTK_REAL8 *restrict const input_array_ptr_real8
+-		= ((const CCTK_REAL8 *) input_array_ptr) + input_posn;
+-	LOAD_DATA_REAL8(input_array_ptr_real8,
+-                        STRIDE_IJK,
+-                        &data);
++	const CCTK_REAL *const input_array_ptr_real
++		= ((const CCTK_REAL *) input_array_ptr) + input_posn;
++	LOAD_DATA_REAL(input_array_ptr_real,
++		       STRIDE_IJK,
++		       &data);
+       #if (N_DIMS == 2) && (MOLECULE_SIZE == 4)
+ 	if (debug >= 10)
+ 	   then {
+@@ -1438,17 +1408,37 @@ case CCTK_VARIABLE_REAL:
+       #endif
+ 	break;
+ 	  }
++
++#ifdef HAVE_CCTK_REAL4
++case CCTK_VARIABLE_REAL4:
++	  {
++	const CCTK_REAL4 *const input_array_ptr_real4
++		= ((const CCTK_REAL4 *) input_array_ptr) + input_posn;
++	LOAD_DATA_REAL4(input_array_ptr_real4,
++			STRIDE_IJK,
++			&data);
++	break;
++	  }
++#endif
++
++#ifdef HAVE_CCTK_REAL8
++case CCTK_VARIABLE_REAL8:
++	  {
++	const CCTK_REAL8 *const input_array_ptr_real8
++		= ((const CCTK_REAL8 *) input_array_ptr) + input_posn;
++	LOAD_DATA_REAL8(input_array_ptr_real8,
++			STRIDE_IJK,
++			&data);
++	break;
++	  }
+ #endif
+ 
+ #ifdef HAVE_CCTK_REAL16
+ case CCTK_VARIABLE_REAL16:
+-#ifdef CCTK_REAL_PRECISION_16
+-case CCTK_VARIABLE_REAL:
+-#endif
+ 	  {
+ 	/* FIXME: maybe we should warn (once per cactus run) that we may be */
+ 	/*        doing arithmetic in lower precision than the data type? */
+-	const CCTK_REAL16 *restrict const input_array_ptr_real16
++	const CCTK_REAL16 *const input_array_ptr_real16
+ 		= ((const CCTK_REAL16 *) input_array_ptr) + input_posn;
+ 	LOAD_DATA_REAL16(input_array_ptr_real16,
+ 			 STRIDE_IJK,
+@@ -1457,13 +1447,21 @@ case CCTK_VARIABLE_REAL:
+ 	  }
+ #endif
+ 
++case CCTK_VARIABLE_COMPLEX:
++	  {
++	const CCTK_REAL (*const input_array_ptr_complex)[COMPLEX_N_PARTS]
++		= ((const CCTK_REAL (*)[COMPLEX_N_PARTS]) input_array_ptr)
++		  + input_posn;
++	LOAD_DATA_COMPLEX(input_array_ptr_complex,
++			  STRIDE_IJK, part,
++			  &data);
++	break;
++	  }
++
+ #ifdef HAVE_CCTK_COMPLEX8
+ case CCTK_VARIABLE_COMPLEX8:
+-#ifdef CCTK_COMPLEX_PRECISION_8
+-case CCTK_VARIABLE_COMPLEX:
+-#endif
+ 	  {
+-	const CCTK_REAL4 (*restrict const input_array_ptr_complex8)[COMPLEX_N_PARTS]
++	const CCTK_REAL4 (*const input_array_ptr_complex8)[COMPLEX_N_PARTS]
+ 		= ((const CCTK_REAL4 (*)[COMPLEX_N_PARTS]) input_array_ptr)
+ 		  + input_posn;
+ 	LOAD_DATA_COMPLEX8(input_array_ptr_complex8,
+@@ -1475,11 +1473,8 @@ case CCTK_VARIABLE_COMPLEX:
+ 
+ #ifdef HAVE_CCTK_COMPLEX16
+ case CCTK_VARIABLE_COMPLEX16:
+-#ifdef CCTK_COMPLEX_PRECISION_16
+-case CCTK_VARIABLE_COMPLEX:
+-#endif
+ 	  {
+-	const CCTK_REAL8 (*restrict const input_array_ptr_complex16)[COMPLEX_N_PARTS]
++	const CCTK_REAL8 (*const input_array_ptr_complex16)[COMPLEX_N_PARTS]
+ 		= ((const CCTK_REAL8 (*)[COMPLEX_N_PARTS]) input_array_ptr)
+ 		  + input_posn;
+ 	LOAD_DATA_COMPLEX16(input_array_ptr_complex16,
+@@ -1492,13 +1487,10 @@ case CCTK_VARIABLE_COMPLEX:
+ 
+ #ifdef HAVE_CCTK_COMPLEX32
+ case CCTK_VARIABLE_COMPLEX32:
+-#ifdef CCTK_COMPLEX_PRECISION_32
+-case CCTK_VARIABLE_COMPLEX:
+-#endif
+ 	  {
+ 	/* FIXME: maybe we should warn (once per cactus run) that we may be */
+ 	/*        doing arithmetic in lower precision than the data type? */
+-	const CCTK_REAL16 (*restrict const input_array_ptr_complex32)[COMPLEX_N_PARTS]
++	const CCTK_REAL16 (*const input_array_ptr_complex32)[COMPLEX_N_PARTS]
+ 		= ((const CCTK_REAL16 (*)[COMPLEX_N_PARTS]) input_array_ptr)
+ 		  + input_posn;
+ 	LOAD_DATA_COMPLEX32(input_array_ptr_complex32,
+@@ -1516,9 +1508,7 @@ CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
+ 	   ,
+ 	   (int) input_array_type_codes[in],
+ 	   in);						/*NOTREACHED*/
+-#pragma omp critical
+-return_status = UTIL_ERROR_BAD_INPUT;
+-goto next_iteration;
++return UTIL_ERROR_BAD_INPUT;			/*** ERROR RETURN ***/
+ 				/* end of switch (input_array_type_codes[in]) */
+ 				}
+ 			  }
+@@ -1618,9 +1608,8 @@ CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
+ 	   ,
+ 	   (int) operation_codes[out],
+ 	   out);
+-#pragma omp critical
+-                                return_status = UTIL_ERROR_BAD_INPUT;
+-                                goto next_iteration;
++				return UTIL_ERROR_BAD_INPUT;
++							/*** ERROR RETURN ***/
+ 				/* end of switch (operation_codes[out]) */
+ 				}
+ 
+@@ -1640,13 +1629,29 @@ CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
+ 			switch	(output_array_type_codes[out])
+ 				{
+ 
++case CCTK_VARIABLE_REAL:
++	  {
++	CCTK_REAL *const output_array_ptr_real
++		= (CCTK_REAL *) output_arrays[out];
++	if (debug >= 10)
++	   then {
++		if ((pt & (pt-1)) == 0) /* pt is 0 or a power of 2 */
++		   then {
++			printf("                 result addr is %p\n",
++			       (void *) &output_array_ptr_real[pt]);
++			printf("                 previous value there was %g\n",
++			       output_array_ptr_real[pt]);
++			fflush(stdout);
++			}
++		}
++	output_array_ptr_real[pt] = (CCTK_REAL) result;
++	break;
++	  }
++
+ #ifdef HAVE_CCTK_REAL4
+ case CCTK_VARIABLE_REAL4:
+-#ifdef CCTK_REAL_PRECISION_4
+-case CCTK_VARIABLE_REAL:
+-#endif
+ 	  {
+-	CCTK_REAL4 *restrict const output_array_ptr_real4
++	CCTK_REAL4 *const output_array_ptr_real4
+ 		= (CCTK_REAL4 *) output_arrays[out];
+ 	output_array_ptr_real4[pt] = (CCTK_REAL4) result;
+ 	break;
+@@ -1655,48 +1660,36 @@ case CCTK_VARIABLE_REAL:
+ 
+ #ifdef HAVE_CCTK_REAL8
+ case CCTK_VARIABLE_REAL8:
+-#ifdef CCTK_REAL_PRECISION_8
+-case CCTK_VARIABLE_REAL:
+-#endif
+ 	  {
+-	CCTK_REAL8 *restrict const output_array_ptr_real8
++	CCTK_REAL8 *const output_array_ptr_real8
+ 		= (CCTK_REAL8 *) output_arrays[out];
+ 	output_array_ptr_real8[pt] = (CCTK_REAL8) result;
+-	if (debug >= 10)
+-	   then {
+-		if ((pt & (pt-1)) == 0) /* pt is 0 or a power of 2 */
+-		   then {
+-			printf("                 result addr is %p\n",
+-			       (void *) &output_array_ptr_real8[pt]);
+-			printf("                 previous value there was %.17g\n",
+-			       (double) output_array_ptr_real8[pt]);
+-			fflush(stdout);
+-			}
+-		}
+ 	break;
+ 	  }
+ #endif
+ 
+ #ifdef HAVE_CCTK_REAL16
+ case CCTK_VARIABLE_REAL16:
+-#ifdef CCTK_REAL_PRECISION_16
+-case CCTK_VARIABLE_REAL:
+-#endif
+ 	  {
+-	CCTK_REAL16 *restrict const output_array_ptr_real16
++	CCTK_REAL16 *const output_array_ptr_real16
+ 		= (CCTK_REAL16 *) output_arrays[out];
+ 	output_array_ptr_real16[pt] = (CCTK_REAL16) result;
+ 	break;
+ 	  }
+ #endif
+ 
++case CCTK_VARIABLE_COMPLEX:
++	  {
++	CCTK_REAL (*const output_array_ptr_complex)[COMPLEX_N_PARTS]
++		= (CCTK_REAL (*)[COMPLEX_N_PARTS]) output_arrays[out];
++	output_array_ptr_complex[pt][part] = (CCTK_REAL) result;
++	break;
++	  }
++
+ #ifdef HAVE_CCTK_COMPLEX8
+ case CCTK_VARIABLE_COMPLEX8:
+-#ifdef CCTK_COMPLEX_PRECISION_8
+-case CCTK_VARIABLE_COMPLEX:
+-#endif
+ 	  {
+-	CCTK_REAL4 (*restrict const output_array_ptr_complex8)[COMPLEX_N_PARTS]
++	CCTK_REAL4 (*const output_array_ptr_complex8)[COMPLEX_N_PARTS]
+ 		= (CCTK_REAL4 (*)[COMPLEX_N_PARTS]) output_arrays[out];
+ 	output_array_ptr_complex8[pt][part] = (CCTK_REAL4) result;
+ 	break;
+@@ -1705,11 +1698,8 @@ case CCTK_VARIABLE_COMPLEX:
+ 
+ #ifdef HAVE_CCTK_COMPLEX16
+ case CCTK_VARIABLE_COMPLEX16:
+-#ifdef CCTK_COMPLEX_PRECISION_16
+-case CCTK_VARIABLE_COMPLEX:
+-#endif
+ 	  {
+-	CCTK_REAL8 (*restrict const output_array_ptr_complex16)[COMPLEX_N_PARTS]
++	CCTK_REAL8 (*const output_array_ptr_complex16)[COMPLEX_N_PARTS]
+ 		= (CCTK_REAL8 (*)[COMPLEX_N_PARTS]) output_arrays[out];
+ 	output_array_ptr_complex16[pt][part] = (CCTK_REAL8) result;
+ 	break;
+@@ -1718,11 +1708,8 @@ case CCTK_VARIABLE_COMPLEX:
+ 
+ #ifdef HAVE_CCTK_COMPLEX32
+ case CCTK_VARIABLE_COMPLEX32:
+-#ifdef CCTK_COMPLEX_PRECISION_32
+-case CCTK_VARIABLE_COMPLEX:
+-#endif
+ 	  {
+-	CCTK_REAL16 (*restrict const output_array_ptr_complex32)[COMPLEX_N_PARTS]
++	CCTK_REAL16 (*const output_array_ptr_complex32)[COMPLEX_N_PARTS]
+ 		= (CCTK_REAL16 (*)[COMPLEX_N_PARTS]) output_arrays[out];
+ 	output_array_ptr_complex32[pt][part] = (CCTK_REAL16) result;
+ 	break;
+@@ -1737,9 +1724,7 @@ default:
+ 		   ,
+ 		   (int) output_array_type_codes[out],
+ 		   out);
+-#pragma omp critical
+-        return_status = UTIL_ERROR_BAD_INPUT;
+-        goto next_iteration;
++	return UTIL_ERROR_BAD_INPUT;			/*** ERROR RETURN ***/
+ 				/* end of switch (output type code) */
+ 				}
+ 
+@@ -1753,7 +1738,7 @@ default:
+ 		if ( (Jacobian_info != NULL)
+ 		     && (Jacobian_info->Jacobian_pointer[out] != NULL))
+ 		   then {
+-			CCTK_REAL *restrict const Jacobian_ptr
++			CCTK_REAL *const Jacobian_ptr
+ 			   = Jacobian_info->Jacobian_pointer[out]
+ 			     + Jacobian_info->Jacobian_offset[out]
+ 			     + Jacobian_info->Jacobian_interp_point_stride*pt
+@@ -1843,9 +1828,8 @@ CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
+ 	   ,
+ 	   (int) operation_codes[out],
+ 	   out);
+-#pragma omp critical
+-                                return_status = UTIL_ERROR_BAD_INPUT;
+-                                goto next_iteration;
++				return UTIL_ERROR_BAD_INPUT;
++							/*** ERROR RETURN ***/
+ 				/* end of switch(operation_codes[out])*/
+ 				}
+ 			/* end of Jacobian-query code */
+@@ -1861,7 +1845,6 @@ CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
+       }
+       }
+ 
+-  next_iteration:;
+     /* end of  for (pt = ...)  loop */
+     }
+ 
+@@ -1926,7 +1909,7 @@ return return_status;
+ 
+ #ifdef HAVE_OP_I
+   static
+-    void compute_coeffs_I(FP_XYZ, struct COEFFS_STRUCT *restrict coeffs_I)
++    void compute_coeffs_I(FP_XYZ, struct COEFFS_STRUCT *coeffs_I)
+   {
+   #include COEFFS_I_COMPUTE_FILE_NAME
+   }
+@@ -1934,7 +1917,7 @@ return return_status;
+ 
+ #ifdef HAVE_OP_DX
+   static
+-    void compute_coeffs_dx(FP_XYZ, struct COEFFS_STRUCT *restrict coeffs_dx)
++    void compute_coeffs_dx(FP_XYZ, struct COEFFS_STRUCT *coeffs_dx)
+   {
+   #include COEFFS_DX_COMPUTE_FILE_NAME
+   }
+@@ -1942,7 +1925,7 @@ return return_status;
+ 
+ #ifdef HAVE_OP_DY
+   static
+-    void compute_coeffs_dy(FP_XYZ, struct COEFFS_STRUCT *restrict coeffs_dy)
++    void compute_coeffs_dy(FP_XYZ, struct COEFFS_STRUCT *coeffs_dy)
+   {
+   #include COEFFS_DY_COMPUTE_FILE_NAME
+   }
+@@ -1950,7 +1933,7 @@ return return_status;
+ 
+ #ifdef HAVE_OP_DZ
+   static
+-    void compute_coeffs_dz(FP_XYZ, struct COEFFS_STRUCT *restrict coeffs_dz)
++    void compute_coeffs_dz(FP_XYZ, struct COEFFS_STRUCT *coeffs_dz)
+   {
+   #include COEFFS_DZ_COMPUTE_FILE_NAME
+   }
+@@ -1958,7 +1941,7 @@ return return_status;
+ 
+ #ifdef HAVE_OP_DXX
+   static
+-    void compute_coeffs_dxx(FP_XYZ, struct COEFFS_STRUCT *restrict coeffs_dxx)
++    void compute_coeffs_dxx(FP_XYZ, struct COEFFS_STRUCT *coeffs_dxx)
+   {
+   #include COEFFS_DXX_COMPUTE_FILE_NAME
+   }
+@@ -1966,7 +1949,7 @@ return return_status;
+ 
+ #ifdef HAVE_OP_DXY
+   static
+-    void compute_coeffs_dxy(FP_XYZ, struct COEFFS_STRUCT *restrict coeffs_dxy)
++    void compute_coeffs_dxy(FP_XYZ, struct COEFFS_STRUCT *coeffs_dxy)
+   {
+   #include COEFFS_DXY_COMPUTE_FILE_NAME
+   }
+@@ -1974,7 +1957,7 @@ return return_status;
+ 
+ #ifdef HAVE_OP_DXZ
+   static
+-    void compute_coeffs_dxz(FP_XYZ, struct COEFFS_STRUCT *restrict coeffs_dxz)
++    void compute_coeffs_dxz(FP_XYZ, struct COEFFS_STRUCT *coeffs_dxz)
+   {
+   #include COEFFS_DXZ_COMPUTE_FILE_NAME
+   }
+@@ -1982,7 +1965,7 @@ return return_status;
+ 
+ #ifdef HAVE_OP_DYY
+   static
+-    void compute_coeffs_dyy(FP_XYZ, struct COEFFS_STRUCT *restrict coeffs_dyy)
++    void compute_coeffs_dyy(FP_XYZ, struct COEFFS_STRUCT *coeffs_dyy)
+   {
+   #include COEFFS_DYY_COMPUTE_FILE_NAME
+   }
+@@ -1990,7 +1973,7 @@ return return_status;
+ 
+ #ifdef HAVE_OP_DYZ
+   static
+-    void compute_coeffs_dyz(FP_XYZ, struct COEFFS_STRUCT *restrict coeffs_dyz)
++    void compute_coeffs_dyz(FP_XYZ, struct COEFFS_STRUCT *coeffs_dyz)
+   {
+   #include COEFFS_DYZ_COMPUTE_FILE_NAME
+   }
+@@ -1998,7 +1981,7 @@ return return_status;
+ 
+ #ifdef HAVE_OP_DZZ
+   static
+-    void compute_coeffs_dzz(FP_XYZ, struct COEFFS_STRUCT *restrict coeffs_dzz)
++    void compute_coeffs_dzz(FP_XYZ, struct COEFFS_STRUCT *coeffs_dzz)
+   {
+   #include COEFFS_DZZ_COMPUTE_FILE_NAME
+   }
+diff --git a/src/template.h b/src/template.h
+index b5ef202..c98ab4e 100644
+--- a/src/template.h
++++ b/src/template.h
+@@ -8,35 +8,35 @@
+   @version  $Header$
+   @@*/
+ int FUNCTION_NAME(/***** coordinate system *****/
+-		  const CCTK_REAL *restrict coord_origin,
+-		  const CCTK_REAL *restrict coord_delta,
++		  const CCTK_REAL coord_origin[],
++		  const CCTK_REAL coord_delta[],
+ 		  /***** interpolation points *****/
+ 		  int N_interp_points,
+ 		  int interp_coords_type_code,
+-		  const void *restrict const *restrict interp_coords,
+-		  const CCTK_INT *restrict N_boundary_points_to_omit,
+-		  const CCTK_REAL *restrict boundary_off_centering_tolerance,
+-		  const CCTK_REAL *restrict boundary_extrapolation_tolerance,
++		  const void* const interp_coords[],
++		  const CCTK_INT N_boundary_points_to_omit[],
++		  const CCTK_REAL boundary_off_centering_tolerance[],
++		  const CCTK_REAL boundary_extrapolation_tolerance[],
+ 		  /***** input arrays *****/
+ 		  int N_input_arrays,
+-		  const CCTK_INT *restrict input_array_offsets,
+-		  const CCTK_INT *restrict input_array_strides,
+-		  const CCTK_INT *restrict input_array_min_subscripts,
+-		  const CCTK_INT *restrict input_array_max_subscripts,
+-		  const CCTK_INT *restrict input_array_type_codes,
+-		  const void *restrict const *restrict input_arrays,
++		  const CCTK_INT input_array_offsets[],
++		  const CCTK_INT input_array_strides[],
++		  const CCTK_INT input_array_min_subscripts[],
++		  const CCTK_INT input_array_max_subscripts[],
++		  const CCTK_INT input_array_type_codes[],
++		  const void* const input_arrays[],
+ 		  /***** output arrays *****/
+ 		  int N_output_arrays,
+-		  const CCTK_INT *restrict output_array_type_codes,
+-		  void* const *restrict output_arrays,
++		  const CCTK_INT output_array_type_codes[],
++		  void* const output_arrays[],
+ 		  /***** operation info *****/
+-		  const CCTK_INT *restrict operand_indices,
+-		  const CCTK_INT *restrict operation_codes,
++		  const CCTK_INT operand_indices[],
++		  const CCTK_INT operation_codes[],
+ 		  /***** debugging *****/
+ 		  int debug, FILE* log_fp,
+ 		  /***** other return results *****/
+ 		  struct error_info* error_info,
+ 		  struct molecule_structure_flags* molecule_structure_flags,
+ 		  struct molecule_min_max_m_info* molecule_min_max_m_info,
+-		  CCTK_INT *restrict const *restrict molecule_positions,
+-		  struct Jacobian_info *restrict Jacobian_info);
++		  CCTK_INT* const molecule_positions[],
++		  struct Jacobian_info* Jacobian_info);
+diff --git a/src/util.c b/src/util.c
+index 0d3bef8..ac1a3ee 100644
+--- a/src/util.c
++++ b/src/util.c
+@@ -110,6 +110,7 @@ default:			return -1;
+ int AEILocalInterp_get_int_param(const char* const thorn_or_implementation_name,
+ 				 const char* const parameter_name)
+ {
++CCTK_INT data_type;
+ const CCTK_INT* const value_ptr
+ 	= (const CCTK_INT*) CCTK_ParameterGet(parameter_name,
+ 					      thorn_or_implementation_name,
+-- 
+1.7.5.4
+

@@ -1,0 +1,364 @@
+From 44b6221e33e30e1a79dbd31c39ecdf9bd004b1b9 Mon Sep 17 00:00:00 2001
+From: Christian Reisswig <reisswig@scriwalker.(none)>
+Date: Wed, 28 Mar 2012 14:00:53 -0700
+Subject: [PATCH] GRHydro: Schedule AtmosphereReset in LAST Mol_PostStep
+
+This saves some syncs. This also gets rid of the akward parameter
+"disable_sync_and_tmunu_after_mol".
+
+Original patch by Christian Reisswig.
+Adapted to not rely on MoL support by Roland Haas.
+Bug fixed by Christian Reisswig.
+---
+ interface.ccl                 |    1 +
+ param.ccl                     |   10 +--
+ schedule.ccl                  |  192 +++++++++++++++++++++++++----------------
+ src/GRHydro_LastMoLPostStep.c |   41 +++++++++
+ src/make.code.defn            |    1 +
+ 5 files changed, 164 insertions(+), 81 deletions(-)
+ create mode 100644 src/GRHydro_LastMoLPostStep.c
+
+diff --git a/interface.ccl b/interface.ccl
+index d7aea0c..25f3d60 100644
+--- a/interface.ccl
++++ b/interface.ccl
+@@ -476,6 +476,7 @@ int evolve_MHD type = SCALAR tags='checkpoint="no"' "Are we doing MHD? Set in Pa
+ private:
+ 
+ int GRHydro_reflevel type = SCALAR tags='checkpoint="no"' "Refinement level GRHydro is working on right now"
++int InLastMoLPostStep type = SCALAR tags='checkpoint="no"' "Flag to indicate if we are currently in the last MoL_PostStep"
+ 
+ real GRHydro_con_bext type = GF Timelevels = 1 tags='Prolongation="None" checkpoint="no"'
+ {
+diff --git a/param.ccl b/param.ccl
+index 5424df4..98b49d0 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -592,12 +592,10 @@ int GRHydro_c2p_warn_from_reflevel "Start warning on given refinement level and
+   0:           :: "Greater or equal to 0"
+ } 0
+ 
+-# The following parameter is to reduce the number of syncs/boundary calls done
+-# it will lead to correct results when set to yes ONLY when the simulation does not use 
+-# an atmosphere at all.
+-boolean disable_sync_and_tmunu_after_MoL "Do not sync/prolongate and reset Tmunu after MoL integration is done" STEERABLE=ALWAYS
+-{
+-} "no"
++
++
++############### Optimization options ###################################################
++
+ 
+ 
+ # This can improve the performance on many cores, but may be dangerous 
+diff --git a/schedule.ccl b/schedule.ccl
+index 180b441..0272f30 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -67,6 +67,7 @@ STORAGE:evolve_MHD
+ STORAGE:evolve_Y_e
+ STORAGE:evolve_temper
+ STORAGE:GRHydro_reflevel
++STORAGE:InLastMoLPostStep
+ STORAGE:densrhs
+ STORAGE:taurhs
+ STORAGE:srhs
+@@ -1000,45 +1001,45 @@ schedule group Do_GRHydro_Boundaries IN HydroBase_Boundaries
+ 
+ if (!sync_conserved_only)
+ {
+-schedule GRHydro_Boundaries IN HydroBase_Select_Boundaries AS GRHydro_Bound
+-{
+-  LANG: Fortran
+-  OPTIONS: LEVEL
+-  SYNC: dens
+-  SYNC: tau
+-  SYNC: scon
+-  SYNC: HydroBase::w_lorentz
+-  SYNC: HydroBase::rho
+-  SYNC: HydroBase::press
+-  SYNC: HydroBase::eps
+-  SYNC: HydroBase::vel
+-  SYNC: Bcons
+-  SYNC: HydroBase::Bvec
+-  SYNC: psidc
+-  SYNC: GRHydro_cons_tracers
+-  SYNC: GRHydro_tracers
+-  SYNC: hydrobase::temperature
+-  SYNC: hydrobase::entropy
+-  SYNC: hydrobase::Y_e
+-  SYNC: Y_e_con
+-  SYNC: lvel
+-  SYNC: lBvec
+-} "Select GRHydro boundary conditions"
++   schedule GRHydro_Boundaries IN HydroBase_Select_Boundaries AS GRHydro_Bound
++   {
++      LANG: Fortran
++      OPTIONS: LEVEL
++      SYNC: dens
++      SYNC: tau
++      SYNC: scon
++      SYNC: HydroBase::w_lorentz
++      SYNC: HydroBase::rho
++      SYNC: HydroBase::press
++      SYNC: HydroBase::eps
++      SYNC: HydroBase::vel
++      SYNC: Bcons
++      SYNC: HydroBase::Bvec
++      SYNC: psidc
++      SYNC: GRHydro_cons_tracers
++      SYNC: GRHydro_tracers
++      SYNC: hydrobase::temperature
++      SYNC: hydrobase::entropy
++      SYNC: hydrobase::Y_e
++      SYNC: Y_e_con
++      SYNC: lvel
++      SYNC: lBvec
++   } "Select GRHydro boundary conditions"
+ }
+ else
+ {
+-schedule GRHydro_Boundaries IN HydroBase_Select_Boundaries AS GRHydro_Bound
+-{
+-  LANG: Fortran
+-  OPTIONS: LEVEL
+-  SYNC: dens
+-  SYNC: tau
+-  SYNC: scon
+-  SYNC: Bcons
+-  SYNC: psidc
+-  SYNC: GRHydro_cons_tracers
+-  SYNC: Y_e_con
+-} "Select GRHydro boundary conditions"
++    schedule GRHydro_Boundaries IN HydroBase_Select_Boundaries AS GRHydro_Bound
++    {
++      LANG: Fortran
++      OPTIONS: LEVEL
++      SYNC: dens
++      SYNC: tau
++      SYNC: scon
++      SYNC: Bcons
++      SYNC: psidc
++      SYNC: GRHydro_cons_tracers
++      SYNC: Y_e_con
++    } "Select GRHydro boundary conditions"
+ 
+     # after a regrid Cactus relies on the boundary thorns to fill in the outer
+     # and symmetry boundaries (we need valid data for the initial guess in Con2Prim)
+@@ -1049,36 +1050,63 @@ schedule GRHydro_Boundaries IN HydroBase_Select_Boundaries AS GRHydro_Bound
+     {
+     } "Apply boundary conditions to primitives"
+     
+-    # This is necessary, otherwise we are inconsistent in atmosphere treatment of conserved and primitive variables
+-    if(!disable_sync_and_tmunu_after_MoL) {
+-       schedule group GRHydro_PrimitiveBoundaries IN CCTK_EVOL AFTER (MoL_Evolution,GRHydro_AtmosphereReset,sync_GRHydro_C2P_failed) BEFORE HydroBase_Boundaries
+-       {
+-       } "Apply boundary conditions to primitives"
+-    }
++    # This is necessary to provide initial guesses for Con2Prim after atmo reset (which happens only at last MoL post-step)!
++    schedule group GRHydro_PrimitiveBoundaries IN HydroBase_PostStep BEFORE HydroBase_Boundaries IF GRHydro::InLastMoLPostStep
++    {
++    } "Apply boundary conditions to primitives"
+     
+-    schedule GRHydro_SelectPrimitiveBoundaries IN GRHydro_PrimitiveBoundaries
++
++    if(CCTK_IsImplementationActive("Coordinates")) {
++    
++      # With MP, we only need to sync primitives in LOCAL tensor base!!
++      schedule GRHydro_SelectPrimitiveBoundaries IN GRHydro_PrimitiveBoundaries
++      {
++	 LANG: Fortran
++	 OPTIONS: LEVEL
++	 # do a sync to be very sure we have proper initial guesses everywhere
++#         SYNC: HydroBase::w_lorentz      # not used as initial guess and hence not needed!
++#         SYNC: HydroBase::press          # not used as initial guess and hence not needed!
++#         SYNC: HydroBase::vel
++#         SYNC: HydroBase::Bvec
++#         SYNC: hydrobase::entropy        # not used as initial guess and hence not needed!
++#         SYNC: hydrobase::Y_e            # not used as initial guess and hence not needed!
++#         SYNC: GRHydro_tracers           # not used as initial guess and hence not needed!
++         SYNC: HydroBase::rho
++	 SYNC: HydroBase::eps
++	 SYNC: hydrobase::temperature
++	 SYNC: lvel
++	 SYNC: lBvec
++      } "Select primitive variables for boudary conditions"
++    }
++    else
+     {
+-      LANG: Fortran
+-      OPTIONS: LEVEL
+-      # do a sync to be very sure we have proper initial guesses everywhere
+-      SYNC: HydroBase::w_lorentz
+-      SYNC: HydroBase::rho
+-      SYNC: HydroBase::press
+-      SYNC: HydroBase::eps
+-      SYNC: HydroBase::vel
+-      SYNC: HydroBase::Bvec
+-      SYNC: hydrobase::temperature
+-      SYNC: hydrobase::entropy
+-      SYNC: hydrobase::Y_e
+-      SYNC: lvel
+-      SYNC: lBvec
+-      SYNC: GRHydro_tracers
+-    } "Select primitive variables for boudary conditions"
++      # Without MP, we only need to sync primitives in GLOBAL tensor base!!
++      schedule GRHydro_SelectPrimitiveBoundaries IN GRHydro_PrimitiveBoundaries
++      {
++	 LANG: Fortran
++	 OPTIONS: LEVEL
++	 # do a sync to be very sure we have proper initial guesses everywhere
++#         SYNC: HydroBase::w_lorentz      # not used as initial guess and hence not needed!
++#         SYNC: HydroBase::press          # not used as initial guess and hence not needed!
++#         SYNC: hydrobase::entropy        # not used as initial guess and hence not needed!
++#         SYNC: hydrobase::Y_e            # not used as initial guess and hence not needed!
++#         SYNC: lvel
++#         SYNC: lBvec
++#         SYNC: GRHydro_tracers           # not used as initial guess and hence not needed!
++	 SYNC: HydroBase::rho
++	 SYNC: HydroBase::eps
++	 SYNC: HydroBase::vel
++	 SYNC: HydroBase::Bvec
++	 SYNC: hydrobase::temperature
++      } "Select primitive variables for boudary conditions"
++    
++    }
++    
+     schedule group ApplyBCs AS GRHydro_ApplyPrimitiveBCs in GRHydro_PrimitiveBoundaries AFTER GRHydro_SelectPrimitiveBoundaries
+     {
+     } "Apply boundary conditions to primitive variables"
+ 
+-}
++}  # sync_conserved_only
+ 
+ ############################################################
+ ### Compute first differences of rho for mesh refinement ###
+@@ -1100,37 +1128,51 @@ schedule GRHydro_Boundaries IN HydroBase_Select_Boundaries AS GRHydro_Bound
+ # } "Compute relative differences in rho"
+ 
+ ################################################################
++### Some actions are only required in the very last MoL sub- ###
++### step but cannot be moved into PseudoEvolution since they ###
++### affect other routines in PostStep. A prime example is    ###
++### AmosphereReset which forms an operator split RHS.        ###
++################################################################
++
++schedule GRHydro_SetLastMoLPostStep IN MoL_PostStep
++{
++  LANG: C
++  OPTIONS: level
++} "Set grid scalar InLastMoLPostStep if this is the last MoL PostStep call"
++# there used to be a comment along the lines "You did not see this abuse of
++# MoL. Nothing to see here. Move along." Consider such a comment to be present
++# again.
++schedule GRHydro_ClearLastMoLPostStep IN MoL_Step AFTER MoL_PostStep
++{
++  LANG: C
++  OPTIONS: level
++} "Reset InLastMoLPostStep to zero"
++schedule GRHydro_ClearLastMoLPostStep IN CCTK_WRAGH
++{
++  LANG: C
++  OPTIONS: global-early
++} "Initialize InLastMoLPostStep to zero"
++
++################################################################
+ ### If a point has been marked as requiring resetting to the ###
+ ### atmosphere, this is where we do it.                      ###
+ ###                                                          ###
+-### This is logically still part of the MoL evolution step   ###
+-### since it is part of evolving the primitives. The final   ###
+-### SetTmunu should be before PseudoEvolution so that eg.    ###
+-### constraints use the correct stress energy tensor.        ###
++### This is executed in the last MoL_PosStep                 ###
+ ################################################################
+ 
+ if (CCTK_Equals(Bvec_evolution_method,"GRHydro"))
+ {
+-  schedule GRHydro_AtmosphereResetM AT EVOL AFTER MoL_Evolution
++  schedule GRHydro_AtmosphereResetM IN MoL_PostStep AFTER ADMBase_SetADMVars AFTER GRHydro_SetLastMoLPostStep BEFORE HydroBase_PostStep IF GRHydro::InLastMoLPostStep
+   {
+     LANG: Fortran
+   } "Reset the atmosphere - MHD version"
+ } else {
+-  schedule GRHydro_AtmosphereReset AT EVOL AFTER MoL_Evolution
++  schedule GRHydro_AtmosphereReset IN MoL_PostStep AFTER ADMBase_SetADMVars BEFORE HydroBase_PostStep IF GRHydro::InLastMoLPostStep
+   {
+     LANG: Fortran
+   } "Reset the atmosphere"
+ }
+ 
+-if(!disable_sync_and_tmunu_after_MoL) {
+-  schedule group HydroBase_Boundaries AT EVOL AFTER MoL_Evolution AFTER (GRHydro_AtmosphereReset GRHydro_AtmosphereResetM)
+-  {
+-  } "HydroBase Boundary conditions group"
+-  
+-  schedule GROUP SetTmunu AT EVOL AFTER HydroBase_Boundaries BEFORE MoL_PseudoEvolution
+-  {
+-  } "Calculate the stress-energy tensor"
+-}
+ 
+ } # end of  if (CCTK_EQUALS(hydrobase::evolution_method, "GRHydro"))
+   
+diff --git a/src/GRHydro_LastMoLPostStep.c b/src/GRHydro_LastMoLPostStep.c
+new file mode 100644
+index 0000000..1ccc4b4
+--- /dev/null
++++ b/src/GRHydro_LastMoLPostStep.c
+@@ -0,0 +1,41 @@
++// GRHydro_LastMoLPostStep.c
++//
++// Compute is this is the last MoL PostStep call. Code taken from Christian
++// Reisswig's rejected MoL changes.
++//
++// Roland Haas
++// Sun Jun  3 17:35:53 PDT 2012
++
++#include <stdio.h>
++#include <string.h>
++#include <assert.h>
++
++#include "cctk.h"
++#include "cctk_Arguments.h"
++#include "cctk_Parameters.h"
++
++void GRHydro_SetLastMoLPostStep(CCTK_ARGUMENTS)
++{
++  DECLARE_CCTK_ARGUMENTS;
++
++  const CCTK_INT *MoL_Intermediate_Step = 
++    CCTK_VarDataPtr(cctkGH,0,"MoL::MoL_Intermediate_Step");
++  if(NULL == MoL_Intermediate_Step)
++  {
++    CCTK_WARN(CCTK_WARN_ABORT,
++              "Could not get data pointer for MoL::MoL_Intermediate_Step");
++  }
++
++  // If counter becomes zero, the only thing left to do is to call PostStep!
++  if (*MoL_Intermediate_Step == 0)
++    *InLastMoLPostStep = 1;
++  else
++    *InLastMoLPostStep = 0;
++}
++
++void GRHydro_ClearLastMoLPostStep(CCTK_ARGUMENTS)
++{
++  DECLARE_CCTK_ARGUMENTS;
++
++  *InLastMoLPostStep = 0;
++}
+diff --git a/src/make.code.defn b/src/make.code.defn
+index 45ca16a..395ff82 100644
+--- a/src/make.code.defn
++++ b/src/make.code.defn
+@@ -63,6 +63,7 @@ SRCS = 	Utils.F90 \
+ 	GRHydro_PPMMReconstruct_drv.F90\
+ 	GRHydro_ENOReconstruct_drv.F90\
+ 	GRHydro_PPMReconstruct_drv.F90\
++	GRHydro_LastMoLPostStep.c\
+ 	GRHydro_TVDReconstruct_drv.F90
+ 
+ 
+-- 
+1.7.10
+

@@ -1,0 +1,13 @@
+Index: src/GRHydro_Con2Prim.F90
+===================================================================
+--- src/GRHydro_Con2Prim.F90	(revision 210)
++++ src/GRHydro_Con2Prim.F90	(working copy)
+@@ -1966,7 +1966,7 @@
+           if (SpaceMask_CheckStateBitsF90(space_mask, i, j, k, type_bits, atmosphere) .or. &
+               GRHydro_enable_internal_excision /= 0 .and. (hydro_excision_mask(i,j,k) .ne. 0)) cycle
+  
+-          f = press_new(i,j,k) - press(i,j,k)
++          f(i,j,k) = press_new(i,j,k) - press(i,j,k)
+ 
+           udens = dens(i,j,k) / sqrt(GRHydro_det(i,j,k))
+           usx   = scon(i,j,k,1)   / sqrt(GRHydro_det(i,j,k))

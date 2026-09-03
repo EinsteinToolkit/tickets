@@ -1,0 +1,19 @@
+# HG changeset patch
+# User Roland Haas <roland.haas@physics.gatech.edu>
+# Date 1315525244 14400
+# Node ID 7d2281afea561ad8f52ff90017d7c7b076fb3c51
+# Parent  9b019981aa2f56a1bfac986ce71ffb7502e50b70
+CarpetLib: avoid simultaneous implicit and explicit instantiation of
+prolongate_3d_cc_eno_rf2<T,3>
+
+diff --git a/Carpet/CarpetLib/src/prolongate_3d_cc_eno_rf2.cc b/Carpet/CarpetLib/src/prolongate_3d_cc_eno_rf2.cc
+--- a/Carpet/CarpetLib/src/prolongate_3d_cc_eno_rf2.cc
++++ b/Carpet/CarpetLib/src/prolongate_3d_cc_eno_rf2.cc
+@@ -1192,6 +1192,7 @@
+                                                                     \
+ 
+ #define CARPET_NO_INT
++#define CARPET_NO_COMPLEX
+ #include "typecase.hh"
+ #undef TYPECASE
+ 

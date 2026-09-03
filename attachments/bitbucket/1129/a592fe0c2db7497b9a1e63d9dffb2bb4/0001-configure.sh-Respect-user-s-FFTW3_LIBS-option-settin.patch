@@ -1,0 +1,36 @@
+From d17597cd67a709698d8740d5c86d4a0693462ea1 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Tue, 23 Oct 2012 02:36:04 +0200
+Subject: [PATCH] configure.sh: Respect user's FFTW3_LIBS option setting
+
+---
+ configure.sh | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+ mode change 100644 => 100755 configure.sh
+
+diff --git a/configure.sh b/configure.sh
+old mode 100644
+new mode 100755
+index 0da42db..358e001
+--- a/configure.sh
++++ b/configure.sh
+@@ -155,7 +155,6 @@ else
+     FFTW3_INC_DIRS="${FFTW3_DIR}/include"
+     FFTW3_LIB_DIRS="${FFTW3_DIR}/lib"
+ fi
+-FFTW3_LIBS='fftw3'
+ 
+ # Pass options to Cactus
+ echo "BEGIN MAKE_DEFINITION"
+@@ -163,7 +162,7 @@ echo "HAVE_FFTW3     = 1"
+ echo "FFTW3_DIR      = ${FFTW3_DIR}"
+ echo "FFTW3_INC_DIRS = ${FFTW3_INC_DIRS}"
+ echo "FFTW3_LIB_DIRS = ${FFTW3_LIB_DIRS}"
+-echo "FFTW3_LIBS     = ${FFTW3_LIBS}"
++echo "FFTW3_LIBS     = ${FFTW3_LIBS:=fftw3}"
+ echo "END MAKE_DEFINITION"
+ 
+ echo 'INCLUDE_DIRECTORY $(FFTW3_INC_DIRS)'
+-- 
+1.7.11.5
+

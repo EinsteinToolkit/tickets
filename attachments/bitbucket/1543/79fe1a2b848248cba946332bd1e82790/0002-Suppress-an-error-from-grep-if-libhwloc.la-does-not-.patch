@@ -1,0 +1,33 @@
+From 6899831ac584604698be873c957ad1e84ab71e7c Mon Sep 17 00:00:00 2001
+From: Barry Wardell <barry.wardell@gmail.com>
+Date: Wed, 12 Feb 2014 11:27:21 -0500
+Subject: [PATCH 2/2] Suppress an error from grep if libhwloc.la does not exist
+
+---
+ configure.sh | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/configure.sh b/configure.sh
+index f877ac6..e1347ac 100755
+--- a/configure.sh
++++ b/configure.sh
+@@ -199,10 +199,12 @@ else
+ fi
+ 
+ # Add libnuma manually, if necessary
+-if grep -q '[-]lnuma' ${HWLOC_LIB_DIR}/lib/libhwloc.la; then
+-    if ! echo '' ${HWLOC_LIBS} '' | grep -q ' numa '; then
+-        HWLOC_LIBS="${HWLOC_LIBS} numa"
+-    fi
++if [ -e "${HWLOC_LIB_DIR}/libhwloc.la" ]; then
++  if grep -q '[-]lnuma' ${HWLOC_LIB_DIR}/lib/libhwloc.la; then
++      if ! echo '' ${HWLOC_LIBS} '' | grep -q ' numa '; then
++          HWLOC_LIBS="${HWLOC_LIBS} numa"
++        fi
++  fi
+ fi
+ 
+ 
+-- 
+1.8.4.1
+

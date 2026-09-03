@@ -1,0 +1,290 @@
+Index: src/interpolate.hh
+===================================================================
+--- src/interpolate.hh	(revision 84)
++++ src/interpolate.hh	(working copy)
+@@ -12,7 +12,7 @@
+ void Multipole_Interp(CCTK_ARGUMENTS,
+                       CCTK_REAL x[], CCTK_REAL y[], CCTK_REAL z[], 
+                       int real_idx, int imag_idx,
+-                      CCTK_REAL psi4r[], CCTK_REAL psi4i[]);
++                      CCTK_REAL psi4r[], CCTK_REAL psi4i[], bool is_dummy);
+ 
+ void Multipole_InterpVar(CCTK_ARGUMENTS,
+                          CCTK_REAL x[], CCTK_REAL y[], CCTK_REAL z[], const char *var_name,
+Index: src/utils.cc
+===================================================================
+--- src/utils.cc	(revision 84)
++++ src/utils.cc	(working copy)
+@@ -192,9 +192,9 @@
+   static map<string,bool> checked; // Has the given file been checked
+                                    // for truncation? map<*,bool>
+                                    // defaults to false
++  
++  hid_t file = -1;
+ 
+-  hid_t file;
+-
+   if (!file_exists(output_name) || (!checked[output_name] && IO_TruncateOutputFiles(cctkGH)))
+   {
+     file = H5Fcreate(output_name.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+@@ -316,6 +316,9 @@
+ // Integration
+ ////////////////////////////////////////////////////////////////////////
+ 
++static CCTK_REAL *Multipole_Integrate_fr = 0;
++static CCTK_REAL *Multipole_Integrate_fi = 0;
++static bool Multipole_Integrate_allocated_memory = false;
+ void Multipole_Integrate(int array_size, int nthetap,
+     CCTK_REAL const array1r[], CCTK_REAL const array1i[],
+     CCTK_REAL const array2r[], CCTK_REAL const array2i[],
+@@ -349,17 +352,19 @@
+   else if (CCTK_Equals(integration_method, "Simpson") ||
+            CCTK_Equals(integration_method, "DriscollHealy"))
+   {
+-    static CCTK_REAL *fr = 0;
+-    static CCTK_REAL *fi = 0;
+-    static bool allocated_memory = false;
++    // Intel icc does not seem to like threadprivate on local static variables
++#pragma omp threadprivate(Multipole_Integrate_fr, Multipole_Integrate_fi, Multipole_Integrate_allocated_memory)
++    CCTK_REAL *fr, *fi;
+ 
+     // Construct an array for the real integrand
+-    if (!allocated_memory)
++    if (!Multipole_Integrate_allocated_memory)
+     {
+-      fr = new CCTK_REAL[array_size];
+-      fi = new CCTK_REAL[array_size];
+-      allocated_memory = true;
++      Multipole_Integrate_fr = new CCTK_REAL[array_size];
++      Multipole_Integrate_fi = new CCTK_REAL[array_size];
++      Multipole_Integrate_allocated_memory = true;
+     }
++    fr = Multipole_Integrate_fr;
++    fi = Multipole_Integrate_fi;
+     
+     for (int i = 0; i < array_size; i++)
+     {
+Index: src/interpolate.cc
+===================================================================
+--- src/interpolate.cc	(revision 84)
++++ src/interpolate.cc	(working copy)
+@@ -15,7 +15,8 @@
+ void Multipole_Interp(CCTK_ARGUMENTS,
+                       CCTK_REAL xs[], CCTK_REAL ys[], CCTK_REAL zs[],
+                       int real_idx, int imag_idx,
+-                      CCTK_REAL sphere_real[], CCTK_REAL sphere_imag[])
++                      CCTK_REAL sphere_real[], CCTK_REAL sphere_imag[],
++                      bool is_dummy)
+ {
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+@@ -63,7 +64,7 @@
+       operator_handle,
+       param_table_handle,
+       coord_system_handle,
+-      CCTK_MyProc(cctkGH) == 0 ? (ntheta+1)*(nphi+1) : 0, // Only the 0 processor needs the points
++      is_dummy ? 0 : (ntheta+1)*(nphi+1), // do dummy interpolation if there are not enough radii
+       CCTK_VARIABLE_REAL,
+       interp_coords,
+       num_input_arrays,
+Index: src/multipole.cc
+===================================================================
+--- src/multipole.cc	(revision 84)
++++ src/multipole.cc	(working copy)
+@@ -1,6 +1,7 @@
+ #include <stdio.h>
+ #include <string.h>
+ #include <assert.h>
++#include <stdlib.h>
+ #include <string>
+ #include <iomanip>
+ 
+@@ -9,6 +10,10 @@
+ #include "cctk_Parameters.h"
+ #include "cctk_Functions.h"
+ 
++#ifdef CCTK_MPI
++#include "mpi.h"
++#endif
++
+ #include "multipole.hh"
+ #include "interpolate.hh"
+ #include "utils.hh"
+@@ -99,23 +104,17 @@
+ 
+   if (output_ascii)
+   {
+-    if (CCTK_MyProc(cctkGH) == 0)
+-    {
+-      ostringstream name;
+-      name << "mp_" << v->name << "_l" << l << "_m" << m <<
+-        "_r" << setiosflags(ios::fixed) << setprecision(2) <<  rad << ".asc";
+-      Multipole_OutputComplexToFile(CCTK_PASS_CTOC, name.str(), real_lm, imag_lm);
+-    }
++    ostringstream name;
++    name << "mp_" << v->name << "_l" << l << "_m" << m <<
++      "_r" << setiosflags(ios::fixed) << setprecision(2) <<  rad << ".asc";
++    Multipole_OutputComplexToFile(CCTK_PASS_CTOC, name.str(), real_lm, imag_lm);
+   }
+   if (output_hdf5)
+   {
+-    if (CCTK_MyProc(cctkGH) == 0)
+-    {
+-      ostringstream h5datasetname;
+-      h5datasetname << "l" << l << "_m" << m << "_r" << setiosflags(ios::fixed) << setprecision(2) << rad;
+-      Multipole_OutputComplexToH5File(CCTK_PASS_CTOC, "mp_" + v->name + ".h5", h5datasetname.str(),
+-                                      real_lm, imag_lm);
+-    }
++    ostringstream h5datasetname;
++    h5datasetname << "l" << l << "_m" << m << "_r" << setiosflags(ios::fixed) << setprecision(2) << rad;
++    Multipole_OutputComplexToH5File(CCTK_PASS_CTOC, "mp_" + v->name + ".h5", h5datasetname.str(),
++                                    real_lm, imag_lm);
+   }
+ }
+ 
+@@ -126,7 +125,7 @@
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+ 
+-  if (CCTK_MyProc(cctkGH) == 0 && output_ascii)
++  if (output_ascii)
+   {
+     if (out_1d_every != 0 && cctk_iteration % out_1d_every == 0)
+     {
+@@ -272,16 +271,24 @@
+ 
+   static bool initialized = false;
+ 
+-  int i, array_size=(ntheta+1)*(nphi+1);
++  int array_size=(ntheta+1)*(nphi+1);
+   CCTK_REAL real_lm = 0.0, imag_lm = 0.0;
++  static CCTK_REAL *real_vals = NULL, *imag_vals = NULL;
+ 
++  static int *recvcount = NULL, *displ = NULL;
++
+   if (out_every == 0 || cctk_iteration % out_every != 0)
+     return;
+ 
+   int lmax = get_l_max();
++  int num_lm_modes = (lmax+1)*(lmax+1);
+ 
+   assert(lmax + 1 <= max_l_modes);
+ 
++  const int myProc = CCTK_MyProc(cctkGH);
++  const int nProcs = CCTK_nProcs(cctkGH);
++  const int chunksize = (nradii + (nProcs-1)) / nProcs;
++
+   if (!initialized)
+   {
+     real = new CCTK_REAL[array_size];
+@@ -294,6 +301,10 @@
+     xhat = new CCTK_REAL[array_size];
+     yhat = new CCTK_REAL[array_size];
+     zhat = new CCTK_REAL[array_size];
++    real_vals = new CCTK_REAL[num_lm_modes*nradii];
++    imag_vals = new CCTK_REAL[num_lm_modes*nradii];
++    recvcount = new int[nProcs];
++    displ = new int[nProcs];
+   
+     parse_variables_string(string(variables), vars, &n_variables);
+     get_spin_weights(vars, n_variables, spin_weights, &n_spin_weights);
+@@ -310,28 +321,93 @@
+     int si = find_int_in_array(vars[v].spin_weight, spin_weights, n_spin_weights);
+     assert(si != -1);
+ 
+-    for(i=0; i<nradii; i++)
++    // parallelize over radii using MPI
++    // round up upper limit to next multiple of nProcs for collective call
++    for(int i=myProc*chunksize; i<(myProc+1)*chunksize; i++)
+     {
++      bool is_dummy = i >= nradii;
++
+       // Compute x^i = r * \hat x^i
+-      Multipole_ScaleCartesian(ntheta, nphi, radius[i], xhat, yhat, zhat, xs, ys, zs);
++      Multipole_ScaleCartesian(ntheta, nphi, is_dummy ? 1.0 : radius[i], xhat, yhat, zhat, xs, ys, zs);
+       
+       // Interpolate Psi4r and Psi4i
+       Multipole_Interp(CCTK_PASS_CTOC, xs, ys, zs, vars[v].index, vars[v].imag_index, 
+-                       real, imag);
+-      for (int l=0; l <= lmax; l++)
++                       real, imag, is_dummy);
++
++      if(is_dummy)
++        continue;
++
++#pragma omp parallel for private(real_lm, imag_lm)
++      for (int lm=0; lm < num_lm_modes; lm++)
+       {
+-        for (int m=-l; m <= l; m++)
+         {
++          // recompute l,m index from linear counter
++          // we have: num_lm_to_L_incl = add(2*l+1, l=0..L) = (L+1)**2
++          // so there are L**2 entries with l<L
++          int l = 0, m = 0;
++          while(l*l+(l+m) != lm)
++            m = m==l ? -(++l) : m+1;
++          assert(abs(m) <= l);
++          assert(l <= lmax);
++
+           // Integrate sYlm (real + i imag) over the sphere at radius r
+           Multipole_Integrate(array_size, ntheta,
+                               reY[si][l][m+l], imY[si][l][m+l],
+                               real, imag, th, ph,
+                               &real_lm, &imag_lm);
++          if(i < nradii)
++          {
++            real_vals[i*num_lm_modes+lm] = real_lm;
++            imag_vals[i*num_lm_modes+lm] = imag_lm;
++          }
+     
+-          output_mode(CCTK_PASS_CTOC, &vars[v], radius[i], real_lm, imag_lm, l, m);
+         }//loop over m
+       }//loop over l
+       output_1D(CCTK_PASS_CTOC, &vars[v], radius[i], th, ph, real, imag, array_size);
+     }//loop over radii
++
++#ifdef CCTK_MPI
++    // gather all data to the root processor. This is mostly for HDF5 output
++    // where I'd rather not write to the same file (even if serialized) from
++    // different processes. Each radius has (lmax+1)**2 l,m modes.
++    for (int p=0; p < nProcs; p++)
++    {
++      const int remaining = nradii - p*chunksize;
++      if(remaining <= 0 || p == 0)
++        recvcount[p] = 0;
++      else if(remaining > chunksize)
++        recvcount[p] = chunksize * num_lm_modes;
++      else
++        recvcount[p] = remaining * num_lm_modes;
++      if(remaining <= 0)
++        displ[p] = 0;
++      else
++        displ[p] = p * chunksize * num_lm_modes;
++    }
++
++    // we do not send the element of root to itself since MPI complains about
++    // this (recvbuf and sendbuf may not overlap)
++    // in MPI 2.0 we could use MPI_IN_PLACE and avoid all this nonsense
++    MPI_Gatherv(&real_vals[displ[myProc]], recvcount[myProc],
++                MPI_DOUBLE, real_vals, recvcount, displ,
++                MPI_DOUBLE, 0, MPI_COMM_WORLD);
++    MPI_Gatherv(&imag_vals[displ[myProc]], recvcount[myProc],
++                MPI_DOUBLE, imag_vals, recvcount, displ,
++                MPI_DOUBLE, 0, MPI_COMM_WORLD);
++#endif
++
++    if (myProc == 0)
++    {
++      for (int i=0; i<nradii; i++)
++      {
++        for (int l=0; l <= lmax; l++)
++        {
++          for (int m=-l; m <= l; m++)
++          {
++            output_mode(CCTK_PASS_CTOC, &vars[v], radius[i], real_vals[i*num_lm_modes+l*l+(l+m)], imag_vals[i*num_lm_modes+l*l+(l+m)], l, m);
++          }//loop over m
++        }//lopp over l
++      }//loop over radii
++    }
+   }//loop over variables
+ }

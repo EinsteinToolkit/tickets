@@ -1,0 +1,165 @@
+From 518f51ee918d6b44a9bca755cc49db0ead083108 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Sat, 24 Sep 2011 17:05:02 +0200
+Subject: [PATCH] Use kranc script instead of calling Mathematica directly
+
+This allows use of better error handling provided by Kranc
+---
+ m/McLachlan_ADM.m            |    5 -----
+ m/McLachlan_ADMConstraints.m |    4 ----
+ m/McLachlan_ADMQuantities.m  |    4 ----
+ m/McLachlan_BSSN.m           |    4 ----
+ m/McLachlan_BSSN_Peter.m     |    4 ----
+ m/McLachlan_WeylScalars.m    |    4 ----
+ m/McLachlantmp.m             |    4 ----
+ m/WaveToy.m                  |    4 ----
+ m/WaveToyFO.m                |    4 ----
+ m/runmath.sh                 |   17 +++--------------
+ 10 files changed, 3 insertions(+), 51 deletions(-)
+
+diff --git a/m/McLachlan_ADM.m b/m/McLachlan_ADM.m
+index ab611b0..1f778b5 100644
+--- a/m/McLachlan_ADM.m
++++ b/m/McLachlan_ADM.m
+@@ -1,8 +1,3 @@
+-$Path = Join[$Path, {"../../../repos/Kranc/Tools/CodeGen",
+-                     "../../../repos/Kranc/Tools/MathematicaMisc"}];
+- 
+-Get["KrancThorn`"];
+-
+ 
+ SetEnhancedTimes[False];
+ SetSourceLanguage["C"];
+diff --git a/m/McLachlan_ADMConstraints.m b/m/McLachlan_ADMConstraints.m
+index bb9447b..8a63258 100644
+--- a/m/McLachlan_ADMConstraints.m
++++ b/m/McLachlan_ADMConstraints.m
+@@ -1,7 +1,3 @@
+-$Path = Join[$Path, {"../../../repos/Kranc/Tools/CodeGen",
+-                     "../../../repos/Kranc/Tools/MathematicaMisc"}];
+-
+-Get["KrancThorn`"];
+ 
+ SetEnhancedTimes[False];
+ SetSourceLanguage["C"];
+diff --git a/m/McLachlan_ADMQuantities.m b/m/McLachlan_ADMQuantities.m
+index 14131f8..003a9f8 100644
+--- a/m/McLachlan_ADMQuantities.m
++++ b/m/McLachlan_ADMQuantities.m
+@@ -1,7 +1,3 @@
+-$Path = Join[$Path, {"../../../repos/Kranc/Tools/CodeGen",
+-                     "../../../repos/Kranc/Tools/MathematicaMisc"}];
+-
+-Get["KrancThorn`"];
+ 
+ SetEnhancedTimes[False];
+ SetSourceLanguage["C"];
+diff --git a/m/McLachlan_BSSN.m b/m/McLachlan_BSSN.m
+index 7d2543e..21aa53f 100644
+--- a/m/McLachlan_BSSN.m
++++ b/m/McLachlan_BSSN.m
+@@ -1,7 +1,3 @@
+-$Path = Join[$Path, {"../../../repos/Kranc/Tools/CodeGen",
+-                     "../../../repos/Kranc/Tools/MathematicaMisc"}];
+-
+-Get["KrancThorn`"];
+ 
+ SetEnhancedTimes[False];
+ SetSourceLanguage["C"];
+diff --git a/m/McLachlan_BSSN_Peter.m b/m/McLachlan_BSSN_Peter.m
+index 3631867..c5b5b7d 100644
+--- a/m/McLachlan_BSSN_Peter.m
++++ b/m/McLachlan_BSSN_Peter.m
+@@ -1,7 +1,3 @@
+-$Path = Join[$Path, {"../../../repos/Kranc/Tools/CodeGen",
+-                     "../../../repos/Kranc/Tools/MathematicaMisc"}];
+-
+-Get["KrancThorn`"];
+ 
+ SetEnhancedTimes[False];
+ SetSourceLanguage["C"];
+diff --git a/m/McLachlan_WeylScalars.m b/m/McLachlan_WeylScalars.m
+index 86b4a36..5e8d805 100644
+--- a/m/McLachlan_WeylScalars.m
++++ b/m/McLachlan_WeylScalars.m
+@@ -1,7 +1,3 @@
+-$Path = Join[$Path, {"../../../repos/Kranc/Tools/CodeGen",
+-                     "../../../repos/Kranc/Tools/MathematicaMisc"}];
+-
+-Get["KrancThorn`"];
+ 
+ SetEnhancedTimes[False];
+ SetSourceLanguage["C"];
+diff --git a/m/McLachlantmp.m b/m/McLachlantmp.m
+index 1d652c9..54581e2 100644
+--- a/m/McLachlantmp.m
++++ b/m/McLachlantmp.m
+@@ -1,7 +1,3 @@
+-$Path = Join[$Path, {"../../../repos/Kranc/Tools/CodeGen",
+-                     "../../../repos/Kranc/Tools/MathematicaMisc"}];
+-
+-Get["KrancThorn`"];
+ 
+ SetEnhancedTimes[False];
+ SetSourceLanguage["C"];
+diff --git a/m/WaveToy.m b/m/WaveToy.m
+index dfc0862..de2c73e 100644
+--- a/m/WaveToy.m
++++ b/m/WaveToy.m
+@@ -1,7 +1,3 @@
+-$Path = Join[$Path, {"../../../repos/Kranc/Tools/CodeGen",
+-                     "../../../repos/Kranc/Tools/MathematicaMisc"}];
+-
+-Get["KrancThorn`"];
+ 
+ SetEnhancedTimes[False];
+ SetSourceLanguage["C"];
+diff --git a/m/WaveToyFO.m b/m/WaveToyFO.m
+index 4864131..f80b0b2 100644
+--- a/m/WaveToyFO.m
++++ b/m/WaveToyFO.m
+@@ -1,7 +1,3 @@
+-$Path = Join[$Path, {"../../../repos/Kranc/Tools/CodeGen",
+-                     "../../../repos/Kranc/Tools/MathematicaMisc"}];
+-
+-Get["KrancThorn`"];
+ 
+ SetEnhancedTimes[False];
+ SetSourceLanguage["C"];
+diff --git a/m/runmath.sh b/m/runmath.sh
+index 306b2e1..18196d1 100755
+--- a/m/runmath.sh
++++ b/m/runmath.sh
+@@ -3,8 +3,6 @@
+ # Abort on errors
+ set -e
+ 
+-MATHEMATICA="math"
+-
+ script=$1
+ 
+ if test -z "$script"; then
+@@ -18,17 +16,8 @@ output=$(basename $script .m).out
+ 
+ rm -f $output
+ 
+-# Run Mathematica to regenerate the code
+-< $script "$MATHEMATICA" | tee $error
+-
+-if grep 'KrancError' $error; then
+-    echo
+-    echo "There was an error when running Kranc on $script."
+-    echo "The file $error contains details."
+-    echo
+-    echo "*** The Cactus thorns have NOT been updated. ***"
+-    echo
+-    exit 1
+-fi
++# Run Kranc to regenerate the code
++../../../repos/Kranc/Bin/kranc $script | tee $error
++[ $PIPESTATUS -eq 0 ] || exit $PIPESTATUS
+ 
+ mv $error $output
+-- 
+1.7.5.4
+

@@ -1,0 +1,27 @@
+From d94b1fc6afd51b852b53692af6c80503c9ec574e Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Wed, 30 Apr 2014 17:04:06 +0200
+Subject: [PATCH 2/3] test.ccl: Do not require a very accurate convergence
+ order
+
+The convergence order is extremely sensitive to roundoff, as its computation includes subtracting two very similar numbers.  Instead, we output the integration results for the purpose of regression testing, as these are less sensitive to roundoff.
+---
+ test/test.ccl | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/test/test.ccl b/test/test.ccl
+index 6ccaab2..a53d4e6 100644
+--- a/test/test.ccl
++++ b/test/test.ccl
+@@ -1,2 +1,8 @@
+ ABSTOL 1e-8
+ RELTOL 1e-8
++
++# The convergence order tests are very sensitive to roundoff, because
++# the integration has a very small relative error (1e-7).  Hence
++# subtracting the numerical result from the exact result loses ~7
++# digits of precision.
++ABSTOL 1e-3 ^test_.*_convergence_order\.asc$
+-- 
+1.9.1
+

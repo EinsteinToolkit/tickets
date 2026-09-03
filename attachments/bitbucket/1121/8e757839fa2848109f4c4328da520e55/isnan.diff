@@ -1,0 +1,1487 @@
+Index: manifest/einsteintoolkit.th
+===================================================================
+--- manifest/einsteintoolkit.th	(revision 192)
++++ manifest/einsteintoolkit.th	(working copy)
+@@ -154,6 +154,7 @@
+ CactusTest/TestInclude2
+ CactusTest/TestLocalReduce
+ CactusTest/TestLoop
++CactusTest/TestMath
+ CactusTest/TestPar
+ CactusTest/TestReduce
+ CactusTest/TestSchedule
+@@ -346,6 +347,8 @@
+ McLachlan/ML_ADMQuantities
+ McLachlan/ML_BSSN
+ McLachlan/ML_BSSN_Helper
++McLachlan/ML_BSSN_NV
++McLachlan/ML_BSSN_NV_Helper
+ McLachlan/ML_BSSN_Test
+ McLachlan/ML_CCZ4
+ McLachlan/ML_CCZ4_Helper
+Index: lib/make/aclocal.m4
+===================================================================
+--- lib/make/aclocal.m4	(revision 4876)
++++ lib/make/aclocal.m4	(working copy)
+@@ -415,6 +415,76 @@
+ ])dnl
+ ])
+ 
++
++
++# CCTK_CHECK_HEADER_LIB(HEADER, LIBRARY, FUNCTION, ARGUMENTS,
++#                       [ACTION-IF-FOUND], [ACTION-IF-NOT-FOUND],
++#                       [OTHER-LIBRARIES])
++# ------------------------------------------------------
++AC_DEFUN(CCTK_CHECK_HEADER_LIB,
++[AC_MSG_CHECKING([for $3 in header $1 and library $2])
++dnl Use a cache variable name containing the header, library, and function
++dnl name, because the test really is for header $1 and library $2 defining
++dnl function $3, not just for header $1 and library $2.  Separate tests with
++dnl the same $1 or $2 and different $3s may have different results.
++ac_lib_var=`echo $1['_']$2['_']$3 | sed 'y%./+-%__p_%'`
++AC_CACHE_VAL(ac_cv_lib_$ac_lib_var,
++[ac_link='${CC-cc} -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext `CCTK_Wrap "$LIBDIR_PREFIX" "$LIBDIR_SUFFIX" "$LIBDIRS"` `CCTK_Wrap "$LIBLINK_PREFIX" "$LIBLINK_SUFFIX" "$LIBS"` >&5'
++ac_save_LIBS="$LIBS"
++LIBS="$2 $7 $LIBS"
++AC_TRY_LINK(dnl
++ifelse(AC_LANG, [FORTRAN77], ,
++ifelse([$3], [main], , dnl Avoid conflicting decl of main.
++[]ifelse(AC_LANG, CPLUSPLUS, [#ifdef __cplusplus
++extern "C"
++#endif
++])dnl
++[#include <$1>
++])),
++            [$3 $4],
++            eval "ac_cv_lib_$ac_lib_var=yes",
++            eval "ac_cv_lib_$ac_lib_var=no")
++LIBS="$ac_save_LIBS"
++])dnl
++if eval "test \"`echo '$ac_cv_lib_'$ac_lib_var`\" = yes"; then
++  AC_MSG_RESULT(yes)
++  ifelse([$5], ,
++[changequote(, )dnl
++  ac_tr_lib=HAVE_LIB`echo $2 | sed -e 's/[^a-zA-Z0-9_]/_/g' \
++    -e 'y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ/'`
++changequote([, ])dnl
++  AC_DEFINE_UNQUOTED($ac_tr_lib)
++  LIBS="$2 $LIBS"
++], [$5])
++else
++  AC_MSG_RESULT(no)
++ifelse([$6], , , [$6
++])dnl
++fi
++])
++
++AC_DEFUN(CCTK_CHECK_HEADER_LIB_FUNC,
++[CCTK_CHECK_HEADER_LIB($1, $2, $3, $4,
++ifelse([$5], , [changequote(, )dnl
++  cctk_tr_header=HAVE_`echo $1 | sed -e 's/[^a-zA-Z0-9_]/_/g' \
++    -e 'y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ/'`
++  cctk_tr_lib=HAVE_LIB`echo $2 | sed -e 's/[^a-zA-Z0-9_]/_/g' \
++    -e 'y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ/'`
++  cctk_tr_func=HAVE_`echo $3 | sed -e 's/[^a-zA-Z0-9_]/_/g' \
++    -e 'y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ/'`
++changequote([, ])dnl
++  AC_DEFINE_UNQUOTED($cctk_tr_header)
++  AC_DEFINE_UNQUOTED($cctk_tr_lib)
++  AC_DEFINE_UNQUOTED($cctk_tr_func)
++  LIBS="$2 $LIBS"
++], [$5])dnl
++)
++ifelse([$6], , , [$6
++])dnl
++])
++
++
++
+ dnl Do nothing if the compiler accepts the restrict keyword.
+ dnl Otherwise define restrict to __restrict__ or __restrict if one of
+ dnl those work, otherwise define restrict to be empty.
+@@ -916,3 +986,48 @@
+    AC_DEFINE(HAVE_CCTK_CXX_BUILTIN_EXPECT)
+ fi
+ ])
++
++
++
++dnl Check for a function that may be provided by cmath or math.h
++AC_DEFUN(CCTK_CHECK_CXX_STDMATHFUNC,
++[cctk_func=`echo $1 | sed 'y%./+-%__p_%'`
++ cctk_tr_func=`echo $cctk_func |
++   sed -e 'y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ/'`
++AC_MSG_CHECKING([for C++ $1])
++AC_CACHE_VAL(cctk_cv_cxx_$cctk_func,
++[AC_LANG_SAVE
++AC_LANG_CPLUSPLUS
++for ac_kw in "std::$cctk_func" "$cctk_func" "::$cctk_func"; do
++cctk_cv_cxx_func=no
++for ac_nargs in 1 2; do
++  case $ac_nargs in
++    1) ac_args='(1.0)'; ac_argsf='(1.0f)' ;;
++    2) ac_args='(1.0, 1.0)'; ac_argsf='(1.0f, 1.0f)' ;;
++  esac
++  AC_TRY_COMPILE([
++#include <math.h>
++#include <cmath>
++], [
++{
++  $ac_kw $ac_argsf;
++  $ac_kw $ac_args;
++}
++using namespace std;
++{
++  $ac_kw $ac_argsf;
++  $ac_kw $ac_args;
++}
++], [cctk_cv_cxx_func=$ac_kw; break 2])
++done
++done
++AC_LANG_RESTORE
++eval cctk_cv_cxx_$cctk_func=\$cctk_cv_cxx_func
++])
++AC_MSG_RESULT($cctk_cv_cxx_func)
++case $cctk_cv_cxx_func in
++  no) AC_DEFINE_UNQUOTED(CCTK_CXX_$cctk_tr_func, ) ;;
++  *)  AC_DEFINE_UNQUOTED(CCTK_CXX_$cctk_tr_func, $cctk_cv_cxx_func)
++      AC_DEFINE_UNQUOTED(HAVE_CCTK_CXX_$cctk_tr_func, 1) ;;
++esac
++])
+Index: lib/make/cctk_Config.h.in
+===================================================================
+--- lib/make/cctk_Config.h.in	(revision 4876)
++++ lib/make/cctk_Config.h.in	(working copy)
+@@ -24,8 +24,13 @@
+ #undef HAVE_BACKTRACE_SYMBOLS
+ #undef HAVE_CRYPT
+ #undef HAVE_FINITE
++#undef HAVE_COPYSIGN
++#undef HAVE_FPCLASSIFY
++#undef HAVE_ISFINITE
++#undef HAVE_ISINF
+ #undef HAVE_ISNAN
+-#undef HAVE_ISINF
++#undef HAVE_ISNORMAL
++#undef HAVE_SIGNBIT
+ #undef HAVE_MKSTEMP
+ #undef HAVE_VA_COPY
+ 
+@@ -212,6 +217,62 @@
+ #endif /* HAVE_CCTK_C_BOOL */
+ #endif
+ 
++/* Whether copysign exists, and how it should be called */
++#ifdef HAVE_COPYSIGN
++#  define HAVE_CCTK_C_COPYSIGN HAVE_COPYSIGN
++#  define CCTK_C_COPYSIGN copysign
++#  define HAVE_CCTK_COPYSIGN HAVE_CCTK_C_COPYSIGN
++#  define CCTK_COPYSIGN CCTK_C_COPYSIGN
++#endif
++
++/* Whether fpclassify exists, and how it should be called */
++#ifdef HAVE_FPCLASSIFY
++#  define HAVE_CCTK_C_FPCLASSIFY HAVE_FPCLASSIFY
++#  define CCTK_C_FPCLASSIFY fpclassify
++#  define HAVE_CCTK_FPCLASSIFY HAVE_CCTK_C_FPCLASSIFY
++#  define CCTK_FPCLASSIFY CCTK_C_FPCLASSIFY
++#endif
++
++/* Whether isfinite exists, and how it should be called */
++#ifdef HAVE_ISFINITE
++#  define HAVE_CCTK_C_ISFINITE HAVE_ISFINITE
++#  define CCTK_C_ISFINITE isfinite
++#  define HAVE_CCTK_ISFINITE HAVE_CCTK_C_ISFINITE
++#  define CCTK_ISFINITE CCTK_C_ISFINITE
++#endif
++
++/* Whether isinf exists, and how it should be called */
++#ifdef HAVE_ISINF
++#  define HAVE_CCTK_C_ISINF HAVE_ISINF
++#  define CCTK_C_ISINF isinf
++#  define HAVE_CCTK_ISINF HAVE_CCTK_C_ISINF
++#  define CCTK_ISINF CCTK_C_ISINF
++#endif
++
++/* Whether isnan exists, and how it should be called */
++#ifdef HAVE_ISNAN
++#  define HAVE_CCTK_C_ISNAN HAVE_ISNAN
++#  define CCTK_C_ISNAN isnan
++#  define HAVE_CCTK_ISNAN HAVE_CCTK_C_ISNAN
++#  define CCTK_ISNAN CCTK_C_ISNAN
++#endif
++
++/* Whether isnormal exists, and how it should be called */
++#ifdef HAVE_ISNORMAL
++#  define HAVE_CCTK_C_ISNORMAL HAVE_ISNORMAL
++#  define CCTK_C_ISNORMAL isnormal
++#  define HAVE_CCTK_ISNORMAL HAVE_CCTK_C_ISNORMAL
++#  define CCTK_ISNORMAL CCTK_C_ISNORMAL
++#endif
++
++/* Whether signbit exists, and how it should be called */
++#ifdef HAVE_SIGNBIT
++#  define HAVE_CCTK_C_SIGNBIT HAVE_SIGNBIT
++#  define CCTK_C_SIGNBIT signbit
++#  define HAVE_CCTK_SIGNBIT HAVE_CCTK_C_SIGNBIT
++#  define CCTK_SIGNBIT CCTK_C_SIGNBIT
++#endif
++
+ /* Whether __attribute__((const)) exists. */
+ #undef HAVE_CCTK_C_ATTRIBUTE_CONST
+ #ifdef HAVE_CCTK_C_ATTRIBUTE_CONST
+@@ -296,6 +357,62 @@
+ #  define CCTK_HAVE_CXX_BOOL
+ #endif
+ 
++/* Whether copysign exists, and how it should be called */
++#undef HAVE_CCTK_CXX_COPYSIGN
++#undef CCTK_CXX_COPYSIGN
++#ifdef HAVE_CCTK_CXX_COPYSIGN
++#  define HAVE_CCTK_COPYSIGN HAVE_CCTK_CXX_COPYSIGN
++#  define CCTK_COPYSIGN CCTK_CXX_COPYSIGN
++#endif
++
++/* Whether fpclassify exists, and how it should be called */
++#undef HAVE_CCTK_CXX_FPCLASSIFY
++#undef CCTK_CXX_FPCLASSIFY
++#ifdef HAVE_CCTK_CXX_FPCLASSIFY
++#  define HAVE_CCTK_FPCLASSIFY HAVE_CCTK_CXX_FPCLASSIFY
++#  define CCTK_FPCLASSIFY CCTK_CXX_FPCLASSIFY
++#endif
++
++/* Whether isinf exists, and how it should be called */
++#undef HAVE_CCTK_CXX_ISINF
++#undef CCTK_CXX_ISINF
++#ifdef HAVE_CCTK_CXX_ISINF
++#  define HAVE_CCTK_ISINF HAVE_CCTK_CXX_ISINF
++#  define CCTK_ISINF CCTK_CXX_ISINF
++#endif
++
++/* Whether isinf exists, and how it should be called */
++#undef HAVE_CCTK_CXX_ISINF
++#undef CCTK_CXX_ISINF
++#ifdef HAVE_CCTK_CXX_ISINF
++#  define HAVE_CCTK_ISINF HAVE_CCTK_CXX_ISINF
++#  define CCTK_ISINF CCTK_CXX_ISINF
++#endif
++
++/* Whether isnan exists, and how it should be called */
++#undef HAVE_CCTK_CXX_ISNAN
++#undef CCTK_CXX_ISNAN
++#ifdef HAVE_CCTK_CXX_ISNAN
++#  define HAVE_CCTK_ISNAN HAVE_CCTK_CXX_ISNAN
++#  define CCTK_ISNAN CCTK_CXX_ISNAN
++#endif
++
++/* Whether isnormal exists, and how it should be called */
++#undef HAVE_CCTK_CXX_ISNORMAL
++#undef CCTK_CXX_ISNORMAL
++#ifdef HAVE_CCTK_CXX_ISNORMAL
++#  define HAVE_CCTK_ISNORMAL HAVE_CCTK_CXX_ISNORMAL
++#  define CCTK_ISNORMAL CCTK_CXX_ISNORMAL
++#endif
++
++/* Whether signbit exists, and how it should be called */
++#undef HAVE_CCTK_CXX_SIGNBIT
++#undef CCTK_CXX_SIGNBIT
++#ifdef HAVE_CCTK_CXX_SIGNBIT
++#  define HAVE_CCTK_SIGNBIT HAVE_CCTK_CXX_SIGNBIT
++#  define CCTK_SIGNBIT CCTK_CXX_SIGNBIT
++#endif
++
+ /* Whether __attribute__((const)) exists. */
+ #undef HAVE_CCTK_CXX_ATTRIBUTE_CONST
+ #ifdef HAVE_CCTK_CXX_ATTRIBUTE_CONST
+@@ -394,6 +511,7 @@
+ #endif
+ 
+ #endif /* __cplusplus */
++
+ /****************************************************************************/
+ 
+ #endif /* CCODE */
+Index: lib/make/configure.in
+===================================================================
+--- lib/make/configure.in	(revision 4876)
++++ lib/make/configure.in	(working copy)
+@@ -839,6 +839,9 @@
+   BUILD_REGEX=yes
+ fi
+ 
++CCTK_C_BOOL
++CCTK_CXX_BOOL
++
+ AC_C_CONST
+ #AC_C_INLINE
+ CCTK_CHECK_C_INLINE
+@@ -847,8 +850,13 @@
+ CCTK_CHECK_C_RESTRICT
+ CCTK_CHECK_CXX_RESTRICT
+ 
+-CCTK_C_BOOL
+-CCTK_CXX_BOOL
++CCTK_CHECK_CXX_STDMATHFUNC(copysign)
++CCTK_CHECK_CXX_STDMATHFUNC(fpclassify)
++CCTK_CHECK_CXX_STDMATHFUNC(isfinite)
++CCTK_CHECK_CXX_STDMATHFUNC(isinf)
++CCTK_CHECK_CXX_STDMATHFUNC(isnan)
++CCTK_CHECK_CXX_STDMATHFUNC(isnormal)
++CCTK_CHECK_CXX_STDMATHFUNC(signbit)
+ 
+ CCTK_C__PRAGMA
+ 
+@@ -934,15 +942,16 @@
+ dnl Do we have crypt(3)
+ CCTK_CHECK_FUNCS(crypt, , CCTK_CHECK_LIB_FUNC(crypt, crypt))
+ 
+-dnl Do we have finite(3)
+-CCTK_CHECK_FUNCS(finite, , CCTK_CHECK_LIB_FUNC(m, finite))
++dnl Do we have certain math functions or macros?
++CCTK_CHECK_HEADER_LIB_FUNC(math.h, m, finite, (1.0))
++CCTK_CHECK_HEADER_LIB_FUNC(math.h, m, copysign, (1.0, 1.0))
++CCTK_CHECK_HEADER_LIB_FUNC(math.h, m, fpclassify, (1.0))
++CCTK_CHECK_HEADER_LIB_FUNC(math.h, m, isfinite, (1.0))
++CCTK_CHECK_HEADER_LIB_FUNC(math.h, m, isinf, (1.0))
++CCTK_CHECK_HEADER_LIB_FUNC(math.h, m, isnan, (1.0))
++CCTK_CHECK_HEADER_LIB_FUNC(math.h, m, isnormal, (1.0))
++CCTK_CHECK_HEADER_LIB_FUNC(math.h, m, signbit, (1.0))
+ 
+-dnl Do we have isnan(3)
+-CCTK_CHECK_FUNCS(isnan, , CCTK_CHECK_LIB_FUNC(m, isnan))
+-
+-dnl Do we have isinf(3)
+-CCTK_CHECK_FUNCS(isinf, , CCTK_CHECK_LIB_FUNC(m, isinf))
+-
+ dnl Do we have mkstemp(3)
+ CCTK_CHECK_FUNCS(mkstemp, , CCTK_CHECK_LIB_FUNC(c, mkstemp))
+ 
+Index: src/include/cctk_core.h
+===================================================================
+--- src/include/cctk_core.h	(revision 4875)
++++ src/include/cctk_core.h	(working copy)
+@@ -149,6 +149,7 @@
+ #include "cctk_Loop.h"
+ #include "cctk_Main.h"
+ #include "cctk_Malloc.h"
++#include "cctk_Math.h"
+ #include "cctk_Misc.h"
+ #include "cctk_Parameter.h"
+ #include "cctk_Reduction.h"
+Index: src/util/make.code.defn
+===================================================================
+--- src/util/make.code.defn	(revision 4875)
++++ src/util/make.code.defn	(working copy)
+@@ -13,6 +13,7 @@
+ Hash.c\
+ Cache.c\
+ Malloc.c\
++Math.c\
+ snprintf.c\
+ String.c\
+ StringList.c\
+Index: simfactory/mdb/optionlists/datura.cfg
+===================================================================
+--- simfactory/mdb/optionlists/datura.cfg	(revision 1828)
++++ simfactory/mdb/optionlists/datura.cfg	(working copy)
+@@ -1,6 +1,6 @@
+ # Whenever this version string changes, the application is configured
+ # and rebuilt from scratch
+-VERSION = datura-2012-07-10
++VERSION = datura-2012-10-18
+ 
+ CPP = cpp
+ FPP = cpp
+@@ -14,7 +14,7 @@
+ CPPFLAGS =
+ FPPFLAGS = -traditional
+ CFLAGS   = -g -debug all -traceback -align -std=c99 -ansi_alias -U__STRICT_ANSI__
+-CXXFLAGS = -g -debug all -traceback -align -restrict -rdynamic -D__builtin_isnan=::isnan -D__builtin_signbit=::signbit
++CXXFLAGS = -g -debug all -traceback -align -restrict -rdynamic -D__builtin_isinf=::isinf -D__builtin_isnan=::isnan -D__builtin_isnormal=::isnormal -D__builtin_signbit=::signbit
+ F77FLAGS = -g -debug all -traceback -align -pad -w95 -cm
+ F90FLAGS = -g -debug all -traceback -align -pad -w95 -cm
+ 
+Index: simfactory/mdb/optionlists/fermi.cfg
+===================================================================
+--- simfactory/mdb/optionlists/fermi.cfg	(revision 1828)
++++ simfactory/mdb/optionlists/fermi.cfg	(working copy)
+@@ -1,6 +1,6 @@
+ # Whenever this version string changes, the application is configured
+ # and rebuilt from scratch
+-VERSION = fermi-2012-07-10
++VERSION = fermi-2012-10-18
+ 
+ CPP = cpp
+ FPP = cpp
+@@ -15,7 +15,7 @@
+ CPPFLAGS =
+ FPPFLAGS = -traditional
+ CFLAGS   = -g -traceback -debug all -xSSE4.2 -align -std=c99 -ansi_alias -U__STRICT_ANSI__
+-CXXFLAGS = -g -traceback -debug all -xSSE4.2 -align -std=c99 -restrict -D__builtin_signbit=::signbit -D_intel_fast_memcpy=memcpy -D_intel_fast_memset=memset
++CXXFLAGS = -g -traceback -debug all -xSSE4.2 -align -std=c99 -restrict -D__builtin_fpclassify=::fpclassify -D__builtin_signbit=::signbit -D_intel_fast_memcpy=memcpy -D_intel_fast_memset=memset
+ F77FLAGS = -xSSE4.2 -align -pad
+ F90FLAGS = -xSSE4.2 -align -pad
+ 
+Index: simfactory/mdb/optionlists/orca-intel.cfg
+===================================================================
+--- simfactory/mdb/optionlists/orca-intel.cfg	(revision 1828)
++++ simfactory/mdb/optionlists/orca-intel.cfg	(working copy)
+@@ -1,25 +1,21 @@
+ # Whenever this version string changes, the application is configured
+ # and rebuilt from scratch
+-VERSION = orca-intel-2012-07-10
++VERSION = orca-intel-2012-10-18
+ 
+-CPP  = /opt/sharcnet/gcc/4.3.4/bin/cpp
+-FPP  = /opt/sharcnet/gcc/4.3.4/bin/cpp
+-CC   = /opt/sharcnet/intel/11.1.069/icc/bin/intel64/icc
+-CXX  = /opt/sharcnet/intel/11.1.069/icc/bin/intel64/icpc
+-CUCC = /opt/sharcnet/intel/11.1.069/icc/bin/intel64/icpc
+-F77  = /opt/sharcnet/intel/11.1.069/ifc/bin/intel64/ifort
+-F90  = /opt/sharcnet/intel/11.1.069/ifc/bin/intel64/ifort
++CPP = /opt/sharcnet/gcc/4.3.4/bin/cpp
++FPP = /opt/sharcnet/gcc/4.3.4/bin/cpp
++CC  = /opt/sharcnet/intel/11.1.069/icc/bin/intel64/icc
++CXX = /opt/sharcnet/intel/11.1.069/icc/bin/intel64/icpc
++F77 = /opt/sharcnet/intel/11.1.069/ifc/bin/intel64/ifort
++F90 = /opt/sharcnet/intel/11.1.069/ifc/bin/intel64/ifort
+ 
+-CPPFLAGS  = 
+-FPPFLAGS  = -traditional
+-CFLAGS    = -g -debug all -traceback -align -std=c99 -ansi_alias -U__STRICT_ANSI__
+-CXXFLAGS  = -g -debug all -traceback -align -restrict -D_intel_fast_memcpy=memcpy -D_intel_fast_memset=memset
+-CUCCFLAGS = -x c++ -g -debug all -traceback -align -restrict -D_intel_fast_memcpy=memcpy -D_intel_fast_memset=memset -openmp
+-F77FLAGS  = -g -debug all -traceback -align -pad -w95 -cm
+-F90FLAGS  = -g -debug all -traceback -align -pad -w95 -cm
++CPPFLAGS =
++FPPFLAGS = -traditional
++CFLAGS   = -g -debug all -traceback -align -std=c99 -ansi_alias -U__STRICT_ANSI__
++CXXFLAGS = -g -debug all -traceback -align -restrict -D__builtin_isinf=::isinf -D__builtin_isnan=::isnan -D__builtin_isnormal=::isnormal -D__builtin_signbit=::signbit -D_intel_fast_memcpy=memcpy -D_intel_fast_memset=memset
++F77FLAGS = -g -debug all -traceback -align -pad -w95 -cm
++F90FLAGS = -g -debug all -traceback -align -pad -w95 -cm
+ 
+-CU_DEPEND = /opt/sharcnet/intel/11.1.069/icc/bin/intel64/icpc -M -x c++ -openmp
+-
+ LDFLAGS = -rdynamic -Wl,--allow-shlib-undefined -Wl,-zmuldefs   -L/opt/sharcnet/intel/11.1.069/ifc/lib/intel64 -Wl,-rpath,/opt/sharcnet/intel/11.1.069/ifc/lib/intel64   -L/usr/lib64 -L/lib64/tls
+ 
+ C_LINE_DIRECTIVES = yes
+@@ -31,33 +27,30 @@
+ VECTORISE_INLINE         = no
+ VECTORISE_ALIGNED_ARRAYS = no
+ 
+-DEBUG            = no
+-CPP_DEBUG_FLAGS  = -DCARPET_DEBUG
+-FPP_DEBUG_FLAGS  = -DCARPET_DEBUG
+-C_DEBUG_FLAGS    = -O0 # -check-uninit
+-CXX_DEBUG_FLAGS  = -O0 # -check-uninit
+-CUCC_DEBUG_FLAGS = -O0 # -check-uninit
+-F77_DEBUG_FLAGS  = -O0 -check bounds -check format # -check all
+-F90_DEBUG_FLAGS  = -O0 -check bounds -check format # -check all
++DEBUG           = no
++CPP_DEBUG_FLAGS = -DCARPET_DEBUG
++FPP_DEBUG_FLAGS = -DCARPET_DEBUG
++C_DEBUG_FLAGS   = -O0 # -check-uninit
++CXX_DEBUG_FLAGS = -O0 # -check-uninit
++F77_DEBUG_FLAGS = -O0 -check bounds -check format # -check all
++F90_DEBUG_FLAGS = -O0 -check bounds -check format # -check all
+ 
+ # -O3 or -override-limits lead to OOM on Orca
+-OPTIMISE            = yes
+-CPP_OPTIMISE_FLAGS  = # -DCARPET_OPTIMISE -DNDEBUG
+-FPP_OPTIMISE_FLAGS  = # -DCARPET_OPTIMISE -DNDEBUG
+-C_OPTIMISE_FLAGS    = -O2 -msse3
+-CXX_OPTIMISE_FLAGS  = -O2 -msse3
+-CUCC_OPTIMISE_FLAGS = -O2 -msse3
+-F77_OPTIMISE_FLAGS  = -O2 -msse3
+-F90_OPTIMISE_FLAGS  = -O2 -msse3
++OPTIMISE           = yes
++CPP_OPTIMISE_FLAGS = # -DCARPET_OPTIMISE -DNDEBUG
++FPP_OPTIMISE_FLAGS = # -DCARPET_OPTIMISE -DNDEBUG
++C_OPTIMISE_FLAGS   = -O2 -msse3
++CXX_OPTIMISE_FLAGS = -O2 -msse3
++F77_OPTIMISE_FLAGS = -O2 -msse3
++F90_OPTIMISE_FLAGS = -O2 -msse3
+ 
+-PROFILE            = no
+-CPP_PROFILE_FLAGS  =
+-FPP_PROFILE_FLAGS  =
+-C_PROFILE_FLAGS    = -pg
+-CXX_PROFILE_FLAGS  = -pg
+-CUCC_PROFILE_FLAGS = -pg
+-F77_PROFILE_FLAGS  = -pg
+-F90_PROFILE_FLAGS  = -pg
++PROFILE           = no
++CPP_PROFILE_FLAGS =
++FPP_PROFILE_FLAGS =
++C_PROFILE_FLAGS   = -pg
++CXX_PROFILE_FLAGS = -pg
++F77_PROFILE_FLAGS = -pg
++F90_PROFILE_FLAGS = -pg
+ 
+ OPENMP           = yes
+ CPP_OPENMP_FLAGS = -openmp
+@@ -67,14 +60,13 @@
+ F77_OPENMP_FLAGS = -openmp
+ F90_OPENMP_FLAGS = -openmp
+ 
+-WARN            = yes
+-CPP_WARN_FLAGS  =
+-FPP_WARN_FLAGS  =
+-C_WARN_FLAGS    = 
+-CXX_WARN_FLAGS  = 
+-CUCC_WARN_FLAGS = 
+-F77_WARN_FLAGS  = 
+-F90_WARN_FLAGS  = 
++WARN           = yes
++CPP_WARN_FLAGS =
++FPP_WARN_FLAGS =
++C_WARN_FLAGS   = 
++CXX_WARN_FLAGS = 
++F77_WARN_FLAGS = 
++F90_WARN_FLAGS = 
+ 
+ 
+ 
+Index: arrangements/CactusUtils/NaNChecker/src/NaNCheck.cc
+===================================================================
+--- arrangements/CactusUtils/NaNChecker/src/NaNCheck.cc	(revision 107)
++++ arrangements/CactusUtils/NaNChecker/src/NaNCheck.cc	(working copy)
+@@ -84,9 +84,8 @@
+   CCTK_INT count;
+   CCTK_INT *NaNmask;
+   int bitmask;
+-#ifdef HAVE_FINITE
+-  enum {CHECK_FOR_NAN = 0, CHECK_FOR_INF = 1, CHECK_FOR_BOTH = 2} check_for;
+-#endif
++  bool check_for_nan;
++  bool check_for_inf;
+   int cctk_iteration;
+   int ignore_restricted_points;
+   const char *restriction_mask;
+@@ -180,20 +179,21 @@
+     memset (info.NaNmask, 0, nelems * sizeof (CCTK_INT));
+   }
+ 
+-#ifdef HAVE_FINITE
+   if (CCTK_Equals (check_for, "NaN"))
+   {
+-    info.check_for = t_nanchecker_info::CHECK_FOR_NAN;
++    info.check_for_nan = true;
++    info.check_for_inf = false;
+   }
+   else if (CCTK_Equals (check_for, "Inf"))
+   {
+-    info.check_for = t_nanchecker_info::CHECK_FOR_INF;
++    info.check_for_nan = false;
++    info.check_for_inf = true;
+   }
+   else
+   {
+-    info.check_for = t_nanchecker_info::CHECK_FOR_BOTH;
++    info.check_for_nan = true;
++    info.check_for_inf = true;
+   }
+-#endif
+ }
+ 
+ extern "C"
+@@ -390,14 +390,15 @@
+   info.cctk_iteration = GH->cctk_iteration;
+   info.ignore_restricted_points = *ignore_restricted_points;
+ 
+-#ifdef HAVE_FINITE
+   if (CCTK_Equals (check_for, "NaN"))
+   {
+-    info.check_for = t_nanchecker_info::CHECK_FOR_NAN;
++    info.check_for_nan = true;
++    info.check_for_inf = false;
+   }
+   else if (CCTK_Equals (check_for, "Inf"))
+   {
+-    info.check_for = t_nanchecker_info::CHECK_FOR_INF;
++    info.check_for_nan = false;
++    info.check_for_inf = true;
+   }
+   else
+   {
+@@ -407,9 +408,9 @@
+                   "Invalid value '%s' passed for 'check_for' parameter. "
+                   "Defaulting to 'both' instead.", check_for);
+     }
+-    info.check_for = t_nanchecker_info::CHECK_FOR_BOTH;
++    info.check_for_nan = true;
++    info.check_for_inf = true;
+   }
+-#endif
+ 
+   if (CCTK_TraverseString (vars, CheckForNaN, &info, CCTK_GROUP_OR_VAR) < 0)
+   {
+@@ -694,32 +695,39 @@
+ #pragma omp parallel for schedule(dynamic)
+   for (int _i = 0; _i < nelems; _i++)
+   {
+-    if ((!CarpetWeights || CarpetWeights[_i] > 0.0) && (
+-#if defined(HAVE_ISNAN) && defined(HAVE_FINITE)
+-        ! finite ((double) _data[_i]) && (info->check_for == t_nanchecker_info::CHECK_FOR_BOTH ||
+-        ((isnan ((double) _data[_i]) & 1) ^ info->check_for))
+-#elif defined(HAVE_ISNAN)
+-        isnan ((double) _data[_i])
+-#else
+-        0
++    if (!CarpetWeights || CarpetWeights[_i] > 0.0)
++    {
++      
++      /* We call the C wrapper functions instead of the autoconfigured
++         macros below, because some C++ compilers optimise away calls
++         to isnan depending on the optimisation level, while C
++         compilers do not appear to do this. */
++      bool found_inf = false, found_nan = false;
++#ifdef HAVE_ISFINITE
++      found_inf = ! CCTK_isfinite(_data[_i]);
+ #endif
+-        ))
+-    {
++#ifdef HAVE_ISNAN
++      found_nan = CCTK_isnan(_data[_i]);
++#endif
++      bool found_problem =
++        (info->check_for_nan && found_nan) ||
++        (info->check_for_inf && found_inf);
++      if (found_problem)
+ #pragma omp critical
+       {
+-      nans_found++;
+-      if (info->action_if_found &&
+-          (info->report_max < 0 || nans_found <= info->report_max))
+-      {
+-        PrintWarning (isnan ((double) _data[_i]) ? "NaN" : "Inf",
+-                      info->verbose, _i, reflevel, cctk_iteration, fp_type,
+-                      coords, fullname, &gdata);
++        nans_found++;
++        if (info->action_if_found &&
++            (info->report_max < 0 || nans_found <= info->report_max))
++        {
++          PrintWarning (found_nan ? "NaN" : "Inf",
++                        info->verbose, _i, reflevel, cctk_iteration, fp_type,
++                        coords, fullname, &gdata);
++        }
++        if (info->NaNmask && gtype == CCTK_GF)
++        {
++          info->NaNmask[_i] |= 1 << info->bitmask;
++        }
+       }
+-      if (info->NaNmask && gtype == CCTK_GF)
+-      {
+-        info->NaNmask[_i] |= 1 << info->bitmask;
+-      }
+-      }
+     }
+   }
+ }
+Index: arrangements/LSUThorns/Vectors/src/test.cc
+===================================================================
+--- arrangements/LSUThorns/Vectors/src/test.cc	(revision 66)
++++ arrangements/LSUThorns/Vectors/src/test.cc	(working copy)
+@@ -14,27 +14,9 @@
+ 
+ 
+ 
+-inline CCTK_REAL my_copysign (CCTK_REAL const x, CCTK_REAL const y)
+-{
+-  using namespace std;
+-  return copysign(x, y);
+-}
+-
+-inline int my_isnan (CCTK_REAL const x)
+-{
+-  using namespace std;
+-  return isnan(x);
+-}
+-
+-inline int my_signbit (CCTK_REAL const x)
+-{
+-  using namespace std;
+-  return signbit(x);
+-}
+-
+ inline CCTK_REAL my_sgn (CCTK_REAL const x)
+ {
+-  return x == (CCTK_REAL)0.0 ? (CCTK_REAL)0.0 : my_copysign((CCTK_REAL)1.0, x);
++  return x == (CCTK_REAL)0.0 ? (CCTK_REAL)0.0 : copysign((CCTK_REAL)1.0, x);
+ }
+ 
+ 
+@@ -49,7 +31,7 @@
+     CCTK_REAL const eps = numeric_limits<CCTK_REAL>::epsilon();         \
+     assert(abs((CCTK_REAL)0.1) > 0);                                    \
+     if ((abs(vecres - res) <= 10*eps) or                                \
+-        (my_isnan(vecres) and my_isnan(res)))                           \
++        (isnan(vecres) and isnan(res)))                                 \
+     {                                                                   \
+       passed++;                                                         \
+     } else {                                                            \
+@@ -72,7 +54,7 @@
+       CCTK_REAL eps = numeric_limits<CCTK_REAL>::epsilon();             \
+       assert(abs((CCTK_REAL)0.1) > 0);                                  \
+       if ((abs(vecres - res) <= 10*eps) or                              \
+-          (my_isnan(vecres) and my_isnan(res)))                         \
++          (isnan(vecres) and isnan(res)))                               \
+       {                                                                 \
+         passed++;                                                       \
+       } else {                                                          \
+@@ -100,7 +82,7 @@
+         CCTK_VParamWarn(CCTK_THORNSTRING,                               \
+                         "Failed test %s: "                              \
+                         "for element %d, expected %lld, received %lld", \
+-                        testname, i, (long long)res, (long long)vecres);      \
++                        testname, i, (long long)res, (long long)vecres); \
+       }                                                                 \
+       numtests++;                                                       \
+     }                                                                   \
+@@ -244,17 +226,17 @@
+     }
+   }
+ 
+-  VECTEST("kneg",   kneg(av),           -a[i]               );
++  VECTEST("kneg",   kneg(av),           -a[i]                 );
+ 
+-  VECTEST("kadd",   kadd(av, bv),       a[i] + b[i]         );
+-  VECTEST("ksub",   ksub(av, bv),       a[i] - b[i]         );
+-  VECTEST("kmul",   kmul(av, bv),       a[i] * b[i]         );
+-  VECTEST("kdiv",   kdiv(av, bv),       a[i] / b[i]         );
++  VECTEST("kadd",   kadd(av, bv),       a[i] + b[i]           );
++  VECTEST("ksub",   ksub(av, bv),       a[i] - b[i]           );
++  VECTEST("kmul",   kmul(av, bv),       a[i] * b[i]           );
++  VECTEST("kdiv",   kdiv(av, bv),       a[i] / b[i]           );
+ 
+-  VECTEST("kmadd",  kmadd(av, bv, cv),   a[i] * b[i] + c[i] );
+-  VECTEST("kmsub",  kmsub(av, bv, cv),   a[i] * b[i] - c[i] );
+-  VECTEST("knmadd", knmadd(av, bv, cv), -a[i] * b[i] - c[i] );
+-  VECTEST("knmsub", knmsub(av, bv, cv), -a[i] * b[i] + c[i] );
++  VECTEST("kmadd",  kmadd(av, bv, cv),   a[i] * b[i] + c[i]   );
++  VECTEST("kmsub",  kmsub(av, bv, cv),   a[i] * b[i] - c[i]   );
++  VECTEST("knmadd", knmadd(av, bv, cv), -a[i] * b[i] - c[i]   );
++  VECTEST("knmsub", knmsub(av, bv, cv), -a[i] * b[i] + c[i]   );
+ 
+   VECTEST("kacos",     kacos(xv),         acos(x[i])          );
+   VECTEST("kacosh",    kacosh(zv),        acosh(z[i])         );
+@@ -282,16 +264,16 @@
+ 
+ #if 0
+   VECTEST("kifpos positive",
+-          kifpos(av, bv, cv), my_signbit(a[i]) ? c[i] : b[i]);
++          kifpos(av, bv, cv), CCTK_SIGNBIT(a[i]) ? c[i] : b[i]);
+   VECTEST("kifpos negative",
+-          kifpos(bv, bv, cv), my_signbit(b[i]) ? c[i] : b[i]);
++          kifpos(bv, bv, cv), CCTK_SIGNBIT(b[i]) ? c[i] : b[i]);
+   VECTEST("kifpos 0",  kifpos(vec_set1(0.),bv,cv),  b[i]);
+   VECTEST("kifpos -0", kifpos(vec_set1(-0.),bv,cv), c[i]);
+ 
+   VECTEST("kifneg positive",
+-          kifneg(av, bv, cv), my_signbit(a[i]) ? b[i] : c[i]);
++          kifneg(av, bv, cv), CCTK_SIGNBIT(a[i]) ? b[i] : c[i]);
+   VECTEST("kifneg negative",
+-          kifneg(bv, bv, cv), my_signbit(b[i]) ? b[i] : c[i]);
++          kifneg(bv, bv, cv), CCTK_SIGNBIT(b[i]) ? b[i] : c[i]);
+   VECTEST("kifneg 0",  kifneg(vec_set1(0.),bv,cv),  c[i]);
+   VECTEST("kifneg -0", kifneg(vec_set1(-0.),bv,cv), b[i]);
+ #endif
+================================================================
+diff --git a/Auxiliary/Cactus/KrancNumericalTools/GenericFD/src/GenericFD.h b/Auxiliary/Cactus/KrancNumericalTools/GenericFD/src/GenericFD.h
+index 5d1b17e..38ae740 100644
+--- a/./repos/Kranc/Auxiliary/Cactus/KrancNumericalTools/GenericFD/src/GenericFD.h
++++ b/./repos/Kranc/Auxiliary/Cactus/KrancNumericalTools/GenericFD/src/GenericFD.h
+@@ -63,6 +63,9 @@ extern "C" {
+ 
+ KRANC_WHERE static inline CCTK_REAL sgn(CCTK_REAL x)
+ {
++#ifdef __cplusplus
++  using namespace std;
++#endif
+   return x==(CCTK_REAL)0.0 ? (CCTK_REAL)0.0 : copysign((CCTK_REAL)1.0, x);
+ }
+ 
+================================================================
+diff --git a/Carpet/Carpet/src/Hosts.cc b/Carpet/Carpet/src/Hosts.cc
+index b8243ca..c10973c 100644
+--- a/./repos/carpet/Carpet/Carpet/src/Hosts.cc
++++ b/./repos/carpet/Carpet/Carpet/src/Hosts.cc
+@@ -23,6 +23,7 @@ namespace Carpet
+ {
+   
+   using namespace std;
++  using namespace CarpetLib;
+   
+   
+   
+diff --git a/Carpet/Carpet/src/MultiModel.cc b/Carpet/Carpet/src/MultiModel.cc
+index cc0335b..0ba2b94 100644
+--- a/./repos/carpet/Carpet/Carpet/src/MultiModel.cc
++++ b/./repos/carpet/Carpet/Carpet/src/MultiModel.cc
+@@ -22,6 +22,7 @@ namespace Carpet
+ {
+   
+   using namespace std;
++  using namespace CarpetLib;
+   
+   
+   
+diff --git a/Carpet/Carpet/src/functions.hh b/Carpet/Carpet/src/functions.hh
+index 163381c..b31c674 100644
+--- a/./repos/carpet/Carpet/Carpet/src/functions.hh
++++ b/./repos/carpet/Carpet/Carpet/src/functions.hh
+@@ -24,7 +24,6 @@
+ namespace Carpet {
+   
+   using namespace std;
+-  using namespace CarpetLib;
+   
+   int SyncGroupsByDirI (const cGH* cctkGH, int num_groups,
+                         const int* groups, const int* directions);
+diff --git a/Carpet/CarpetIOBasic/src/iobasic.cc b/Carpet/CarpetIOBasic/src/iobasic.cc
+index 2c413e3..11c6206 100644
+--- a/./repos/carpet/Carpet/CarpetIOBasic/src/iobasic.cc
++++ b/./repos/carpet/Carpet/CarpetIOBasic/src/iobasic.cc
+@@ -65,7 +65,34 @@ namespace CarpetIOBasic {
+   void
+   ExamineVariable (int vindex, bool & isint, int & numcomps, bool & isscalar);
+   vector<string> ParseReductions (char const * credlist);
+-  template <typename T> bool UseScientificNotation (T const & x);
++  
++  
++  
++  template <typename T>
++  bool
++  UseScientificNotation (T const & x)
++  {
++    return false;               // default
++  }
++  
++  template <>
++  bool
++  UseScientificNotation (CCTK_REAL const & x)
++  {
++    DECLARE_CCTK_PARAMETERS;
++    
++    static_assert (abs(0.1) > 0, "Function abs has wrong signature");
++    
++    CCTK_REAL const xa = abs (x);
++    return xa != 0 and (xa < real_min or xa >= real_max);
++  }
++  
++  template <>
++  bool
++  UseScientificNotation (CCTK_COMPLEX const & x)
++  {
++    return UseScientificNotation(x.real()) or UseScientificNotation(x.imag());
++  }
+ 
+ 
+ 
+@@ -730,18 +757,4 @@ namespace CarpetIOBasic {
+     }
+   }
+   
+-  
+-  
+-  template <typename T>
+-  bool
+-  UseScientificNotation (T const & x)
+-  {
+-    DECLARE_CCTK_PARAMETERS;
+-    
+-    static_assert (good::abs(0.1) > 0, "Function abs has wrong signature");
+-    
+-    CCTK_REAL const xa = good::abs (x);
+-    return xa != 0 and (xa < real_min or xa >= real_max);
+-  }
+-  
+ } // namespace CarpetIOBasic
+diff --git a/Carpet/CarpetLib/src/defs.hh b/Carpet/CarpetLib/src/defs.hh
+index 373d6bb..f41b19d 100644
+--- a/./repos/carpet/Carpet/CarpetLib/src/defs.hh
++++ b/./repos/carpet/Carpet/CarpetLib/src/defs.hh
+@@ -191,349 +191,48 @@ inline const char * typestring (const CCTK_COMPLEX32&)
+ #endif
+ 
+ 
++  
++// Provide implementations for some functions for complex numbers
++
++#define IMPLEMENT_FUNCTIONS(T)                          \
++                                                        \
++  inline int good_isfinite(T const& x)                  \
++  {                                                     \
++    return isfinite(x.real()) and isfinite(x.imag());   \
++  }                                                     \
++                                                        \
++  inline int good_isinf(T const& x)                     \
++  {                                                     \
++    return isinf(x.real()) or isinf(x.imag());          \
++  }                                                     \
++                                                        \
++  inline int good_isnan(T const& x)                     \
++  {                                                     \
++    return isnan(x.real()) or isnan(x.imag());          \
++  }                                                     \
++                                                        \
++  inline int good_isnormal(T const& x)                  \
++  {                                                     \
++    return isnormal(x.real()) or isnormal(x.imag());    \
++  }
+ 
+-// Capture the system's fpclassify, isfinite, isinf, isnan, and
+-// isnormal functions
+-
+-// #ifdef HAVE_CCTK_REAL4
+-// inline int myfpclassify (CCTK_REAL4 const x)
+-// { return fpclassify (x); }
+-// #endif
+-// #ifdef HAVE_CCTK_REAL8
+-// inline int myfpclassify (CCTK_REAL8 const x)
+-// { return fpclassify (x); }
+-// #endif
+-// #ifdef HAVE_CCTK_REAL16
+-// inline int myfpclassify (CCTK_REAL16 const x)
+-// { return fpclassify (x); }
+-// #endif
+-// 
+-// #undef fpclassify
+-
+-#ifdef HAVE_CCTK_REAL4
+-inline int myisfinite (CCTK_REAL4 const x)
+-{ return isfinite (x); }
+-#endif
+-#ifdef HAVE_CCTK_REAL8
+-inline int myisfinite (CCTK_REAL8 const x)
+-{ return isfinite (x); }
+-#endif
+-#ifdef HAVE_CCTK_REAL16
+-inline int myisfinite (CCTK_REAL16 const x)
+-{ return isfinite (x); }
+-#endif
+-
+-#undef isfinite
+-
+-#ifdef HAVE_CCTK_REAL4
+-inline int myisinf (CCTK_REAL4 const x)
+-{ return isinf (x); }
+-#endif
+-#ifdef HAVE_CCTK_REAL8
+-inline int myisinf (CCTK_REAL8 const x)
+-{ return isinf (x); }
+-#endif
+-#ifdef HAVE_CCTK_REAL16
+-inline int myisinf (CCTK_REAL16 const x)
+-{ return isinf (x); }
+-#endif
+-
+-#undef isinf
+-
+-#ifdef HAVE_CCTK_REAL4
+-inline int myisnan (CCTK_REAL4 const x)
+-{ return isnan (x); }
+-#endif
+-#ifdef HAVE_CCTK_REAL8
+-inline int myisnan (CCTK_REAL8 const x)
+-{ return isnan (x); }
+-#endif
+-#ifdef HAVE_CCTK_REAL16
+-inline int myisnan (CCTK_REAL16 const x)
+-{ return isnan (x); }
+-#endif
+-
+-#undef isnan
+-
+-#ifdef HAVE_CCTK_REAL4
+-inline int myisnormal (CCTK_REAL4 const x)
+-{ return isnormal (x); }
+-#endif
+-#ifdef HAVE_CCTK_REAL8
+-inline int myisnormal (CCTK_REAL8 const x)
+-{ return isnormal (x); }
+-#endif
+-#ifdef HAVE_CCTK_REAL16
+-inline int myisnormal (CCTK_REAL16 const x)
+-{ return isnormal (x); }
+-#endif
+-
+-#undef isnormal
+-
+-
+-
+-namespace CarpetLib {
+-  namespace good {
+-    
+-    // Explicitly overload some functions for all types in the same
+-    // namespace CarpetLib::good, to circumvent confusion among some
+-    // compilers
+-    
+-    //
+-    // abs
+-    //
+-    
+-    template <typename T>
+-    inline typename typeprops<T>::real abs (T const x)
+-    { return std::abs (x); }
+-    
+-//     // This does not work on Linux with Intel compilers, which do not
+-//     // always have long long llabs (long long)
+-//     template<> inline signed char abs<signed char> (signed char const x) { return ::abs (x); }
+-//     template<> inline unsigned char abs<unsigned char> (unsigned char const x) CCTK_ATTRIBUTE_CONST { return ::abs (x); }
+-//     template<> inline short abs<short> (short const x) { return ::abs (x); }
+-//     template<> inline int abs<int> (int const x) { return ::abs (x); }
+-//     template<> inline long abs<long> (long const x) { return ::labs (x); }
+-// #ifdef SIZEOF_LONG_LONG
+-//     inline long long abs<long long> (long long const x) { return ::llabs (x); }
+-// #endif
+-    
+-//     // This template does not work on AIX, which does not have long
+-//     // long abs (long long)
+-// #ifdef HAVE_CCTK_INT1
+-//     template<> inline CCTK_INT1 abs<CCTK_INT1> (CCTK_INT1 const x) { return x < 0 ? - x : x; }
+-// #endif
+-// #ifdef HAVE_CCTK_INT2
+-//     template<> inline CCTK_INT2 abs<CCTK_INT2> (CCTK_INT2 const x)  { return x < 0 ? - x : x; }
+-// #endif
+-// #ifdef HAVE_CCTK_INT4
+-//     template<> inline CCTK_INT4 abs<CCTK_INT4> (CCTK_INT4 const x) { return x < 0 ? - x : x; }
+-// #endif
+-// #ifdef HAVE_CCTK_INT8
+-//     template<> inline CCTK_INT8 abs<CCTK_INT8> (CCTK_INT8 const x) { return x < 0 ? - x : x; }
+-// #endif
+-    
+-#ifdef HAVE_CCTK_COMPLEX8
+-    template<> inline CCTK_REAL4 abs<CCTK_COMPLEX8> (CCTK_COMPLEX8 const x)
+-    { return CCTK_Cmplx8Abs (x); }
+-#endif
+-#ifdef HAVE_CCTK_COMPLEX16
+-    template<> inline CCTK_REAL8 abs<CCTK_COMPLEX16> (CCTK_COMPLEX16 const x)
+-    { return CCTK_Cmplx16Abs (x); }
+-#endif
+-#ifdef HAVE_CCTK_COMPLEX32
+-    template<> inline CCTK_REAL16 abs<CCTK_COMPLEX32> (CCTK_COMPLEX32 const x)
+-    { return CCTK_Cmplx32Abs (x); }
+-#endif
+-    
+-//     //
+-//     // fpclassify
+-//     //
+-//     
+-//     // Default implementation, only good for integers
+-//     template <typename T>
+-//     inline int fpclassify (T const x)
+-//     { return x ? FP_NORMAL : FP_ZERO; }
+-//     
+-// #ifdef HAVE_CCTK_REAL4
+-//     template<> inline int fpclassify (CCTK_REAL4 const x)
+-//     { return myfpclassify (x); }
+-// #endif
+-// #ifdef HAVE_CCTK_REAL8
+-//     template<> inline int fpclassify (CCTK_REAL8 const x)
+-//     { return myfpclassify (x); }
+-// #endif
+-// #ifdef HAVE_CCTK_REAL16
+-//     template<> inline int fpclassify (CCTK_REAL16 const x)
+-//     { return myfpclassify (x); }
+-// #endif
+-//     
+-// #ifdef HAVE_CCTK_COMPLEX8
+-//     template<> inline int fpclassify (CCTK_COMPLEX8 const x)
+-//     { assert(0); }
+-// #endif
+-// #ifdef HAVE_CCTK_COMPLEX16
+-//     template<> inline int fpclassify (CCTK_COMPLEX16 const x)
+-//     { assert(0); }
+-// #endif
+-// #ifdef HAVE_CCTK_COMPLEX32
+-//     template<> inline int fpclassify (CCTK_COMPLEX32 const x)
+-//     { assert(0); }
+-// #endif
+-    
+-    //
+-    // isfinite
+-    //
+-    
+-    // Default implementation, only good for integers
+-    template <typename T>
+-    inline int isfinite (T const x)
+-    { return 1; }
+-    
+-#ifdef HAVE_CCTK_REAL4
+-    template<> inline int isfinite (CCTK_REAL4 const x)
+-    { return myisfinite (x); }
+-#endif
+-#ifdef HAVE_CCTK_REAL8
+-    template<> inline int isfinite (CCTK_REAL8 const x)
+-    { return myisfinite (x); }
+-#endif
+-#ifdef HAVE_CCTK_REAL16
+-    template<> inline int isfinite (CCTK_REAL16 const x)
+-    { return myisfinite (x); }
+-#endif
+-    
+-#ifdef HAVE_CCTK_COMPLEX8
+-    template<> inline int isfinite (CCTK_COMPLEX8 const x)
+-    { return myisfinite (CCTK_Cmplx8Real (x)) and myisfinite (CCTK_Cmplx8Imag (x)); }
+-#endif
+-#ifdef HAVE_CCTK_COMPLEX16
+-    template<> inline int isfinite (CCTK_COMPLEX16 const x)
+-    { return myisfinite (CCTK_Cmplx16Real (x)) and myisfinite (CCTK_Cmplx16Imag (x)); }
+-#endif
+-#ifdef HAVE_CCTK_COMPLEX32
+-    template<> inline int isfinite (CCTK_COMPLEX32 const x)
+-    { return myisfinite (CCTK_Cmplx32Real (x)) and myisfinite (CCTK_Cmplx32Imag (x)); }
+-#endif
+-    
+-    //
+-    // isinf
+-    //
+-    
+-    // Default implementation, only good for integers
+-    template <typename T>
+-    inline int isinf (T const x)
+-    { return 0; }
+-    
+-#ifdef HAVE_CCTK_REAL4
+-    template<> inline int isinf (CCTK_REAL4 const x)
+-    { return myisinf (x); }
+-#endif
+-#ifdef HAVE_CCTK_REAL8
+-    template<> inline int isinf (CCTK_REAL8 const x)
+-    { return myisinf (x); }
+-#endif
+-#ifdef HAVE_CCTK_REAL16
+-    template<> inline int isinf (CCTK_REAL16 const x)
+-    { return myisinf (x); }
+-#endif
+-    
+-#ifdef HAVE_CCTK_COMPLEX8
+-    template<> inline int isinf (CCTK_COMPLEX8 const x)
+-    { return myisinf (CCTK_Cmplx8Real (x)) or myisinf (CCTK_Cmplx8Imag (x)); }
+-#endif
+-#ifdef HAVE_CCTK_COMPLEX16
+-    template<> inline int isinf (CCTK_COMPLEX16 const x)
+-    { return myisinf (CCTK_Cmplx16Real (x)) or myisinf (CCTK_Cmplx16Imag (x)); }
+-#endif
+-#ifdef HAVE_CCTK_COMPLEX32
+-    template<> inline int isinf (CCTK_COMPLEX32 const x)
+-    { return myisinf (CCTK_Cmplx32Real (x)) or myisinf (CCTK_Cmplx32Imag (x)); }
+-#endif
+-    
+-    //
+-    // isnan
+-    //
+-    
+-    // Default implementation, only good for integers
+-    template <typename T>
+-    inline int isnan (T const x)
+-    { return 0; }
+-    
+-#ifdef HAVE_CCTK_REAL4
+-    template<> inline int isnan (CCTK_REAL4 const x)
+-    { return myisnan (x); }
+-#endif
+-#ifdef HAVE_CCTK_REAL8
+-    template<> inline int isnan (CCTK_REAL8 const x)
+-    { return myisnan (x); }
+-#endif
+-#ifdef HAVE_CCTK_REAL16
+-    template<> inline int isnan (CCTK_REAL16 const x)
+-    { return myisnan (x); }
+-#endif
+-    
+-#ifdef HAVE_CCTK_COMPLEX8
+-    template<> inline int isnan (CCTK_COMPLEX8 const x)
+-    { return myisnan (CCTK_Cmplx8Real (x)) or myisnan (CCTK_Cmplx8Imag (x)); }
+-#endif
+-#ifdef HAVE_CCTK_COMPLEX16
+-    template<> inline int isnan (CCTK_COMPLEX16 const x)
+-    { return myisnan (CCTK_Cmplx16Real (x)) or myisnan (CCTK_Cmplx16Imag (x)); }
+-#endif
+-#ifdef HAVE_CCTK_COMPLEX32
+-    template<> inline int isnan (CCTK_COMPLEX32 const x)
+-    { return myisnan (CCTK_Cmplx32Real (x)) or myisnan (CCTK_Cmplx32Imag (x)); }
+-#endif
+-    
+-    //
+-    // isnormal
+-    //
+-    
+-    // Default implementation, only good for integers
+-    template <typename T>
+-    inline int isnormal (T const x)
+-    { return 1; }
+-    
+-#ifdef HAVE_CCTK_REAL4
+-    template<> inline int isnormal (CCTK_REAL4 const x)
+-    { return myisnormal (x); }
+-#endif
+-#ifdef HAVE_CCTK_REAL8
+-    template<> inline int isnormal (CCTK_REAL8 const x)
+-    { return myisnormal (x); }
+-#endif
+-#ifdef HAVE_CCTK_REAL16
+-    template<> inline int isnormal (CCTK_REAL16 const x)
+-    { return myisnormal (x); }
+-#endif
+-    
++namespace std {
++  namespace Cactus {
++  
+ #ifdef HAVE_CCTK_COMPLEX8
+-    template<> inline int isnormal (CCTK_COMPLEX8 const x)
+-    { return myisnormal (CCTK_Cmplx8Real (x)) and myisnormal (CCTK_Cmplx8Imag (x)); }
++  IMPLEMENT_FUNCTIONS(CCTK_COMPLEX8)
+ #endif
+ #ifdef HAVE_CCTK_COMPLEX16
+-    template<> inline int isnormal (CCTK_COMPLEX16 const x)
+-    { return myisnormal (CCTK_Cmplx16Real (x)) and myisnormal (CCTK_Cmplx16Imag (x)); }
++  IMPLEMENT_FUNCTIONS(CCTK_COMPLEX16)
+ #endif
+ #ifdef HAVE_CCTK_COMPLEX32
+-    template<> inline int isnormal (CCTK_COMPLEX32 const x)
+-    { return myisnormal (CCTK_Cmplx32Real (x)) and myisnormal (CCTK_Cmplx32Imag (x)); }
++  IMPLEMENT_FUNCTIONS(CCTK_COMPLEX32)
+ #endif
+     
+-  } // namespace good
+-} // namespace CarpetLib
+-
+-
+-
+-// Use #defines to access the CarpetLib::good functions from the
+-// global namespace.  Because macros are not scoped, this makes the
+-// corresponding functions in CarpetLib::good inaccessible, so we
+-// rename them by adding an underscore.
+-
+-namespace CarpetLib {
+-  namespace good {
+-    
+-#define ALIAS_GOOD_FUNCTION(typ,func)           \
+-    template <typename T>                       \
+-    inline typ func##_ (T const x)              \
+-    { return func (x); }
+-
+-    // ALIAS_GOOD_FUNCTION(int,fpclassify)
+-    ALIAS_GOOD_FUNCTION(int,isfinite)
+-    ALIAS_GOOD_FUNCTION(int,isinf)
+-    ALIAS_GOOD_FUNCTION(int,isnan)
+-    ALIAS_GOOD_FUNCTION(int,isnormal)
+-
+-#undef ALIAS_GOOD_FUNCTION
+-    
+-  } // namespace good
+-}   // namespace CarpetLib
++  }
++}
+ 
+-#define isfinite (::CarpetLib::good::isfinite_)
+-#define isinf    (::CarpetLib::good::isinf_)
+-#define isnan    (::CarpetLib::good::isnan_)
+-#define isnormal (::CarpetLib::good::isnormal_)
++#undef IMPLEMENT_FUNCTIONS
+ 
+ 
+ 
+diff --git a/Carpet/CarpetLib/src/gh.cc b/Carpet/CarpetLib/src/gh.cc
+index 6bb0adb..e787861 100644
+--- a/./repos/carpet/Carpet/CarpetLib/src/gh.cc
++++ b/./repos/carpet/Carpet/CarpetLib/src/gh.cc
+@@ -17,8 +17,6 @@
+ 
+ using namespace std;
+ 
+-using namespace CarpetLib;
+-
+ 
+ 
+ list<gh*> gh::allgh;
+diff --git a/Carpet/CarpetLib/src/prolongate_3d_cc_eno_rf2.cc b/Carpet/CarpetLib/src/prolongate_3d_cc_eno_rf2.cc
+index cc00464..5cd8fdd 100644
+--- a/./repos/carpet/Carpet/CarpetLib/src/prolongate_3d_cc_eno_rf2.cc
++++ b/./repos/carpet/Carpet/CarpetLib/src/prolongate_3d_cc_eno_rf2.cc
+@@ -142,7 +142,7 @@ namespace CarpetLib {
+         RT const x0 = RT(0.25) + di * RT(0.5);
+         //cout << "x0=" << x0 << endl;
+         RT const y0 = ipow (x0, n);
+-        if (not (good::abs (res - y0) < 1.0e-12)) {
++        if (not (abs (res - y0) < 1.0e-12)) {
+           RT rt;
+           ostringstream buf;
+           buf << "Error in prolongate_3d_cc_rf2::coeffs_3d_cc_rf2\n"
+diff --git a/Carpet/CarpetLib/src/prolongate_3d_cc_rf2.cc b/Carpet/CarpetLib/src/prolongate_3d_cc_rf2.cc
+index 827d6d6..bf960f0 100644
+--- a/./repos/carpet/Carpet/CarpetLib/src/prolongate_3d_cc_rf2.cc
++++ b/./repos/carpet/Carpet/CarpetLib/src/prolongate_3d_cc_rf2.cc
+@@ -113,7 +113,7 @@ namespace CarpetLib {
+         RT const y0 = ipow (x0, n);
+         // Allow losing 3 digits:
+         CCTK_REAL const eps = RT(1.0e+3) * numeric_limits<RT>::epsilon();
+-        if (not (good::abs (res - y0) < eps)) {
++        if (not (abs (res - y0) < eps)) {
+           RT rt;
+           ostringstream buf;
+           buf << "Error in prolongate_3d_cc_rf2::coeffs_3d_cc_rf2\n"
+diff --git a/Carpet/CarpetLib/src/prolongate_3d_rf2.cc b/Carpet/CarpetLib/src/prolongate_3d_rf2.cc
+index 9872753..984d68c 100644
+--- a/./repos/carpet/Carpet/CarpetLib/src/prolongate_3d_rf2.cc
++++ b/./repos/carpet/Carpet/CarpetLib/src/prolongate_3d_rf2.cc
+@@ -71,7 +71,7 @@ namespace CarpetLib {
+       
+       // Do not test integer operators (they should be disabled
+       // anyway)
+-      if (good::abs (RT(0.5) - 0.5) > 1.0e-5) return;
++      if (abs (RT(0.5) - 0.5) > 1.0e-5) return;
+       
+       // Test all orders
+       bool error = false;
+@@ -86,7 +86,7 @@ namespace CarpetLib {
+         RT const y0 = ipow (x0, n);
+         // Allow losing 3 digits:
+         CCTK_REAL const eps = RT(1.0e+3) * numeric_limits<RT>::epsilon();
+-        if (not (good::abs (res - y0) < eps)) {
++        if (not (abs (res - y0) < eps)) {
+           RT rt;
+           ostringstream buf;
+           buf << "Error in prolongate_3d_rf2::coeffs_3d_rf2\n"
+diff --git a/Carpet/CarpetLib/src/vect.hh b/Carpet/CarpetLib/src/vect.hh
+index 63a6b04..a8b8819 100644
+--- a/./repos/carpet/Carpet/CarpetLib/src/vect.hh
++++ b/./repos/carpet/Carpet/CarpetLib/src/vect.hh
+@@ -375,13 +375,13 @@ DECLARE_FUNCTION_1 (abs)
+ DECLARE_FUNCTION_1 (ceil)
+ DECLARE_FUNCTION_1 (floor)
+ DECLARE_FUNCTION_1 (sqrt)
+-namespace CarpetLib {
+-  namespace good {
+-    // DECLARE_FUNCTION_1_RET (fpclassify, int)
+-    DECLARE_FUNCTION_1_RET (isfinite_, int)
+-    DECLARE_FUNCTION_1_RET (isinf_, int)
+-    DECLARE_FUNCTION_1_RET (isnan_, int)
+-    DECLARE_FUNCTION_1_RET (isnormal_, int)
++namespace std {
++  namespace Cactus {
++    DECLARE_FUNCTION_1_RET (good_fpclassify, int)
++    DECLARE_FUNCTION_1_RET (good_isfinite, int)
++    DECLARE_FUNCTION_1_RET (good_isinf, int)
++    DECLARE_FUNCTION_1_RET (good_isnan, int)
++    DECLARE_FUNCTION_1_RET (good_isnormal, int)
+   }
+ }
+ 
+diff --git a/Carpet/CarpetReduce/src/reduce.cc b/Carpet/CarpetReduce/src/reduce.cc
+index f996964..5ee5a63 100644
+--- a/./repos/carpet/Carpet/CarpetReduce/src/reduce.cc
++++ b/./repos/carpet/Carpet/CarpetReduce/src/reduce.cc
+@@ -42,13 +42,6 @@ namespace CarpetReduce {
+   
+   // Helper functions and types
+   
+-  // Whether a value is nan
+-  template<typename T> static inline int
+-  myisnan (const T x)
+-  {
+-    return isnan(x);
+-  }
+-  
+   // The minimum of two values
+   template<typename T> static inline T
+   mymin (const T x, const T y)
+@@ -127,11 +120,6 @@ namespace CarpetReduce {
+   // The C++ compiler should supply these, but some old ones do not,
+   // e.g. our beloved workhorse Intel 7.1.  Self is the man.
+ #ifdef HAVE_CCTK_BYTE
+-//   template<> static inline int myisnan (CCTK_BYTE const x)
+-//   {
+-//     return 0;
+-//   }
+-  
+   template<> inline CCTK_BYTE mysqr (CCTK_BYTE const x)
+   {
+     // prevent overflow
+@@ -152,11 +140,6 @@ namespace CarpetReduce {
+ #endif
+   
+ #ifdef HAVE_CCTK_INT1
+-//   template<> static inline int myisnan (CCTK_INT1 const x)
+-//   {
+-//     return 0;
+-//   }
+-  
+   template<> inline CCTK_INT1 mysqr (CCTK_INT1 const x)
+   {
+     // prevent overflow
+@@ -177,11 +160,6 @@ namespace CarpetReduce {
+ #endif
+   
+ #ifdef HAVE_CCTK_INT2
+-//   template<> static inline int myisnan (CCTK_INT2 const x)
+-//   {
+-//     return 0;
+-//   }
+-  
+   template<> inline CCTK_INT2 mysqr (CCTK_INT2 const x)
+   {
+     // prevent overflow
+@@ -202,11 +180,6 @@ namespace CarpetReduce {
+ #endif
+   
+ #ifdef HAVE_CCTK_INT4
+-//   template<> inline int myisnan (CCTK_INT4 const x)
+-//   {
+-//     return 0;
+-//   }
+-  
+   template<> inline CCTK_INT4 mysqr (CCTK_INT4 const x)
+   {
+     // prevent overflow
+@@ -227,11 +200,6 @@ namespace CarpetReduce {
+ #endif
+   
+ #ifdef HAVE_CCTK_INT8
+-//   template<> inline int myisnan (CCTK_INT8 const x)
+-//   {
+-//     return 0;
+-//   }
+-  
+   template<> inline CCTK_INT8 mysqr (CCTK_INT8 const x)
+   {
+     // prevent overflow
+@@ -257,11 +225,6 @@ namespace CarpetReduce {
+   
+ #ifdef HAVE_CCTK_REAL4
+   
+-  // template<> inline int myisnan (complex<CCTK_REAL4> const x)
+-  // {
+-  //   return isnan (x.real()) or isnan (x.imag());
+-  // }
+-  
+   template<> inline complex<CCTK_REAL4>
+   mymin (const complex<CCTK_REAL4> x, const complex<CCTK_REAL4> y)
+   {
+@@ -306,11 +269,6 @@ namespace CarpetReduce {
+   
+ #ifdef HAVE_CCTK_REAL8
+   
+-  // template<> inline int myisnan (complex<CCTK_REAL8> const x)
+-  // {
+-  //   return isnan (x.real()) or isnan (x.imag());
+-  // }
+-  
+   template<> inline complex<CCTK_REAL8>
+   mymin (const complex<CCTK_REAL8> x, const complex<CCTK_REAL8> y)
+   {
+@@ -355,11 +313,6 @@ namespace CarpetReduce {
+   
+ #ifdef HAVE_CCTK_REAL16
+   
+-  // template<> inline int myisnan (complex<CCTK_REAL16> const x)
+-  // {
+-  //   return isnan (x.real()) or isnan (x.imag());
+-  // }
+-  
+   template<> inline complex<CCTK_REAL16>
+   mymin (const complex<CCTK_REAL16> x, const complex<CCTK_REAL16> y)
+   {

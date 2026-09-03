@@ -1,0 +1,246 @@
+################################################################################
+# Active thorns
+################################################################################
+
+ActiveThorns = "
+  ADMBase
+  ADMCoupling
+  ADMMacros
+  AEILocalInterp
+  Boundary
+  Carpet
+  CarpetIOASCII
+  CarpetIOBasic
+  CarpetIOScalar
+  CarpetInterp
+  CarpetInterp2
+  CarpetLib
+  CarpetReduce
+  CarpetRegrid2
+  CartGrid3D
+  CoordBase
+  CoordGauge
+  Coordinates
+  CoordinatesSymmetry
+  GenericFD
+  IOUtil
+  InitBase
+  Interpolate2
+  ML_BSSN
+  ML_BSSN_Helper
+  MoL
+  NaNChecker
+  NewRad
+  Slab
+  SpaceMask
+  SphericalSurface
+  StaticConformal
+  SummationByParts
+  SymBase
+  Time
+  TmunuBase
+"
+
+################################################################################
+# Grid structure
+################################################################################
+
+Carpet::domain_from_multipatch          = yes
+CartGrid3D::type                        = "multipatch"
+CartGrid3D::set_coordinate_ranges_on    = "all maps"
+Coordinates::coordinate_system          = "Thornburg04"
+Coordinates::h_cartesian                = 0.5
+Coordinates::h_radial                   = 0.5
+
+Coordinates::sphere_inner_radius        = 20.0
+Coordinates::sphere_outer_radius        = 50.0
+Coordinates::n_angular                  = 14
+
+Driver::ghost_size                      = 3
+Coordinates::patch_boundary_size        = 3
+Coordinates::additional_overlap_size    = 3
+Coordinates::outer_boundary_size        = 3
+
+CoordinatesSymmetry::reflection_z       = yes
+CoordinatesSymmetry::stagger            = no
+Coordinates::symmetry                   = "+z bitant"
+Coordinates::additional_symmetry_size   = 1
+Coordinates::verbose                    = yes
+
+Coordinates::store_jacobian             = yes
+Coordinates::store_inverse_jacobian     = yes
+Coordinates::store_volume_form          = yes
+
+Coordinates::nMonteCarloParticles       = 500
+
+Time::timestep_method                   = "given"
+Time::timestep                          = 0.001
+Carpet::time_refinement_factors         = "[1,2,4,8,16,64,128,256,512]"
+
+Cactus::cctk_itlast                     = 1024
+
+################################################################################
+# Mesh refinement
+################################################################################
+
+Carpet::max_refinement_levels           = 9
+CarpetRegrid2::num_centres              = 1
+CarpetRegrid2::num_levels_1             = 1
+CarpetRegrid2::radius_1                 = [0,20.0,10.0]
+
+Carpet::use_buffer_zones                = yes
+Carpet::prolongation_order_space        = 5
+Carpet::prolongation_order_time         = 2
+
+CarpetRegrid2::regrid_every             = 128
+CarpetRegrid2::verbose                  = no
+
+################################################################################
+# Initial data
+################################################################################
+
+ADMBase::initial_data                   = "Cartesian Minkowski"
+ADMBase::initial_lapse                  = "one"
+ADMBase::initial_shift                  = "zero"
+ADMBase::initial_dtlapse                = "zero"
+ADMBase::initial_dtshift                = "zero"
+
+Carpet::init_3_timelevels               = no
+Carpet::init_fill_timelevels            = "yes"
+InitBase::initial_data_setup_method     = "init_some_levels"
+
+################################################################################
+# Evolution and boundary
+################################################################################
+
+GenericFD::jacobian_group = "Coordinates::jacobian"
+GenericFD::jacobian_derivative_group = "Coordinates::jacobian2"
+GenericFD::jacobian_identity_map = 0
+
+ADMBase::evolution_method         = "ML_BSSN"
+ADMBase::lapse_evolution_method   = "ML_BSSN"
+ADMBase::shift_evolution_method   = "ML_BSSN"
+ADMBase::dtlapse_evolution_method = "ML_BSSN"
+ADMBase::dtshift_evolution_method = "ML_BSSN"
+
+ML_BSSN::fdOrder             = 4
+
+# 1+log slicing requires harmonicN = 1 and harmonicF = 2.0
+ML_BSSN::harmonicN           = 1
+ML_BSSN::harmonicF           = 2.0
+
+ML_BSSN::ShiftGammaCoeff     = 0.75
+ML_BSSN::BetaDriver          = 1.0
+ML_BSSN::advectLapse         = 1
+ML_BSSN::advectShift         = 1
+
+ML_BSSN::MinimumLapse        = 1.0e-8
+
+# conformalaMethod = 1 for W, 0 for phi
+ML_BSSN::conformalMethod     = 1
+
+# We apply dissipation using GlobalDerivaitive so disable it here
+ML_BSSN::epsDiss             = 0.0
+
+# These two settings trigger the bug
+# <https://trac.einsteintoolkit.org/ticket/2030>
+ML_BSSN::initial_boundary_condition   = "extrapolate-gammas"
+ML_BSSN::rhs_boundary_condition        = "NewRad"
+
+# These two settings avoid the bug, demonstrating that indeed
+# extrapolation is to blame.
+# ML_BSSN::initial_boundary_condition = "scalar"
+# ML_BSSN::rhs_boundary_condition     = "scalar"
+
+Boundary::radpower                  = 2
+
+################################################################################
+# Time integration
+################################################################################
+
+MoL::ODE_Method                         = "rk4"
+MoL::MoL_Intermediate_Steps             = 4
+MoL::MoL_Num_Scratch_Levels             = 1
+
+################################################################################
+# Interpolation
+################################################################################
+
+# Use 5-th order interpatch interpolation on the Llama grid
+Interpolate::interpolator_order         = 4
+
+Carpet::poison_new_timelevels           = yes
+CarpetLib::poison_new_memory            = yes
+#Carpet::check_for_poison                = yes
+
+NaNChecker::check_every                 = 1
+NanChecker::check_after                 = 0
+NaNChecker::report_max                  = 10
+NaNChecker::verbose                     = "all"
+NaNChecker::action_if_found             = terminate
+NaNChecker::out_NaNmask                 = yes
+NaNChecker::check_vars                  = "
+  ML_BSSN::ML_log_confac
+  ML_BSSN::ML_metric
+  ML_BSSN::ML_Gamma
+  ML_BSSN::ML_trace_curv
+  ML_BSSN::ML_curv
+  ML_BSSN::ML_lapse
+  ML_BSSN::ML_shift
+  ML_BSSN::ML_dtshift
+  ADMBase::metric
+  ADMBase::curv
+  ADMBase::lapse
+  ADMBase::shift
+"
+
+################################################################################
+# Output
+################################################################################
+
+IO::out_dir                             = $parfile
+
+IOBasic::outInfo_every                  = 1
+IOBasic::outInfo_reductions             = "norm2"
+IOBasic::outInfo_vars                   = "
+  ML_BSSN::ML_log_confac
+"
+
+IOScalar::one_file_per_group            = yes
+IOScalar::all_reductions_in_one_file    = yes
+IOScalar::outScalar_every               = 512
+IOScalar::outScalar_vars                = "
+  ML_BSSN::ML_log_confac
+  ML_BSSN::ML_metric
+  ML_BSSN::ML_Gamma
+  ML_BSSN::ML_trace_curv
+  ML_BSSN::ML_curv
+  ML_BSSN::ML_lapse
+  ML_BSSN::ML_shift
+  ML_BSSN::ML_dtshift
+  ADMBase::metric
+  ADMBase::curv
+  ADMBase::lapse
+  ADMBase::shift
+"
+
+IOASCII::one_file_per_group             = yes
+IOASCII::out1D_every                    = 512
+IOASCII::out1D_d                        = no
+IOASCII::out1D_x                        = yes
+IOASCII::out1D_y                        = yes
+IOASCII::out1D_z                        = yes
+IOASCII::out1D_vars                     = "
+  ML_BSSN::ML_log_confac
+  ML_BSSN::ML_metric
+  ML_BSSN::ML_Gamma
+  ML_BSSN::ML_trace_curv
+  ML_BSSN::ML_curv
+  ML_BSSN::ML_lapse
+  ML_BSSN::ML_shift
+  ML_BSSN::ML_dtshift
+  ADMBase::metric
+  ADMBase::curv
+  ADMBase::lapse
+  ADMBase::shift
+"

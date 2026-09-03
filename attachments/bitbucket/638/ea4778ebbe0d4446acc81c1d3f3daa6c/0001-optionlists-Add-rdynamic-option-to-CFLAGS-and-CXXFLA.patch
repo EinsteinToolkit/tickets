@@ -1,0 +1,589 @@
+From 8c86e69fcf0f483360559e0bad20da8aa55f1816 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Fri, 21 Oct 2011 09:50:33 +0200
+Subject: [PATCH] optionlists: Add -rdynamic option to CFLAGS and CXXFLAGS for
+ gcc and Intel compilers
+
+This adds symbols needed in backtraces from Carpet
+---
+ mdb/optionlists/abe-mvapich2.cfg       |    4 ++--
+ mdb/optionlists/angel.cfg              |    4 ++--
+ mdb/optionlists/athena-intel.cfg       |    4 ++--
+ mdb/optionlists/bethe.cfg              |    4 ++--
+ mdb/optionlists/compute-intel.cfg      |    4 ++--
+ mdb/optionlists/compute.cfg            |    4 ++--
+ mdb/optionlists/debian-lenny-gcc.cfg   |    4 ++--
+ mdb/optionlists/fedora.cfg             |    4 ++--
+ mdb/optionlists/fermi.cfg              |    4 ++--
+ mdb/optionlists/generic.cfg            |    4 ++--
+ mdb/optionlists/hlrb2.cfg              |    4 ++--
+ mdb/optionlists/kraken-gcc.cfg         |    4 ++--
+ mdb/optionlists/kraken-intel.cfg       |    4 ++--
+ mdb/optionlists/lincoln-mvapich2.cfg   |    4 ++--
+ mdb/optionlists/lonestar-openmpi.cfg   |    4 ++--
+ mdb/optionlists/lonestar.cfg           |    4 ++--
+ mdb/optionlists/longhorn.cfg           |    4 ++--
+ mdb/optionlists/macos-fink-gcc.cfg     |    4 ++--
+ mdb/optionlists/macos-intel.cfg        |    4 ++--
+ mdb/optionlists/macos-macports-gcc.cfg |    4 ++--
+ mdb/optionlists/numrel-gcc.cfg         |    4 ++--
+ mdb/optionlists/numrel-intel.cfg       |    4 ++--
+ mdb/optionlists/orca-intel.cfg         |    4 ++--
+ mdb/optionlists/orca.cfg               |    4 ++--
+ mdb/optionlists/philip-mpich.cfg       |    4 ++--
+ mdb/optionlists/queenbee-mvapich.cfg   |    4 ++--
+ mdb/optionlists/queenbee-mvapich2.cfg  |    4 ++--
+ mdb/optionlists/ranger-intel11.cfg     |    4 ++--
+ mdb/optionlists/ranger-mvapich2.cfg    |    4 ++--
+ mdb/optionlists/requin.cfg             |    4 ++--
+ mdb/optionlists/s-kraken.cfg           |    4 ++--
+ mdb/optionlists/saw.cfg                |    4 ++--
+ mdb/optionlists/tezpur-mvapich2.cfg    |    4 ++--
+ mdb/optionlists/trestles.cfg           |    4 ++--
+ mdb/optionlists/varia-gcc.cfg          |    4 ++--
+ mdb/optionlists/zwicky-openmpi.cfg     |    4 ++--
+ 36 files changed, 72 insertions(+), 72 deletions(-)
+
+diff --git a/mdb/optionlists/abe-mvapich2.cfg b/mdb/optionlists/abe-mvapich2.cfg
+index 9ef2bca..d1e6efc 100644
+--- a/mdb/optionlists/abe-mvapich2.cfg
++++ b/mdb/optionlists/abe-mvapich2.cfg
+@@ -13,8 +13,8 @@ F90 = /usr/local/intel/11.1.064/bin/intel64/ifort
+ 
+ CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK
+ FPPFLAGS = -traditional
+-CFLAGS   = -g -debug all -traceback -align -std=c99 -ansi_alias -U__STRICT_ANSI__
+-CXXFLAGS = -g -debug all -traceback -align -restrict
++CFLAGS   = -g -debug all -traceback -align -std=c99 -ansi_alias -U__STRICT_ANSI__ -rdynamic
++CXXFLAGS = -g -debug all -traceback -align -restrict -rdynamic
+ F77FLAGS = -g -debug all -traceback -align -pad -w95 -cm
+ F90FLAGS = -g -debug all -traceback -align -pad -w95 -cm
+ 
+diff --git a/mdb/optionlists/angel.cfg b/mdb/optionlists/angel.cfg
+index 50f98a7..4cf49d6 100644
+--- a/mdb/optionlists/angel.cfg
++++ b/mdb/optionlists/angel.cfg
+@@ -13,8 +13,8 @@ F90 = /opt/sharcnet/gcc/4.3.4/bin/gfortran
+ 
+ CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK -D__wur=
+ FPPFLAGS = -traditional
+-CFLAGS   = -g3 -m128bit-long-double -march=native -std=gnu99
+-CXXFLAGS = -g3 -m128bit-long-double -march=native -std=gnu++0x
++CFLAGS   = -g3 -m128bit-long-double -march=native -std=gnu99 -rdynamic
++CXXFLAGS = -g3 -m128bit-long-double -march=native -std=gnu++0x -rdynamic
+ F77FLAGS = -g3 -m128bit-long-double -march=native -fcray-pointer -ffixed-line-length-none
+ F90FLAGS = -g3 -m128bit-long-double -march=native -fcray-pointer -ffixed-line-length-none
+ 
+diff --git a/mdb/optionlists/athena-intel.cfg b/mdb/optionlists/athena-intel.cfg
+index b92f2ae..987bc1c 100644
+--- a/mdb/optionlists/athena-intel.cfg
++++ b/mdb/optionlists/athena-intel.cfg
+@@ -13,8 +13,8 @@ F90 = /opt/intel/Compiler/11.1/038/bin/intel64/ifort
+ 
+ CPPFLAGS = -D__CRAYXT -D__CRAYXT_COMPUTE_LINUX_TARGET -D__TARGET_LINUX__ -DMPICH_IGNORE_CXX_SEEK
+ FPPFLAGS = -traditional
+-CFLAGS   = -g -debug all -traceback -msse3 -align -std=c99 -ansi_alias -U__STRICT_ANSI__
+-CXXFLAGS = -g -debug all -traceback -msse3 -align -restrict -D_intel_fast_memcpy=memcpy -D_intel_fast_memset=memset
++CFLAGS   = -g -debug all -traceback -msse3 -align -std=c99 -ansi_alias -U__STRICT_ANSI__ -rdynamic
++CXXFLAGS = -g -debug all -traceback -msse3 -align -restrict -D_intel_fast_memcpy=memcpy -D_intel_fast_memset=memset -rdynamic
+ F77FLAGS = -g -debug all -traceback -msse3 -align -pad -w95 -cm
+ F90FLAGS = -g -debug all -traceback -msse3 -align -pad -w95 -cm
+ 
+diff --git a/mdb/optionlists/bethe.cfg b/mdb/optionlists/bethe.cfg
+index 2db0bbd..03c4492 100644
+--- a/mdb/optionlists/bethe.cfg
++++ b/mdb/optionlists/bethe.cfg
+@@ -13,8 +13,8 @@ F90 = /usr/local/apps/intel/intel_fc_11_1/bin/intel64/ifort
+ 
+ CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK
+ FPPFLAGS = -traditional
+-CFLAGS   = -g -traceback -debug all -xSSE4.2 -align -std=c99 -ansi_alias -U__STRICT_ANSI__
+-CXXFLAGS = -g -traceback -debug all -xSSE4.2 -align -std=c99 -restrict
++CFLAGS   = -g -traceback -debug all -xSSE4.2 -align -std=c99 -ansi_alias -U__STRICT_ANSI__ -rdynamic
++CXXFLAGS = -g -traceback -debug all -xSSE4.2 -align -std=c99 -restrict -rdynamic
+ F77FLAGS = -g -traceback -debug all -xSSE4.2 -align -pad -w95 -cm
+ F90FLAGS = -g -traceback -debug all -xSSE4.2 -align -pad -w95 -cm
+ 
+diff --git a/mdb/optionlists/compute-intel.cfg b/mdb/optionlists/compute-intel.cfg
+index cadaf21..2d2d6d8 100644
+--- a/mdb/optionlists/compute-intel.cfg
++++ b/mdb/optionlists/compute-intel.cfg
+@@ -16,8 +16,8 @@ F90  = ifort
+ # Move -g to the debug flags instead.
+ CPPFLAGS  = -DOMPI_SKIP_MPICXX
+ FPPFLAGS  = -traditional
+-CFLAGS    = -g -debug all -traceback -gcc-name=gcc-4.4 -std=c99 -ansi_alias -U__STRICT_ANSI__
+-CXXFLAGS  = -g -debug all -traceback -gxx-name=g++-4.4 -restrict -D__builtin_signbit=::signbit
++CFLAGS    = -g -debug all -traceback -gcc-name=gcc-4.4 -std=c99 -ansi_alias -U__STRICT_ANSI__ -rdynamic
++CXXFLAGS  = -g -debug all -traceback -gxx-name=g++-4.4 -restrict -D__builtin_signbit=::signbit -rdynamic
+ CUCCFLAGS = -g -debug all -traceback -gxx-name=g++-4.4 -restrict -D__builtin_signbit=::signbit -x c++
+ F77FLAGS  = -traceback -pad
+ F90FLAGS  = -traceback -pad
+diff --git a/mdb/optionlists/compute.cfg b/mdb/optionlists/compute.cfg
+index eaa96b5..924599a 100644
+--- a/mdb/optionlists/compute.cfg
++++ b/mdb/optionlists/compute.cfg
+@@ -16,8 +16,8 @@ F90 = gfortran-4.6.1
+ 
+ CPPFLAGS = -DOMPI_SKIP_MPICXX
+ FPPFLAGS = -traditional
+-CFLAGS   = -g3 -m128bit-long-double -march=native -std=gnu99
+-CXXFLAGS = -g3 -m128bit-long-double -march=native -std=gnu++0x
++CFLAGS   = -g3 -m128bit-long-double -march=native -std=gnu99 -rdynamic
++CXXFLAGS = -g3 -m128bit-long-double -march=native -std=gnu++0x -rdynamic
+ F77FLAGS = -g3 -m128bit-long-double -march=native -fcray-pointer -ffixed-line-length-none
+ F90FLAGS = -g3 -m128bit-long-double -march=native -fcray-pointer -ffixed-line-length-none
+ 
+diff --git a/mdb/optionlists/debian-lenny-gcc.cfg b/mdb/optionlists/debian-lenny-gcc.cfg
+index 7b5bb37..22395ff 100644
+--- a/mdb/optionlists/debian-lenny-gcc.cfg
++++ b/mdb/optionlists/debian-lenny-gcc.cfg
+@@ -7,8 +7,8 @@ CXX = g++
+ F77 = gfortran
+ F90 = gfortran
+ 
+-CFLAGS   = -fopenmp -g -std=gnu99
+-CXXFLAGS = -fopenmp -g
++CFLAGS   = -fopenmp -g -std=gnu99 -rdynamic
++CXXFLAGS = -fopenmp -g -rdynamic
+ F77FLAGS = -fopenmp -g
+ F90FLAGS = -fopenmp -g
+ 
+diff --git a/mdb/optionlists/fedora.cfg b/mdb/optionlists/fedora.cfg
+index efbebb9..75b3cf6 100644
+--- a/mdb/optionlists/fedora.cfg
++++ b/mdb/optionlists/fedora.cfg
+@@ -22,8 +22,8 @@ F90 = gfortran
+ CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK
+ FPPFLAGS = -traditional
+ # no -msse3
+-CFLAGS   = -g3 -m128bit-long-double -march=native -std=gnu99
+-CXXFLAGS = -g3 -m128bit-long-double -march=native -std=gnu++0x
++CFLAGS   = -g3 -m128bit-long-double -march=native -std=gnu99 -rdynamic
++CXXFLAGS = -g3 -m128bit-long-double -march=native -std=gnu++0x -rdynamic
+ F77FLAGS = -g3 -m128bit-long-double -march=native -fcray-pointer -ffixed-line-length-none
+ F90FLAGS = -g3 -m128bit-long-double -march=native -fcray-pointer -ffixed-line-length-none
+ LDFLAGS  = 
+diff --git a/mdb/optionlists/fermi.cfg b/mdb/optionlists/fermi.cfg
+index 7d411fb..f8aa50d 100644
+--- a/mdb/optionlists/fermi.cfg
++++ b/mdb/optionlists/fermi.cfg
+@@ -13,8 +13,8 @@ F90 = /usr/local/apps/intel/composerxe-2011.2.137/bin/ifort
+ 
+ CPPFLAGS =
+ FPPFLAGS = -traditional
+-CFLAGS   = -g -traceback -debug all -xSSE4.2 -align -std=c99 -ansi_alias -U__STRICT_ANSI__
+-CXXFLAGS = -g -traceback -debug all -xSSE4.2 -align -std=c99 -restrict -D_intel_fast_memcpy=memcpy -D_intel_fast_memset=memset
++CFLAGS   = -g -traceback -debug all -xSSE4.2 -align -std=c99 -ansi_alias -U__STRICT_ANSI__ -rdynamic
++CXXFLAGS = -g -traceback -debug all -xSSE4.2 -align -std=c99 -restrict -D_intel_fast_memcpy=memcpy -D_intel_fast_memset=memset -rdynamic
+ F77FLAGS = -g -traceback -debug all -xSSE4.2 -align -pad
+ F90FLAGS = -g -traceback -debug all -xSSE4.2 -align -pad
+ 
+diff --git a/mdb/optionlists/generic.cfg b/mdb/optionlists/generic.cfg
+index f358ff0..12d0437 100644
+--- a/mdb/optionlists/generic.cfg
++++ b/mdb/optionlists/generic.cfg
+@@ -12,8 +12,8 @@ FPP = none
+ F77 = none
+ F90 = none
+ 
+-CFLAGS   = -g -std=gnu99
+-CXXFLAGS = -g
++CFLAGS   = -g -std=gnu99 -rdynamic
++CXXFLAGS = -g -rdynamic
+ 
+ DEBUG           = no
+ CPP_DEBUG_FLAGS =
+diff --git a/mdb/optionlists/hlrb2.cfg b/mdb/optionlists/hlrb2.cfg
+index 0723375..fa054b6 100644
+--- a/mdb/optionlists/hlrb2.cfg
++++ b/mdb/optionlists/hlrb2.cfg
+@@ -13,8 +13,8 @@ F77 = ifort
+ 
+ CPPFLAGS =
+ FPPFLAGS = -traditional
+-CFLAGS   = -g
+-CXXFLAGS = -g
++CFLAGS   = -g -rdynamic
++CXXFLAGS = -g -rdynamic
+ F77FLAGS = -g -traceback
+ F90FLAGS = -g -traceback
+ 
+diff --git a/mdb/optionlists/kraken-gcc.cfg b/mdb/optionlists/kraken-gcc.cfg
+index 4a9902b..fa63559 100644
+--- a/mdb/optionlists/kraken-gcc.cfg
++++ b/mdb/optionlists/kraken-gcc.cfg
+@@ -14,8 +14,8 @@ F90 = /opt/gcc/4.5.1/bin/gfortran
+ # maybe -DCRAY_XT?
+ CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK
+ FPPFLAGS = -traditional
+-CFLAGS   = -g3 -m128bit-long-double -march=native -std=gnu99
+-CXXFLAGS = -g3 -m128bit-long-double -march=native -std=gnu++0x
++CFLAGS   = -g3 -m128bit-long-double -march=native -std=gnu99 -rdynamic
++CXXFLAGS = -g3 -m128bit-long-double -march=native -std=gnu++0x -rdynamic
+ F77FLAGS = -g3 -m128bit-long-double -march=native -fcray-pointer -ffixed-line-length-none
+ F90FLAGS = -g3 -m128bit-long-double -march=native -fcray-pointer -ffixed-line-length-none
+ 
+diff --git a/mdb/optionlists/kraken-intel.cfg b/mdb/optionlists/kraken-intel.cfg
+index 7634b91..3615ea1 100644
+--- a/mdb/optionlists/kraken-intel.cfg
++++ b/mdb/optionlists/kraken-intel.cfg
+@@ -13,8 +13,8 @@ F90 = /opt/intel/Compiler/11.1/038/bin/intel64/ifort
+ 
+ CPPFLAGS = -D__CRAYXT -D__CRAYXT_COMPUTE_LINUX_TARGET -D__TARGET_LINUX__ -DMPICH_IGNORE_CXX_SEEK
+ FPPFLAGS = -traditional
+-CFLAGS   = -g -debug all -traceback -msse3 -align -std=c99 -ansi_alias -U__STRICT_ANSI__
+-CXXFLAGS = -g -debug all -traceback -msse3 -align -restrict -D_intel_fast_memcpy=memcpy -D_intel_fast_memset=memset
++CFLAGS   = -g -debug all -traceback -msse3 -align -std=c99 -ansi_alias -U__STRICT_ANSI__ -rdynamic
++CXXFLAGS = -g -debug all -traceback -msse3 -align -restrict -D_intel_fast_memcpy=memcpy -D_intel_fast_memset=memset -rdynamic
+ F77FLAGS = -g -debug all -traceback -msse3 -align -pad -w95 -cm
+ F90FLAGS = -g -debug all -traceback -msse3 -align -pad -w95 -cm
+ 
+diff --git a/mdb/optionlists/lincoln-mvapich2.cfg b/mdb/optionlists/lincoln-mvapich2.cfg
+index 57b9c5b..c713098 100644
+--- a/mdb/optionlists/lincoln-mvapich2.cfg
++++ b/mdb/optionlists/lincoln-mvapich2.cfg
+@@ -13,8 +13,8 @@ F90 = /usr/local/intel/11.1.064/bin/intel64/ifort
+ 
+ CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK
+ FPPFLAGS = -traditional
+-CFLAGS   = -g -debug all -traceback -align -std=c99 -ansi_alias -U__STRICT_ANSI__
+-CXXFLAGS = -g -debug all -traceback -align -restrict
++CFLAGS   = -g -debug all -traceback -align -std=c99 -ansi_alias -U__STRICT_ANSI__ -rdynamic
++CXXFLAGS = -g -debug all -traceback -align -restrict -rdynamic
+ F77FLAGS = -g -debug all -traceback -align -pad -w95 -cm
+ F90FLAGS = -g -debug all -traceback -align -pad -w95 -cm
+ 
+diff --git a/mdb/optionlists/lonestar-openmpi.cfg b/mdb/optionlists/lonestar-openmpi.cfg
+index c691bb4..7c01c65 100644
+--- a/mdb/optionlists/lonestar-openmpi.cfg
++++ b/mdb/optionlists/lonestar-openmpi.cfg
+@@ -14,8 +14,8 @@ F90 = /opt/apps/intel/11.1/bin/intel64/ifort
+ # -inline-debug-info leads to compiler crashes when used with optimisation
+ CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK
+ FPPFLAGS = -traditional
+-CFLAGS   = -g -traceback -debug all -xSSE4.2 -align -std=c99 -ansi_alias -U__STRICT_ANSI__
+-CXXFLAGS = -g -traceback -debug all -xSSE4.2 -align -restrict
++CFLAGS   = -g -traceback -debug all -xSSE4.2 -align -std=c99 -ansi_alias -U__STRICT_ANSI__ -rdynamic
++CXXFLAGS = -g -traceback -debug all -xSSE4.2 -align -restrict -rdynamic
+ F77FLAGS = -g -traceback -debug all -xSSE4.2 -align -pad -w95 -cm
+ F90FLAGS = -g -traceback -debug all -xSSE4.2 -align -pad -w95 -cm
+ 
+diff --git a/mdb/optionlists/lonestar.cfg b/mdb/optionlists/lonestar.cfg
+index afed3ce..30db4de 100644
+--- a/mdb/optionlists/lonestar.cfg
++++ b/mdb/optionlists/lonestar.cfg
+@@ -14,8 +14,8 @@ F90 = /opt/apps/intel/11.1/bin/intel64/ifort
+ # -inline-debug-info leads to compiler crashes when used with optimisation
+ CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK
+ FPPFLAGS = -traditional
+-CFLAGS   = -g -traceback -debug all -xSSE4.2 -align -std=c99 -ansi_alias -U__STRICT_ANSI__
+-CXXFLAGS = -g -traceback -debug all -xSSE4.2 -align -restrict
++CFLAGS   = -g -traceback -debug all -xSSE4.2 -align -std=c99 -ansi_alias -U__STRICT_ANSI__ -rdynamic
++CXXFLAGS = -g -traceback -debug all -xSSE4.2 -align -restrict -rdynamic
+ F77FLAGS = -g -traceback -debug all -xSSE4.2 -align -pad -w95 -cm
+ F90FLAGS = -g -traceback -debug all -xSSE4.2 -align -pad -w95 -cm
+ 
+diff --git a/mdb/optionlists/longhorn.cfg b/mdb/optionlists/longhorn.cfg
+index fa9ede6..a02322f 100644
+--- a/mdb/optionlists/longhorn.cfg
++++ b/mdb/optionlists/longhorn.cfg
+@@ -14,8 +14,8 @@ F90 = /opt/apps/intel/11.1/bin/intel64/ifort
+ # -inline-debug-info leads to compiler crashes when used with optimisation
+ CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK
+ FPPFLAGS = -traditional
+-CFLAGS   = -g -debug all -traceback -xSSE4.2 -align -std=c99 -ansi_alias -U__STRICT_ANSI__
+-CXXFLAGS = -g -debug all -traceback -xSSE4.2 -align -restrict
++CFLAGS   = -g -debug all -traceback -xSSE4.2 -align -std=c99 -ansi_alias -U__STRICT_ANSI__ -rdynamic
++CXXFLAGS = -g -debug all -traceback -xSSE4.2 -align -restrict -rdynamic
+ F77FLAGS = -g -debug all -traceback -xSSE4.2 -align -pad -w95 -cm
+ F90FLAGS = -g -debug all -traceback -xSSE4.2 -align -pad -w95 -cm
+ 
+diff --git a/mdb/optionlists/macos-fink-gcc.cfg b/mdb/optionlists/macos-fink-gcc.cfg
+index c37cb9b..bef7a55 100644
+--- a/mdb/optionlists/macos-fink-gcc.cfg
++++ b/mdb/optionlists/macos-fink-gcc.cfg
+@@ -63,8 +63,8 @@ F90 = /sw/bin/gfortran
+ # -malign-double may lead to crashes in Fortran I/O
+ CPPFLAGS = 
+ FPPFLAGS = -traditional
+-CFLAGS   = -g3 -fshow-column -mmacosx-version-min=10.5 -m128bit-long-double -std=gnu99  -march=native
+-CXXFLAGS = -g3 -fshow-column -mmacosx-version-min=10.5 -m128bit-long-double  -march=native
++CFLAGS   = -g3 -fshow-column -mmacosx-version-min=10.5 -m128bit-long-double -std=gnu99  -march=native -rdynamic
++CXXFLAGS = -g3 -fshow-column -mmacosx-version-min=10.5 -m128bit-long-double  -march=native -rdynamic
+ F77FLAGS = -g3 -fshow-column -mmacosx-version-min=10.5 -m128bit-long-double -fcray-pointer  -march=native
+ F90FLAGS = -g3 -fshow-column -mmacosx-version-min=10.5 -m128bit-long-double -fcray-pointer  -march=native
+ 
+diff --git a/mdb/optionlists/macos-intel.cfg b/mdb/optionlists/macos-intel.cfg
+index 95e6db5..fb5066b 100644
+--- a/mdb/optionlists/macos-intel.cfg
++++ b/mdb/optionlists/macos-intel.cfg
+@@ -13,8 +13,8 @@ F90 = ifort
+ 
+ CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK
+ FPPFLAGS = -traditional
+-CFLAGS   = -g -debug all -align -std=c99 -ansi_alias
+-CXXFLAGS = -g -debug all -align -restrict
++CFLAGS   = -g -debug all -align -std=c99 -ansi_alias -rdynamic
++CXXFLAGS = -g -debug all -align -restrict -rdynamic
+ F77FLAGS = -g -debug all -align -pad -traceback -w95 -cm
+ F90FLAGS = -g -debug all -align -pad -traceback -w95 -cm
+ 
+diff --git a/mdb/optionlists/macos-macports-gcc.cfg b/mdb/optionlists/macos-macports-gcc.cfg
+index 2893e6b..6d9653f 100644
+--- a/mdb/optionlists/macos-macports-gcc.cfg
++++ b/mdb/optionlists/macos-macports-gcc.cfg
+@@ -14,8 +14,8 @@ F90 = gfortran-mp-4.5
+ 
+ CPPFLAGS = -fopenmp
+ FPPFLAGS = -fopenmp -traditional
+-CFLAGS   = -fopenmp -g -std=c99
+-CXXFLAGS = -fopenmp -g
++CFLAGS   = -fopenmp -g -std=c99 -rdynamic
++CXXFLAGS = -fopenmp -g -rdynamic
+ F77FLAGS = -fopenmp -g -m128bit-long-double -fcray-pointer -ffixed-line-length-none
+ F90FLAGS = -fopenmp -g -m128bit-long-double -fcray-pointer -ffixed-line-length-none
+ 
+diff --git a/mdb/optionlists/numrel-gcc.cfg b/mdb/optionlists/numrel-gcc.cfg
+index 2aa0f13..33fbe62 100644
+--- a/mdb/optionlists/numrel-gcc.cfg
++++ b/mdb/optionlists/numrel-gcc.cfg
+@@ -15,8 +15,8 @@ F90 = /usr/bin/gfortran
+ # The option -inline-debug-info leads to compiler segmentation faults
+ CPPFLAGS =
+ FPPFLAGS = -traditional
+-CFLAGS   = -g3 -march=opteron -m128bit-long-double -std=gnu99
+-CXXFLAGS = -g3 -march=opteron -m128bit-long-double
++CFLAGS   = -g3 -march=opteron -m128bit-long-double -std=gnu99 -rdynamic
++CXXFLAGS = -g3 -march=opteron -m128bit-long-double -rdynamic
+ F77FLAGS = -g3 -march=opteron -m128bit-long-double -fcray-pointer
+ F90FLAGS = -g3 -march=opteron -m128bit-long-double -fcray-pointer
+ 
+diff --git a/mdb/optionlists/numrel-intel.cfg b/mdb/optionlists/numrel-intel.cfg
+index 89da437..3db605d 100644
+--- a/mdb/optionlists/numrel-intel.cfg
++++ b/mdb/optionlists/numrel-intel.cfg
+@@ -15,8 +15,8 @@ F90 = /usr/local/compilers/intel_fce_11.1.064.x86_64/bin/intel64/ifort
+ # The option -inline-debug-info leads to compiler segmentation faults
+ CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK
+ FPPFLAGS = -traditional
+-CFLAGS   = -g -debug all -align -std=c99 -U__STRICT_ANSI__
+-CXXFLAGS = -g -debug all -align -std=c++0x -restrict -D__builtin_isnan=::isnan -D_intel_fast_memcpy=memcpy -D_intel_fast_memset=memset
++CFLAGS   = -g -debug all -align -std=c99 -U__STRICT_ANSI__ -rdynamic
++CXXFLAGS = -g -debug all -align -std=c++0x -restrict -D__builtin_isnan=::isnan -D_intel_fast_memcpy=memcpy -D_intel_fast_memset=memset -rdynamic
+ F77FLAGS = -g -debug all -align -pad -traceback -w95 -cm -assume byterecl -nogen-interfaces
+ F90FLAGS = -g -debug all -align -pad -traceback -w95 -cm -assume byterecl -nogen-interfaces
+ 
+diff --git a/mdb/optionlists/orca-intel.cfg b/mdb/optionlists/orca-intel.cfg
+index b3cb456..bfd4bda 100644
+--- a/mdb/optionlists/orca-intel.cfg
++++ b/mdb/optionlists/orca-intel.cfg
+@@ -14,8 +14,8 @@ F90  = /opt/sharcnet/intel/11.1.069/ifc/bin/intel64/ifort
+ 
+ CPPFLAGS  = 
+ FPPFLAGS  = -traditional
+-CFLAGS    = -g -debug all -traceback -align -std=c99 -ansi_alias -U__STRICT_ANSI__
+-CXXFLAGS  = -g -debug all -traceback -align -restrict -D_intel_fast_memcpy=memcpy -D_intel_fast_memset=memset
++CFLAGS    = -g -debug all -traceback -align -std=c99 -ansi_alias -U__STRICT_ANSI__ -rdynamic
++CXXFLAGS  = -g -debug all -traceback -align -restrict -D_intel_fast_memcpy=memcpy -D_intel_fast_memset=memset -rdynamic
+ CUCCFLAGS = -x c++ -g -debug all -traceback -align -restrict -D_intel_fast_memcpy=memcpy -D_intel_fast_memset=memset -openmp
+ F77FLAGS  = -g -debug all -traceback -align -pad -w95 -cm
+ F90FLAGS  = -g -debug all -traceback -align -pad -w95 -cm
+diff --git a/mdb/optionlists/orca.cfg b/mdb/optionlists/orca.cfg
+index e7d327e..8336d79 100644
+--- a/mdb/optionlists/orca.cfg
++++ b/mdb/optionlists/orca.cfg
+@@ -13,8 +13,8 @@ F90 = /opt/sharcnet/gcc/4.3.4/bin/gfortran
+ 
+ CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK -D__wur=
+ FPPFLAGS = -traditional
+-CFLAGS   = -g3 -m128bit-long-double -march=native -std=gnu99
+-CXXFLAGS = -g3 -m128bit-long-double -march=native -std=gnu++0x
++CFLAGS   = -g3 -m128bit-long-double -march=native -std=gnu99 -rdynamic
++CXXFLAGS = -g3 -m128bit-long-double -march=native -std=gnu++0x -rdynamic
+ F77FLAGS = -g3 -m128bit-long-double -march=native -fcray-pointer -ffixed-line-length-none
+ F90FLAGS = -g3 -m128bit-long-double -march=native -fcray-pointer -ffixed-line-length-none
+ 
+diff --git a/mdb/optionlists/philip-mpich.cfg b/mdb/optionlists/philip-mpich.cfg
+index 7bd7c55..2966832 100644
+--- a/mdb/optionlists/philip-mpich.cfg
++++ b/mdb/optionlists/philip-mpich.cfg
+@@ -13,8 +13,8 @@ F90 = /usr/local/compilers/Intel/intel_fc_11.1/bin/intel64/ifort
+ 
+ CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK
+ FPPFLAGS = -traditional
+-CFLAGS   = -g -traceback -debug all -debug inline-debug-info -xS -align -std=c99 -ansi_alias -U__STRICT_ANSI__
+-CXXFLAGS = -g -traceback -debug all -debug inline-debug-info -xS -align -std=c++0x -restrict
++CFLAGS   = -g -traceback -debug all -debug inline-debug-info -xS -align -std=c99 -ansi_alias -U__STRICT_ANSI__ -rdynamic
++CXXFLAGS = -g -traceback -debug all -debug inline-debug-info -xS -align -std=c++0x -restrict -rdynamic
+ F77FLAGS = -g -traceback -debug all -debug inline-debug-info -xS -align -pad -w95 -cm -assume byterecl
+ F90FLAGS = -g -traceback -debug all -debug inline-debug-info -xS -align -pad -w95 -cm -assume byterecl
+ LDFLAGS  = -Wl,-rpath,/usr/local/packages/fftw/3.2/intel-11.1-mpich-1.2.7p1/lib -Wl,-rpath,/usr/local/packages/gsl/1.9/intel-11.1-mpich-1.2.7p1 -Wl,-rpath,/usr/local/compilers/Intel/intel_cc_11.1/lib/intel64 -Wl,-rpath,/usr/local/compilers/Intel/intel_fc_11.1/lib/intel64 -Wl,-rpath,/usr/local/packages/mpich/1.2.7p1/intel-11.1/lib -shared-intel   -lpthread
+diff --git a/mdb/optionlists/queenbee-mvapich.cfg b/mdb/optionlists/queenbee-mvapich.cfg
+index 7af24bc..dd9107a 100644
+--- a/mdb/optionlists/queenbee-mvapich.cfg
++++ b/mdb/optionlists/queenbee-mvapich.cfg
+@@ -14,8 +14,8 @@ F90 = /usr/local/compilers/Intel/intel_fc_11.1/bin/intel64/ifort
+ CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK
+ FPPFLAGS = -traditional
+ # no -msse3
+-CFLAGS   = -g -traceback -debug all -align -std=c99 -ansi_alias -U__STRICT_ANSI__
+-CXXFLAGS = -g -traceback -debug all -align -restrict -D_intel_fast_memcpy=memcpy -D_intel_fast_memset=memset
++CFLAGS   = -g -traceback -debug all -align -std=c99 -ansi_alias -U__STRICT_ANSI__ -rdynamic
++CXXFLAGS = -g -traceback -debug all -align -restrict -D_intel_fast_memcpy=memcpy -D_intel_fast_memset=memset -rdynamic
+ F77FLAGS = -g -traceback -debug all -align -pad -w95 -cm
+ F90FLAGS = -g -traceback -debug all -align -pad -w95 -cm
+ LDFLAGS  = -Wl,-rpath,/usr/local/compilers/Intel/mkl-10.2/lib/em64t -Wl,-rpath,/usr/local/packages/fftw/3.2/intel-11.1-mvapich-1.1/lib -Wl,-rpath,/usr/local/packages/gsl/1.9/intel-11.1-mvapich-1.1/lib -Wl,-rpath,/usr/local/packages/mvapich/1.1/intel-11.1/lib -Wl,-rpath,/usr/local/ofed/lib64 -Wl,-rpath,/usr/local/compilers/Intel/intel_cc_11.1/lib/intel64 -Wl,-rpath,/usr/local/compilers/Intel/intel_fc_11.1/lib/intel64
+diff --git a/mdb/optionlists/queenbee-mvapich2.cfg b/mdb/optionlists/queenbee-mvapich2.cfg
+index bb03ac2..3687dc6 100644
+--- a/mdb/optionlists/queenbee-mvapich2.cfg
++++ b/mdb/optionlists/queenbee-mvapich2.cfg
+@@ -14,8 +14,8 @@ F90 = /usr/local/compilers/Intel/intel_fc_11.1/bin/intel64/ifort
+ CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK
+ FPPFLAGS = -traditional
+ # no -msse3
+-CFLAGS   = -g -traceback -debug all -xSSE2 -align -std=c99 -ansi_alias -U__STRICT_ANSI__
+-CXXFLAGS = -g -traceback -debug all -xSSE2 -align -restrict -D_intel_fast_memcpy=memcpy -D_intel_fast_memset=memset
++CFLAGS   = -g -traceback -debug all -xSSE2 -align -std=c99 -ansi_alias -U__STRICT_ANSI__ -rdynamic
++CXXFLAGS = -g -traceback -debug all -xSSE2 -align -restrict -D_intel_fast_memcpy=memcpy -D_intel_fast_memset=memset -rdynamic
+ F77FLAGS = -g -traceback -debug all -xSSE2 -align -pad -w95 -cm
+ F90FLAGS = -g -traceback -debug all -xSSE2 -align -pad -w95 -cm
+ 
+diff --git a/mdb/optionlists/ranger-intel11.cfg b/mdb/optionlists/ranger-intel11.cfg
+index 1f80da7..476258b 100644
+--- a/mdb/optionlists/ranger-intel11.cfg
++++ b/mdb/optionlists/ranger-intel11.cfg
+@@ -13,8 +13,8 @@ F90 = /opt/apps/intel/11.1/bin/intel64/ifort
+ 
+ CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK
+ FPPFLAGS = -traditional
+-CFLAGS   = -g -debug all -traceback -msse3 -align -std=c99 -ansi_alias -U__STRICT_ANSI__
+-CXXFLAGS = -g -debug all -traceback -msse3 -align -restrict -D_intel_fast_memcpy=memcpy -D_intel_fast_memset=memset
++CFLAGS   = -g -debug all -traceback -msse3 -align -std=c99 -ansi_alias -U__STRICT_ANSI__ -rdynamic
++CXXFLAGS = -g -debug all -traceback -msse3 -align -restrict -D_intel_fast_memcpy=memcpy -D_intel_fast_memset=memset -rdynamic
+ F77FLAGS = -g -debug all -traceback -msse3 -align -pad -w95 -cm
+ F90FLAGS = -g -debug all -traceback -msse3 -align -pad -w95 -cm
+ 
+diff --git a/mdb/optionlists/ranger-mvapich2.cfg b/mdb/optionlists/ranger-mvapich2.cfg
+index b1e8ee8..fdc76d7 100644
+--- a/mdb/optionlists/ranger-mvapich2.cfg
++++ b/mdb/optionlists/ranger-mvapich2.cfg
+@@ -18,8 +18,8 @@ F90 = /opt/apps/intel/10.1/fc/bin/ifort
+ # -inline-debug-info leads to compiler crashes when used with optimisation
+ CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK
+ FPPFLAGS = -traditional
+-CFLAGS   = -g -debug all -traceback -align -std=gnu99 -ansi_alias
+-CXXFLAGS = -g -debug all -traceback -align -restrict
++CFLAGS   = -g -debug all -traceback -align -std=gnu99 -ansi_alias -rdynamic
++CXXFLAGS = -g -debug all -traceback -align -restrict -rdynamic
+ F77FLAGS = -g -debug all -traceback -align -pad -w95 -cm
+ F90FLAGS = -g -debug all -traceback -align -pad -w95 -cm
+ 
+diff --git a/mdb/optionlists/requin.cfg b/mdb/optionlists/requin.cfg
+index 8fd94c7..70fe251 100644
+--- a/mdb/optionlists/requin.cfg
++++ b/mdb/optionlists/requin.cfg
+@@ -13,8 +13,8 @@ F90 = /opt/sharcnet/gcc/4.3.4/bin/gfortran
+ 
+ CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK -D__wur=
+ FPPFLAGS = -traditional
+-CFLAGS   = -g3 -m128bit-long-double -march=native -std=gnu99
+-CXXFLAGS = -g3 -m128bit-long-double -march=native -std=gnu++0x
++CFLAGS   = -g3 -m128bit-long-double -march=native -std=gnu99 -rdynamic
++CXXFLAGS = -g3 -m128bit-long-double -march=native -std=gnu++0x -rdynamic
+ F77FLAGS = -g3 -m128bit-long-double -march=native -fcray-pointer -ffixed-line-length-none
+ F90FLAGS = -g3 -m128bit-long-double -march=native -fcray-pointer -ffixed-line-length-none
+ 
+diff --git a/mdb/optionlists/s-kraken.cfg b/mdb/optionlists/s-kraken.cfg
+index e1be32e..45f3fde 100644
+--- a/mdb/optionlists/s-kraken.cfg
++++ b/mdb/optionlists/s-kraken.cfg
+@@ -13,8 +13,8 @@ F90 = /opt/sharcnet/gcc/4.3.4/bin/gfortran
+ 
+ CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK -D__wur=
+ FPPFLAGS = -traditional
+-CFLAGS   = -g3 -m128bit-long-double -march=native -std=gnu99
+-CXXFLAGS = -g3 -m128bit-long-double -march=native -std=gnu++0x
++CFLAGS   = -g3 -m128bit-long-double -march=native -std=gnu99 -rdynamic
++CXXFLAGS = -g3 -m128bit-long-double -march=native -std=gnu++0x -rdynamic
+ F77FLAGS = -g3 -m128bit-long-double -march=native -fcray-pointer -ffixed-line-length-none
+ F90FLAGS = -g3 -m128bit-long-double -march=native -fcray-pointer -ffixed-line-length-none
+ 
+diff --git a/mdb/optionlists/saw.cfg b/mdb/optionlists/saw.cfg
+index 50f98a7..4cf49d6 100644
+--- a/mdb/optionlists/saw.cfg
++++ b/mdb/optionlists/saw.cfg
+@@ -13,8 +13,8 @@ F90 = /opt/sharcnet/gcc/4.3.4/bin/gfortran
+ 
+ CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK -D__wur=
+ FPPFLAGS = -traditional
+-CFLAGS   = -g3 -m128bit-long-double -march=native -std=gnu99
+-CXXFLAGS = -g3 -m128bit-long-double -march=native -std=gnu++0x
++CFLAGS   = -g3 -m128bit-long-double -march=native -std=gnu99 -rdynamic
++CXXFLAGS = -g3 -m128bit-long-double -march=native -std=gnu++0x -rdynamic
+ F77FLAGS = -g3 -m128bit-long-double -march=native -fcray-pointer -ffixed-line-length-none
+ F90FLAGS = -g3 -m128bit-long-double -march=native -fcray-pointer -ffixed-line-length-none
+ 
+diff --git a/mdb/optionlists/tezpur-mvapich2.cfg b/mdb/optionlists/tezpur-mvapich2.cfg
+index 5529dd5..f0ae9ba 100644
+--- a/mdb/optionlists/tezpur-mvapich2.cfg
++++ b/mdb/optionlists/tezpur-mvapich2.cfg
+@@ -14,8 +14,8 @@ F90 = /usr/local/compilers/Intel/intel_fc_10.1/bin/ifort
+ CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK
+ FPPFLAGS = -traditional
+ # no -msse3
+-CFLAGS   = -g -traceback -debug all -inline-debug-info -align -std=gnu99 -ansi_alias
+-CXXFLAGS = -g -traceback -debug all -inline-debug-info -align -std=gnu99 -restrict
++CFLAGS   = -g -traceback -debug all -inline-debug-info -align -std=gnu99 -ansi_alias -rdynamic
++CXXFLAGS = -g -traceback -debug all -inline-debug-info -align -std=gnu99 -restrict -rdynamic
+ F77FLAGS = -g -traceback -debug all -inline-debug-info -align -pad -w95 -cm
+ F90FLAGS = -g -traceback -debug all -inline-debug-info -align -pad -w95 -cm
+ LDFLAGS  = -Wl,-rpath,/usr/local/packages/fftw-3.1.2-intel10.1/lib -Wl,-rpath,/usr/local/packages/gsl-1.9-intel9.1/lib -Wl,-rpath,/usr/local/packages/papi-3.5.0/lib64 -Wl,-rpath,/usr/local/compilers/Intel/intel_cc_10.1/lib -Wl,-rpath,/usr/local/compilers/Intel/intel_fc_10.1/lib
+diff --git a/mdb/optionlists/trestles.cfg b/mdb/optionlists/trestles.cfg
+index 4b559e6..b3d8279 100644
+--- a/mdb/optionlists/trestles.cfg
++++ b/mdb/optionlists/trestles.cfg
+@@ -14,8 +14,8 @@ F90 = /opt/intel/Compiler/11.1/072/bin/intel64/ifort
+ # -inline-debug-info leads to compiler crashes when used with optimisation
+ CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK
+ FPPFLAGS = -traditional
+-CFLAGS   = -g -traceback -debug all -xSSE2 -align -std=c99 -ansi_alias -U__STRICT_ANSI__
+-CXXFLAGS = -g -traceback -debug all -xSSE2 -align -restrict
++CFLAGS   = -g -traceback -debug all -xSSE2 -align -std=c99 -ansi_alias -U__STRICT_ANSI__ -rdynamic
++CXXFLAGS = -g -traceback -debug all -xSSE2 -align -restrict -rdynamic
+ F77FLAGS = -g -traceback -debug all -xSSE2 -align -pad -w95 -cm
+ F90FLAGS = -g -traceback -debug all -xSSE2 -align -pad -w95 -cm
+ 
+diff --git a/mdb/optionlists/varia-gcc.cfg b/mdb/optionlists/varia-gcc.cfg
+index 2920928..2e49879 100644
+--- a/mdb/optionlists/varia-gcc.cfg
++++ b/mdb/optionlists/varia-gcc.cfg
+@@ -18,8 +18,8 @@ F90 = gfortran
+ #CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK -DTAU_VERSION=21803
+ CPPFLAGS = -DOMPI_SKIP_MPICXX -DTAU_VERSION_NUMBER=21803
+ FPPFLAGS = -traditional
+-CFLAGS   = -pipe -g3 -fshow-column -m128bit-long-double -march=native -std=gnu99
+-CXXFLAGS = -pipe -g3 -fshow-column -m128bit-long-double -march=native -std=gnu++0x
++CFLAGS   = -pipe -g3 -fshow-column -m128bit-long-double -march=native -std=gnu99 -rdynamic
++CXXFLAGS = -pipe -g3 -fshow-column -m128bit-long-double -march=native -std=gnu++0x -rdynamic
+ F77FLAGS = -pipe -g3 -fshow-column -m64 -m128bit-long-double -march=native -fcray-pointer -ffixed-line-length-none
+ F90FLAGS = -pipe -g3 -fshow-column -m64 -m128bit-long-double -march=native -fcray-pointer -ffixed-line-length-none
+ 
+diff --git a/mdb/optionlists/zwicky-openmpi.cfg b/mdb/optionlists/zwicky-openmpi.cfg
+index bb8372f..858f9c4 100644
+--- a/mdb/optionlists/zwicky-openmpi.cfg
++++ b/mdb/optionlists/zwicky-openmpi.cfg
+@@ -14,8 +14,8 @@ F90 = /usr/local/Intel/Compiler/11.1/072/bin/intel64/ifort
+ CPPFLAGS = -DMPICH_IGNORE_CXX_SEEK
+ FPPFLAGS = -traditional
+ # no -msse3
+-CFLAGS   =  -g -traceback -debug all  -align -std=c99 -ansi_alias -align -U__STRICT_ANSI__
+-CXXFLAGS =  -g -traceback -debug all  -align -std=c99 -restrict
++CFLAGS   =  -g -traceback -debug all  -align -std=c99 -ansi_alias -align -U__STRICT_ANSI__ -rdynamic
++CXXFLAGS =  -g -traceback -debug all  -align -std=c99 -restrict -rdynamic
+ F77FLAGS =  -g -traceback -debug all  -align -pad -w95 -cm
+ F90FLAGS =  -g -traceback -debug all  -align -pad -w95 -cm
+ LDFLAGS  = -Wl,-rpath,/usr/local/Intel/Compiler/11.1/072/lib/intel64 -Wl,-rpath,/usr/local/Intel/mkl/10.2.5.035/lib/em64t
+-- 
+1.7.5.4
+

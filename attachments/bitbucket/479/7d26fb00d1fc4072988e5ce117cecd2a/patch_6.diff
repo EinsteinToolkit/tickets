@@ -1,0 +1,268 @@
+Sat Jun  4 20:10:22 EDT 2011  "Roland Haas" <roland.haas@physics.gatech.edu>
+  * vistiCarpetHDF5: cache metadata for files
+  
+    this can give huge speedups when more than one file is open at the same
+    time (VisIt call constantly creates and destroys the metadata object). It
+    has the unfortunate side effect of rendering the "Close file" option
+    useless. It tries to keep ReOpen functional by discarding the cached data
+    if it finds that the file changed since it was added to the cache.
+diff -rN -u old-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C new-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C
+--- old-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C	2011-07-12 09:18:52.000000000 -0400
++++ new-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C	2011-07-12 09:18:52.000000000 -0400
+@@ -823,7 +823,7 @@
+ 
+ 
+ 
+-avtCarpetHDF5FileFormat::multi_file::multi_file(const char* fname)
++avtCarpetHDF5FileFormat::multi_file::multi_file(const char* fname) : refcount(1)
+ {
+   H5File H5f(haveIndex(fname) ? indexFilename(fname) : fname, H5F_ACC_RDONLY);
+ 
+ 
+diff -rN -u old-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C new-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C
+--- old-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C	2011-07-12 09:18:52.000000000 -0400
++++ new-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C	2011-07-12 09:18:52.000000000 -0400
+@@ -46,8 +46,14 @@
+ #include <set>
+ #include <cassert>
+ #include <cstdlib>
++#include <ctime>
+ #include <cstring>
+ 
++// POSIX specific!
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <unistd.h>
++
+ #include <vtkIdList.h>
+ #include <vtkIntArray.h>
+ #include <vtkFloatArray.h>
+@@ -84,6 +90,7 @@
+ //
+ // ****************************************************************************
+ 
++std::map<string, avtCarpetHDF5FileFormat::multi_file*> avtCarpetHDF5FileFormat::file_cache;
+ avtCarpetHDF5FileFormat::avtCarpetHDF5FileFormat(const char *filename)
+   : avtMTMDFileFormat(filename), data_file(0), xcoord_file(0), ycoord_file(0), zcoord_file(0)
+ {
+@@ -778,7 +785,7 @@
+ 
+ void avtCarpetHDF5FileFormat::open_all_files(const char* fname)
+ {
+-   data_file = new multi_file(fname);
++   data_file = open_cached_file(fname);
+    
+    bool curvilinear = false;
+    
+@@ -804,19 +811,67 @@
+    {
+      if (data_file->files.size() > 1)
+      {
+-       xcoord_file = new multi_file((prefix + "x.file_0.h5").c_str());
+-       ycoord_file = new multi_file((prefix + "y.file_0.h5").c_str());
+-       zcoord_file = new multi_file((prefix + "z.file_0.h5").c_str());
++       xcoord_file = open_cached_file(prefix + "x.file_0.h5");
++       ycoord_file = open_cached_file(prefix + "y.file_0.h5");
++       zcoord_file = open_cached_file(prefix + "z.file_0.h5");
+      }
+      else
+      {
+-       xcoord_file = new multi_file((prefix + "x.h5").c_str());
+-       ycoord_file = new multi_file((prefix + "y.h5").c_str());
+-       zcoord_file = new multi_file((prefix + "z.h5").c_str());
++       xcoord_file = open_cached_file(prefix + "x.h5");
++       ycoord_file = open_cached_file(prefix + "y.h5");
++       zcoord_file = open_cached_file(prefix + "z.h5");
+      }
+    }
+ }
+ 
++avtCarpetHDF5FileFormat::multi_file* avtCarpetHDF5FileFormat::open_cached_file(const string fname)
++{
++  if(getenv("CARPETHDF5_CACHE_METADATA") && strcasecmp(getenv("CARPETHDF5_CACHE_METADATA"), "no") == 0)
++    return new multi_file(fname.c_str());
++
++  // if file already exists in cache, check if it is not outdated
++  if(file_cache.count(fname))
++  {
++    multi_file* file = file_cache[fname];
++
++    for(int i=0; i < file->files.size(); i++)
++    {
++      if(file->files[i]->file_changed_on_disk())
++      {
++        // remove outdated file from cache. Memory will only be freeed when the file is closed by VisIt.
++        file_cache.erase(fname);
++        close_cached_file(file);
++        break;
++      }
++    }
++  }
++
++  // open file and add to cache
++  if(file_cache.count(fname) == 0)
++  {
++    multi_file* file = new multi_file(fname.c_str());
++    file->refcount += 1; // one reference for the cache
++
++    file_cache[fname] = file;
++  }
++  else
++  {
++    file_cache[fname]->refcount++;
++  }
++
++  return file_cache[fname];
++}
++
++void avtCarpetHDF5FileFormat::close_cached_file(avtCarpetHDF5FileFormat::multi_file* file)
++{
++  // this logic has two maybe unexpected side effects:
++  // a file is only ever closed when it is replaced by a new versin of it
++  // the close button in visit has no effect whatsoever
++  if(file && --file->refcount == 0)
++  {
++    delete file;
++  }
++}
+ 
+ 
+ 
+@@ -1163,6 +1215,21 @@
+    H5garbage_collect();
+ }
+ 
++bool avtCarpetHDF5FileFormat::file_t::file_changed_on_disk()
++{
++    struct stat s;
++
++    if (stat(filename.c_str(), &s) != 0 || s.st_mtime > mtime) {
++      return true;
++    }
++    if (haveIndex(filename) &&
++        (stat(indexFilename(filename).c_str(), &s) != 0 || s.st_mtime > idx_mtime)) {
++      return true;
++    }
++
++    return false;
++}
++
+ 
+ 
+ void avtCarpetHDF5FileFormat::file_t::set_varnames(const vector<string>& v, const vector<int>& cycles)
+diff -rN -u old-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.h new-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.h
+--- old-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.h	2011-07-12 09:18:52.000000000 -0400
++++ new-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.h	2011-07-12 09:18:52.000000000 -0400
+@@ -47,6 +47,7 @@
+ 
+ #include <string>
+ #include <vector>
++#include <map>
+ #include <algorithm>
+ #include <math.h>
+ 
+@@ -466,7 +467,7 @@
+       public:
+                H5File* file;
+                
+-               file_t(const char* fname) { file = 0; openfile(fname); }
++               file_t(const char* fname) : filename(fname) { file = 0; openfile(fname); }
+                virtual ~file_t() { if (file) delete file; }
+                
+                // open file and opbtain all datasetnames contained in that file
+@@ -481,17 +482,29 @@
+                
+                // read in complex data from HDF5
+                void get_complex_data(const dataset_entry& dset, float*** data, const bool removeGhosts=true);
++
++               // are we out of date?
++               bool file_changed_on_disk();
+                
+                vector<string>                 varnames;    // the variable names
+                vector<dataset_entry>          dsetnames;   // datasetnames contained only in this file
++
++               // Each file keeps track of the modification times of its
++               // constituent files and avtFileFormat uses this information ot
++               // invalidate a cache entry when the files change on disk
++               string                         filename;    // name of the hdf5 file we represent
++               time_t                         mtime;       // modification time when we were last opened
++               time_t                         idx_mtime;   // modification time when index was last
+                
+     };
+   
+     avtCarpetHDF5FileFormat(const char *);
+     virtual ~avtCarpetHDF5FileFormat()
+     {
+-      delete data_file; delete xcoord_file; 
+-      delete ycoord_file; delete zcoord_file;
++      close_cached_file(data_file);
++      close_cached_file(xcoord_file);
++      close_cached_file(ycoord_file);
++      close_cached_file(zcoord_file);
+     };
+ 
+     //
+@@ -546,6 +559,9 @@
+ #endif
+ 
+     void open_all_files(const char* fname);
++    class multi_file; // forward declaration
++    multi_file *open_cached_file(const string fname);
++    void close_cached_file(multi_file *file);
+     
+     int get_nblocks(const int timestep, const bool is_Cartesian)
+     {
+@@ -615,6 +631,10 @@
+                vector<string>         varnames;    // the pure variable names
+                
+                vector<file_t*> files;              // the files containing the variables
++
++               // multi_file acts as a smart pointer keeping track of how many pointers to it exist
++               // creation and deletion itself are handled by avtFileFormat however
++               int refcount;
+     };
+     
+     multi_file *data_file;         // the files containing the variables
+@@ -626,6 +646,15 @@
+     std::vector<avtDataSelection_p>      selections;
+     std::vector<bool>                    *selectionsApplied;
+ #endif
++
++
++    // since VisIt seeme to create and desctroy avtFileFormat
++    // objects rather often and reading the metadata is expensive,
++    // we cache the multifile objects.
++    // Each multifile keeps track of how often it has been used (1
++    // for the cache, 1 for each additional instance of file
++    // opening).
++    static std::map<string, multi_file*> file_cache;
+ };
+ 
+ 
+diff -rN -u old-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C new-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C
+--- old-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C	2011-07-12 09:18:53.000000000 -0400
++++ new-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C	2011-07-12 09:18:53.000000000 -0400
+@@ -1200,11 +1200,23 @@
+ 
+ void avtCarpetHDF5FileFormat::file_t::openfile(const char* fname)
+ {
++   struct stat s;
++
+    file = new H5File(fname, H5F_ACC_RDONLY);
++   if (stat(filename.c_str(), &s) == 0) {
++     mtime = s.st_mtime;
++   } else {
++     mtime = 0;
++   }
+ 
+    // get hierarchy datasetnames contained only in this file
+    if (haveIndex(fname)) {
+      H5File index_file(indexFilename(fname), H5F_ACC_RDONLY);
++     if (stat(indexFilename(fname).c_str(), &s) == 0) {
++       idx_mtime = s.st_mtime;
++     } else {
++       idx_mtime = 0;
++     }
+      index_file.iterateElems("/", NULL, H5iter, &dsetnames);
+    } 
+    else {

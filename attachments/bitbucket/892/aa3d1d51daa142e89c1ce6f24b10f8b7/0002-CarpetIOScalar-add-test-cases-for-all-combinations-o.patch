@@ -1,0 +1,826 @@
+From bda90db919f50dc683e906dfa42e7cf78e40b3a3 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Thu, 10 May 2012 17:24:01 -0700
+Subject: [PATCH 2/2] CarpetIOScalar: add test cases for all combinations of
+
+one_file_per_group and all_reductions_in_one_file
+---
+ Carpet/CarpetIOScalar/test/coords2.par             |   30 +++++++++++++++++++
+ .../test/coords2/grid::coordinates.average.asc     |    8 +++++
+ .../test/coords2/grid::coordinates.iaverage.asc    |    8 +++++
+ .../test/coords2/grid::coordinates.inorm1.asc      |    8 +++++
+ .../test/coords2/grid::coordinates.inorm2.asc      |    8 +++++
+ .../test/coords2/grid::coordinates.maximum.asc     |    8 +++++
+ .../test/coords2/grid::coordinates.minimum.asc     |    8 +++++
+ .../test/coords2/grid::coordinates.norm1.asc       |    8 +++++
+ .../test/coords2/grid::coordinates.norm2.asc       |    8 +++++
+ .../test/coords2/grid::coordinates.norm_inf.asc    |    8 +++++
+ Carpet/CarpetIOScalar/test/coords3.par             |   29 ++++++++++++++++++
+ Carpet/CarpetIOScalar/test/coords3/r.average.asc   |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/r.iaverage.asc  |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/r.inorm1.asc    |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/r.inorm2.asc    |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/r.maximum.asc   |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/r.minimum.asc   |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/r.norm1.asc     |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/r.norm2.asc     |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/r.norm_inf.asc  |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/x.average.asc   |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/x.iaverage.asc  |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/x.inorm1.asc    |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/x.inorm2.asc    |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/x.maximum.asc   |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/x.minimum.asc   |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/x.norm1.asc     |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/x.norm2.asc     |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/x.norm_inf.asc  |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/y.average.asc   |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/y.iaverage.asc  |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/y.inorm1.asc    |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/y.inorm2.asc    |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/y.maximum.asc   |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/y.minimum.asc   |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/y.norm1.asc     |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/y.norm2.asc     |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/y.norm_inf.asc  |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/z.average.asc   |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/z.iaverage.asc  |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/z.inorm1.asc    |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/z.inorm2.asc    |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/z.maximum.asc   |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/z.minimum.asc   |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/z.norm1.asc     |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/z.norm2.asc     |    7 +++++
+ Carpet/CarpetIOScalar/test/coords3/z.norm_inf.asc  |    7 +++++
+ Carpet/CarpetIOScalar/test/coords4.par             |   31 ++++++++++++++++++++
+ .../test/coords4/grid::coordinates.scalars.asc     |    8 +++++
+ 49 files changed, 422 insertions(+)
+ create mode 100644 Carpet/CarpetIOScalar/test/coords2.par
+ create mode 100644 Carpet/CarpetIOScalar/test/coords2/grid::coordinates.average.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords2/grid::coordinates.iaverage.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords2/grid::coordinates.inorm1.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords2/grid::coordinates.inorm2.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords2/grid::coordinates.maximum.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords2/grid::coordinates.minimum.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords2/grid::coordinates.norm1.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords2/grid::coordinates.norm2.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords2/grid::coordinates.norm_inf.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3.par
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/r.average.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/r.iaverage.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/r.inorm1.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/r.inorm2.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/r.maximum.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/r.minimum.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/r.norm1.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/r.norm2.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/r.norm_inf.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/x.average.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/x.iaverage.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/x.inorm1.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/x.inorm2.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/x.maximum.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/x.minimum.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/x.norm1.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/x.norm2.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/x.norm_inf.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/y.average.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/y.iaverage.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/y.inorm1.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/y.inorm2.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/y.maximum.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/y.minimum.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/y.norm1.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/y.norm2.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/y.norm_inf.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/z.average.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/z.iaverage.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/z.inorm1.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/z.inorm2.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/z.maximum.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/z.minimum.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/z.norm1.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/z.norm2.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords3/z.norm_inf.asc
+ create mode 100644 Carpet/CarpetIOScalar/test/coords4.par
+ create mode 100644 Carpet/CarpetIOScalar/test/coords4/grid::coordinates.scalars.asc
+
+diff --git a/Carpet/CarpetIOScalar/test/coords2.par b/Carpet/CarpetIOScalar/test/coords2.par
+new file mode 100644
+index 0000000..85d2f00
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords2.par
+@@ -0,0 +1,30 @@
++ActiveThorns = "
++   AEILocalInterp
++   Carpet
++   CarpetInterp
++   CarpetIOScalar
++   CarpetLib
++   CarpetReduce
++   CartGrid3D
++   CoordBase
++   IOUtil
++   LoopControl
++   SymBase
++"
++
++IO::out_dir = $parfile
++
++Carpet::global_nx = 7
++Carpet::global_ny = 8
++Carpet::global_nz = 9
++
++Cactus::cctk_itlast = 0
++
++IO::out_every = 1
++IOScalar::one_file_per_group = yes
++
++IOScalar::outScalar_reductions = "average iaverage norm_inf inorm1 inorm2 maximum minimum norm1 norm2" 
++
++IOScalar::outScalar_vars = "
++   grid::coordinates
++"
+diff --git a/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.average.asc b/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.average.asc
+new file mode 100644
+index 0000000..d092c08
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.average.asc
+@@ -0,0 +1,8 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:14:32-0700
++# parameter filename: "coords2.par"
++#
++# GRID::x (grid::coordinates)
++# 1:iteration 2:time 3:data
++# data columns: 3:x 4:y 5:z 6:r
++0 0 -3.62639812358961e-17 1.65211759616839e-18 0 0.488709669281446
+diff --git a/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.iaverage.asc b/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.iaverage.asc
+new file mode 100644
+index 0000000..d092c08
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.iaverage.asc
+@@ -0,0 +1,8 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:14:32-0700
++# parameter filename: "coords2.par"
++#
++# GRID::x (grid::coordinates)
++# 1:iteration 2:time 3:data
++# data columns: 3:x 4:y 5:z 6:r
++0 0 -3.62639812358961e-17 1.65211759616839e-18 0 0.488709669281446
+diff --git a/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.inorm1.asc b/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.inorm1.asc
+new file mode 100644
+index 0000000..258d925
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.inorm1.asc
+@@ -0,0 +1,8 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:14:32-0700
++# parameter filename: "coords2.par"
++#
++# GRID::x (grid::coordinates)
++# 1:iteration 2:time 3:data
++# data columns: 3:x 4:y 5:z 6:r
++0 0 0.25 0.255102040816327 0.25 0.488709669281446
+diff --git a/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.inorm2.asc b/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.inorm2.asc
+new file mode 100644
+index 0000000..757183e
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.inorm2.asc
+@@ -0,0 +1,8 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:14:32-0700
++# parameter filename: "coords2.par"
++#
++# GRID::x (grid::coordinates)
++# 1:iteration 2:time 3:data
++# data columns: 3:x 4:y 5:z 6:r
++0 0 0.29658550700087 0.294507544686975 0.293150984988964 0.510524393972035
+diff --git a/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.maximum.asc b/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.maximum.asc
+new file mode 100644
+index 0000000..2e15ec8
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.maximum.asc
+@@ -0,0 +1,8 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:14:32-0700
++# parameter filename: "coords2.par"
++#
++# GRID::x (grid::coordinates)
++# 1:iteration 2:time 3:data
++# data columns: 3:x 4:y 5:z 6:r
++0 0 0.5 0.5 0.5 0.866025403784439
+diff --git a/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.minimum.asc b/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.minimum.asc
+new file mode 100644
+index 0000000..88702fd
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.minimum.asc
+@@ -0,0 +1,8 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:14:32-0700
++# parameter filename: "coords2.par"
++#
++# GRID::x (grid::coordinates)
++# 1:iteration 2:time 3:data
++# data columns: 3:x 4:y 5:z 6:r
++0 0 -0.5 -0.5 -0.5 0.0714285714285714
+diff --git a/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.norm1.asc b/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.norm1.asc
+new file mode 100644
+index 0000000..258d925
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.norm1.asc
+@@ -0,0 +1,8 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:14:32-0700
++# parameter filename: "coords2.par"
++#
++# GRID::x (grid::coordinates)
++# 1:iteration 2:time 3:data
++# data columns: 3:x 4:y 5:z 6:r
++0 0 0.25 0.255102040816327 0.25 0.488709669281446
+diff --git a/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.norm2.asc b/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.norm2.asc
+new file mode 100644
+index 0000000..757183e
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.norm2.asc
+@@ -0,0 +1,8 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:14:32-0700
++# parameter filename: "coords2.par"
++#
++# GRID::x (grid::coordinates)
++# 1:iteration 2:time 3:data
++# data columns: 3:x 4:y 5:z 6:r
++0 0 0.29658550700087 0.294507544686975 0.293150984988964 0.510524393972035
+diff --git a/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.norm_inf.asc b/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.norm_inf.asc
+new file mode 100644
+index 0000000..2e15ec8
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords2/grid::coordinates.norm_inf.asc
+@@ -0,0 +1,8 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:14:32-0700
++# parameter filename: "coords2.par"
++#
++# GRID::x (grid::coordinates)
++# 1:iteration 2:time 3:data
++# data columns: 3:x 4:y 5:z 6:r
++0 0 0.5 0.5 0.5 0.866025403784439
+diff --git a/Carpet/CarpetIOScalar/test/coords3.par b/Carpet/CarpetIOScalar/test/coords3.par
+new file mode 100644
+index 0000000..b6db436
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3.par
+@@ -0,0 +1,29 @@
++ActiveThorns = "
++   AEILocalInterp
++   Carpet
++   CarpetInterp
++   CarpetIOScalar
++   CarpetLib
++   CarpetReduce
++   CartGrid3D
++   CoordBase
++   IOUtil
++   LoopControl
++   SymBase
++"
++
++IO::out_dir = $parfile
++
++Carpet::global_nx = 7
++Carpet::global_ny = 8
++Carpet::global_nz = 9
++
++Cactus::cctk_itlast = 0
++
++IO::out_every = 1
++
++IOScalar::outScalar_reductions = "average iaverage norm_inf inorm1 inorm2 maximum minimum norm1 norm2" 
++
++IOScalar::outScalar_vars = "
++   grid::coordinates
++"
+diff --git a/Carpet/CarpetIOScalar/test/coords3/r.average.asc b/Carpet/CarpetIOScalar/test/coords3/r.average.asc
+new file mode 100644
+index 0000000..bf27f93
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/r.average.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::r (r)
++# 1:iteration 2:time 3:data
++0 0 0.488709669281446
+diff --git a/Carpet/CarpetIOScalar/test/coords3/r.iaverage.asc b/Carpet/CarpetIOScalar/test/coords3/r.iaverage.asc
+new file mode 100644
+index 0000000..bf27f93
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/r.iaverage.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::r (r)
++# 1:iteration 2:time 3:data
++0 0 0.488709669281446
+diff --git a/Carpet/CarpetIOScalar/test/coords3/r.inorm1.asc b/Carpet/CarpetIOScalar/test/coords3/r.inorm1.asc
+new file mode 100644
+index 0000000..bf27f93
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/r.inorm1.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::r (r)
++# 1:iteration 2:time 3:data
++0 0 0.488709669281446
+diff --git a/Carpet/CarpetIOScalar/test/coords3/r.inorm2.asc b/Carpet/CarpetIOScalar/test/coords3/r.inorm2.asc
+new file mode 100644
+index 0000000..fe6a866
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/r.inorm2.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::r (r)
++# 1:iteration 2:time 3:data
++0 0 0.510524393972035
+diff --git a/Carpet/CarpetIOScalar/test/coords3/r.maximum.asc b/Carpet/CarpetIOScalar/test/coords3/r.maximum.asc
+new file mode 100644
+index 0000000..bd3c3dd
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/r.maximum.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::r (r)
++# 1:iteration 2:time 3:data
++0 0 0.866025403784439
+diff --git a/Carpet/CarpetIOScalar/test/coords3/r.minimum.asc b/Carpet/CarpetIOScalar/test/coords3/r.minimum.asc
+new file mode 100644
+index 0000000..6a3fa8f
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/r.minimum.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::r (r)
++# 1:iteration 2:time 3:data
++0 0 0.0714285714285714
+diff --git a/Carpet/CarpetIOScalar/test/coords3/r.norm1.asc b/Carpet/CarpetIOScalar/test/coords3/r.norm1.asc
+new file mode 100644
+index 0000000..bf27f93
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/r.norm1.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::r (r)
++# 1:iteration 2:time 3:data
++0 0 0.488709669281446
+diff --git a/Carpet/CarpetIOScalar/test/coords3/r.norm2.asc b/Carpet/CarpetIOScalar/test/coords3/r.norm2.asc
+new file mode 100644
+index 0000000..fe6a866
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/r.norm2.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::r (r)
++# 1:iteration 2:time 3:data
++0 0 0.510524393972035
+diff --git a/Carpet/CarpetIOScalar/test/coords3/r.norm_inf.asc b/Carpet/CarpetIOScalar/test/coords3/r.norm_inf.asc
+new file mode 100644
+index 0000000..bd3c3dd
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/r.norm_inf.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::r (r)
++# 1:iteration 2:time 3:data
++0 0 0.866025403784439
+diff --git a/Carpet/CarpetIOScalar/test/coords3/x.average.asc b/Carpet/CarpetIOScalar/test/coords3/x.average.asc
+new file mode 100644
+index 0000000..1b513e3
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/x.average.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::x (x)
++# 1:iteration 2:time 3:data
++0 0 -3.62639812358961e-17
+diff --git a/Carpet/CarpetIOScalar/test/coords3/x.iaverage.asc b/Carpet/CarpetIOScalar/test/coords3/x.iaverage.asc
+new file mode 100644
+index 0000000..1b513e3
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/x.iaverage.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::x (x)
++# 1:iteration 2:time 3:data
++0 0 -3.62639812358961e-17
+diff --git a/Carpet/CarpetIOScalar/test/coords3/x.inorm1.asc b/Carpet/CarpetIOScalar/test/coords3/x.inorm1.asc
+new file mode 100644
+index 0000000..ca174e1
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/x.inorm1.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::x (x)
++# 1:iteration 2:time 3:data
++0 0 0.25
+diff --git a/Carpet/CarpetIOScalar/test/coords3/x.inorm2.asc b/Carpet/CarpetIOScalar/test/coords3/x.inorm2.asc
+new file mode 100644
+index 0000000..eafba65
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/x.inorm2.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::x (x)
++# 1:iteration 2:time 3:data
++0 0 0.29658550700087
+diff --git a/Carpet/CarpetIOScalar/test/coords3/x.maximum.asc b/Carpet/CarpetIOScalar/test/coords3/x.maximum.asc
+new file mode 100644
+index 0000000..d182acd
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/x.maximum.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::x (x)
++# 1:iteration 2:time 3:data
++0 0 0.5
+diff --git a/Carpet/CarpetIOScalar/test/coords3/x.minimum.asc b/Carpet/CarpetIOScalar/test/coords3/x.minimum.asc
+new file mode 100644
+index 0000000..5df0410
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/x.minimum.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::x (x)
++# 1:iteration 2:time 3:data
++0 0 -0.5
+diff --git a/Carpet/CarpetIOScalar/test/coords3/x.norm1.asc b/Carpet/CarpetIOScalar/test/coords3/x.norm1.asc
+new file mode 100644
+index 0000000..ca174e1
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/x.norm1.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::x (x)
++# 1:iteration 2:time 3:data
++0 0 0.25
+diff --git a/Carpet/CarpetIOScalar/test/coords3/x.norm2.asc b/Carpet/CarpetIOScalar/test/coords3/x.norm2.asc
+new file mode 100644
+index 0000000..eafba65
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/x.norm2.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::x (x)
++# 1:iteration 2:time 3:data
++0 0 0.29658550700087
+diff --git a/Carpet/CarpetIOScalar/test/coords3/x.norm_inf.asc b/Carpet/CarpetIOScalar/test/coords3/x.norm_inf.asc
+new file mode 100644
+index 0000000..d182acd
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/x.norm_inf.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::x (x)
++# 1:iteration 2:time 3:data
++0 0 0.5
+diff --git a/Carpet/CarpetIOScalar/test/coords3/y.average.asc b/Carpet/CarpetIOScalar/test/coords3/y.average.asc
+new file mode 100644
+index 0000000..f88c92c
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/y.average.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::y (y)
++# 1:iteration 2:time 3:data
++0 0 1.65211759616839e-18
+diff --git a/Carpet/CarpetIOScalar/test/coords3/y.iaverage.asc b/Carpet/CarpetIOScalar/test/coords3/y.iaverage.asc
+new file mode 100644
+index 0000000..f88c92c
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/y.iaverage.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::y (y)
++# 1:iteration 2:time 3:data
++0 0 1.65211759616839e-18
+diff --git a/Carpet/CarpetIOScalar/test/coords3/y.inorm1.asc b/Carpet/CarpetIOScalar/test/coords3/y.inorm1.asc
+new file mode 100644
+index 0000000..2df67c6
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/y.inorm1.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::y (y)
++# 1:iteration 2:time 3:data
++0 0 0.255102040816327
+diff --git a/Carpet/CarpetIOScalar/test/coords3/y.inorm2.asc b/Carpet/CarpetIOScalar/test/coords3/y.inorm2.asc
+new file mode 100644
+index 0000000..21a6bec
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/y.inorm2.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::y (y)
++# 1:iteration 2:time 3:data
++0 0 0.294507544686975
+diff --git a/Carpet/CarpetIOScalar/test/coords3/y.maximum.asc b/Carpet/CarpetIOScalar/test/coords3/y.maximum.asc
+new file mode 100644
+index 0000000..63530bc
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/y.maximum.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::y (y)
++# 1:iteration 2:time 3:data
++0 0 0.5
+diff --git a/Carpet/CarpetIOScalar/test/coords3/y.minimum.asc b/Carpet/CarpetIOScalar/test/coords3/y.minimum.asc
+new file mode 100644
+index 0000000..41074ea
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/y.minimum.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::y (y)
++# 1:iteration 2:time 3:data
++0 0 -0.5
+diff --git a/Carpet/CarpetIOScalar/test/coords3/y.norm1.asc b/Carpet/CarpetIOScalar/test/coords3/y.norm1.asc
+new file mode 100644
+index 0000000..2df67c6
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/y.norm1.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::y (y)
++# 1:iteration 2:time 3:data
++0 0 0.255102040816327
+diff --git a/Carpet/CarpetIOScalar/test/coords3/y.norm2.asc b/Carpet/CarpetIOScalar/test/coords3/y.norm2.asc
+new file mode 100644
+index 0000000..21a6bec
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/y.norm2.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::y (y)
++# 1:iteration 2:time 3:data
++0 0 0.294507544686975
+diff --git a/Carpet/CarpetIOScalar/test/coords3/y.norm_inf.asc b/Carpet/CarpetIOScalar/test/coords3/y.norm_inf.asc
+new file mode 100644
+index 0000000..63530bc
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/y.norm_inf.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::y (y)
++# 1:iteration 2:time 3:data
++0 0 0.5
+diff --git a/Carpet/CarpetIOScalar/test/coords3/z.average.asc b/Carpet/CarpetIOScalar/test/coords3/z.average.asc
+new file mode 100644
+index 0000000..f25c406
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/z.average.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::z (z)
++# 1:iteration 2:time 3:data
++0 0 0
+diff --git a/Carpet/CarpetIOScalar/test/coords3/z.iaverage.asc b/Carpet/CarpetIOScalar/test/coords3/z.iaverage.asc
+new file mode 100644
+index 0000000..f25c406
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/z.iaverage.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::z (z)
++# 1:iteration 2:time 3:data
++0 0 0
+diff --git a/Carpet/CarpetIOScalar/test/coords3/z.inorm1.asc b/Carpet/CarpetIOScalar/test/coords3/z.inorm1.asc
+new file mode 100644
+index 0000000..05c5317
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/z.inorm1.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::z (z)
++# 1:iteration 2:time 3:data
++0 0 0.25
+diff --git a/Carpet/CarpetIOScalar/test/coords3/z.inorm2.asc b/Carpet/CarpetIOScalar/test/coords3/z.inorm2.asc
+new file mode 100644
+index 0000000..b3c6566
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/z.inorm2.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::z (z)
++# 1:iteration 2:time 3:data
++0 0 0.293150984988964
+diff --git a/Carpet/CarpetIOScalar/test/coords3/z.maximum.asc b/Carpet/CarpetIOScalar/test/coords3/z.maximum.asc
+new file mode 100644
+index 0000000..c4e6e07
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/z.maximum.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::z (z)
++# 1:iteration 2:time 3:data
++0 0 0.5
+diff --git a/Carpet/CarpetIOScalar/test/coords3/z.minimum.asc b/Carpet/CarpetIOScalar/test/coords3/z.minimum.asc
+new file mode 100644
+index 0000000..d35944e
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/z.minimum.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::z (z)
++# 1:iteration 2:time 3:data
++0 0 -0.5
+diff --git a/Carpet/CarpetIOScalar/test/coords3/z.norm1.asc b/Carpet/CarpetIOScalar/test/coords3/z.norm1.asc
+new file mode 100644
+index 0000000..05c5317
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/z.norm1.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::z (z)
++# 1:iteration 2:time 3:data
++0 0 0.25
+diff --git a/Carpet/CarpetIOScalar/test/coords3/z.norm2.asc b/Carpet/CarpetIOScalar/test/coords3/z.norm2.asc
+new file mode 100644
+index 0000000..b3c6566
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/z.norm2.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::z (z)
++# 1:iteration 2:time 3:data
++0 0 0.293150984988964
+diff --git a/Carpet/CarpetIOScalar/test/coords3/z.norm_inf.asc b/Carpet/CarpetIOScalar/test/coords3/z.norm_inf.asc
+new file mode 100644
+index 0000000..c4e6e07
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords3/z.norm_inf.asc
+@@ -0,0 +1,7 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:15:28-0700
++# parameter filename: "coords3.par"
++#
++# GRID::z (z)
++# 1:iteration 2:time 3:data
++0 0 0.5
+diff --git a/Carpet/CarpetIOScalar/test/coords4.par b/Carpet/CarpetIOScalar/test/coords4.par
+new file mode 100644
+index 0000000..d8b6b3b
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords4.par
+@@ -0,0 +1,31 @@
++ActiveThorns = "
++   AEILocalInterp
++   Carpet
++   CarpetInterp
++   CarpetIOScalar
++   CarpetLib
++   CarpetReduce
++   CartGrid3D
++   CoordBase
++   IOUtil
++   LoopControl
++   SymBase
++"
++
++IO::out_dir = $parfile
++
++Carpet::global_nx = 7
++Carpet::global_ny = 8
++Carpet::global_nz = 9
++
++Cactus::cctk_itlast = 0
++
++IO::out_every = 1
++IOScalar::one_file_per_group = yes
++IOScalar::all_reductions_in_one_file = yes
++
++IOScalar::outScalar_reductions = "average iaverage norm_inf inorm1 inorm2 maximum minimum norm1 norm2" 
++
++IOScalar::outScalar_vars = "
++   grid::coordinates
++"
+diff --git a/Carpet/CarpetIOScalar/test/coords4/grid::coordinates.scalars.asc b/Carpet/CarpetIOScalar/test/coords4/grid::coordinates.scalars.asc
+new file mode 100644
+index 0000000..338e4bb
+--- /dev/null
++++ b/Carpet/CarpetIOScalar/test/coords4/grid::coordinates.scalars.asc
+@@ -0,0 +1,8 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on May 10 2012 at 17:21:06-0700
++# parameter filename: "coords4.par"
++#
++# GRID::x (grid::coordinates)
++# 1:iteration 2:time 3:data
++# data columns: 3:x(average) 4:y(average) 5:z(average) 6:r(average) 7:x(iaverage) 8:y(iaverage) 9:z(iaverage) 10:r(iaverage) 11:x(norm_inf) 12:y(norm_inf) 13:z(norm_inf) 14:r(norm_inf) 15:x(inorm1) 16:y(inorm1) 17:z(inorm1) 18:r(inorm1) 19:x(inorm2) 20:y(inorm2) 21:z(inorm2) 22:r(inorm2) 23:x(maximum) 24:y(maximum) 25:z(maximum) 26:r(maximum) 27:x(minimum) 28:y(minimum) 29:z(minimum) 30:r(minimum) 31:x(norm1) 32:y(norm1) 33:z(norm1) 34:r(norm1) 35:x(norm2) 36:y(norm2) 37:z(norm2) 38:r(norm2)
++0 0 -3.62639812358961e-17 1.65211759616839e-18 0 0.488709669281446 -3.62639812358961e-17 1.65211759616839e-18 0 0.488709669281446 0.5 0.5 0.5 0.866025403784439 0.25 0.255102040816327 0.25 0.488709669281446 0.29658550700087 0.294507544686975 0.293150984988964 0.510524393972035 0.5 0.5 0.5 0.866025403784439 -0.5 -0.5 -0.5 0.0714285714285714 0.25 0.255102040816327 0.25 0.488709669281446 0.29658550700087 0.294507544686975 0.293150984988964 0.510524393972035
+-- 
+1.7.10
+

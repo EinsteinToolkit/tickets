@@ -1,0 +1,125 @@
+From 9740f079f858542bd58989385c108df97ec02867 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Sat, 25 Feb 2012 02:05:51 -0800
+Subject: [PATCH 2/5] use Fortran pointers to avoid allocating memory twice
+
+---
+ src/nuc_eos/eosmodule.F90 |   38 ++++++++++++++++----------------------
+ src/nuc_eos/readtable.c   |   15 ++++-----------
+ 2 files changed, 20 insertions(+), 33 deletions(-)
+
+diff --git a/src/nuc_eos/eosmodule.F90 b/src/nuc_eos/eosmodule.F90
+index 4a3e156..7ac049c 100644
+--- a/src/nuc_eos/eosmodule.F90
++++ b/src/nuc_eos/eosmodule.F90
+@@ -24,7 +24,7 @@
+ 
+ ! basics
+    integer, parameter :: nvars = 19
+-   real*8,allocatable :: alltables(:,:,:,:)
++   real*8,pointer :: alltables(:,:,:,:)
+   ! index variable mapping:
+   !  1 -> logpress
+   !  2 -> logenergy
+@@ -46,9 +46,9 @@
+   ! 18 -> zbar
+   ! 19 -> gamma
+ 
+-   real*8,allocatable,save :: logrho(:)
+-   real*8,allocatable,save :: logtemp(:)
+-   real*8,allocatable,save :: ye(:)
++   real*8,pointer :: logrho(:)
++   real*8,pointer :: logtemp(:)
++   real*8,pointer :: ye(:)
+ 
+ ! constants
+    real*8,save :: mev_to_erg = 1.60217733d-6
+@@ -65,33 +65,27 @@
+  end module eosmodule
+ 
+ ! This function is called from within readtable.c
+-! It copies the values of the arrays given as parameters into arrays
+-! of the eos module, until I can find out how I can use those arrays
+-! directly.
+-subroutine allocate_eosmodule(nrho_, ntemp_, nye_, alltables_, logrho_, logtemp_, ye_, energy_shift_)
++! It creates pointers to the arrays given as parameters into arrays
++! of the eos module.
++subroutine setup_eosmodule(nrho_, ntemp_, nye_, alltables_, logrho_, logtemp_, ye_, energy_shift_)
+  use eosmodule
+  DECLARE_CCTK_PARAMETERS
+ 
+  CCTK_INT  :: nrho_, ntemp_, nye_
+- CCTK_REAL :: alltables_(nrho_, ntemp_, nye_, 19)
+- CCTK_REAL :: logrho_(nrho_)
+- CCTK_REAL :: logtemp_(ntemp_)
+- CCTK_REAL :: ye_(nye_)
++ CCTK_REAL, TARGET :: alltables_(nrho_, ntemp_, nye_, 19)
++ CCTK_REAL, TARGET :: logrho_(nrho_)
++ CCTK_REAL, TARGET :: logtemp_(ntemp_)
++ CCTK_REAL, TARGET :: ye_(nye_)
+  CCTK_REAL :: energy_shift_
+ 
+  nrho  = nrho_
+  ntemp = ntemp_
+  nye   = nye_
+ 
+- allocate(alltables(nrho,ntemp,nye,nvars))
+- allocate(logrho(nrho))
+- allocate(logtemp(ntemp))
+- allocate(ye(nye))
+-
+- alltables = alltables_
+- logrho    = logrho_
+- logtemp   = logtemp_
+- ye        = ye_
++ alltables => alltables_
++ logrho    => logrho_
++ logtemp   => logtemp_
++ ye        => ye_
+ 
+ 
+  energy_shift = energy_shift_
+@@ -109,5 +103,5 @@ subroutine allocate_eosmodule(nrho_, ntemp_, nye_, alltables_, logrho_, logtemp_
+  eos_tempmin = 10.0d0**logtemp(1)
+  eos_tempmax = 10.0d0**logtemp(ntemp)
+ 
+-end subroutine allocate_eosmodule
++end subroutine setup_eosmodule
+ 
+diff --git a/src/nuc_eos/readtable.c b/src/nuc_eos/readtable.c
+index 5cdc229..b71229c 100644
+--- a/src/nuc_eos/readtable.c
++++ b/src/nuc_eos/readtable.c
+@@ -9,7 +9,7 @@
+ #include "cctk_Functions.h"
+ 
+ // Interface of function for fortran module eostable
+-void CCTK_FNAME(allocate_eosmodule)
++void CCTK_FNAME(setup_eosmodule)
+                 (CCTK_INT* , CCTK_INT* , CCTK_INT*, CCTK_REAL*,
+                  CCTK_REAL*, CCTK_REAL*, CCTK_REAL*, CCTK_REAL*);
+ 
+@@ -133,17 +133,10 @@ void EOS_OMNI_ReadTable(CCTK_ARGUMENTS)
+   HDF5_ERROR(H5Sclose(mem3));
+   HDF5_ERROR(H5Fclose(file));
+ 
+-  // Give all values to fortran - which will copy them until I can find out how
+-  // I can tell Fortran to use those pointers inside the module
+-  CCTK_FNAME(allocate_eosmodule)
++  // Give all values to fortran - which will store pointers to them, so don't
++  // free these arrays.
++  CCTK_FNAME(setup_eosmodule)
+     (&nrho, &ntemp, &nye, alltables, logrho, logtemp, ye, &energy_shift);
+ 
+-
+-  // Free the memory again because fortran copied the whole thing now
+-  free(ye);
+-  free(logtemp);
+-  free(logrho);
+-  free(alltables);
+-
+ }
+ 
+-- 
+1.7.8
+

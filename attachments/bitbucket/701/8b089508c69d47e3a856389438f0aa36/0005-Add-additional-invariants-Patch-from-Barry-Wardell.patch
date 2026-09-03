@@ -1,0 +1,95 @@
+From 075c0e5965bc18ce3a8ec07b744db58e709ee0ea Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Tue, 28 Sep 2010 11:38:40 +0100
+Subject: [PATCH 05/11] Add additional invariants Patch from Barry Wardell
+
+---
+ m/WeylScal4.m |   54 ++++++++++++++++++++++++++++++++++++++++++++++++++----
+ 1 files changed, 50 insertions(+), 4 deletions(-)
+
+diff --git a/m/WeylScal4.m b/m/WeylScal4.m
+index 31a40d9..e62509d 100644
+--- a/m/WeylScal4.m
++++ b/m/WeylScal4.m
+@@ -1,3 +1,5 @@
++(* ::Package:: *)
++
+ $Path = Join[$Path, Map[ToString, ReadList[StringToStream[Environment["MATHPATH"]], Word, WordSeparators->{":"}]]];
+ 
+ $RecursionLimit = 1000;
+@@ -43,7 +45,7 @@ Map[DefineTensor,
+   R, gamma,g, gInv, k, ltet, n, rm, im, rmbar, imbar, tn, va, vb, vc,
+   wa, wb, wc, ea, eb, ec,
+   Ro, Rojo, R4p, Psi0r, Psi0i, Psi1r, Psi1i, Psi2r, Psi2i, Psi3r,
+-  Psi3i, Psi4r,Psi4i, curvIr
++  Psi3i, Psi4r,Psi4i, curvIr, curvIi, curvJr, curvJi, curvJ1, curvJ2, curvJ3, curvJ4
+ }];
+ 
+ (* Psi0,2,4 behave as (pseudo)scalars *)
+@@ -77,7 +79,7 @@ gDet = Det[MatrixOfComponents[g[la,lb]]];
+ 
+ (* Cactus group definitions *)
+ 
+-scalars = {Psi0r, Psi0i, Psi1r, Psi1i, Psi2r, Psi2i, Psi3r, Psi3i, Psi4r,Psi4i, curvIr};
++scalars = {Psi0r, Psi0i, Psi1r, Psi1i, Psi2r, Psi2i, Psi3r, Psi3i, Psi4r,Psi4i, curvIr, curvIi, curvJr, curvJi, curvJ1, curvJ2, curvJ3, curvJ4};
+ 
+ scalarGroups = Map[CreateGroupFromTensor, scalars];
+ 
+@@ -268,8 +270,52 @@ PsisCalc[fdOrder_, PD_] :=
+ 		 + 2 Ro[la,lb,lc] nn ltet[ub] (rm[ua] im[uc] + im[ua] rm[uc])
+ 		 + Rojo[la,lb] nn nn (rm[ua] im[ub] + im[ua] rm[ub]),
+ 
+-        curvIr -> ComplexExpand[Re[3 (Psi2r+I Psi2i)^2 - 4 (Psi1r+I Psi1i) (Psi3r + I Psi3i) + (Psi4r + I Psi4i) (Psi0r + I Psi0i)]]
+-
++        (* Scalar invariants I and J as defined in (2.2a) and (2.2b) of arXiv:gr-qc/0407013 *)
++        curvIr -> ComplexExpand[Re[3 (Psi2r+I Psi2i)^2 - 4 (Psi1r+I Psi1i) (Psi3r + I Psi3i) + (Psi4r + I Psi4i) (Psi0r + I Psi0i)]],
++        curvIi -> ComplexExpand[Im[3 (Psi2r+I Psi2i)^2 - 4 (Psi1r+I Psi1i) (Psi3r + I Psi3i) + (Psi4r + I Psi4i) (Psi0r + I Psi0i)]],
++        curvJr -> ComplexExpand[Re[Det[{{Psi4r+I Psi4i,Psi3r+I Psi3i,Psi2r+I Psi2i},
++                                        {Psi3r+I Psi3i,Psi2r+I Psi2i,Psi1r+I Psi1i},
++                                        {Psi2r+I Psi2i,Psi1r+I Psi1i,Psi0r+I Psi0i}}]]],
++        curvJi -> ComplexExpand[Im[Det[{{Psi4r+I Psi4i,Psi3r+I Psi3i,Psi2r+I Psi2i},
++                                        {Psi3r+I Psi3i,Psi2r+I Psi2i,Psi1r+I Psi1i},
++                                        {Psi2r+I Psi2i,Psi1r+I Psi1i,Psi0r+I Psi0i}}]]],
++  
++        (* Scalar invariants J1, J2, J3 and J4 of the Narlikar and Karmarkar basis as defined in B5-B8 of arXiv:0704.1756.
++           Computed from Weyl tensor expressions using xTensor. *)
++        curvJ1 -> -16(3 Psi2i^2-3 Psi2r^2-4 Psi1i Psi3i+4 Psi1r Psi3r+Psi0i Psi4i-Psi0r Psi4r),
++        curvJ2 -> 96(-3 Psi2i^2 Psi2r+Psi2r^3+2 Psi1r Psi2i Psi3i+2 Psi1i Psi2r Psi3i-Psi0r Psi3i^2+2 Psi1i Psi2i Psi3r-2 Psi1r Psi2r Psi3r
++          -2 Psi0i Psi3i Psi3r+Psi0r Psi3r^2-2 Psi1i Psi1r Psi4i+Psi0r Psi2i Psi4i+Psi0i Psi2r Psi4i-Psi1i^2 Psi4r+Psi1r^2 Psi4r
++          +Psi0i Psi2i Psi4r-Psi0r Psi2r Psi4r),
++        curvJ3 -> 64(9 Psi2i^4-54 Psi2i^2 Psi2r^2+9 Psi2r^4-24 Psi1i Psi2i^2 Psi3i+48 Psi1r Psi2i Psi2r Psi3i+24 Psi1i Psi2r^2 Psi3i
++          +16 Psi1i^2 Psi3i^2-16 Psi1r^2 Psi3i^2+24 Psi1r Psi2i^2 Psi3r+48 Psi1i Psi2i Psi2r Psi3r-24 Psi1r Psi2r^2 Psi3r
++          -64 Psi1i Psi1r Psi3i Psi3r-16 Psi1i^2 Psi3r^2+16 Psi1r^2 Psi3r^2+6 Psi0i Psi2i^2 Psi4i-12 Psi0r Psi2i Psi2r Psi4i
++          -6 Psi0i Psi2r^2 Psi4i-8 Psi0i Psi1i Psi3i Psi4i+8 Psi0r Psi1r Psi3i Psi4i+8 Psi0r Psi1i Psi3r Psi4i
++          +8 Psi0i Psi1r Psi3r Psi4i+Psi0i^2 Psi4i^2-Psi0r^2 Psi4i^2-6 Psi0r Psi2i^2 Psi4r-12 Psi0i Psi2i Psi2r Psi4r+6 Psi0r Psi2r^2 Psi4r
++          +8 Psi0r Psi1i Psi3i Psi4r+8 Psi0i Psi1r Psi3i Psi4r+8 Psi0i Psi1i Psi3r Psi4r-8 Psi0r Psi1r Psi3r Psi4r-4 Psi0i Psi0r Psi4i Psi4r-Psi0i^2 Psi4r^2+Psi0r^2 Psi4r^2),
++        curvJ4 -> -640(-15 Psi2i^4 Psi2r+30 Psi2i^2 Psi2r^3-3 Psi2r^5+10 Psi1r Psi2i^3 Psi3i+30 Psi1i Psi2i^2 Psi2r Psi3i-30 Psi1r Psi2i Psi2r^2 Psi3i
++          -10 Psi1i Psi2r^3 Psi3i-16 Psi1i Psi1r Psi2i Psi3i^2-3 Psi0r Psi2i^2 Psi3i^2-8 Psi1i^2 Psi2r Psi3i^2+8 Psi1r^2 Psi2r Psi3i^2
++          -6 Psi0i Psi2i Psi2r Psi3i^2+3 Psi0r Psi2r^2 Psi3i^2+4 Psi0r Psi1i Psi3i^3+4 Psi0i Psi1r Psi3i^3+10 Psi1i Psi2i^3 Psi3r
++          -30 Psi1r Psi2i^2 Psi2r Psi3r-30 Psi1i Psi2i Psi2r^2 Psi3r+10 Psi1r Psi2r^3 Psi3r-16 Psi1i^2 Psi2i Psi3i Psi3r
++          +16 Psi1r^2 Psi2i Psi3i Psi3r-6 Psi0i Psi2i^2 Psi3i Psi3r+32 Psi1i Psi1r Psi2r Psi3i Psi3r+12 Psi0r Psi2i Psi2r Psi3i Psi3r
++          +6 Psi0i Psi2r^2 Psi3i Psi3r+12 Psi0i Psi1i Psi3i^2 Psi3r-12 Psi0r Psi1r Psi3i^2 Psi3r+16 Psi1i Psi1r Psi2i Psi3r^2
++          +3 Psi0r Psi2i^2 Psi3r^2+8 Psi1i^2 Psi2r Psi3r^2-8 Psi1r^2 Psi2r Psi3r^2+6 Psi0i Psi2i Psi2r Psi3r^2-3 Psi0r Psi2r^2 Psi3r^2
++          -12 Psi0r Psi1i Psi3i Psi3r^2-12 Psi0i Psi1r Psi3i Psi3r^2-4 Psi0i Psi1i Psi3r^3+4 Psi0r Psi1r Psi3r^3-6 Psi1i Psi1r Psi2i^2 Psi4i
++          +2 Psi0r Psi2i^3 Psi4i-6 Psi1i^2 Psi2i Psi2r Psi4i+6 Psi1r^2 Psi2i Psi2r Psi4i+6 Psi0i Psi2i^2 Psi2r Psi4i
++          +6 Psi1i Psi1r Psi2r^2 Psi4i-6 Psi0r Psi2i Psi2r^2 Psi4i-2 Psi0i Psi2r^3 Psi4i+12 Psi1i^2 Psi1r Psi3i Psi4i-4 Psi1r^3 Psi3i Psi4i
++          -2 Psi0r Psi1i Psi2i Psi3i Psi4i-2 Psi0i Psi1r Psi2i Psi3i Psi4i-2 Psi0i Psi1i Psi2r Psi3i Psi4i
++          +2 Psi0r Psi1r Psi2r Psi3i Psi4i-2 Psi0i Psi0r Psi3i^2 Psi4i+4 Psi1i^3 Psi3r Psi4i-12 Psi1i Psi1r^2 Psi3r Psi4i
++          -2 Psi0i Psi1i Psi2i Psi3r Psi4i+2 Psi0r Psi1r Psi2i Psi3r Psi4i+2 Psi0r Psi1i Psi2r Psi3r Psi4i
++          +2 Psi0i Psi1r Psi2r Psi3r Psi4i-2 Psi0i^2 Psi3i Psi3r Psi4i+2 Psi0r^2 Psi3i Psi3r Psi4i+2 Psi0i Psi0r Psi3r^2 Psi4i
++          -Psi0r Psi1i^2 Psi4i^2-2 Psi0i Psi1i Psi1r Psi4i^2+Psi0r Psi1r^2 Psi4i^2+2 Psi0i Psi0r Psi2i Psi4i^2+Psi0i^2 Psi2r Psi4i^2
++          -Psi0r^2 Psi2r Psi4i^2-3 Psi1i^2 Psi2i^2 Psi4r+3 Psi1r^2 Psi2i^2 Psi4r+2 Psi0i Psi2i^3 Psi4r+12 Psi1i Psi1r Psi2i Psi2r Psi4r
++          -6 Psi0r Psi2i^2 Psi2r Psi4r+3 Psi1i^2 Psi2r^2 Psi4r-3 Psi1r^2 Psi2r^2 Psi4r-6 Psi0i Psi2i Psi2r^2 Psi4r+2 Psi0r Psi2r^3 Psi4r
++          +4 Psi1i^3 Psi3i Psi4r-12 Psi1i Psi1r^2 Psi3i Psi4r-2 Psi0i Psi1i Psi2i Psi3i Psi4r+2 Psi0r Psi1r Psi2i Psi3i Psi4r
++          +2 Psi0r Psi1i Psi2r Psi3i Psi4r+2 Psi0i Psi1r Psi2r Psi3i Psi4r-Psi0i^2 Psi3i^2 Psi4r+Psi0r^2 Psi3i^2 Psi4r
++          -12 Psi1i^2 Psi1r Psi3r Psi4r+4 Psi1r^3 Psi3r Psi4r+2 Psi0r Psi1i Psi2i Psi3r Psi4r+2 Psi0i Psi1r Psi2i Psi3r Psi4r
++          +2 Psi0i Psi1i Psi2r Psi3r Psi4r-2 Psi0r Psi1r Psi2r Psi3r Psi4r+4 Psi0i Psi0r Psi3i Psi3r Psi4r+Psi0i^2 Psi3r^2 Psi4r-Psi0r^2 Psi3r^2 Psi4r
++          -2 Psi0i Psi1i^2 Psi4i Psi4r+4 Psi0r Psi1i Psi1r Psi4i Psi4r+2 Psi0i Psi1r^2 Psi4i Psi4r+2 Psi0i^2 Psi2i Psi4i Psi4r
++          -2 Psi0r^2 Psi2i Psi4i Psi4r-4 Psi0i Psi0r Psi2r Psi4i Psi4r+Psi0r Psi1i^2 Psi4r^2+2 Psi0i Psi1i Psi1r Psi4r^2-Psi0r Psi1r^2 Psi4r^2
++          -2 Psi0i Psi0r Psi2i Psi4r^2-Psi0i^2 Psi2r Psi4r^2+Psi0r^2 Psi2r Psi4r^2)
+   }
+ };
+ 
+-- 
+1.7.7.4
+

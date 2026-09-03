@@ -1,0 +1,36 @@
+From 3852b8a7597bcfffc30da05a384a45d78a5b23c8 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Wed, 12 Dec 2012 21:53:30 -0800
+Subject: [PATCH 19/25] GRHydro: CCTK_Equals -> CCTK_EQUALS
+
+since only the later (a macro) contains the required ".ne. 0" to turn
+the return value into a logical type
+---
+ src/GRHydro_Boundaries.F90 |    4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/GRHydro_Boundaries.F90 b/src/GRHydro_Boundaries.F90
+index d864a10..90852fc 100644
+--- a/src/GRHydro_Boundaries.F90
++++ b/src/GRHydro_Boundaries.F90
+@@ -234,7 +234,7 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+        endif
+     endif
+ 
+-    if (CCTK_Equals(Bvec_evolution_method, "GRHydro_Avec")) then 
++    if (CCTK_EQUALS(Bvec_evolution_method, "GRHydro_Avec")) then 
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+              "HydroBase::Avec", "Flat")
+       if (general_coordinates .ne. 0) then
+@@ -320,7 +320,7 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+        endif
+     endif
+ 
+-    if (CCTK_Equals(Bvec_evolution_method, "GRHydro_Avec")) then 
++    if (CCTK_EQUALS(Bvec_evolution_method, "GRHydro_Avec")) then 
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+              "HydroBase::Avec", "None")
+       if (general_coordinates .ne. 0) then
+-- 
+1.7.10.4
+

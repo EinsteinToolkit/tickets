@@ -1,0 +1,33 @@
+Index: src/slabtest.c
+===================================================================
+--- src/slabtest.c	(revision 24)
++++ src/slabtest.c	(working copy)
+@@ -5,6 +5,7 @@
+ 
+ #include "cctk.h"
+ #include "cctk_Arguments.h"
++#include "util_Table.h"
+ 
+ #include "Slab.h"
+ 
+@@ -31,12 +32,18 @@
+   const void *srcdataptrs[nvars] = {gfx, igfx};
+   void *dstdataptrs[nvars] = {gfy, igfy};
+   
+-  int ierr;
++  int ierr, options;
+   
++  options = Util_TableCreateFromString("useghosts=1");
++  assert(options>=0);
++
+   ierr = Slab_MultiTransfer
+-    (cctkGH, cctk_dim, info, -1,
++    (cctkGH, cctk_dim, info, options,
+      nvars, vartypes, srcdataptrs, vartypes, dstdataptrs);
+   assert (!ierr);
++
++  ierr = Util_TableDestroy(options);
++  assert(!ierr);
+   
+   mismatch = 0;
+   for (k=0; k<cctk_lsh[2]; ++k) {

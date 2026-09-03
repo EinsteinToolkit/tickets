@@ -1,0 +1,82 @@
+Index: HDF5.sh
+===================================================================
+--- HDF5.sh	(revision 37)
++++ HDF5.sh	(working copy)
+@@ -8,8 +8,12 @@
+ set -x                          # Output commands
+ set -e                          # Abort on errors
+ 
++# Assign default values to unset HDF5_ENABLE_XXX variables
++HDF5_ENABLE_CXX="${HDF5_ENABLE_CXX:-yes}"
++HDF5_ENABLE_FORTRAN="${HDF5_ENABLE_FORTRAN:-yes}"
+ 
+ 
++
+ ################################################################################
+ # Check for old mechanism
+ ################################################################################
+@@ -27,6 +31,14 @@
+ # Search
+ ################################################################################
+ 
++# Set up names of the Fortran and C++ libraries based on user settable variables
++if [ "${HDF5_ENABLE_CXX}" = 'yes' ]; then
++    HDF5_CXX_LIBS="hdf5_cpp hdf5_hl_cpp"
++fi
++if [ "${HDF5_ENABLE_FORTRAN}" = 'yes' ]; then
++    HDF5_FORTRAN_LIBS=$(if [ "${F90}" != "none" ]; then echo 'hdf5_fortran'; fi)
++fi
++
+ if [ -z "${HDF5_DIR}" ]; then
+     echo "BEGIN MESSAGE"
+     echo "HDF5 selected, but HDF5_DIR not set. Checking some places..."
+@@ -129,7 +141,7 @@
+         
+         echo "HDF5: Configuring..."
+         cd ${NAME}
+-        ./configure --prefix=${HDF5_DIR} --with-zlib=${ZLIB_DIR} --enable-cxx $(if [ -n "${FC}" ]; then echo '' '--enable-fortran'; fi)
++        ./configure --prefix=${HDF5_DIR} --with-zlib=${ZLIB_DIR} --enable-cxx=${HDF5_ENABLE_CXX} $(if [ -n "${FC}" ]; then echo '' "--enable-fortran=${HDF5_ENABLE_FORTRAN}"; fi)
+         
+         echo "HDF5: Building..."
+         ${MAKE}
+@@ -170,7 +182,7 @@
+     HDF5_INC_DIRS="${HDF5_DIR}/include ${HDF5_DIR}/lib"
+     HDF5_LIB_DIRS="${HDF5_DIR}/lib"
+ fi
+-HDF5_LIBS='hdf5_hl_cpp hdf5_hl hdf5_cpp hdf5_fortran hdf5'
++HDF5_LIBS="hdf5_hl ${HDF5_CXX_LIBS} ${HDF5_FORTRAN_LIBS} hdf5"
+ 
+ 
+ 
+@@ -233,11 +245,13 @@
+ 
+ # Pass options to Cactus
+ echo "BEGIN MAKE_DEFINITION"
+-echo "HAVE_HDF5     = 1"
+-echo "HDF5_DIR      = ${HDF5_DIR}"
+-echo "HDF5_INC_DIRS = ${HDF5_INC_DIRS}"
+-echo "HDF5_LIB_DIRS = ${HDF5_LIB_DIRS}"
+-echo "HDF5_LIBS     = ${HDF5_LIBS}"
++echo "HAVE_HDF5           = 1"
++echo "HDF5_DIR            = ${HDF5_DIR}"
++echo "HDF5_ENABLE_CXX     = ${HDF5_ENABLE_CXX}"
++echo "HDF5_ENABLE_FORTRAN = ${HDF5_ENABLE_FORTRAN}"
++echo "HDF5_INC_DIRS       = ${HDF5_INC_DIRS}"
++echo "HDF5_LIB_DIRS       = ${HDF5_LIB_DIRS}"
++echo "HDF5_LIBS           = ${HDF5_LIBS}"
+ echo "END MAKE_DEFINITION"
+ 
+ echo 'INCLUDE_DIRECTORY $(HDF5_INC_DIRS)'
+Index: configuration.ccl
+===================================================================
+--- configuration.ccl	(revision 37)
++++ configuration.ccl	(working copy)
+@@ -4,7 +4,7 @@
+ {
+   SCRIPT HDF5.sh
+   LANG bash
+-  OPTIONS HDF5 HDF5_DIR ZLIB_DIR LIBSZ_DIR LIBZ_DIR
++  OPTIONS HDF5 HDF5_DIR HDF5_ENABLE_CXX HDF5_ENABLE_FORTRAN ZLIB_DIR LIBSZ_DIR LIBZ_DIR
+ }
+ 
+ REQUIRES HDF5

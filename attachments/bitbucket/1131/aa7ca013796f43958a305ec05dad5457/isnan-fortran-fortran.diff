@@ -1,0 +1,72 @@
+Index: src/cctk.F90
+===================================================================
+--- src/cctk.F90	(revision 51)
++++ src/cctk.F90	(working copy)
+@@ -24,6 +24,7 @@
+   use cctk_Interp
+   use cctk_Main
+   use cctk_Malloc1
++  use cctk_Math
+   use cctk_MemAlloc
+   use cctk_Misc
+   use cctk_ParamCheck
+Index: src/cctk_Math.F90
+===================================================================
+--- src/cctk_Math.F90	(revision 0)
++++ src/cctk_Math.F90	(working copy)
+@@ -0,0 +1,43 @@
++module cctk_Math
++  implicit none
++
++  interface
++
++     double precision function CCTK_copysign (x, y)
++       implicit none
++       double precision x, y
++     end function CCTK_copysign
++
++     integer function CCTK_fpclassify (x)
++       implicit none
++       double precision x
++     end function CCTK_fpclassify
++
++     integer function CCTK_isfinite (x)
++       implicit none
++       double precision x
++     end function CCTK_isfinite
++
++     integer function CCTK_isinf (x)
++       implicit none
++       double precision x
++     end function CCTK_isinf
++
++     integer function CCTK_isnan (x)
++       implicit none
++       double precision x
++     end function CCTK_isnan
++
++     integer function CCTK_isnormal (x)
++       implicit none
++       double precision x
++     end function CCTK_isnormal
++
++     integer function CCTK_signbit (x)
++       implicit none
++       double precision x
++     end function CCTK_signbit
++
++  end interface
++
++end module cctk_Math
+Index: src/make.code.defn
+===================================================================
+--- src/make.code.defn	(revision 51)
++++ src/make.code.defn	(working copy)
+@@ -26,6 +26,7 @@
+         cctk_Interp.F90                 \
+         cctk_Main.F90                   \
+         cctk_Malloc1.F90                \
++        cctk_Math.F90	                \
+         cctk_MemAlloc.F90               \
+         cctk_Misc.F90                   \
+         cctk_ParamCheck.F90             \

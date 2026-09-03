@@ -1,0 +1,62 @@
+From 24e6a2f097490406a43cc63cf47c8e5976bad586 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Sun, 15 Jul 2012 20:12:21 -0700
+Subject: [PATCH 02/25] GRHydro: clean up schedule - no-op changes
+
+these mostly refer to groups that used to exist but no longer do
+---
+ schedule.ccl |   10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/schedule.ccl b/schedule.ccl
+index cc5ce5a..9ccb98a 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -156,7 +156,7 @@ if (transport_constraints)
+ 
+ # leave this here for compatibility with older code, should not be used anymore
+ # and go out at some point
+-schedule group GRHydro_Initial IN HydroBase_Initial BEFORE SetTmunu
++schedule group GRHydro_Initial IN HydroBase_Initial
+ {
+ } "GRHydro initial data group"
+ 
+@@ -262,7 +262,7 @@ STORAGE: conformal_state
+ ### Register startup banner ###
+ ###############################
+ 
+-schedule GRHydro_Startup AT WRAGH AFTER HydroBase_StartUp
++schedule GRHydro_Startup AT WRAGH
+ {
+   LANG: Fortran
+ } "Startup banner"
+@@ -503,7 +503,7 @@ schedule GRHydro_Scalar_Setup IN MoL_PreStep
+   LANG: Fortran
+ } "Set up and check scalars for efficiency"
+ 
+-schedule GRHydro_Scalar_Setup IN CCTK_POSTINITIAL BEFORE HydroBase_RHS
++schedule GRHydro_Scalar_Setup IN CCTK_POSTINITIAL
+ {
+   LANG: Fortran
+ } "Set up and check scalars for efficiency"
+@@ -536,7 +536,7 @@ schedule GRHydro_SetupMask AT POSTREGRID BEFORE MoL_PostStep AFTER (MaskOne,Mask
+   LANG: Fortran
+ } "Initialize the atmosphere mask"
+ 
+-schedule GRHydro_SetupMask AT POSTREGRIDINITIAL BEFORE HydroBase_PostStep AFTER (MaskOne,MaskZero)
++schedule GRHydro_SetupMask AT POSTREGRIDINITIAL BEFORE MoL_PostStep AFTER (MaskOne,MaskZero)
+ {
+   LANG: Fortran
+ } "Initialize the atmosphere mask"
+@@ -934,7 +934,7 @@ schedule group GRHydro_PostStep IN HydroBase_PostStep
+ ### Find the refinement level that is being computed ###
+ ########################################################
+ 
+-schedule GRHydro_RefinementLevel IN MoL_PostStep BEFORE (SetMetricTemps,HydroBase_PostStep)
++schedule GRHydro_RefinementLevel IN MoL_PostStep BEFORE HydroBase_PostStep
+ {
+   LANG: Fortran
+ } "Calculate current refinement level"
+-- 
+1.7.10.4
+

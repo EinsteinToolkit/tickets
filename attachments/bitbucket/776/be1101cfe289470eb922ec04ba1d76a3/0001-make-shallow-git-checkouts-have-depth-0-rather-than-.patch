@@ -1,0 +1,40 @@
+From 95d16374b739896c3d309b514f58e82577d16675 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Fri, 16 Mar 2012 18:54:43 -0700
+Subject: [PATCH] make shallow git checkouts have depth 0 rather than 1
+
+---
+ GetComponents |    6 +++---
+ 1 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/GetComponents b/GetComponents
+index 79ae294..6960e19 100755
+--- a/GetComponents
++++ b/GetComponents
+@@ -1334,12 +1334,12 @@ sub handle_git {
+     my $target  = $component{"TARGET"};
+     my $name    = $component{"NAME"};
+     my $url     = $component{"URL"};
+-    my $shallow = ' --depth 1';
++    my $shallow = ' --depth 0';
+     if ( defined( $component{"AUTH_URL"} ) ) {
+         $url     = $component{"AUTH_URL"};
+         $shallow = '';
+     }
+-    if    ( $SHALLOW_CLONE == 1 ) { $shallow = ' --depth 1' }
++    if    ( $SHALLOW_CLONE == 1 ) { $shallow = ' --depth 0' }
+     elsif ( $SHALLOW_CLONE == 0 ) { $shallow = '' }
+     my $checkout      = $component{"CHECKOUT"};
+     my $repo_path     = $component{"REPO_PATH"};
+@@ -2781,7 +2781,7 @@ svn, and mercurial.
+ 
+ =item B<--[no]shallow>
+ 
+-Force GetComponents to add '--depth 1' to all 'git clone' commands. This will 
++Force GetComponents to add '--depth 0' to all 'git clone' commands. This will 
+ reduce the size of all git repositories by ignoring the repository history. 
+ The default is to add this tag for anonymous checkouts only.
+ 
+-- 
+1.7.8
+

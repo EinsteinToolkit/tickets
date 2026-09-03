@@ -1,0 +1,126 @@
+From e306c7adb3b7af684fcade49a50a7207562a2a2d Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Tue, 12 Nov 2013 17:57:18 -0800
+Subject: [PATCH 08/18] EOS_Omni: remove __restrict__ in favor of restrict
+ since Cactus handles
+
+restrict for us.
+---
+ src/nuc_eos_cxx/helpers.hh | 37 +++++++++++++++++++------------------
+ src/nuc_eos_cxx/nuc_eos.hh |  1 -
+ 2 files changed, 19 insertions(+), 19 deletions(-)
+
+diff --git a/src/nuc_eos_cxx/helpers.hh b/src/nuc_eos_cxx/helpers.hh
+index c61ae80..f8537b4 100644
+--- a/src/nuc_eos_cxx/helpers.hh
++++ b/src/nuc_eos_cxx/helpers.hh
+@@ -28,6 +28,7 @@ int checkbounds(const double xrho,
+     return 101;
+   }
+   if(xye < eos_yemin) {
++    // this is probably not pure and should be removed
+     fprintf(stderr,"xye: %15.6E eos_yemin: %15.6E\n",xye,eos_yemin);
+     return 102;
+   }
+@@ -72,10 +73,10 @@ static inline __attribute__((always_inline))
+ void get_interp_spots(const double x,
+ 		      const double y,
+ 		      const double z,
+-		      double* __restrict__ delx,
+-		      double* __restrict__ dely,
+-		      double* __restrict__ delz,
+-		      int* __restrict__ idx) 
++		      double* restrict delx,
++		      double* restrict dely,
++		      double* restrict delz,
++		      int* restrict idx) 
+ {
+   using namespace nuc_eos;
+ 
+@@ -108,10 +109,10 @@ static inline __attribute__((always_inline))
+ void get_interp_spots_linT_low(const double x,
+ 			       const double y,
+ 			       const double z,
+-			       double* __restrict__ delx,
+-			       double* __restrict__ dely,
+-			       double* __restrict__ delz,
+-			       int* __restrict__ idx) 
++			       double* restrict delx,
++			       double* restrict dely,
++			       double* restrict delz,
++			       int* restrict idx) 
+ {
+   using namespace nuc_eos;
+ 
+@@ -143,10 +144,10 @@ static inline __attribute__((always_inline))
+ void get_interp_spots_linT_low_eps(const double x,
+ 				   const double y,
+ 				   const double z,
+-				   double* __restrict__ delx,
+-				   double* __restrict__ dely,
+-				   double* __restrict__ delz,
+-				   int* __restrict__ idx) 
++				   double* restrict delx,
++				   double* restrict dely,
++				   double* restrict delz,
++				   int* restrict idx) 
+ {
+   using namespace nuc_eos;
+ 
+@@ -176,11 +177,11 @@ void get_interp_spots_linT_low_eps(const double x,
+ 
+ 
+ static inline __attribute__((always_inline))  
+-void nuc_eos_C_linterp_one(const int* __restrict__ idx, 
++void nuc_eos_C_linterp_one(const int* restrict idx, 
+ 			   const double delx, 
+ 			   const double dely,
+ 			   const double delz,
+-			   double* __restrict__ f,
++			   double* restrict f,
+ 			   const int iv)
+ {
+   using namespace nuc_eos;
+@@ -221,11 +222,11 @@ void nuc_eos_C_linterp_one(const int* __restrict__ idx,
+ }
+ 
+ static inline __attribute__((always_inline))  
+-void nuc_eos_C_linterp_one_linT_low(const int* __restrict__ idx, 
++void nuc_eos_C_linterp_one_linT_low(const int* restrict idx, 
+ 				    const double delx, 
+ 				    const double dely,
+ 				    const double delz,
+-				    double* __restrict__ f,
++				    double* restrict f,
+ 				    const int iv)
+ {
+   using namespace nuc_eos;
+@@ -267,11 +268,11 @@ void nuc_eos_C_linterp_one_linT_low(const int* __restrict__ idx,
+ 
+ 
+ static inline __attribute__((always_inline))  
+-void nuc_eos_C_linterp_one_linT_low_eps(const int* __restrict__ idx, 
++void nuc_eos_C_linterp_one_linT_low_eps(const int* restrict idx, 
+ 					const double delx, 
+ 					const double dely,
+ 					const double delz,
+-					double* __restrict__ f)
++					double* restrict f)
+ 
+ {
+   using namespace nuc_eos;
+diff --git a/src/nuc_eos_cxx/nuc_eos.hh b/src/nuc_eos_cxx/nuc_eos.hh
+index 8149803..8c54761 100644
+--- a/src/nuc_eos_cxx/nuc_eos.hh
++++ b/src/nuc_eos_cxx/nuc_eos.hh
+@@ -13,7 +13,6 @@
+ #define INVRHOGF 6.17714470405638e17
+ #define INVEPSGF 8.98755178736818e20
+ #define INVPRESSGF 5.55174079257738e38
+-#define restrict __restrict__
+ 
+ namespace nuc_eos {
+ 
+-- 
+1.8.5.3
+

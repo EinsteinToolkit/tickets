@@ -1,0 +1,36 @@
+From 374d1b630a62de491545d7df6b449c1efabfc823 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Thu, 15 Mar 2012 01:19:41 -0700
+Subject: [PATCH 8/9] Hydro_Analysis: make warning about unfound points depend
+ on verbosity
+
+---
+ src/Hydro_Analysis.c | 12 +++++++-----
+ 1 file changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/src/Hydro_Analysis.c b/src/Hydro_Analysis.c
+index d5a666a..8ab7532 100644
+--- a/src/Hydro_Analysis.c
++++ b/src/Hydro_Analysis.c
+@@ -224,11 +224,13 @@ void Hydro_Analysis_LocationSearch_Combine(CCTK_ARGUMENTS)
+     }
+ 
+   } else {
+-    CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "Could not find grid point with maximum density %g on grid. Using old location  (%g,%g,%g).",
+-               *Hydro_Analysis_rho_max,
+-               Hydro_Analysis_rho_max_loc[0], Hydro_Analysis_rho_max_loc[1],
+-               Hydro_Analysis_rho_max_loc[2]);
++    if (verbosity_level >= 1) {
++      CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++                 "Could not find grid point with maximum density %g on grid. Using old location  (%g,%g,%g).",
++                 *Hydro_Analysis_rho_max,
++                 Hydro_Analysis_rho_max_loc[0], Hydro_Analysis_rho_max_loc[1],
++                 Hydro_Analysis_rho_max_loc[2]);
++    }
+     set_maximum_location = 0;
+   }
+ 
+-- 
+1.8.4.rc3
+

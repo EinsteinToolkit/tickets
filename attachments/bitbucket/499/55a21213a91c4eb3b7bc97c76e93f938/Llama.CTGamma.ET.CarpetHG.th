@@ -1,0 +1,283 @@
+!CRL_VERSION = 1.0
+
+!DEFINE ROOT = ./
+!DEFINE ARR  = $ROOT/arrangements
+
+# This thorn list
+!TARGET   = $ROOT
+!TYPE     = svn
+!AUTH_URL = https://svn.einsteintoolkit.org/$1/trunk
+!URL      = http://svn.einsteintoolkit.org/$1/trunk
+!CHECKOUT = manifest
+
+# Cactus Flesh (git-svn)
+!TARGET   = $ROOT
+!TYPE     = svn
+!AUTH_URL = https://svn.cactuscode.org/flesh/trunk
+!URL      = http://svn.cactuscode.org/flesh/trunk
+!CHECKOUT = Cactus
+!NAME     = flesh
+
+# Simulation Factory (perl)
+!TARGET   = $ROOT
+!TYPE     = svn
+!URL      = https://svn.cct.lsu.edu/repos/numrel/$1/trunk
+!CHECKOUT = simfactory
+!NAME     = perlsim
+
+# Simulation Factory (python)
+!TARGET   = $ROOT
+!TYPE     = svn
+!URL      = https://svn.cct.lsu.edu/repos/numrel/$1/branches/PYSIM_2010
+!CHECKOUT = simfactory
+!NAME     = pysim
+
+# Example parameter files
+!TARGET   = $ROOT
+!TYPE     = svn
+!AUTH_URL = https://svn.einsteintoolkit.org/cactus/EinsteinExamples/trunk/$1
+!URL      = http://svn.einsteintoolkit.org/cactus/EinsteinExamples/trunk/$1
+!CHECKOUT = par
+
+# Cactus utilities, including the GetComponents script
+!TARGET   = $ROOT
+!TYPE     = svn
+!AUTH_URL = https://svn.cactuscode.org/Utilities/trunk
+!URL      = http://svn.cactuscode.org/Utilities/trunk
+!CHECKOUT = .
+!NAME     = utils
+
+
+
+# Cactus thorns
+!TARGET   = $ARR
+!TYPE     = svn
+!AUTH_URL = https://svn.cactuscode.org/arrangements/$1/$2/trunk
+!URL      = http://svn.cactuscode.org/arrangements/$1/$2/trunk
+!CHECKOUT =
+CactusBase/Boundary
+CactusBase/CartGrid3D
+CactusBase/CoordBase
+CactusBase/Fortran
+CactusBase/IOBasic
+CactusBase/IOUtil
+CactusBase/InitBase
+CactusBase/SymBase
+CactusBase/Time
+
+CactusNumerical/LocalInterp
+CactusNumerical/MoL
+CactusNumerical/Periodic
+CactusNumerical/ReflectionSymmetry
+CactusNumerical/RotatingSymmetry180
+CactusNumerical/RotatingSymmetry90
+CactusNumerical/Slab
+CactusNumerical/SpaceMask
+CactusNumerical/SphericalSurface
+
+#CactusTest/TestAllTypes
+CactusTest/TestArrays
+CactusTest/TestComplex
+CactusTest/TestCoordinates
+CactusTest/TestFortranDependencies1
+CactusTest/TestFortranDependencies2
+CactusTest/TestFpointerNULL
+CactusTest/TestFreeF90
+CactusTest/TestGlobalReduce
+CactusTest/TestInclude1
+CactusTest/TestInclude2
+CactusTest/TestLocalReduce
+CactusTest/TestLoop
+CactusTest/TestReduce
+CactusTest/TestSchedule
+CactusTest/TestStrings
+CactusTest/TestTable
+CactusTest/TestTimers
+CactusTest/TestTypes
+
+CactusUtils/Formaline
+CactusUtils/NaNChecker
+CactusUtils/NoMPI
+CactusUtils/TerminationTrigger
+CactusUtils/TimerReport
+
+
+# The Einstein Toolkit
+!TARGET   = $ARR
+!TYPE     = svn
+!AUTH_URL = https://svn.einsteintoolkit.org/cactus/$1/$2/trunk
+!URL      = http://svn.einsteintoolkit.org/cactus/$1/$2/trunk
+!CHECKOUT =
+EinsteinAnalysis/ADMConstraints
+EinsteinAnalysis/AHFinderDirect
+EinsteinAnalysis/Multipole
+EinsteinAnalysis/WeylScal4
+
+EinsteinBase/ADMBase
+EinsteinBase/ADMCoupling
+EinsteinBase/ADMMacros
+EinsteinBase/CoordGauge
+EinsteinBase/StaticConformal
+EinsteinBase/TmunuBase
+
+EinsteinEvolve/NewRad
+
+EinsteinInitialData/Exact
+EinsteinInitialData/IDLinearWaves
+EinsteinInitialData/TwoPunctures
+
+EinsteinUtils/TGRtensor
+
+# Additional Cactus thorns
+!TARGET   = $ARR
+!TYPE     = svn
+!AUTH_URL = https://svn.cactuscode.org/projects/$1/$2/trunk
+!URL      = http://svn.cactuscode.org/projects/$1/$2/trunk
+!CHECKOUT =
+ExternalLibraries/BLAS
+ExternalLibraries/GSL
+ExternalLibraries/HDF5
+ExternalLibraries/LAPACK
+ExternalLibraries/zlib
+
+# Various thorns from the AEI
+!TARGET   = $ARR
+!TYPE     = svn
+!AUTH_URL = https://svn.aei.mpg.de/numrel/$1/$2/trunk
+!URL      = http://svn.aei.mpg.de/numrel/$1/$2/trunk
+!CHECKOUT =
+AEIThorns/AEILocalInterp
+AEIThorns/ManualTermination
+AEIThorns/PunctureTracker
+AEIThorns/SystemStatistics
+AEIThorns/TensorTypes
+
+AEIDevelopment/IsolatedHorizon
+AEIDevelopment/WaveExtract
+
+
+# Various thorns from LSU
+!TARGET   = $ARR
+!TYPE     = svn
+!URL      = https://svn.cct.lsu.edu/repos/numrel/$1/$2/trunk
+!CHECKOUT =
+LSUThorns/QuasiLocalMeasures
+LSUThorns/SummationByParts
+LSUThorns/Vectors
+
+
+
+# From Kranc (required e.g. by McLachlan)
+!TARGET   = $ARR
+!TYPE     = git
+!AUTH_URL = git@github.com:ianhinder/Kranc.git
+!URL      = git://github.com/ianhinder/Kranc.git
+!REPO_PATH= Auxiliary/Cactus
+!CHECKOUT =
+KrancNumericalTools/GenericFD
+
+
+
+# McLachlan, the spacetime code
+!TARGET   = $ARR
+!TYPE     = git
+!AUTH_URL = carpetgit@carpetcode.dyndns.org:McLachlan
+!URL      = git://carpetcode.dyndns.org/McLachlan
+!REPO_PATH= $2
+!CHECKOUT = McLachlan/doc McLachlan/m McLachlan/par
+McLachlan/ML_BSSN
+McLachlan/ML_BSSN_Helper
+McLachlan/ML_BSSN_O2
+McLachlan/ML_BSSN_O2_Helper
+McLachlan/ML_BSSN_O8
+McLachlan/ML_BSSN_O8_Helper
+McLachlan/ML_BSSN_MP_O8
+McLachlan/ML_BSSN_MP_O8_Helper
+McLachlan/ML_BSSN_Test
+McLachlan/ML_ADMConstraints
+McLachlan/ML_ADMQuantities
+
+
+
+# Carpet, the AMR driver
+#!TARGET   = $ARR
+#!TYPE     = git
+#!AUTH_URL = carpetgit@carpetcode.dyndns.org:carpet
+#!URL      = git://carpetcode.dyndns.org/carpet
+#For experimental version, comment previous three lines and uncomment next two
+#Note that you will need to get access first (ask Erik Schnetter)
+!TYPE     = hg
+!URL      = ssh://carpetmercurial@carpetcode.dyndns.org/carpet
+!CHECKOUT = CarpetHG/doc
+CarpetHG/Carpet
+CarpetHG/CarpetEvolutionMask
+CarpetHG/CarpetIOASCII
+CarpetHG/CarpetIOBasic
+CarpetHG/CarpetIOHDF5
+CarpetHG/CarpetIOScalar
+CarpetHG/CarpetInterp
+CarpetHG/CarpetInterp2
+CarpetHG/CarpetLib
+CarpetHG/CarpetMask
+CarpetHG/CarpetReduce
+CarpetHG/CarpetRegrid
+CarpetHG/CarpetRegrid2
+CarpetHG/CarpetSlab
+CarpetHG/CarpetTracker
+CarpetHG/LoopControl
+
+# CTGamma BSSN evolution code
+!TARGET   = $ARR
+!TYPE     = git
+!URL      = llama-dev@llamacode.org:CTGamma
+!AUTH_URL = llama-dev@llamacode.org:CTGamma
+!REPO_PATH= $2
+!CHECKOUT = 
+CTGamma/CartesianCoordinates
+CTGamma/CTGBase
+CTGamma/CTGConstraints
+CTGamma/CTGEvolution
+CTGamma/CTGGauge
+CTGamma/CTGRadiativeBC
+CTGamma/Psiclops
+
+# Llama multi-patch code
+!TARGET   = $ARR
+!TYPE     = git
+!URL      = llama-dev@llamacode.org:Llama
+!AUTH_URL = llama-dev@llamacode.org:Llama
+!REPO_PATH= $2
+!CHECKOUT = 
+Llama/ADMDerivatives
+Llama/Coordinates
+Llama/GlobalDerivative
+Llama/Interpolate
+Llama/Interpolate2
+Llama/SphericalSlice
+Llama/WaveExtractL
+Llama/WorldTube
+
+
+!TARGET   = $ROOT/bin
+!TYPE     = git
+!URL      = git://github.com/gridaphobe/CRL.git
+!AUTH_URL = git@github.com:gridaphobe/CRL.git
+!CHECKOUT = GetComponents
+
+# Llama multi-patch code
+!TARGET   = $ARR
+!TYPE     = git
+!URL      = cactus@git.barrywardell.net:repos/EinsteinExact
+!AUTH_URL = cactus@git.barrywardell.net:repos/EinsteinExact
+!REPO_PATH= $2
+!CHECKOUT = 
+EinsteinExact/GaugeWave
+EinsteinExact/KerrSchild
+EinsteinExact/Minkowski
+EinsteinExact/ShiftedGaugeWave
+
+
+# Private thorns
+!TARGET   = $ARR
+!TYPE     = ignore
+!CHECKOUT = 

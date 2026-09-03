@@ -1,0 +1,551 @@
+Index: MPI/src/MPI_Constants.F90
+===================================================================
+--- /dev/null
++++ MPI/src/MPI_Constants.F90
+@@ -0,0 +1,149 @@
++! @@
++!  @file      MPI_Constants.F90
++!  @date      Mon Apr 25 08:35:50 CEST 2016
++!  @author    Roland Haas
++!  @desc
++!             MPI Communicators
++!  @enddesc
++! @@
++
++#include "cctk.h"
++
++!********************************************************************
++!*********************     Local Data Types   ***********************
++!********************************************************************
++
++!********************************************************************
++!********************* Local Routine Prototypes *********************
++!********************************************************************
++
++!********************************************************************
++!*********************     Local Data   *****************************
++!********************************************************************
++
++!********************************************************************
++!*********************     Global Data   ****************************
++!********************************************************************
++
++module MPI_Constants
++
++  use mpi
++
++  implicit none
++
++  ! the actual communicators. Set via ResetCommunicators(), obtain via
++  ! Get_Comm_World() and Get_Comm_Universe().
++  INTEGER, PRIVATE, SAVE :: Comm_World = MPI_COMM_WORLD
++  INTEGER, PRIVATE, SAVE :: Comm_Universe = MPI_COMM_WORLD
++
++  contains
++  ! @@
++  !  @routine    Get_Comm_World
++  !  @date       Tue Apr 26 09:35:03 CEST 2016
++  !  @author     Roland Haas
++  !  @desc
++  !              Returns the model's world communicator
++  !  @enddesc
++  !  @calls
++  ! @@
++  function Get_Comm_World()
++    implicit none
++    INTEGER :: Get_Comm_World
++    Get_Comm_World = Comm_World
++  end function Get_Comm_World
++
++  ! @@
++  !  @routine    Get_Comm_Universe
++  !  @date       Tue Apr 26 09:35:03 CEST 2016
++  !  @author     Roland Haas
++  !  @desc
++  !              Returns the simulation wide Universe communicator
++  !  @enddesc
++  !  @calls
++  ! @@
++  function Get_Comm_Universe()
++    implicit none
++    INTEGER :: Get_Comm_Universe
++    Get_Comm_Universe = Comm_Universe
++  end function Get_Comm_Universe
++
++  ! @@
++  !  @routine    ResetCommunicators
++  !  @date       Mon Apr 25 09:01:57 CEST 2016
++  !  @author     Roland Haas
++  !  @desc
++  !              Resets the MPI Communicators for use by Cactus.
++  !              Interaction between Fortran and C is rather spaghetti
++  !              like since each language has the actual data in
++  !              private/local objects. When calling the Fortran visible
++  !              Reset function from user code, we need to pass the
++  !              communicators to C to reset the C communicators and
++  !              rely on the C code to call the Fortran glue code to
++  !              reset the actual Fortran communicators (involving yet
++  !              another glue function to gain write access to module
++  !              private members). When the C visible Reset function is
++  !              called from user code we skip the initial Fortran
++  !              routine of course.
++  !  @enddesc
++  !  @calls      MPI_ResetCommunicatorsF2C
++  ! @@
++  subroutine ResetCommunicators(comm_world_, comm_universe_)
++
++    use mpi
++
++    implicit none
++
++    INTEGER, INTENT(IN) :: comm_world_, comm_universe_
++
++    call MPI_ResetCommunicatorsF2C(comm_world_, comm_universe_)
++  end subroutine ResetCommunicators
++
++  ! @@
++  !  @routine    ResetCommunicatorsF
++  !  @date       Mon Apr 25 09:01:57 CEST 2016
++  !  @author     Roland Haas
++  !  @desc
++  !              Resets the MPI Communicators for use by Cactus
++  !              This is an internal glue routine to set members of the module.
++  !  @enddesc
++  !  @calls
++  ! @@
++  subroutine ResetCommunicatorsF(comm_world_, comm_universe_)
++
++    use mpi
++
++    implicit none
++
++    INTEGER, INTENT(IN) :: comm_world_, comm_universe_
++
++    Comm_World = comm_world_
++    Comm_Universe = comm_universe_
++  end subroutine ResetCommunicatorsF
++end module MPI_Constants
++
++!********************************************************************
++!*********************     External Routines   **********************
++!********************************************************************
++
++! @@
++!  @routine    MPI_SeFortranCommunicators
++!  @date       Mon Apr 25 08:41:41 CEST 2016
++!  @author     Roland Haas
++!  @desc
++!              Internal routine that sets MPI Communicators for use by Cactus
++!  @enddesc
++!  @calls
++! @@
++subroutine MPI_SetFortranCommunicators(comm_world_, comm_universe_)
++
++  use MPI_Constants
++
++  implicit none
++
++  INTEGER :: comm_world_, comm_universe_
++
++  call ResetCommunicatorsF(comm_world_, comm_universe_)
++
++end subroutine MPI_SetFortranCommunicators
++
++
+Index: MPI/src/MPI_Constants.c
+===================================================================
+--- /dev/null
++++ MPI/src/MPI_Constants.c
+@@ -0,0 +1,126 @@
++/*@@
++   @file      MPI_Constants.c
++   @date      Mon Apr 25 08:17:10 CEST 2016
++   @author    Roland Haas
++   @desc
++              MPI Communicators
++   @enddesc
++ @@*/
++
++#include "MPI_Constants.h"
++
++#include "cctk.h"
++
++#include <mpi.h>
++
++/********************************************************************
++ *********************     Local Data Types   ***********************
++ ********************************************************************/
++
++/********************************************************************
++ ********************* Local Routine Prototypes *********************
++ ********************************************************************/
++
++/********************************************************************
++ *********************     Local Data   *****************************
++ ********************************************************************/
++
++/* these two represent the communicator among processes in this model and the
++ * truely simulation global communicator. Driver thorns may call
++ * MPI_ResetCommunicator to change these.  */
++static MPI_Comm Comm_World = MPI_COMM_WORLD;
++static MPI_Comm Comm_Universe = MPI_COMM_WORLD;
++
++/********************************************************************
++ *********************     Global Data   ****************************
++ ********************************************************************/
++
++/********************************************************************
++ *********************     External Routines   **********************
++ ********************************************************************/
++
++/* this is a thorn internal routine */
++void CCTK_FCALL
++CCTK_FNAME(MPI_SetFortranCommunicators)(MPI_Fint *comm_world,
++                                        MPI_Fint *comm_univserse);
++
++/********************************************************************
++ *********************     External Routines   **********************
++ ********************************************************************/
++
++ /*@@
++   @routine    MPI_Get_Comm_World
++   @date       Tue Apr 26 09:39:13 CEST 2016
++   @author     Roland Haas
++   @desc
++               Returns the model's world communicator
++   @enddesc
++   @calls
++@@*/
++MPI_Comm MPI_Get_Comm_World(void)
++{
++  return Comm_World;
++}
++
++ /*@@
++   @routine    MPI_Get_Comm_Universe
++   @date       Tue Apr 26 09:39:13 CEST 2016
++   @author     Roland Haas
++   @desc
++               Returns the simulation wide Universe communicator
++   @enddesc
++   @calls
++@@*/
++MPI_Comm MPI_Get_Comm_Universe(void)
++{
++  return Comm_Universe;
++}
++
++ /*@@
++   @routine    MPI_ResetCommunicators
++   @date       Mon Apr 25 08:19:05 CEST 2016
++   @author     Roland Haas
++   @desc
++               Sets up MPI Communicators for use by Cactus
++               Interaction between Fortran and C is rather spaghetti
++               like since each language has the actual data in
++               private/local objects. When calling the Fortran visible
++               Reset function from user code, we need to pass the
++               communicators to C to reset the C communicators and
++               rely on the C code to call the Fortran glue code to
++               reset the actual Fortran communicators (involving yet
++               another glue function to gain write access to module
++               private members). When the C visible Reset function is
++               called from user code we skip the initial Fortran
++               routine of course.
++   @enddesc
++   @calls
++@@*/
++void MPI_ResetCommunicators(MPI_Comm comm_world, MPI_Comm comm_universe)
++{
++  Comm_World = comm_world;
++  Comm_Universe = comm_universe;
++
++  MPI_Fint Fortran_Comm_World = MPI_comm_c2f(Comm_World);
++  MPI_Fint Fortran_Comm_Universe = MPI_comm_c2f(Comm_Universe);
++  CCTK_FNAME(MPI_SetFortranCommunicators)(&Fortran_Comm_World,
++                                          &Fortran_Comm_Universe);
++}
++
++ /*@@
++   @routine    MPI_ResetCommunicatorsF2C
++   @date       Mon Apr 25 09:07:35 CEST 2016
++   @author     Roland Haas
++   @desc
++               Internal glue routine to be called from Fortran to reset
++               communicators.
++   @enddesc
++   @calls
++@@*/
++void CCTK_FCALL CCTK_FNAME(MPI_ResetCommunicatorsF2C)(MPI_Fint *comm_world_,
++                                                      MPI_Fint *comm_universe_)
++{
++  MPI_Comm comm_world = MPI_comm_f2c(*comm_world_);
++  MPI_Comm comm_universe = MPI_comm_f2c(*comm_universe_);
++  MPI_ResetCommunicators(comm_world, comm_universe);
++}
+Index: MPI/src/include/MPI_Constants.h
+===================================================================
+--- /dev/null
++++ MPI/src/include/MPI_Constants.h
+@@ -0,0 +1,38 @@
++/*@@
++   @file      MPI_Constants.h
++   @date      Mon Apr 25 08:47:58 CEST 2016
++   @author    Roland Haas
++   @desc
++              MPI Communicators
++   @enddesc
++ @@*/
++
++/* defined if MPI provides MPI_Get_Comm_World and friends */
++#define MPI_HAVE_COMMUNICATORS
++
++#ifdef CCODE
++#include <mpi.h>
++
++/********************************************************************
++ *********************     Global Data   ****************************
++ ********************************************************************/
++
++/********************************************************************
++ *********************     External Routines   **********************
++ ********************************************************************/
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++MPI_Comm MPI_Get_Comm_World(void);
++MPI_Comm MPI_Get_Comm_Universe(void);
++
++void MPI_ResetCommunicators(MPI_Comm comm_world, MPI_Comm comm_universe);
++
++#ifdef __cplusplus
++}
++#endif
++#else /* FCODE */
++/* nop */
++#endif
+Index: MPI/src/make.code.defn
+===================================================================
+--- MPI.orig/src/make.code.defn
++++ MPI/src/make.code.defn
+@@ -1,7 +1,9 @@
+ # Main make.code.defn file for thorn MPI
+ 
+ # Source files in this directory
+-SRCS = 
++SRCS = MPI_Constants.c \
++       MPI_Constants.F90 \
++       $(NULL)
+ 
+ # Subdirectories containing source files
+ SUBDIRS = 
+Index: MPI/doc/MPI.bib
+===================================================================
+--- /dev/null
++++ MPI/doc/MPI.bib
+@@ -0,0 +1,8 @@
++% bibtex file for AHFinderDirect thorn guide
++% $Header$
++
++@Misc{MPI/OpenMPI:web,
++  key =          {OpenMPI},
++  title =        {{Open MPI}: Open Source High Performance Computing},
++  note =         {\url{https://www.open-mpi.org/}},
++}
+Index: MPI/doc/documentation.tex
+===================================================================
+--- MPI.orig/doc/documentation.tex
++++ MPI/doc/documentation.tex
+@@ -8,6 +8,10 @@
+ 
+ \begin{document}
+ 
++\author{Cactus Maintainers}
++\author{Erik Schnetter \quad {\tt <eschnetter@perimeterinstitute.ca>}}
++\author{Steve Brandt \quad {\tt <sbrandt@cct.lsu.edu>}}
++\author{Roland Haas \quad {\tt <rhaas@aei.mpg.de>}}
+ \title{ExternalLibraries/MPI}
+ 
+ \maketitle
+@@ -15,6 +19,179 @@
+ % Do not delete next line
+ % START CACTUS THORNGUIDE
+ 
++\def\arrangement#1{{\bf #1}}		% name of an arrangement
++\def\thorn#1{{\bf #1}}			% name of a thorn
++\def\program#1{{\bf #1}}		% name of computer program
++\newcommand{ \var }[1]{\textsl{\texttt{#1}}}
++\newcommand{ \function }[1]{\texttt{#1}}
++
++\begin{abstract}
++Provides access to the message passing interface MPI, either through a copy
++installed in the system or by compiling a built in copy of
++OpenMPI~\cite{MPI/OpenMPI:web}.
++\end{abstract}
++
++
++\section{Introduction}
++Provides access to the message passing interface MPI, either through a copy
++installed in the system or by compiling a built in copy of
++OpenMPI~\cite{MPI/OpenMPI:web}.
++
++\section{Obtaining and Compiling \thorn{MPI}}
++
++You should be able to obtain the source code for this thorn via the
++usual procedures for anonymous svn checkout; at present it lives in
++the \arrangement{ExternalLibraries} arrangement.
++
++This thorn supports the following configuration options:
++\begin{Lentry}
++\item [\texttt{\var{MPI\_DIR}}] where to search for THORN.
++\item [\texttt{\var{MPI\_LIBS}}] libraries.
++\item [\texttt{\var{MPI\_LIB\_DIRS}}] library directories.
++\item [\texttt{\var{MPI\_INC\_DIRS}}] include file directories.
++\item [\texttt{\var{MPI\_INSTALL\_DIR}}] where to install \texttt{THORN} if the
++      built in copy is used.
++\end{Lentry}
++For details on their meaning please see Section ``Compiling with Extra
++Packages'' of the Cactus  user guide.
++
++\section{Interaction with other thorns}
++Starting from version 2016-05-06 this thorn provides a two functions
++\function{MPI\_Get\_Comm\_World}, \function{MPI\_Get\_Comm\_Universe} (C,
++declared in \verb|MPI_Constants.h|) and \function{Get\_Comm\_World},
++\function{Get\_Comm\_Universe} (Fortran 90, in the \verb|MPI_Constants|
++module). No support is provided for Fortran 77, since Cactus using the Fortran
++90 compiler to compile F77 files.
++
++The thorn provides two compile time preprocessor defines that can be tested in
++C and Fortran code to test for which features are provided.
++\begin{Lentry}
++\item [\var{MPI\_HAVE\_CONSTANTS\_H}] is defined if a file
++\texttt{MPI\_Constants.h} is provided at all.
++\item [\var{MPI\_HAVE\_COMMUNICATORS}] is defined if \texttt{MPI\_Constants.h}
++provides functions to get and set world and universe communicators.
++\end{Lentry}
++
++\subsection{Obtaining the communicators}
++This functionality is provided in an include file \verb|MPI_Constants.h| or
++module \verb|MPI_Constants| to which you gain access by adding
++\verb|REQUIRES MPI| to your thorns's \verb|configuration.ccl| file.
++
++\paragraph{Function prototypes}
++\begin{Lentry}
++\item [C]
++\begin{verbatim}
++MPI_Comm MPI_Get_Comm_World(void);
++MPI_Comm MPI_Get_Comm_Universe(void);
++\end{verbatim}
++
++\item [Fortran 90]
++\begin{verbatim}
++module MPI_Constants
++contains
++function Get_Comm_World()
++  implicit none
++  INTEGER :: Get_Comm_World
++end function Get_Comm_World
++
++function Get_Comm_Universe()
++  implicit none
++  INTEGER :: Get_Comm_World
++end function Get_Comm_Universe
++end module
++\end{verbatim}
++\end{Lentry}
++
++\function{Get\_Comm\_World} returns the world communicator for the model of a
++multi-model simulation that this MPI rank is part of, while
++\function{Get\_Comm\_Universe} returns a truely simulation global
++communicator. If no multi-model simulation is used, both communicators are
++identical and equal to \verb|MPI_COMM_WORLD|.
++
++\subsubsection{Examples}
++\paragraph{C example}
++\begin{verbatim}
++#ifdef MPI_HAVE_CONSTANTS_H_
++#include "MPI_Constants.h"
++#endif
++
++void my_test(CCTK_ARGUMENTS) {
++  /* transparently support old versions of MPI */
++  MPI_Comm world =
++#ifdef MPI_HAVE_COMMUNICATORS
++    MPI_Get_Comm_World();
++#else
++    MPI_COMM_WORLD;
++#endif
++  /* fail on old versions */
++  MPI_Comm universe = MPI_Get_Comm_Universe();
++
++  MPI_Barrier(world);
++  MPI_Barrier(universe);
++}
++\end{verbatim}
++
++\paragraph{Fortran example}
++\begin{verbatim}
++#ifdef MPI_HAVE_CONSTANTS_H_
++#include "MPI_Constants.h"
++#endif
++
++subroutine my_test(CCTK_ARGUMENTS)
++  use MPI_Constants
++  implicit none
++
++  INTEGER :: world, universe
++
++  ! transparently support old versions of MPI
++#ifdef MPI_HAVE_COMMUNICATORS
++  world = Get_Comm_World()
++#else
++  world = MPI_COMM_WORLD
++#endif
++  ! fail on old versions
++  universe = Get_Comm_Universe()
++
++  call MPI_Barrier()
++  call MPI_Barrier()
++end subroutine
++\end{verbatim}
++
++\subsection{Changing the communicators}
++\thorn{MPI} provides a function \function{MPI\_ResetCommunicators} (C,
++declared in \verb|MPI_Constants.h|) and \function{ResetCommunicators} (Fortran
++90, in the \verb|MPI_Constants| module) that let a (driver) thorn reset the
++communicators that \thorn{MPI} provides. The functions simply store the passed
++in communicator handles, and do not make copies via \verb|MPI_Comm_dup|.
++Resetting communicators should happen as early as possible to avoid user
++thorns picking up incorrect communicators.
++
++\paragraph{Function prototypes}
++\begin{Lentry}
++\item [C]
++\begin{verbatim}
++void MPI_ResetCommunicators(MPI_Comm world, MPI_Comm universe);
++\end{verbatim}
++
++\item [Fortran 90]
++\begin{verbatim}
++module MPI_Constants
++contains
++subroutine ResetCommunicators(world, universe)
++  implicit none
++  INTEGER :: world
++  INTEGER :: universe
++end subroutine ResetCommunicators
++end module
++\end{verbatim}
++\end{Lentry}
++
++%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
++
++% make LaTeX read in documentation.bbl produced by bibtex
++\bibliographystyle{plain}
++\bibliography{MPI}
++
+ % Do not delete next line
+ % END CACTUS THORNGUIDE
+ 

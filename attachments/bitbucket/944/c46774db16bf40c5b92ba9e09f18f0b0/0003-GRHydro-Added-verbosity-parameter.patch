@@ -1,0 +1,42 @@
+From a53aab4ddc55c179753784233a70de8e7df04f3b Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Sun, 3 Jun 2012 17:07:17 -0700
+Subject: [PATCH 03/13] GRHydro: Added verbosity parameter.
+
+Patch by Christian Reisswig.
+---
+ param.ccl                  |    7 +++++++
+ src/GRHydro_UpdateMask.F90 |    2 ++
+ 2 files changed, 9 insertions(+)
+
+diff --git a/param.ccl b/param.ccl
+index 51ee2c3..5424df4 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -607,3 +607,10 @@ BOOLEAN sync_conserved_only "Only sync evolved conserved quantities during evolu
+ {
+ } no
+ 
++
++
++
++BOOLEAN verbose "Some debug output"
++{
++} no
++
+diff --git a/src/GRHydro_UpdateMask.F90 b/src/GRHydro_UpdateMask.F90
+index fbb4cda..1808df3 100644
+--- a/src/GRHydro_UpdateMask.F90
++++ b/src/GRHydro_UpdateMask.F90
+@@ -221,6 +221,8 @@ subroutine GRHydro_AtmosphereReset(CCTK_ARGUMENTS)
+     vup => vel
+   end if
+ 
++  if (verbose.eq.1) call CCTK_INFO("Entering AtmosphereReset.")
++
+ !$OMP PARALLEL DO PRIVATE(det,keytemp,i,j,k,anyerr,keyerr)
+   do k = 1, cctk_lsh(3)
+     do j = 1, cctk_lsh(2)
+-- 
+1.7.10
+

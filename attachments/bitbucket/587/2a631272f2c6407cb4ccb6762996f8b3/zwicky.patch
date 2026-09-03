@@ -1,0 +1,105 @@
+Index: mdb/machines/zwicky.ini
+===================================================================
+--- mdb/machines/zwicky.ini	(revision 1466)
++++ mdb/machines/zwicky.ini	(working copy)
+@@ -29,10 +29,10 @@
+ optionlist      = zwicky-openmpi.cfg
+ submitscript    = zwicky-openmpi.sub
+ runscript       = zwicky-openmpi.run
+-make            = make -j8
++make            = nice ionice -cidle make -j8
+ 
+ # Simulation management
+-basedir         = /work/@USER@/philip/simulations
++basedir         = /panfs/ds06/sxs/@USER@/simulations
+ cpu             = 2 Intel x5650 2.66 Ghz Hex Core
+ cpufreq         = 2.66
+ flop/cycle      = 2
+@@ -40,7 +40,7 @@
+ spn             = 1
+ mpn             = 1
+ max-num-threads = 12
+-num-threads     = 12
++num-threads     = 6
+ memory          = 49152
+ #I1size          = 32768
+ #I1linesize      = 64
+@@ -56,8 +56,8 @@
+ #L3assoc         = 16
+ nodes           = 128
+ min-ppn         = 12
+-allocation      = NoAllocation
+-queue           = longJobs
++allocation      = sxs
++queue           = @(@WALLTIME_HOURS@ > 12.0 ? "longJobsQ" : "shortJobsQ")@
+ maxwalltime     = 24:00:00
+ submit          = qsub @SCRIPTFILE@
+ getstatus       = qstat @JOB_ID@
+@@ -67,9 +67,9 @@
+ queuedpattern   = " Q "
+ runningpattern  = " R "
+ holdingpattern  = " H "
+-scratchdir      = /var/scratch/${USER}/${PBS_JOBID}
++scratchdir      = /scratch
+ exechost        = qstat -f @JOB_ID@
+ exechostpattern = exec_host = (\w+)/
+-stdout          = ssh @EXECHOST@ cat /var/spool/torque/spool/@JOB_ID@.philip1.OU
+-stderr          = ssh @EXECHOST@ cat /var/spool/torque/spool/@JOB_ID@.philip1.ER
+-stdout-follow   = ssh @EXECHOST@ tail -n 100 -f /var/spool/torque/spool/@JOB_ID@.philip1.OU /var/spool/torque/spool/@JOB_ID@.philip1.ER
++stdout          = ssh @EXECHOST@ cat /var/spool/torque/spool/@JOB_ID@.meastro.OU
++stderr          = ssh @EXECHOST@ cat /var/spool/torque/spool/@JOB_ID@.maestro.ER
++stdout-follow   = ssh @EXECHOST@ tail -n 100 -f /var/spool/torque/spool/@JOB_ID@.maestro.OU /var/spool/torque/spool/@JOB_ID@.maestro.ER
+Index: mdb/submitscripts/zwicky-openmpi.sub
+===================================================================
+--- mdb/submitscripts/zwicky-openmpi.sub	(revision 0)
++++ mdb/submitscripts/zwicky-openmpi.sub	(revision 0)
+@@ -0,0 +1,14 @@
++#! /bin/bash
++#PBS -A @ALLOCATION@
++#PBS -q @QUEUE@
++#PBS -r n
++#PBS -l walltime=@WALLTIME@
++#PBS -l nodes=@NODES@:ppn=@PPN@
++#PBS @('@CHAINED_JOB_ID@' ne '' ? '-W depend=afterany:@CHAINED_JOB_ID@' : '')@
++#PBS -V
++#PBS -N @SHORT_SIMULATION_NAME@
++#PBS -m abe
++#PBS -o @RUNDIR@/@SIMULATION_NAME@.out
++#PBS -e @RUNDIR@/@SIMULATION_NAME@.err
++cd @SOURCEDIR@
++@SIMFACTORY@ run @SIMULATION_NAME@ --machine=zwicky --restart-id=@RESTART_ID@ @FROM_RESTART_COMMAND@
+Index: mdb/runscripts/zwicky-openmpi.run
+===================================================================
+--- mdb/runscripts/zwicky-openmpi.run	(revision 0)
++++ mdb/runscripts/zwicky-openmpi.run	(revision 0)
+@@ -0,0 +1,30 @@
++#! /bin/bash
++
++echo "Preparing:"
++set -x                          # Output commands
++set -e                          # Abort on errors
++
++cd @RUNDIR@-active
++
++module list
++
++echo "Checking:"
++pwd
++hostname
++date
++cat "$PBS_NODEFILE" > SIMFACTORY/NODES || true
++
++echo "Environment:"
++export GMON_OUT_PREFIX=gmon.out
++export OMP_NUM_THREADS=@NUM_THREADS@
++export OPENMPI_DIR=/home/cott/opt/openmpi-1.4.2-intel11.1
++env | sort > SIMFACTORY/ENVIRONMENT
++
++echo "Starting:"
++export CACTUS_STARTTIME=$(date +%s)
++time $OPENMPI_DIR/bin/mpirun -np @NUM_PROCS@ -npernode @(@PPN_USED@/@NUM_THREADS@)@ @EXECUTABLE@ -L 3 @PARFILE@
++
++echo "Stopping:"
++date
++
++echo "Done."

@@ -1,0 +1,73 @@
+Index: src/main/Parameters.c
+===================================================================
+--- src/main/Parameters.c	(revision 5029)
++++ src/main/Parameters.c	(working copy)
+@@ -603,12 +603,13 @@
+       {
+         if (strcmp (old_value, value))
+         {
+-          CCTK_VWarn (2, __LINE__, __FILE__, "Cactus",
+-                      "CCTK_ParameterSet: Non-steerable parameter '%s::%s' is "
+-                      "not set from the parameter file but recovered from the "
+-                      "checkpoint file",
++          CCTK_VWarn (1, __LINE__, __FILE__, "Cactus",
++                      "CCTK_ParameterSet: Non-steerable parameter '%s::%s' "
++                      "cannot be set from the parameter file but is recovered "
++                      "from the checkpoint file",
+                       thorn, name);
+-          retval = ParameterSet (param, value);
++          ParameterSet (param, value);
++          retval = -10;
+         }
+         else
+         {
+@@ -2229,7 +2230,8 @@
+       }
+       else if(fabs(round(val.value.rval) - val.value.rval) < 1e-12) /* enforce integer result */
+       {
+-        inval = (int)rint(round(val.value.rval));
++        double rinval = rint(round(val.value.rval));
++        inval = (int)rinval;
+       }
+       else
+       {
+@@ -2388,7 +2390,7 @@
+ 
+ static int ParameterSetBoolean (t_param *param, const char *value)
+ {
+-  const int type = PARAMETER_BOOLEAN;
++  int type = PARAMETER_BOOLEAN;
+   int retval, inval;
+   uExpressionValue val;
+   uExpression *expr;
+@@ -2419,7 +2421,8 @@
+       }
+       else if(fabs(round(val.value.rval) - val.value.rval) < 1e-12) /* enforce integer result */
+       {
+-        inval = (int)round(val.value.rval);
++        double rinval = round(val.value.rval);
++        inval = (int)rinval;
+         retval = 0;
+       }
+       else
+@@ -2684,17 +2687,17 @@
+           {
+             case PARAMETER_REAL:
+               vals[i].type = rval;
+-              vals[i].value.rval = *(CCTK_REAL *)paramval;
++              vals[i].value.rval = *(const CCTK_REAL *)paramval;
+               ierr = 0;
+               break;
+             case PARAMETER_INT:
+               vals[i].type = ival;
+-              vals[i].value.ival = *(CCTK_INT *)paramval;
++              vals[i].value.ival = *(const CCTK_INT *)paramval;
+               ierr = 0;
+               break;
+             case PARAMETER_BOOLEAN:
+               vals[i].type = ival;
+-              vals[i].value.ival = *(CCTK_INT *)paramval;
++              vals[i].value.ival = *(const CCTK_INT *)paramval;
+               ierr = 0;
+               break;
+             default:

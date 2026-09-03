@@ -1,0 +1,26 @@
+From 5284e05478e522c67a00114f74f71948c1ace251 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Thu, 10 Jan 2013 13:46:10 -0800
+Subject: [PATCH 01/11] GRHydro: disable in-AH polytrope call by default for
+ Avec
+
+---
+ src/GRHydro_Con2PrimAM.F90 |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/GRHydro_Con2PrimAM.F90 b/src/GRHydro_Con2PrimAM.F90
+index 788e3b8..5bdf02a 100644
+--- a/src/GRHydro_Con2PrimAM.F90
++++ b/src/GRHydro_Con2PrimAM.F90
+@@ -373,7 +373,7 @@ subroutine Conservative2PrimitiveAM(CCTK_ARGUMENTS)
+                 local_pgam=log(xpress(1)/local_K)/log(xrho(1))
+                 sc = local_K*dens(i,j,k)
+ 
+-                if(sdet.ge.sqrtdet_thr) then
++                if(sqrtdet_thr.gt.0d0 .and. sdet.ge.sqrtdet_thr) then
+                   GRHydro_C2P_failed(i,j,k) = 0
+ 
+                   rho_tmp = rho(i,j,k)
+-- 
+1.7.10.4
+

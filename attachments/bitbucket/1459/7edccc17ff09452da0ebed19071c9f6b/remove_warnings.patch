@@ -1,0 +1,19 @@
+Index: configure.sh
+===================================================================
+--- configure.sh	(revision 9)
++++ configure.sh	(working copy)
+@@ -133,7 +133,14 @@
+         
+         echo "PAPI: Configuring..."
+         cd ${NAME}/src
++        # -Wshadow prevents libpfm4 from compiling
++        # -Wcast-qual prevents libpfm4 from compiling
++        # -Wstrict-prototypes prevents libpfm4 from compiling
++        # -Wmissing-declarations prevents libpfm4 from compiling
++        # -Wbad-function-cast prevents libpfm4 from compiling
++        CFLAGS="$(echo "$CFLAGS" | sed 's/-Wshadow//;s/-Wcast-qual//;s/-Wstrict-prototypes//;s/-Wmissing-declarations//;s/-Wbad-function-cast//')"
+         ./configure --prefix=${PAPI_DIR} --with-shared-lib=no
++
+         
+         echo "PAPI: Building..."
+         ${MAKE}

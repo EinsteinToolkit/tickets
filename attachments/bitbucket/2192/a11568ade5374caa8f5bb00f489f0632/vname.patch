@@ -1,0 +1,58 @@
+diff --git a/lib/sbin/ScheduleParser.pl b/lib/sbin/ScheduleParser.pl
+index fb521f9..2541a42 100644
+--- a/lib/sbin/ScheduleParser.pl
++++ b/lib/sbin/ScheduleParser.pl
+@@ -120,7 +120,7 @@ sub vname
+ {
+   my $vname = shift;
+   my $out = "";
+-  confess("not a vname ".$vname->dump()) unless($vname->is("vname"));
++  confess("not a uname/vname ".$vname->dump()) unless($vname->is("vname") or $vname->is("uname"));
+   for my $v (@{$vname->{children}}) {
+     if($v->is("name")) {
+       $out .= "::" unless($out eq "");
+@@ -266,7 +266,7 @@ sub parse_schedule_statement
+               }
+             } elsif($child->is("sync")) {
+               for my $vname (@{$child->{children}}) {
+-                if($vname->is("vname")) {
++                if($vname->is("vname") or $vname->is("uname")) {
+                   $sync_groups .= "," if(defined($sync_groups));
+                   $sync_groups .= vname($vname);
+                 }
+@@ -289,7 +289,7 @@ sub parse_schedule_statement
+           $type = "STOR";
+           my $groups = "";
+           for my $vname (@{$schedule->{children}}) {
+-            if($vname->is("vname")) {
++            if($vname->is("vname") or $vname->is("uname")) {
+               $groups .= " " unless($groups eq "");
+               $groups .= vname($vname);
+             }
+diff --git a/src/piraha/pegs/schedule.peg b/src/piraha/pegs/schedule.peg
+index e24175c..2dee9d2 100644
+--- a/src/piraha/pegs/schedule.peg
++++ b/src/piraha/pegs/schedule.peg
+@@ -4,8 +4,8 @@ skipper = \b([\ \t\n\r\b]|{-ccomment}|\#[^\n]*|\\[\r\n])*
+ any = [^]
+ name = (?i:[a-zA-Z_][a-zA-Z0-9_\-]*\b)
+ expr = {name}|{num}
+-# TODO: Should this be a * or a ?
+-vname = {name}( :: {name})*( \[ {expr} \]|)
++vname = {name}( :: {name})?( \[ {expr} \]|)
++uname = {name}( :: {name})?
+ quote = "(\\{any}|[^"])*"
+ ccomment = /\*((?!\*/){-any})*\*/
+ num = [+\-]?[0-9]+(\.[0-9]+)?
+@@ -40,9 +40,9 @@ group = (?i:group)
+ nogroup =
+ prepositions = ({preposition} )*
+ preposition = {par} {pararg}
+-sync = (?i:sync) : {vname}( , {vname}|[ \t]{vname})*
++sync = (?i:sync) : {uname}( , {uname}|[ \t]{uname})*
+ options = (?i:options?) : {vname}( , {vname}|[ \t]{vname})*
+-storage = (?i:storage) : {vname}( , {vname}|[ \t]{vname})*
++storage = (?i:storage) : {uname}( , {uname}|[ \t]{uname})*
+ triggers = (?i:triggers?) : {vname}( , {vname}|[ \t]{vname})*
+ reads = (?i:reads) : {qname}( , {qname}|[ \t]{qname})*
+ writes = (?i:writes) : {qname}( , {qname}|[ \t]{qname})*

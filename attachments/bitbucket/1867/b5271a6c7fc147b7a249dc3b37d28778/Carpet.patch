@@ -1,0 +1,17 @@
+diff --git a/Carpet/src/Recompose.cc b/Carpet/src/Recompose.cc
+index 6ef2f77..753bc63 100644
+--- a/Carpet/src/Recompose.cc
++++ b/Carpet/src/Recompose.cc
+@@ -367,9 +367,9 @@ namespace Carpet {
+     // }
+     
+     ++ regridding_epoch;
+-    // Mark all vanished levels as changed
+-    for (int rl=reflevels; rl<int(level_regridding_epochs.size()); ++rl) {
+-      ++ level_regridding_epochs.at(rl);
++    // Remove levels that vanished
++    if (int(level_regridding_epochs.size()) > reflevels) {
++      level_regridding_epochs.resize(reflevels);
+     }
+     // Insert entries for new levels
+     if (int(level_regridding_epochs.size()) < reflevels) {

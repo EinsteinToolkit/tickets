@@ -1,0 +1,122 @@
+Index: CommandLine.c
+===================================================================
+--- CommandLine.c	(revision 4953)
++++ CommandLine.c	(working copy)
+@@ -43,6 +43,7 @@
+  ********************* Local Routine Prototypes *********************
+  ********************************************************************/
+ static void CommandLinePrintParameter (const cParamData *properties);
++static void CommandLinePrintParameterXML (const cParamData *properties);
+ 
+ 
+ /********************************************************************
+@@ -125,6 +126,7 @@
+                CCTK_CompiledThorn
+                CCTK_ParameterWalk
+                CommandLinePrintParameter
++               CommandLinePrintParameterXML
+ 
+    @var        argument
+    @vdesc      option argument
+@@ -143,13 +145,19 @@
+   if (CCTK_MyProc (NULL) == 0)
+   {
+     n_thorns = CCTK_NumCompiledThorns ();
+-
++    printf ("<thorns>");
+     for (thorn = 0; thorn < n_thorns; thorn++)
+     {
+       thornname = CCTK_CompiledThorn (thorn);
++      if(*argument == 'x')
++	{
++	printf("<thorn><name>%s</name><implementation>%s<implementation>", thornname, CCTK_ThornImplementation (thornname));
++	}
++      else
++	{
+       printf ("\nParameters of thorn '%s' providing implementation '%s':\n",
+               thornname, CCTK_ThornImplementation (thornname));
+-
++	}
+       first = 1;
+       while (CCTK_ParameterWalk (first, thornname, &param, &properties) == 0)
+       {
+@@ -160,6 +168,10 @@
+             case 'v':
+               CommandLinePrintParameter (properties);
+               break;
++            case 'x':
++              CommandLinePrintParameterXML (properties);
++              break;
++
+             default :
+               fprintf (stderr, "Unknown verbosity option %s\n", argument);
+               CCTK_Exit (NULL, 2);
+@@ -173,7 +185,16 @@
+         free (param);
+         first = 0;
+       }
++
++      if(*argument == 'x')
++        {
++        printf("</thorn>");
++        }
+     }
++      if(*argument == 'x')
++        {
++        printf("</thorns>\n");
++        }
+   }
+ 
+   CCTK_Exit (NULL, 0);
+@@ -822,3 +843,51 @@
+     }
+   }
+ }
++
++ /*@@
++ *    @routine    CommandLinePrintParameterXML
++ *    @date       Thu Feb 14 15:56:01 CST 2013
++ *    @author     Jian Tao
++ *    @desc
++ *                Prints info for a parameter in XML
++ *    @enddesc
++ *    @calls      CCTK_ThornImplementation
++ *
++ *    @var        properties
++ *    @vdesc      Parameter properties
++ *    @vtype      const cParamData *
++ *    @vio        in
++ *    @endvar
++ *    @@*/
++
++static void CommandLinePrintParameterXML (const cParamData *properties)
++{
++  t_range *range;
++
++
++  if (properties)
++  {
++    printf ("<parameter>");
++    printf ("<name>%s::%s</name>", properties->thorn, properties->name);
++    if (properties->scope != SCOPE_PRIVATE)
++    {
++      printf ("<alias>%s::%s</alias>", CCTK_ThornImplementation (properties->thorn),
++                          properties->name);
++    }
++    printf ("<description>%s</description>", properties->description);
++    printf ("<type>%s</type>", cctk_parameter_type_names[properties->type-PARAMETER_FIRST]);
++    printf ("<default>%s</default>", properties->defval);
++    printf ("<scope>%s</scope>", cctk_parameter_scopes[properties->scope-SCOPE_FIRST]);
++    printf ("<ranges>");
++
++    for (range = properties->range; range; range = range->next)
++    {
++      printf ("<range>%s</range>", range->range);
++      printf ("<origin>%s</origin>", range->origin);
++      printf ("<description>%s</description>", range->description);
++    }
++    printf ("</ranges>");
++    printf ("</parameter>");
++  }
++}
++

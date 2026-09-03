@@ -1,0 +1,43 @@
+From 13ae25c75e40e80792c73dc05721d5a101b1f806 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Thu, 21 Mar 2013 19:34:53 -0700
+Subject: [PATCH 10/12] GRHydro_Init_Data: remove sincos from Bondi ID routine
+
+---
+ src/GRHydro_BondiM.c |   16 +++++-----------
+ 1 file changed, 5 insertions(+), 11 deletions(-)
+
+diff --git a/src/GRHydro_BondiM.c b/src/GRHydro_BondiM.c
+index 2ff8bc5..74a4364 100644
+--- a/src/GRHydro_BondiM.c
++++ b/src/GRHydro_BondiM.c
+@@ -67,12 +67,11 @@
+ #define DLOOP1     for(i=0  ;i<NDIM ;i++)
+ #define DLOOP2     for(i=0  ;i<NDIM ;i++) for(j=0  ;j<NDIM ;j++)
+ 
+-
+-#if !defined(__INTEL_COMPILER)
+-# define LOCAL_SINCOS
+-# define sincos( theta_ , sth_ , cth_ )  {  *(sth_) = sin((theta_)) ;  *(cth_) = cos((theta_)) ;  }
+-#endif
+-
++static inline void sincos(double theta, CCTK_REAL *sth, CCTK_REAL *cth)
++{
++  *sth = sin(theta);
++  *cth = cos(theta);
++}
+ 
+ //Newton-Raphson parameters:
+ #define NEWT_DIM_B        (1      )
+@@ -1349,8 +1348,3 @@ static void GRHydro_BondiM_Internal(CCTK_ARGUMENTS,
+ #undef COORD_ISOTROPIC     
+ #undef DLOOP1
+ #undef DLOOP2
+-
+-#ifdef LOCAL_SINCOS
+-# undef sincos
+-# undef LOCAL_SINCOS
+-#endif
+-- 
+1.7.10.4
+

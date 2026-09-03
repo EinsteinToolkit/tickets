@@ -1,0 +1,785 @@
+# HG changeset patch
+# User Ian Hinder <ian.hinder@aei.mpg.de>
+# Date 2011-06-01 17:51:28 +0200
+# Node ID d51284e695921234821a09eb052d40f46ac7eb36
+# Parent  5924512df9b3255f4b883caa66f67c2e94c8022f
+Adapt Carpet to hierarchical timers
+
+Specifically, remove any hierarchy information that has been added to
+the name of timers, as well as any code for creating timers
+dynamically, as these are now unnecessary.  Additionally, time some
+previously-untimed parts of the code and make timer names in some
+places more consistent.
+
+diff --git a/Carpet/Carpet/src/CallFunction.cc b/Carpet/Carpet/src/CallFunction.cc
+--- a/Carpet/Carpet/src/CallFunction.cc
++++ b/Carpet/Carpet/src/CallFunction.cc
+@@ -41,8 +41,8 @@
+     DECLARE_CCTK_PARAMETERS;
+     
+     static Timer total_timer ("CallFunction");
+-    static Timer user_timer  ("CallFunction::thorns");
+-    static Timer sync_timer  ("CallFunction::syncs");
++    static Timer user_timer  ("thorns");
++    static Timer sync_timer  ("syncs");
+     
+     total_timer.start();
+     
+@@ -321,27 +321,7 @@
+                 attribute->thorn, attribute->routine);
+     int const skip = CallBeforeRoutines (cctkGH, function, attribute, data);
+     if (not skip) {
+-      
+-      typedef std::map <string, Timer *> timers_t;
+-      static timers_t * timersp = NULL;
+-      if (not timersp) timersp = new timers_t;
+-      timers_t & timers = * timersp;
+-      
+-      // Obtain timer, creating a new one if it does not yet exist
+-      ostringstream timernamebuf;
+-      timernamebuf << "CallFunction/"
+-                   << attribute->where << "::" << attribute->routine;
+-      string const timername = timernamebuf.str();
+-      timers_t::iterator ti = timers.find (timername);
+-      if (ti == timers.end()) {
+-        pair <string, Timer *> const
+-          newtimer (timername, new Timer (timername.c_str()));
+-        ti = timers.insert(newtimer).first;
+-        // It is possible to find and insert with the same function
+-        // call, but this makes the code significantly more
+-        // complicated
+-      }
+-      Timer & timer = * ti->second;
++      Timer timer(attribute->routine);
+       
+       // Save the time step size
+       CCTK_REAL const saved_cctk_delta_time = cctkGH->cctk_delta_time;
+diff --git a/Carpet/Carpet/src/Comm.cc b/Carpet/Carpet/src/Comm.cc
+--- a/Carpet/Carpet/src/Comm.cc
++++ b/Carpet/Carpet/src/Comm.cc
+@@ -135,7 +135,7 @@
+       // prolongate boundaries
+       bool const local_do_prolongate = do_prolongate and not do_taper;
+       if (local_do_prolongate) {
+-        static Timer timer ("Evolve::Prolongate");
++        static Timer timer ("Prolongate");
+         timer.start();
+         ProlongateGroupBoundaries (cctkGH, goodgroups);
+         timer.stop();
+@@ -143,7 +143,7 @@
+       
+       // synchronise ghostzones
+       if (sync_during_time_integration or local_do_prolongate) {
+-        static Timer timer ("Evolve::Sync");
++        static Timer timer ("Sync");
+         timer.start();
+         SyncGroups (cctkGH, goodgroups);
+         timer.stop();
+diff --git a/Carpet/Carpet/src/Evolve.cc b/Carpet/Carpet/src/Evolve.cc
+--- a/Carpet/Carpet/src/Evolve.cc
++++ b/Carpet/Carpet/src/Evolve.cc
+@@ -79,6 +79,8 @@
+       
+       // Print timer values
+       {
++        Timer timer("PrintTimers");
++        timer.start();
+         int const do_every = maxtimereflevelfact / timereffacts.AT(reflevels-1);
+         if (output_timers_every > 0 and
+             cctkGH->cctk_iteration % output_timers_every == 0 and
+@@ -95,10 +97,13 @@
+           TimerNode *et = rt->getChildTimer("Evolve");
+           et->print(cout, et->getTime(), 0, 1.0);
+         }
++        timer.stop();
+       }
+       
+       // Ensure that all levels have consistent times
+       {
++        Timer timer("CheckLevelTimes");
++        timer.start();
+         CCTK_REAL const eps = 1.0e-12;
+         assert (abs (cctkGH->cctk_time - global_time) <= eps * global_time);
+         for (int ml=0; ml<mglevels; ++ml) {
+@@ -113,6 +118,7 @@
+             }
+           }
+         }
++        timer.stop();
+       }
+       
+     } // end main loop
+@@ -130,7 +136,7 @@
+   {
+     DECLARE_CCTK_PARAMETERS;
+     
+-    static Timer timer ("Evolve::do_terminate");
++    static Timer timer ("DoTerminate");
+     timer.start();
+     
+     bool term;
+@@ -214,7 +220,7 @@
+   {
+     DECLARE_CCTK_PARAMETERS;
+     
+-    static Timer timer ("Evolve::AdvanceTime");
++    static Timer timer ("AdvanceTime");
+     timer.start();
+     
+     Checkpoint ("AdvanceTime");
+@@ -248,7 +254,7 @@
+   {
+     DECLARE_CCTK_PARAMETERS;
+     
+-    char const * const where = "Evolve::CallRegrid";
++    char const * const where = "CallRegrid";
+     static Timer timer (where);
+     timer.start();
+     
+@@ -351,7 +357,7 @@
+   {
+     DECLARE_CCTK_PARAMETERS;
+     
+-    char const * const where = "Evolve::CallEvol";
++    char const * const where = "CallEvol";
+     static Timer timer (where);
+     timer.start();
+     
+@@ -438,7 +444,7 @@
+   CallRestrict (cGH * const cctkGH)
+   {
+     char const * const where = "Evolve::CallRestrict";
+-    static Timer timer (where);
++    static Timer timer ("CallRestrict");
+     timer.start();
+     
+     for (int ml=mglevels-1; ml>=0; --ml) {
+@@ -501,7 +507,7 @@
+   {
+     DECLARE_CCTK_PARAMETERS;
+     
+-    char const * const where = "Evolve::CallAnalysis";
++    char const * const where = "CallAnalysis";
+     static Timer timer (where);
+     timer.start();
+     
+@@ -632,29 +638,7 @@
+   void ScheduleTraverse (char const * const where, char const * const name,
+                          cGH * const cctkGH)
+   {
+-    // Obtain the set of timers, creating it explicitly if it does not
+-    // yet exist
+-    typedef std::map <string, Timer *> timers_t;
+-    // static timers_t timers;
+-    static timers_t * timersp = NULL;
+-    if (not timersp) timersp = new timers_t;
+-    timers_t & timers = * timersp;
+-    
+-    // Obtain timer, creating a new one if it does not yet exist
+-    // This is no longer necessary with the new timer implementation
+-    ostringstream timernamebuf;
+-    timernamebuf << where << "::" << name;
+-    string const timername = timernamebuf.str();
+-    timers_t::iterator ti = timers.find (timername);
+-    if (ti == timers.end()) {
+-      pair <string, Timer *> const
+-        newtimer (timername, new Timer (timername.c_str()));
+-      ti = timers.insert(newtimer).first;
+-      // It is possible to find and insert with the same function
+-      // call, but this makes the code significantly more complicated
+-    }
+-    Timer & timer = * ti->second;
+-    
++    Timer timer(name);
+     timer.start();
+     ostringstream infobuf;
+     infobuf << "Scheduling " << name;
+@@ -666,14 +650,7 @@
+   
+   void OutputGH (char const * const where, cGH * const cctkGH)
+   {
+-    ostringstream buf;
+-    buf << where << "::OutputGH";
+-    string const timername = buf.str();
+-    static Timer timer (timername.c_str());
+-    
+-    timer.start();
+     CCTK_OutputGH (cctkGH);
+-    timer.stop();
+   }
+   
+ } // namespace Carpet
+diff --git a/Carpet/Carpet/src/Initialise.cc b/Carpet/Carpet/src/Initialise.cc
+--- a/Carpet/Carpet/src/Initialise.cc
++++ b/Carpet/Carpet/src/Initialise.cc
+@@ -158,7 +158,7 @@
+   void
+   CallSetup (cGH * const cctkGH)
+   {
+-    char const * const where = "Initialise::CallSetup";
++    char const * const where = "CallSetup";
+     static Timer timer (where);
+     timer.start();
+     
+@@ -199,7 +199,7 @@
+   void
+   CallRecoverVariables (cGH * const cctkGH)
+   {
+-    char const * const where = "Initialise::CallRecoverVariables";
++    char const * const where = "CallRecoverVariables";
+     static Timer timer (where);
+     timer.start();
+     
+@@ -266,7 +266,7 @@
+   {
+     DECLARE_CCTK_PARAMETERS;
+     
+-    char const * const where = "Initialise::CallPostRecoverVariables";
++    char const * const where = "CallPostRecoverVariables";
+     static Timer timer (where);
+     timer.start();
+     
+@@ -316,7 +316,7 @@
+   {
+     DECLARE_CCTK_PARAMETERS;
+     
+-    char const * const where = "Initialise::CallInitial";
++    char const * const where = "CallInitial";
+     static Timer timer (where);
+     timer.start();
+     
+@@ -419,7 +419,7 @@
+   CallRestrict (cGH * const cctkGH)
+   {
+     char const * const where = "Initialise::CallRestrict";
+-    static Timer timer (where);
++    static Timer timer ("CallRestrict");
+     timer.start();
+     
+     for (int rl=reflevels-2; rl>=0; --rl) {
+@@ -454,7 +454,7 @@
+   void
+   CallPostInitial (cGH * const cctkGH)
+   {
+-    char const * const where = "Initialise::CallPostInitial";
++    char const * const where = "CallPostInitial";
+     static Timer timer (where);
+     timer.start();
+     
+@@ -500,7 +500,7 @@
+   void
+   CallAnalysis (cGH * const cctkGH)
+   {
+-    char const * const where = "Initialise::CallAnalysis";
++    char const * const where = "CallAnalysis";
+     static Timer timer (where);
+     timer.start();
+     
+@@ -706,7 +706,7 @@
+   {
+     DECLARE_CCTK_PARAMETERS;
+     
+-    char const * const where = "Initialise::CallRegridRecoverMeta";
++    char const * const where = "CallRegridRecoverMeta";
+     static Timer timer (where);
+     timer.start();
+     
+@@ -796,7 +796,7 @@
+   {
+     DECLARE_CCTK_PARAMETERS;
+     
+-    char const * const where = "Initialise::CallRegridRecoverLevel";
++    char const * const where = "CallRegridRecoverLevel";
+     static Timer timer (where);
+     timer.start();
+     
+@@ -892,7 +892,7 @@
+   {
+     DECLARE_CCTK_PARAMETERS;
+     
+-    char const * const where = "Initialise::CallRegridInitialMeta";
++    char const * const where = "CallRegridInitialMeta";
+     static Timer timer (where);
+     timer.start();
+     
+@@ -957,7 +957,7 @@
+   {
+     DECLARE_CCTK_PARAMETERS;
+     
+-    char const * const where = "Initialise::CallRegridInitialLevel";
++    char const * const where = "CallRegridInitialLevel";
+     static Timer timer (where);
+     timer.start();
+     
+@@ -1079,6 +1079,10 @@
+     
+     Waypoint ("Initialising three timelevels:");
+     
++    char const * const where = "Initialise3TL";
++    static Timer timer (where);
++    timer.start();
++
+ #if 0
+     initialise_3tl_flip_timelevels (cctkGH);
+     initialise_3tl_evolve (cctkGH);
+@@ -1096,7 +1100,9 @@
+     initialise_3tl_recycle (cctkGH);
+     initialise_3tl_recycle (cctkGH);
+     initialise_3tl_flip_timelevels (cctkGH);
+-    
++
++    timer.stop();
++
+     Waypoint ("Finished initialising three timelevels");
+   }
+   
+@@ -1119,7 +1125,7 @@
+   void
+   initialise_3tl_evolve (cGH * const cctkGH)
+   {
+-    char const * const where = "Initialise3TL::Evolve";
++    char const * const where = "Evolve";
+     static Timer timer (where);
+     timer.start();
+     
+@@ -1159,7 +1165,7 @@
+   void
+   initialise_3tl_recycle (cGH * const cctkGH)
+   {
+-    char const * const where = "Initialise3TL::Recycle";
++    char const * const where = "Recycle";
+     static Timer timer (where);
+     timer.start();
+     
+@@ -1207,16 +1213,8 @@
+   void ScheduleTraverse (char const * const where, char const * const name,
+                          cGH * const cctkGH)
+   {
+-    ostringstream timernamebuf;
+-    timernamebuf << where << "::" << name;
+-    string const timername = timernamebuf.str();
+-    static std::map <string, Timer *> timers;
+-    Timer * & mapped = timers[timername];
+-    if (not mapped) {
+-      mapped = new Timer (timername.c_str());
+-    }
+-    Timer & timer = * mapped;
+-    
++    Timer timer(name);
++
+     timer.start();
+     ostringstream infobuf;
+     infobuf << "Scheduling " << name;
+@@ -1228,14 +1226,7 @@
+   
+   void OutputGH (char const * const where, cGH * const cctkGH)
+   {
+-    ostringstream buf;
+-    buf << where << "::OutputGH";
+-    string const timername = buf.str();
+-    static Timer timer (timername.c_str());
+-    
+-    timer.start();
+     CCTK_OutputGH (cctkGH);
+-    timer.stop();
+   }
+   
+   
+diff --git a/Carpet/Carpet/src/OutputGH.cc b/Carpet/Carpet/src/OutputGH.cc
+--- a/Carpet/Carpet/src/OutputGH.cc
++++ b/Carpet/Carpet/src/OutputGH.cc
+@@ -44,8 +44,7 @@
+       
+       if (not timers.AT(handle)) {
+         ostringstream buf;
+-        buf << "OutputGH"
+-            << "::" << method->implementation
++        buf << method->implementation
+             << "::" << method->name
+             << " [" << handle << "]";
+         timers.AT(handle) = new Timer (buf.str().c_str());
+diff --git a/Carpet/Carpet/src/Recompose.cc b/Carpet/Carpet/src/Recompose.cc
+--- a/Carpet/Carpet/src/Recompose.cc
++++ b/Carpet/Carpet/src/Recompose.cc
+@@ -90,7 +90,7 @@
+   void
+   CheckRegions (gh::mregs const & regsss)
+   {
+-    char const * const where = "Carpet::CheckRegions";
++    char const * const where = "CheckRegions";
+     static Timer timer (where);
+     timer.start();
+     
+@@ -148,7 +148,7 @@
+   {
+     DECLARE_CCTK_PARAMETERS;
+     
+-    char const * const where = "Carpet::Regrid";
++    char const * const where = "Regrid";
+     static Timer timer (where);
+     timer.start();
+     
+@@ -265,7 +265,7 @@
+   {
+     DECLARE_CCTK_PARAMETERS;
+     
+-    char const * const where = "Carpet::RegridMap";
++    char const * const where = "RegridMap";
+     static Timer timer (where);
+     timer.start();
+     
+@@ -325,7 +325,7 @@
+   {
+     DECLARE_CCTK_PARAMETERS;
+     
+-    char const * const where = "Carpet::PostRegrid";
++    char const * const where = "PostRegrid";
+     static Timer timer (where);
+     timer.start();
+     
+@@ -380,7 +380,7 @@
+              int const rl,
+              bool const do_init)
+   {
+-    char const * const where = "Carpet::Recompose";
++    char const * const where = "Recompose";
+     static Timer timer (where);
+     timer.start();
+     
+@@ -408,7 +408,7 @@
+   RegridFree (cGH const * const cctkGH,
+               bool const do_init)
+   {
+-    char const * const where = "Carpet::RegridFree";
++    char const * const where = "RegridFree";
+     static Timer timer (where);
+     timer.start();
+     
+diff --git a/Carpet/Carpet/src/SetupGH.cc b/Carpet/Carpet/src/SetupGH.cc
+--- a/Carpet/Carpet/src/SetupGH.cc
++++ b/Carpet/Carpet/src/SetupGH.cc
+@@ -26,6 +26,7 @@
+ #include <vect.hh>
+ 
+ #include <carpet.hh>
++#include "Timers.hh"
+ 
+ 
+ 
+@@ -275,6 +276,10 @@
+     timelevel  = 0;
+     
+     // Say hello
++
++    Timer timer("CarpetStartup");
++    timer.start();
++
+     Waypoint ("Setting up the grid hierarchy");
+     
+     // Check arguments:
+@@ -317,7 +322,8 @@
+     }
+     
+     Waypoint ("Done with setting up the grid hierarchy");
+-    
++    timer.stop();
++
+     return & carpetGH;
+   }
+   
+@@ -543,10 +549,14 @@
+                             baseexts);
+     
+     // Allocate grid hierarchy
++
++    Timer timer("AllocateGridHierarchy");
++    timer.start();
+     vhh.resize(maps);
+     vhh.AT(m) = new gh (spacereffacts, refcentering,
+                         convergence_factor, mgcentering,
+                         baseexts, nboundaryzones);
++    timer.stop();
+   }
+   
+   
+diff --git a/Carpet/CarpetIOASCII/src/ioascii.cc b/Carpet/CarpetIOASCII/src/ioascii.cc
+--- a/Carpet/CarpetIOASCII/src/ioascii.cc
++++ b/Carpet/CarpetIOASCII/src/ioascii.cc
+@@ -228,20 +228,17 @@
+   template<int outdim>
+   int IOASCII<outdim>::OutputGH (const cGH* const cctkGH)
+   {
+-    static Carpet::Timer * timer = NULL;
+-    if (not timer) {
+-      ostringstream timer_name;
+-      timer_name << "CarpetIOASCII<" << outdim << ">::OutputGH";
+-      timer = new Carpet::Timer (timer_name.str().c_str());
+-    }
+-    
+-    timer->start();
++    ostringstream timer_name;
++    timer_name << "OutputGH<" << outdim << ">";
++    Carpet::Timer timer(timer_name.str());
++
++    timer.start();
+     for (int vi=0; vi<CCTK_NumVars(); ++vi) {
+       if (TimeToOutput(cctkGH, vi)) {
+ 	TriggerOutput(cctkGH, vi);
+       }
+     }
+-    timer->stop();
++    timer.stop();
+     
+     return 0;
+   }
+diff --git a/Carpet/CarpetIOBasic/src/iobasic.cc b/Carpet/CarpetIOBasic/src/iobasic.cc
+--- a/Carpet/CarpetIOBasic/src/iobasic.cc
++++ b/Carpet/CarpetIOBasic/src/iobasic.cc
+@@ -155,7 +155,7 @@
+     DECLARE_CCTK_ARGUMENTS;
+     DECLARE_CCTK_PARAMETERS;
+     
+-    static Carpet::Timer timer ("CarpetIOBasic::OutputGH");
++    static Carpet::Timer timer ("OutputGH");
+     timer.start();
+     
+     if (TimeToOutput (cctkGH)) {
+diff --git a/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc b/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
+--- a/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
++++ b/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
+@@ -522,7 +522,7 @@
+ 
+ static int OutputGH (const cGH* const cctkGH)
+ {
+-  static Carpet::Timer timer ("CarpetIOHDF5::OutputGH");
++  static Carpet::Timer timer ("OutputGH");
+   timer.start();
+   for (int vindex = CCTK_NumVars () - 1; vindex >= 0; vindex--) {
+     if (TimeToOutput (cctkGH, vindex)) {
+diff --git a/Carpet/CarpetIOHDF5/src/OutputSlice.cc b/Carpet/CarpetIOHDF5/src/OutputSlice.cc
+--- a/Carpet/CarpetIOHDF5/src/OutputSlice.cc
++++ b/Carpet/CarpetIOHDF5/src/OutputSlice.cc
+@@ -231,20 +231,18 @@
+   template<int outdim>
+   int IOHDF5<outdim>::OutputGH (const cGH* const cctkGH)
+   {
+-    static Carpet::Timer * timer = NULL;
+-    if (not timer) {
+-      ostringstream timer_name;
+-      timer_name << "CarpetIOHDF5<" << outdim << ">::OutputGH";
+-      timer = new Carpet::Timer (timer_name.str().c_str());
+-    }
++    ostringstream timer_name;
++    timer_name << "OutputGH<" << outdim << ">";
++    
++    Carpet::Timer timer(timer_name.str());
+ 
+-    timer->start();
++    timer.start();
+     for (int vi=0; vi<CCTK_NumVars(); ++vi) {
+       if (TimeToOutput(cctkGH, vi)) {
+         TriggerOutput(cctkGH, vi);
+       }
+     }
+-    timer->stop();
++    timer.stop();
+ 
+     return 0;
+   }
+diff --git a/Carpet/CarpetIOScalar/src/ioscalar.cc b/Carpet/CarpetIOScalar/src/ioscalar.cc
+--- a/Carpet/CarpetIOScalar/src/ioscalar.cc
++++ b/Carpet/CarpetIOScalar/src/ioscalar.cc
+@@ -155,7 +155,7 @@
+   int
+   OutputGH (const cGH * const cctkGH)
+   {
+-    static Carpet::Timer timer ("CarpetIOScalar::OutputGH");
++    static Carpet::Timer timer ("OutputGH");
+     timer.start();
+     for (int vindex=0; vindex<CCTK_NumVars(); ++vindex) {
+       if (TimeToOutput(cctkGH, vindex)) {
+diff --git a/Carpet/CarpetLib/src/dh.cc b/Carpet/CarpetLib/src/dh.cc
+--- a/Carpet/CarpetLib/src/dh.cc
++++ b/Carpet/CarpetLib/src/dh.cc
+@@ -289,7 +289,7 @@
+       
+       // Domain:
+       
+-      static Carpet::Timer timer_domain ("CarpetLib::dh::regrid::domain");
++      static Carpet::Timer timer_domain ("domain");
+       timer_domain.start();
+       
+       ibbox const & domain_exterior = h.baseextent(ml,rl);
+@@ -314,7 +314,7 @@
+       
+       
+       
+-      static Carpet::Timer timer_region ("CarpetLib::dh::regrid::region");
++      static Carpet::Timer timer_region ("region");
+       timer_region.start();
+       
+       for (int c = 0; c < h.components(rl); ++ c) {
+@@ -483,7 +483,7 @@
+       
+       // Conjunction of all buffer zones:
+       
+-      static Carpet::Timer timer_buffers ("CarpetLib::dh::regrid::buffers");
++      static Carpet::Timer timer_buffers ("buffers");
+       timer_buffers.start();
+       
+       // Enlarge active part of domain
+@@ -600,7 +600,7 @@
+       
+       // Test constituency relations:
+       
+-      static Carpet::Timer timer_test ("CarpetLib::dh::regrid::test");
++      static Carpet::Timer timer_test ("test");
+       timer_test.start();
+       
+       for (int c = 0; c < h.components(rl); ++ c) {
+@@ -637,7 +637,7 @@
+       
+       // Communication schedule:
+       
+-      static Carpet::Timer timer_comm ("CarpetLib::dh::regrid::comm");
++      static Carpet::Timer timer_comm ("comm");
+       timer_comm.start();
+       
+       for (int lc = 0; lc < h.local_components(rl); ++ lc) {
+@@ -650,7 +650,7 @@
+         // Multigrid restriction:
+         
+         static Carpet::Timer timer_comm_mgrest
+-          ("CarpetLib::dh::regrid::comm::mgrest");
++          ("mgrest");
+         timer_comm_mgrest.start();
+         
+         if (ml > 0) {
+@@ -692,7 +692,7 @@
+         // Multigrid prolongation:
+         
+         static Carpet::Timer timer_comm_mgprol
+-          ("CarpetLib::dh::regrid::comm::mprol");
++          ("mprol");
+         timer_comm_mgprol.start();
+         
+         if (ml > 0) {
+@@ -873,7 +873,7 @@
+         // Boundary prolongation:
+         
+         static Carpet::Timer timer_comm_refbndprol
+-          ("CarpetLib::dh::regrid::comm::refbndprol");
++          ("refbndprol");
+         timer_comm_refbndprol.start();
+         
+         if (rl > 0) {
+@@ -1058,7 +1058,7 @@
+       // Refinement refluxing:
+       
+       static Carpet::Timer timer_comm_reflux
+-        ("CarpetLib::dh::regrid::comm::reflux");
++        ("reflux");
+       timer_comm_reflux.start();
+       
+       // If there is no coarser level, do nothing
+@@ -1591,7 +1591,7 @@
+       fast_level.do_init = do_init;
+       if (do_init) {
+         
+-        static Carpet::Timer timer_regrid ("CarpetLib::dh::regrid::regrid");
++        static Carpet::Timer timer_regrid ("regrid");
+         timer_regrid.start();
+         
+         for (int lc = 0; lc < h.local_components(rl); ++ lc) {
+@@ -1606,7 +1606,7 @@
+           // Regridding synchronisation:
+           
+           static Carpet::Timer timer_regrid_sync
+-            ("CarpetLib::dh::regrid::regrid::sync");
++            ("sync");
+           timer_regrid_sync.start();
+           
+           if (int (old_light_boxes.size()) > ml and
+@@ -1652,7 +1652,7 @@
+           // Regridding prolongation:
+           
+           static Carpet::Timer timer_regrid_prolongate
+-            ("CarpetLib::dh::regrid::regrid::prolongate");
++            ("prolongate");
+           timer_regrid_prolongate.start();
+           
+           if (rl > 0) {
+@@ -1745,7 +1745,7 @@
+       {
+         
+         static Carpet::Timer timer_bcast_boxes
+-          ("CarpetLib::dh::regrid::bcast_boxes");
++          ("bcast_boxes");
+         timer_bcast_boxes.start();
+         
+         int const count_send = h.local_components(rl);
+@@ -1777,25 +1777,25 @@
+       {
+         
+         static Carpet::Timer timer_bcast_comm
+-          ("CarpetLib::dh::regrid::bcast_comm");
++          ("bcast_comm");
+         timer_bcast_comm.start();
+         
+         static Carpet::Timer timer_bcast_comm_ref_prol
+-          ("CarpetLib::dh::regrid::bcast_comm::ref_prol");
++          ("ref_prol");
+         timer_bcast_comm_ref_prol.start();
+         broadcast_schedule (fast_level_otherprocs, fast_level,
+                             & fast_dboxes::fast_ref_prol_sendrecv);
+         timer_bcast_comm_ref_prol.stop();
+         
+         static Carpet::Timer timer_bcast_comm_sync
+-          ("CarpetLib::dh::regrid::bcast_comm::sync");
++          ("sync");
+         timer_bcast_comm_sync.start();
+         broadcast_schedule (fast_level_otherprocs, fast_level,
+                             & fast_dboxes::fast_sync_sendrecv);
+         timer_bcast_comm_sync.stop();
+         
+         static Carpet::Timer timer_bcast_comm_ref_bnd_prol
+-          ("CarpetLib::dh::regrid::bcast_comm::ref_bnd_prol");
++          ("ref_bnd_prol");
+         timer_bcast_comm_ref_bnd_prol.start();
+         broadcast_schedule (fast_level_otherprocs, fast_level,
+                             & fast_dboxes::fast_ref_bnd_prol_sendrecv);
+@@ -1805,7 +1805,7 @@
+           int const orl = rl - 1;
+           fast_dboxes & fast_olevel = fast_boxes.AT(ml).AT(orl);
+           static Carpet::Timer timer_bcast_comm_ref_rest
+-            ("CarpetLib::dh::regrid::bcast_comm::ref_rest");
++            ("ref_rest");
+           timer_bcast_comm_ref_rest.start();
+           broadcast_schedule (fast_level_otherprocs, fast_olevel,
+                               & fast_dboxes::fast_ref_rest_sendrecv);
+@@ -1816,7 +1816,7 @@
+           int const orl = rl - 1;
+           fast_dboxes & fast_olevel = fast_boxes.AT(ml).AT(orl);
+           static Carpet::Timer timer_bcast_comm_ref_refl
+-            ("CarpetLib::dh::regrid::bcast_comm::ref_refl");
++            ("ref_refl");
+           timer_bcast_comm_ref_refl.start();
+           for (int dir = 0; dir < dim; ++ dir) {
+             for (int face = 0; face < 2; ++ face) {
+@@ -1833,14 +1833,14 @@
+         // TODO: Maybe broadcast old2new schedule only if do_init is
+         // set
+         static Carpet::Timer timer_bcast_comm_old2new_sync
+-          ("CarpetLib::dh::regrid::bcast_comm::old2new_sync");
++          ("old2new_sync");
+         timer_bcast_comm_old2new_sync.start();
+         broadcast_schedule (fast_level_otherprocs, fast_level,
+                             & fast_dboxes::fast_old2new_sync_sendrecv);
+         timer_bcast_comm_old2new_sync.stop();
+         
+         static Carpet::Timer timer_bcast_comm_old2new_ref_prol
+-          ("CarpetLib::dh::regrid::bcast_comm::old2new_ref_prol");
++          ("old2new_ref_prol");
+         timer_bcast_comm_old2new_ref_prol.start();
+         broadcast_schedule (fast_level_otherprocs, fast_level,
+                             & fast_dboxes::fast_old2new_ref_prol_sendrecv);

@@ -1,0 +1,61 @@
+From 30e910191fa964a37e82315a9415643450e36652 Mon Sep 17 00:00:00 2001
+From: Philipp Moesta <pmoesta@tapir.caltech.edu>
+Date: Thu, 8 Mar 2012 11:47:51 -0800
+Subject: [PATCH 05/11] Adding Josh's latest changes to the general EOS
+ Con2PrimM routine.
+
+---
+ src/GRHydro_Con2PrimM_pt_EOSOmni.c |   10 +++++-----
+ 1 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/src/GRHydro_Con2PrimM_pt_EOSOmni.c b/src/GRHydro_Con2PrimM_pt_EOSOmni.c
+index 051db33..f0b6a39 100644
+--- a/src/GRHydro_Con2PrimM_pt_EOSOmni.c
++++ b/src/GRHydro_Con2PrimM_pt_EOSOmni.c
+@@ -89,7 +89,7 @@ static CCTK_INT twod_newton_raphson( CCTK_REAL x[], CCTK_REAL gammaeos, struct L
+ 						    CCTK_REAL [], CCTK_REAL [][2], 
+ 						    CCTK_REAL *, CCTK_REAL *, CCTK_REAL, struct LocGlob *) );
+ 
+-static CCTK_INT threed_newton_raphson( CCTK_REAL x[], struct eosomnivars *eosvars, struct LocGlob *lgp,
++static CCTK_INT threed_newton_raphson_omni( CCTK_REAL x[], struct eosomnivars *eosvars, struct LocGlob *lgp,
+ 				     void (*funcd) (CCTK_REAL [], CCTK_REAL [], 
+ 						    CCTK_REAL [], CCTK_REAL [][3], 
+ 						    CCTK_REAL *, CCTK_REAL *, 
+@@ -386,7 +386,7 @@ void CCTK_FCALL CCTK_FNAME(GRHydro_Con2PrimM_pt)  (
+   } else {
+     //USE 3d NR for non-polytropes!
+     x_3d[2] = u;
+-    *retval = 1.0*threed_newton_raphson( x_3d, &eosvars, &lg, func_vsq_eosomni ) ;  
++    *retval = 1.0*threed_newton_raphson_omni( x_3d, &eosvars, &lg, func_vsq_eosomni ) ;  
+   }
+   
+   W = x_3d[0];
+@@ -646,14 +646,14 @@ static CCTK_INT twod_newton_raphson( CCTK_REAL x[], CCTK_REAL gammaeos, struct L
+ 
+ /************************************************************
+ 
+-  threed_newton_raphson(): 
++  threed_newton_raphson_omni(): 
+ 
+     -- performs Newton-Rapshon method on an 2d system for polytropes.
+ 
+     -- inspired in part by Num. Rec.'s routine newt();
+ 
+ *****************************************************************/
+-static CCTK_INT threed_newton_raphson( CCTK_REAL x[], struct eosomnivars *eosvars, struct LocGlob *lgp, 
++static CCTK_INT threed_newton_raphson_omni( CCTK_REAL x[], struct eosomnivars *eosvars, struct LocGlob *lgp, 
+ 			    void (*funcd) (CCTK_REAL [], CCTK_REAL [], CCTK_REAL [], 
+ 					   CCTK_REAL [][3], CCTK_REAL *, 
+ 					   CCTK_REAL *, struct eosomnivars *, struct LocGlob *) )
+@@ -900,7 +900,7 @@ static void func_vsq_eosomni(CCTK_REAL x[], CCTK_REAL dx[], CCTK_REAL resid[],
+   j01 = -1.0*B2plusW_sq;
+ 
+ 
+-  //Eq. 5: Qdotn + B^2(1+vsq)/2 - QdotBsq/2/W^2 + vsq W + rho_0(vsq) + u = 0
++  //Eq. 5: -Qdotn - B^2(1+vsq)/2 + QdotBsq/2/W^2 - vsq W - rho_0(vsq) - u = 0
+   //rho0 = D * sqrt(1-vsq)
+ 
+   resid[1] = -lgp->Qdotn - lgp->half_Bsq*(1.0+vsq) + 0.5*QB2Winv2 - vsq*W - rho0 - u;
+-- 
+1.7.8
+

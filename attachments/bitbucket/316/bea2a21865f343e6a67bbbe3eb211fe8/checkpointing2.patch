@@ -1,0 +1,151 @@
+Index: lib/simrestart.py
+===================================================================
+--- lib/simrestart.py	(revision 1297)
++++ lib/simrestart.py	(working copy)
+@@ -135,56 +135,8 @@
+         
+         return 1
+             
+-    def PrepareCheckpointing(self, max_restart_id):
++    def PrepareCheckpointing(self):
+     
+-        # make sure it's an int.
+-        max_restart_id = int(max_restart_id)
+-        
+-        self.SimulationLog.Write("PrepareCheckpointing: max_restart_id: %s" % max_restart_id)
+-            
+-        # lets see if from-restart-id is sest
+-        if self.Properties.HasProperty('from-restart-id'):
+-            ii = self.Properties.GetProperty('from-restart-id')
+-            
+-            try:
+-                restore_restart_id = int(ii)
+-            except ValueError:
+-                fatal("Could not coerce provided from-restart-id %s into an integer" % ii)
+-        else:
+-            if max_restart_id >= 0:
+-                restore_restart_id = max_restart_id
+-            else:
+-                info("max_restart_id is < 0, returning False")
+-                return False
+-
+-        if restore_restart_id == self.RestartID:
+-            self.SimulationLog.Write("max_restart_id == self.RestartID, returning false")
+-            return False
+-
+-        self.SimulationLog.Write("Restoring from restart id %s, 04d is: %04d" % (restore_restart_id, restore_restart_id))
+-        
+-        d_restore_restart_id = "%04d" % restore_restart_id
+-        
+-        restore_dir =  simlib.BuildPath(self.SimulationDir, "output-%s" % d_restore_restart_id)
+-        
+-        if not(os.path.exists(restore_dir)):
+-            try:
+-                os.makedirs(restore_dir)
+-            except OSError, e:
+-                fatal("could not make restore_dir %s, %s" % (restore_dir, e))
+-    
+-        previousIni = simlib.BuildPath(restore_dir, simenv.INTERNALDIRECTORY, "properties.ini")
+-        
+-        work_dir = None
+-        
+-        if os.path.exists(previousIni):
+-            ep = simproperties.SimProperties()
+-            ep.init(previousIni)
+-            
+-            parfile = ep.GetProperty("parfile")
+-            pf = simlib.FileBaseName(parfile)
+-            work_dir = simlib.BuildPath(restore_dir, pf)
+-        
+         current_parfile = self.Properties.parfile
+         cpf = simlib.FileBaseName(current_parfile)
+         cwork_dir = simlib.BuildPath(self.RestartDir, cpf)
+@@ -195,17 +147,13 @@
+             self.SimulationLog.Write("%s does not exist, creating" % cwork_dir)
+             os.makedirs(cwork_dir)
+         
+-        chkpoint_files = restartlib.GetCheckpointFiles(restore_dir)
++        chkpoint_files = restartlib.GetCheckpointFiles(self.SimulationDir)
+         
+         if len(chkpoint_files) == 0:
+-            
+-            # look in the working directory for the checkpoint files as well.
+-            if work_dir != None:
+-                chkpoint_files = restartlib.GetCheckpointFiles(work_dir)
+-            
+-                if len(chkpoint_files) == 0:
+-                    return False
+-            
++            return False
++        
++        self.SimulationLog.Write("Checkpointing files found. Linking files")
++        
+         for ff in chkpoint_files:
+             self.SimulationLog.Write("checkpoint file: %s" % ff)
+ 
+@@ -213,20 +161,34 @@
+         
+             if not(os.path.exists(ff)):
+                 continue
+-
+-            dfile = ff.replace(restore_dir, self.RestartDir).strip()
++                
++            # need to extract output-xxxx and replace it with current restart.
+             
+-            self.SimulationLog.Write("linking %s to %s" % (ff, dfile))
+-                        
++            rx = r"(output-\d{4})"
++            rr = re.compile(rx)
++            matches = rr.search(ff)
++            
++            if matches == None:
++                warning("unable to find restart dir for checkpoint file %s" % ff)
++                continue
++
+             try:
+-                dfile = ff.replace(restore_dir, self.RestartDir).strip()
++                restart_indicator = matches.group(1)
++                dfile = ff.replace(restart_indicator, "output-%s" % self.LongRestartID).strip()
++
++                self.SimulationLog.Write("linking checkpoint file %s to %s" % (ff, dfile))
++                info("linking checkpoint file %s to %s" % (ff, dfile))
+                 
+-                if simenv.VERBOSE:
+-                    self.SimulationLog.Write("linking %s to %s" % (ff, dfile))
+                 try:
+                     if not os.access(os.path.dirname(dfile), os.F_OK):
+                         os.makedirs(os.path.dirname(dfile))
+-                    os.link(ff, dfile)
++                    
++                    # since we are linking checkpoint files from every restart
++                    # make sure the final path doesn't exist before attempting
++                    # to link.
++                    
++                    if not(os.path.exists(dfile)):
++                        os.link(ff, dfile)
+                 except:
+                     shutil.copyfile(ff, dfile)
+             except OSError, e:
+@@ -880,20 +842,13 @@
+         display("Running simulation %s" % self.SimulationName)
+         self.SimulationLog.Write("Prepping for execution/run")
+         
+-        recover_id = self.MaxRestartID
+-        
+-        if self.Properties.HasProperty("from-restart-id"):
+-            recover_id = self.Properties.GetProperty("from-restart-id")
+-        
+-        checkpointing = self.PrepareCheckpointing(recover_id)
++        checkpointing = self.PrepareCheckpointing()
+             
+         if checkpointing:
+             self.Properties.AddProperty("checkpointing", "yes")
+-            self.SimulationLog.Write("Checkpointing from max restart id of %s" % self.MaxRestartID)
++            self.SimulationLog.Write("Checkpoint files found, recovering")
+         else:
+             self.Properties.AddProperty("checkpointing", "no")
+-
+-        scratchdir = simlib.GetMachineOption('scratchdir')
+         
+         parname = simlib.FileBaseName(self.Properties.parfile)
+         my_workdir = simlib.BuildPath(self.RestartDir, parname)

@@ -1,0 +1,37 @@
+From 87d7002a4a1af9905d04e3d5cbe700826bde13ed Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Tue, 12 Feb 2013 23:48:22 +0100
+Subject: [PATCH] Simplify output of get-output-dir
+
+---
+ lib/sim-manage.py | 7 +------
+ 1 file changed, 1 insertion(+), 6 deletions(-)
+
+diff --git a/lib/sim-manage.py b/lib/sim-manage.py
+index a3d1c83..87a26fd 100755
+--- a/lib/sim-manage.py
++++ b/lib/sim-manage.py
+@@ -274,7 +274,6 @@ def command_get_output_dir():
+ 
+     if simulationName == None:
+         simulationName = simenv.OptionsManager.args.pop(0)
+-        display("Simulation name: %s" % simulationName)
+ 
+     restart = simrestart.SimRestart()
+ 
+@@ -287,11 +286,7 @@ def command_get_output_dir():
+ 
+     restart.load(simulationName, restart_id)
+ 
+-    parfile = restart.Properties.parfile
+-    pf = simlib.FileBaseName(parfile)
+-    output_dir = simlib.BuildPath(restart.RestartDir, pf)
+-
+-    display("Output directory: %s" % output_dir)
++    display(restart.RestartDir)
+     
+     restart.done()
+ 
+-- 
+1.8.1.2
+

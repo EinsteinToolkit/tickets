@@ -1,0 +1,191 @@
+From 117666273bd2fccb58460db3f5ada1be8c4ebad9 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Tue, 10 Jul 2012 15:08:13 -0700
+Subject: [PATCH 04/25] GRHydro: use timelevels parameter in STORAGE statement
+
+rather than if cascade to test for each value
+---
+ schedule.ccl |  115 ++++++++++++++++------------------------------------------
+ 1 file changed, 32 insertions(+), 83 deletions(-)
+
+diff --git a/schedule.ccl b/schedule.ccl
+index 9ccb98a..53703c4 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -49,56 +49,27 @@ if (use_MoL_slow_multirate_sector)
+ ### use of MoL with Einstein                  ###
+ #################################################
+ 
+-if (timelevels == 3)
++STORAGE:dens[timelevels]
++STORAGE:tau[timelevels]
++STORAGE:scon[timelevels]
++if (number_of_particles)
+ {
+-  STORAGE:dens[3]
+-  STORAGE:tau[3]
+-  STORAGE:scon[3]
+-  if (number_of_particles)
+-  {
+-    STORAGE:particles[3]
+-  }
+-  STORAGE: ADMBase::metric[3], ADMBase::curv[3]
+-  STORAGE: ADMBase::lapse[3]
+-  if(CCTK_Equals(Y_e_evolution_method,"GRHydro"))
+-  {
+-    STORAGE: Y_e_con[3]	
+-    STORAGE: Y_e_con_rhs, Y_e_con_flux, Y_e_plus, Y_e_minus
+-  }
+-  if(CCTK_Equals(Bvec_evolution_method,"GRHydro"))
+-  {
+-    STORAGE: HydroBase::Bvec[3]	
+-    STORAGE: GRHydro::Bcons[3]	
+-    if (clean_divergence)
+-    {
+-      STORAGE:psidc[3]
+-    }
+-  }
++  STORAGE:particles[timelevels]
+ }
+-else
++STORAGE: ADMBase::metric[timelevels], ADMBase::curv[timelevels]
++STORAGE: ADMBase::lapse[timelevels]
++if(CCTK_Equals(Y_e_evolution_method,"GRHydro"))
+ {
+-  STORAGE:dens[2]
+-  STORAGE:tau[2]
+-  STORAGE:scon[2]
+-  if (number_of_particles)
+-  {
+-    STORAGE:particles[2]
+-  }
+-  STORAGE: ADMBase::metric[2], ADMBase::curv[2]
+-  STORAGE: ADMBase::lapse[2]
+-  if(CCTK_Equals(Y_e_evolution_method,"GRHydro"))
+-  {
+-    STORAGE: Y_e_con[2]	
+-    STORAGE: Y_e_con_rhs, Y_e_con_flux, Y_e_plus, Y_e_minus
+-  }
+-  if(CCTK_Equals(Bvec_evolution_method,"GRHydro")) 
++  STORAGE: Y_e_con[timelevels]	
++  STORAGE: Y_e_con_rhs, Y_e_con_flux, Y_e_plus, Y_e_minus
++}
++if(CCTK_Equals(Bvec_evolution_method,"GRHydro"))
++{
++  STORAGE: HydroBase::Bvec[timelevels]	
++  STORAGE: GRHydro::Bcons[timelevels]	
++  if (clean_divergence)
+   {
+-    STORAGE: HydroBase::Bvec[2]	
+-    STORAGE: GRHydro::Bcons[2]	
+-    if (clean_divergence)
+-    {
+-      STORAGE:psidc[2]
+-    }
++    STORAGE:psidc[timelevels]
+   }
+ }
+ STORAGE:evolve_MHD
+@@ -123,9 +94,9 @@ if(CCTK_Equals(Bvec_evolution_method,"GRHydro"))
+   }
+   if (calculate_bcom)
+   {
+-    STORAGE:GRHydro::bcom[3]
+-    STORAGE:GRHydro::bcom0[3]
+-    STORAGE:GRHydro::bcom_sq[3]
++    STORAGE:GRHydro::bcom[timelevels]
++    STORAGE:GRHydro::bcom0[timelevels]
++    STORAGE:GRHydro::bcom_sq[timelevels]
+   }
+ }
+ STORAGE:GRHydro_eos_scalars
+@@ -141,8 +112,8 @@ if (number_of_particles)
+ 
+ if (evolve_tracer)
+ {
+-  STORAGE:GRHydro_tracers[3]
+-  STORAGE:GRHydro_cons_tracers[3]
++  STORAGE:GRHydro_tracers[timelevels]
++  STORAGE:GRHydro_cons_tracers[timelevels]
+   STORAGE:GRHydro_tracer_rhs
+ }
+ 
+@@ -183,36 +154,14 @@ if(CCTK_Equals(Bvec_evolution_method,"GRHydro"))
+ ### use of MoL with Einstein                  ###
+ #################################################
+ 
+-if (timelevels == 3)
+-{
+-  STORAGE: ADMBase::metric[3], ADMBase::curv[3]
+-  STORAGE: ADMBase::lapse[3]
+-}
+-else
+-{
+-  STORAGE: ADMBase::metric[2], ADMBase::curv[2]
+-  STORAGE: ADMBase::lapse[2]
+-}
++STORAGE: ADMBase::metric[timelevels], ADMBase::curv[timelevels]
++STORAGE: ADMBase::lapse[timelevels]
+ if (!CCTK_Equals(initial_shift,"none")) 
+ {
+-  if (timelevels == 3)
+-  {  
+-    STORAGE: ADMBase::shift[3]
+-  }
+-  else
+-  {
+-    STORAGE: ADMBase::shift[2]
+-  }
++  STORAGE: ADMBase::shift[timelevels]
+   if (CCTK_Equals(shift_evolution_method,"Comoving"))
+   {
+-    if (timelevels == 3)
+-    {  
+-      STORAGE: GRHydro_coords[3]
+-    }
+-    else
+-    {
+-      STORAGE: GRHydro_coords[2]
+-    }
++    STORAGE: GRHydro_coords[timelevels]
+     STORAGE: GRHydro_coords_rhs
+ 
+     schedule GRHydro_SetUpCoords IN HydroBase_Initial
+@@ -243,11 +192,11 @@ if (!CCTK_Equals(initial_shift,"none"))
+ # _and_ we really want to safe this memory then it has to be turned off at
+ # runtime via CCTK_GroupStorageDecrease
+ if(CCTK_IsImplementationActive("Coordinates")) {
+-  STORAGE: lvel[3]
++  STORAGE: lvel[timelevels]
+   if(CCTK_Equals(Bvec_evolution_method,"GRHydro")) {
+-     STORAGE: lBvec[3]
++     STORAGE: lBvec[timelevels]
+   }
+-  STORAGE: local_metric[3]
++  STORAGE: local_metric[timelevels]
+   STORAGE: local_extrinsic_curvature
+   STORAGE: local_shift
+ }
+@@ -830,7 +779,7 @@ else if (CCTK_Equals(method_type, "Flux split FD"))
+ {
+ 
+ 
+-##########################################3
++##########################################
+ ###  MHD not implemented yet for Flux split FD !!!
+ ##########################################
+   STORAGE:fs_alpha
+@@ -1034,8 +983,8 @@ else if (CCTK_Equals(GRHydro_eos_type,"Polytype"))
+ 
+ if (evolve_tracer)
+ {
+-  STORAGE:GRHydro_tracers[3]
+-  STORAGE:GRHydro_cons_tracers[3]
++  STORAGE:GRHydro_tracers[timelevels]
++  STORAGE:GRHydro_cons_tracers[timelevels]
+   STORAGE:GRHydro_tracer_rhs
+ }
+ 
+-- 
+1.7.10.4
+

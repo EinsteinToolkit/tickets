@@ -1,0 +1,28 @@
+Index: HDF5.sh
+===================================================================
+--- HDF5.sh	(revision 44)
++++ HDF5.sh	(working copy)
+@@ -29,9 +29,11 @@
+ 
+ # Set up names of the Fortran and C++ libraries based on user settable variables
+ # Assign default values to variables
++HDF5_CXX_LIBS=""
+ if [ "${HDF5_ENABLE_CXX:=yes}" = 'yes' ]; then
+     HDF5_CXX_LIBS="hdf5_cpp hdf5_hl_cpp"
+ fi
++HDF5_FORTRAN_LIBS=""
+ if [ "${HDF5_ENABLE_FORTRAN:=yes}" = 'yes' ]; then
+     HDF5_FORTRAN_LIBS=$(if [ "${F90}" != "none" ]; then echo 'hdf5_fortran'; fi)
+ fi
+@@ -47,7 +49,10 @@
+     echo "HDF5 selected, but HDF5_DIR not set. Checking some places..."
+     echo "END MESSAGE"
+     
+-    FILES="include/hdf5.h lib/libhdf5.a lib/libhdf5_cpp.a $(if [ "${F90}" != "none" ]; then echo 'lib/libhdf5_fortran.a'; fi) lib/libhdf5_hl.a lib/libhdf5_hl_cpp.a"
++    FILES="include/hdf5.h lib/libhdf5.a lib/libhdf5_hl.a"
++    for i in $HDF5_CXX_LIBS $HDF5_FORTRAN_LIBS; do
++      FILES="$FILES lib/lib${i}.a"
++    done
+     DIRS="/usr /usr/local /usr/local/hdf5 /usr/local/packages/hdf5 /usr/local/apps/hdf5 /opt/local ${HOME} ${HOME}/hdf5 c:/packages/hdf5"
+     for dir in $DIRS; do
+         HDF5_DIR="$dir"

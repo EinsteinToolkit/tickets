@@ -1,0 +1,326 @@
+diff --git a/m/McLachlan_BSSN.m b/m/McLachlan_BSSN.m
+index a835560..2125b85 100644
+--- a/m/McLachlan_BSSN.m
++++ b/m/McLachlan_BSSN.m
+@@ -1,4 +1,4 @@
+-
++(* Adapted from McLachlan_BSSN.m by Jim van Meter, 2012 *)
+ SetEnhancedTimes[False];
+ SetSourceLanguage["C"];
+ 
+@@ -104,13 +104,13 @@ Map [DefineTensor,
+       nn, nu, nlen, nlen2, su, vg,
+       xx, rr, th, ph,
+       admg, admK, admalpha, admdtalpha, admbeta, admdtbeta, H, M,
+-      g, detg, gu, G, R, trR, Km, trK, cdphi, cdphi2,
++      g, detg, gu, G, chi2R, trR, Km, trK, cdphi, chicdphi, chi2cdphi2,
+       phi, gt, At, Xt, Xtn, Theta, Z,
+-      alpha, A, beta, B, Atm, Atu, trA, Ats, trAts,
++      alpha, A, beta, B, Atm, Atu, trA, chi2Ats, trchi2Ats,
+       dottrK, dotXt,
+       cXt, cS, cA,
+       e4phi, em4phi, ddetg, detgt, gtu, ddetgt, dgtu, ddgtu, Gtl, Gtlu, Gt,
+-      Rt, Rphi, gK,
++      Rt, chi2Rphi, gK,
+       T00, T0, T, rho, S,
+       x, y, z, r,
+       epsdiss}];
+@@ -125,8 +125,8 @@ SetTensorAttribute[cXt, TensorWeight, +2/3];
+ SetTensorAttribute[cS,  TensorWeight, +2  ];
+ 
+ Map [AssertSymmetricIncreasing,
+-     {admg[la,lb], admK[la,lb], g[la,lb], K[la,lb], R[la,lb], cdphi2[la,lb],
+-      gt[la,lb], At[la,lb], Ats[la,lb], Rt[la,lb], Rphi[la,lb], T[la,lb]}];
++     {admg[la,lb], admK[la,lb], g[la,lb], K[la,lb], chi2R[la,lb], chi2cdphi2[la,lb],
++      gt[la,lb], At[la,lb], chi2Ats[la,lb], Rt[la,lb], chi2Rphi[la,lb], T[la,lb]}];
+ AssertSymmetricIncreasing [G[ua,lb,lc], lb, lc];
+ AssertSymmetricIncreasing [Gtl[la,lb,lc], lb, lc];
+ AssertSymmetricIncreasing [Gt[ua,lb,lc], lb, lc];
+@@ -535,12 +535,12 @@ evolCalc =
+   Shorthands -> {dir[ua],
+                  detgt, gtu[ua,ub],
+                  Gt[ua,lb,lc], Gtl[la,lb,lc], Gtlu[la,lb,uc], Xtn[ua],
+-                 Rt[la,lb], Rphi[la,lb], R[la,lb],
++                 Rt[la,lb], chi2Rphi[la,lb], chi2R[la,lb],
+                  Atm[ua,lb], Atu[ua,ub],
+-                 e4phi, em4phi, cdphi[la], cdphi2[la,lb], g[la,lb], detg,
+-                 gu[ua,ub], Ats[la,lb], trAts, eta, theta,
+-                 rho, S[la], trS, fac1, fac2, dottrK, dotXt[ua],
+-                 epsdiss[ua], IfCCZ4[Z[ua]], IfCCZ4[dotTheta]},
++                 e4phi, em2phi, em4phi, cdphi[la], chicdphi[la], chi2cdphi2[la,lb], g[la,lb], detg,
++                 gu[ua,ub], chi2Ats[la,lb], trchi2Ats, eta, theta,
++                 rho, S[la], trS, fac1, fac2, dottrK, dotXt[ua], epsdiss[ua],trR,mH, 
++                 IfCCZ4[Z[ua]], IfCCZ4[dotTheta]},
+   Equations -> 
+   {
+     dir[ua] -> Sign[beta[ua]],
+@@ -558,8 +558,9 @@ evolCalc =
+        used instead of Xt where no derivatives of Xt are taken *)
+     Xtn[ui] -> gtu[uj,uk] Gt[ui,lj,lk],
+ 
+-    e4phi       -> IfThen[conformalMethod==CMW, 1/phi^2, Exp[4 phi]],
+-    em4phi      -> 1 / e4phi,
++    em2phi      -> IfThen [conformalMethod==CMW, phi, Exp[-2 phi]],
++    em4phi      -> em2phi^2,
++    e4phi       -> 1 / em4phi,
+     g[la,lb]    -> e4phi gt[la,lb],
+     detg        -> detgExpr,
+     gu[ua,ub]   -> em4phi gtu[ua,ub],
+@@ -581,27 +582,30 @@ evolCalc =
+                     + Gt[uk,lj,ll] Gtlu[li,lk,ul]
+                     + Gt[uk,li,ll] Gtlu[lk,lj,ul]),
+ 
++    (* Version based on what Jim sent to Erik updated for ET_2012_11 *)
+     fac1 -> IfThen[conformalMethod==CMW, -1/(2 phi), 1],
+     cdphi[la] -> fac1 CDt[phi,la],
+-    fac2 -> IfThen[conformalMethod==CMW, 1/(2 phi^2), 0],
+-    cdphi2[la,lb] -> fac1 CDt[phi,la,lb] + fac2 CDt[phi,la] CDt[phi,lb],
++    fac1 -> IfThen[conformalMethod==CMW, -1/2, Exp[-2 phi]],
++    chicdphi[la] -> fac1 CDt[phi,la],
++    fac1 -> IfThen[conformalMethod==CMW, -phi/2, Exp[-4 phi]],
++    fac2 -> IfThen[conformalMethod==CMW, 1/2, 0],
++    chi2cdphi2[la,lb] -> fac1 CDt[phi,la,lb] + fac2 CDt[phi,la] CDt[phi,lb],
+ 
+     (* PRD 62, 044034 (2000), eqn. (15) *)
+-    Rphi[li,lj] -> - 2 cdphi2[lj,li]
+-                   - 2 gt[li,lj] gtu[ul,un] cdphi2[ll,ln]
+-                   + 4 cdphi[li] cdphi[lj]
+-                   - 4 gt[li,lj] gtu[ul,un] cdphi[ln] cdphi[ll],
++    chi2Rphi[li,lj] -> - 2 chi2cdphi2[lj,li]
++                   - 2 gt[li,lj] gtu[ul,un] chi2cdphi2[ll,ln]
++                   + 4 chicdphi[li] chicdphi[lj]
++                   - 4 gt[li,lj] gtu[ul,un] chicdphi[ln] chicdphi[ll],
+     
+     Atm[ua,lb] -> gtu[ua,uc] At[lc,lb],
+     Atu[ua,ub] -> Atm[ua,lc] gtu[ub,uc],
+     
+-    R[la,lb] -> Rt[la,lb] + Rphi[la,lb],
++    chi2R[la,lb] -> em4phi Rt[la,lb] + chi2Rphi[la,lb],
+     IfCCZ4[
+-      R[la,lb] -> R[la,lb] + (2/phi) (+ g[la,lc] Z[uc] PD[phi,lb]
++      chi2R[la,lb] -> chi2R[la,lb] + (2*phi) (+ g[la,lc] Z[uc] PD[phi,lb]
+         + g[lb,lc] Z[uc] PD[phi,la] - g[la,lb] Z[uc] PD[phi,lc])
+-        + e4phi Z[uc] PD[gt[la,lb],lc]
+-    ],
+-    
++        + Z[uc] PD[gt[la,lb],lc]
++    ](* Haven't checked/tried these Z4 terms --JGB *),    
+     (* Matter terms *)
+     
+     (* rho = n^a n^b T_ab *)
+@@ -616,17 +620,22 @@ evolCalc =
+     
+     (* RHS terms *)
+     
++    trR      -> gtu[ua,ub] chi2R[la,lb],
++    mH ->  -(1/8) em2phi^(-1/2) (trR - Atm[ua,lb] Atm[ub,la] + (2/3) trK^2 - addMatter 16 Pi rho),
++    (* dt -> 0.0078125, *)
++ 
+     (* PRD 62, 044034 (2000), eqn. (10) *)
+     (* PRD 67 084023 (2003), eqn. (16) and (23) *)
+-    dot[phi]       -> IfThen[conformalMethod==CMW, 1/3 phi, -1/6]
+-                      (alpha trK - PD[beta[ua],la]),
+-    
++    dot[phi]       -> IfThen[conformalMethod==CMW, 1/3 phi, -1/6] (alpha trK - PD[beta[ua],la]) (*JVM had distributed terms with two IFs, why?*)
++                      + C1 dt alpha mH IfThen [conformalMethod==CMW, -2 phi, 1],
++
+     (* PRD 62, 044034 (2000), eqn. (9) *)
+     (* gr-qc:1106.2254 (2011), eqn. (14) *)
+     (* removing trA from Aij ensures that detg = 1 *)
+     dot[gt[la,lb]] -> - 2 alpha (At[la,lb] - IfCCZ4[(1/3) At[lc,ld] gtu[uc,ud] gt[la,lb], 0])
+                       + gt[la,lc] PD[beta[uc],lb] + gt[lb,lc] PD[beta[uc],la]
+-                      - (2/3) gt[la,lb] PD[beta[uc],lc],
++                      - (2/3) gt[la,lb] PD[beta[uc],lc]
++                      + C2 dt alpha mH gt[la,lb],
+     (* PRD 62, 044034 (2000), eqn. (20) *)
+     (* PRD 67 084023 (2003), eqn (26) *)
+     (* gr-qc:1106.2254 (2011), eqn. (19) *)
+@@ -640,6 +649,7 @@ evolCalc =
+                       + (1/3) gtu[ui,uj] PD[beta[ul],lj,ll]
+                       - Xtn[uj] PD[beta[ui],lj] 
+                       + (2/3) Xtn[ui] PD[beta[uj],lj]
++                      - C4 Abs[PD[beta[uj],lj]] (Xt[ui]-Xtn[ui])
+                       + IfCCZ4[
+                                + GammaShift 2 e4phi (- Z[uj] PD[beta[ui],lj]
+                                                  + (2/3) Z[ui] PD[beta[uj],lj])
+@@ -668,9 +678,9 @@ evolCalc =
+     (* gr-qc:1106.2254 (2011), eqn. (17) *)
+     (* Adding the RHS of Theta to K, because K_Z4 = K_BSSN + 2 Theta *)
+     (* Also adding the Z term, as it has to cancel with the one in Theta *)
+-    dottrK         -> - em4phi ( gtu[ua,ub] ( PD[alpha,la,lb]
+-                                + 2 cdphi[la] PD[alpha,lb] )
+-                                - Xtn[ua] PD[alpha,la] )
++    dottrK         -> - em2phi ( gtu[ua,ub] ( em2phi PD[alpha,la,lb]
++                                + 2 chicdphi[la] PD[alpha,lb] )
++                                - em2phi Xtn[ua] PD[alpha,la] )
+                       + alpha (Atm[ua,lb] Atm[ub,la] + (1/3) trK^2)
+                       + IfCCZ4[
+                                + 2 dotTheta + 2 PD[alpha,la] Z[ua]
+@@ -684,16 +694,15 @@ evolCalc =
+     (* TODO: Should we use the Hamiltonian constraint to make Rij tracefree? *)
+     (* gr-qc:1106.2254 (2011), eqn. (15) *)
+     (* Adding Z terms in the Ricci and Theta terms *)
+-    Ats[la,lb]     -> - CDt[alpha,la,lb] +
+-                      + 2 (PD[alpha,la] cdphi[lb] + PD[alpha,lb] cdphi[la] )
+-                      + alpha R[la,lb],
+-    trAts          -> gu[ua,ub] Ats[la,lb],
+-    dot[At[la,lb]] -> + em4phi (+ Ats[la,lb] - (1/3) g[la,lb] trAts )
+-                      + alpha (+ ((trK - IfCCZ4[2 Theta, 0])
+-                                  At[la,lb])
+-                               - 2 At[la,lc] Atm[uc,lb])
++    chi2Ats[la,lb]     -> - em4phi CDt[alpha,la,lb] +
++                      + 2 em2phi (PD[alpha,la] chicdphi[lb] + PD[alpha,lb] chicdphi[la] )
++                      + alpha chi2R[la,lb],
++    trchi2Ats          -> gu[ua,ub] chi2Ats[la,lb],
++    dot[At[la,lb]] -> + (+ chi2Ats[la,lb] - (1/3) g[la,lb] trchi2Ats )
++                      + alpha (trK At[la,lb] - 2 At[la,lc] Atm[uc,lb])
+                       + At[la,lc] PD[beta[uc],lb] + At[lb,lc] PD[beta[uc],la]
+                       - (2/3) At[la,lb] PD[beta[uc],lc]
++                      - C3 dt alpha mH At[la,lb] 
+     (* Equation (4.23) in Baumgarte & Shapiro (Phys. Rept. 376 (2003) 41-131) *)
+                       + addMatter (- em4phi alpha 8 Pi
+                                      (T[la,lb] - (1/3) g[la,lb] trS)),
+@@ -961,7 +970,12 @@ enforceCalc =
+     
+     At[la,lb] -> At[la,lb] - (1/3) gt[la,lb] trAt,
+     
+-    alpha -> Max[alpha, MinimumLapse]
++    alpha -> Max[alpha, MinimumLapse],
++    
++    phi -> IfThen[conformalMethod==CMW,Max[phi,MinimumPhi],phi], (*new param, JVM uses 10^{-16} --JGB*)
++
++    gt[la,lb] -> IfThen[enforceUnitDetgt,gt[la,lb]/detgtExpr^(1/3),gt[la,lb]]
++
+   }
+ };
+ 
+@@ -1004,8 +1018,8 @@ constraintsCalc =
+                  Gt[ua,lb,lc], Gtl[la,lb,lc], Gtlu[la,lb,uc], Xtn[ua],
+                  e4phi, em4phi,
+                  g[la,lb], detg, gu[ua,ub], ddetg[la], G[ua,lb,lc],
+-                 Rt[la,lb], Rphi[la,lb], R[la,lb], trR, Atm[ua,lb],
+-                 gK[la,lb,lc], cdphi[la], cdphi2[la,lb],
++                 Rt[la,lb], chi2Rphi[la,lb], chi2R[la,lb], trR, Atm[ua,lb],
++                 gK[la,lb,lc], cdphi[la], chicdphi[la], chi2cdphi2[la,lb],
+                  rho, S[la], fac1, fac2},
+   Equations -> 
+   {
+@@ -1068,14 +1082,17 @@ constraintsCalc =
+ 
+     fac1 -> IfThen[conformalMethod==CMW, -1/(2 phi), 1],
+     cdphi[la] -> fac1 CDt[phi,la],
+-    fac2 -> IfThen[conformalMethod==CMW, 1/(2 phi^2), 0],
+-    cdphi2[la,lb] -> fac1 CDt[phi,la,lb] + fac2 CDt[phi,la] CDt[phi,lb],
++    fac1 -> IfThen[conformalMethod==CMW, -1/2, Exp[-2 phi]],
++    chicdphi[la] -> fac1 CDt[phi,la],
++    fac1 -> IfThen[conformalMethod==CMW, -phi/2, Exp[-4 phi]],
++    fac2 -> IfThen[conformalMethod==CMW, 1/2, 0],
++    chi2cdphi2[la,lb] -> fac1 CDt[phi,la,lb] + fac2 CDt[phi,la] CDt[phi,lb],
+ 
+     (* PRD 62, 044034 (2000), eqn. (15) *)
+-    Rphi[li,lj] -> - 2 cdphi2[lj,li]
+-                   - 2 gt[li,lj] gtu[ul,un] cdphi2[ll,ln]
+-                   + 4 cdphi[li] cdphi[lj]
+-                   - 4 gt[li,lj] gtu[ul,un] cdphi[ln] cdphi[ll],
++    chi2Rphi[li,lj] -> - 2 chi2cdphi2[lj,li]
++                   - 2 gt[li,lj] gtu[ul,un] chi2cdphi2[ll,ln]
++                   + 4 chicdphi[li] chicdphi[lj]
++                   - 4 gt[li,lj] gtu[ul,un] chicdphi[ln] chicdphi[ll],
+     
+     (* ddetg[la] -> PD[e4phi detg,la], *)
+     ddetg[la]   -> e4phi ddetgt[la] + 4 detgt e4phi PD[phi,la],
+@@ -1084,16 +1101,15 @@ constraintsCalc =
+                    + 1/(2 detg) (+ KD[ua,lb] ddetg[lc] + KD[ua,lc] ddetg[lb]
+                                  - (1/3) g[lb,lc] gu[ua,ud] ddetg[ld]),
+     
+-    R[la,lb] -> + Rt[la,lb] + Rphi[la,lb],
+-
++    chi2R[la,lb] -> em4phi Rt[la,lb] + chi2Rphi[la,lb],
++    
+     IfCCZ4[
+-      R[la,lb] -> R[la, lb] + (2/phi) (+ g[la,lc] Z[uc] PD[phi,lb]
++      chi2R[la,lb] -> chi2R[la,lb] + (2*phi) (+ g[la,lc] Z[uc] PD[phi,lb]
+         + g[lb,lc] Z[uc] PD[phi,la] - g[la,lb] Z[uc] PD[phi,lc])
+-        + e4phi Z[uc] PD[gt[la,lb],lc]
++        + Z[uc] PD[gt[la,lb],lc]  (*Fixed an apparent typo in McLachlan_CCZ4. See aslo note in evol eqns near line 598.*)
+     ],
++    trR      -> gtu[ua,ub] chi2R[la,lb],
+ 
+-    trR      -> gu[ua,ub] R[la,lb],
+-    
+     (* K[la,lb] -> e4phi At[la,lb] + (1/3) g[la,lb] trK, *)
+     (* Km[ua,lb] -> gu[ua,uc] K[lc,lb], *)
+     Atm[ua,lb] -> gtu[ua,uc] At[lc,lb],
+@@ -1280,6 +1296,13 @@ intParameters =
+     AllowedValues -> {{Value -> "0", Description -> "Gamma driver shift"},
+                       {Value -> "1", Description -> "Harmonic shift"}},
+     Default -> 0
++  },
++  {
++    Name -> enforceUnitDetgt,
++    Description -> "Whether to enforce det(gt) = 1 during",
++    AllowedValues -> {{Value -> "0", Description -> "do not enforce"},
++                      {Value -> "1", Description -> "enforce"}},
++    Default -> 0
+   }
+ };
+ 
+@@ -1343,6 +1366,11 @@ realParameters =
+     Default -> -1
+   },
+   {
++    Name -> MinimumPhi,
++    Description -> "Minimum value of the phi function, applies only when conformalMethod==1",
++    Default -> 10^-16
++  },
++  {
+     Name -> SpatialBetaDriverRadius,
+     Description -> "Radius at which the BetaDriver starts to be reduced",
+     AllowedValues -> {{Value -> "(0:*", Description -> "Positive"}},
+@@ -1359,6 +1387,36 @@ realParameters =
+     Description -> "Dissipation strength",
+     AllowedValues -> {{Value -> "(0:*", Description -> "Positive"}},
+     Default -> 0
++  },
++(*{
++    Name -> Deltat,
++    Description -> "dt multiplying constraint-damping coefficients",
++    AllowedValues -> {{Value -> "(0:*", Description -> "Positive"}},
++    Default -> 0
++  },*)
++  {
++    Name -> C1,
++    Description -> "constraint-damping coefficient in dot_phi",
++    AllowedValues -> {{Value -> "(0:*", Description -> "Positive"}},
++    Default -> 0
++  },
++  {
++    Name -> C2,
++    Description -> "constraint-damping coefficient in dot_gt",
++    AllowedValues -> {{Value -> "(0:*", Description -> "Positive"}},
++    Default -> 0
++  },
++  {
++    Name -> C3,
++    Description -> "constraint-damping coefficient in dot_At",
++    AllowedValues -> {{Value -> "(0:*", Description -> "Positive"}},
++    Default -> 0
++  },
++  {
++    Name -> C4,
++    Description -> "Yo term coefficient in dot_Xt",
++    AllowedValues -> {{Value -> "(0:*", Description -> "Positive"}},
++    Default -> 0
+   }
+ };
+ 
+@@ -1430,8 +1488,7 @@ CreateKrancThornTT [groups, ".", thorn,
+ *)
+ 
+ (* createCode[2, False, True , 3, 1, "BSSN"]; *)
+-createCode[4, False, True , 3, 1, "BSSN"];
+-(* createCode[4, False, False, 3, 1, "BSSN"]; *)
++createCode[4, False, False, 3, 1, "BSSN"];
+ (* createCode[4, True , True , 3, 1, "BSSN"]; *)
+ (* createCode[8, False, True , 3, 1, "BSSN"]; *)
+ (* createCode[8, True , True , 3, 1, "BSSN"]; *)

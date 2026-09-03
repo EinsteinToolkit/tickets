@@ -1,0 +1,2286 @@
+Index: MoL/interface.ccl
+===================================================================
+--- MoL.orig/interface.ccl	2014-03-10 16:24:01.411163553 -0700
++++ MoL/interface.ccl	2014-03-10 16:24:01.383163323 -0700
+@@ -200,36 +200,38 @@
+   Original_Delta_Time
+ } "The original time and delta time which are reset by MoL during evolution"
+ 
+-CCTK_REAL ScratchSpace[MoL_Num_Evolved_Vars*MoL_Num_Scratch_Levels] \
++# there is a hard-coded limit on the number of scratch levels of 99
++# changing it here will increase this limit
++CCTK_REAL ScratchSpaceSlow[MoL_Num_Scratch_Levels] \
+             TYPE       = GF \
+-            Timelevels = 1 \
++            Timelevels = 99 \
+             TAGS       = 'Prolongation="None" Checkpoint="no"'
+ 
+-CCTK_REAL ScratchSpaceSlow[MoL_Num_Evolved_Vars_Slow*MoL_Num_Scratch_Levels] \
++CCTK_REAL ScratchSpace[MoL_Num_Scratch_Levels] \
+             TYPE       = GF \
+-            Timelevels = 1 \
++            Timelevels = 99 \
+             TAGS       = 'Prolongation="None" Checkpoint="no"'
+ 
+-CCTK_REAL SandRScratchSpace[MoL_Num_SaveAndRestore_Vars] \
++CCTK_REAL SandRScratchSpace \
+             TYPE       = GF \
+-            Timelevels = 1 \
++            Timelevels = 99 \
+             TAGS       = 'Prolongation="None" Checkpoint="no"'
+ 
+-#CCTK_COMPLEX ComplexScratchSpace[MoL_Num_ComplexEvolved_Vars*MoL_Num_Scratch_Levels] \
++#CCTK_COMPLEX ComplexScratchSpace[MoL_Num_Scratch_Levels] \
+ #            TYPE       = GF \
+-#            Timelevels = 1 \
++#            Timelevels = 99 \
+ #            TAGS       = 'Checkpoint="no"'
+ 
+-#CCTK_COMPLEX ComplexSandRScratchSpace[MoL_Num_ComplexSaveAndRestore_Vars] \
++#CCTK_COMPLEX ComplexSandRScratchSpace \
+ #            TYPE       = GF \
+-#            Timelevels = 1 \
++#            Timelevels = 99 \
+ #            TAGS       = 'Checkpoint="no"'
+ 
+ #Error vector and scalars for RK45
+ 
+-CCTK_REAL ErrorEstimate[MoL_Num_Evolved_Vars] \
++CCTK_REAL ErrorEstimate \
+             TYPE       = GF \
+-            Timelevels = 1 \
++            Timelevels = 99 \
+             TAGS       = 'Prolongation="None" Checkpoint="no"'
+ 
+ CCTK_REAL ErrorScalars \
+Index: MoL/schedule.ccl
+===================================================================
+--- MoL.orig/schedule.ccl	2014-03-10 16:24:01.411163553 -0700
++++ MoL/schedule.ccl	2014-03-10 16:24:01.383163323 -0700
+@@ -7,47 +7,6 @@
+ 
+ STORAGE: MoL_Counters, MoL_Original_Time
+ 
+-########################################################
+-###  Storage for the scratch space if memory hungry  ###
+-########################################################
+-
+-# NOTE: I don't think this does what I expected.
+-# I now think that this is always switching on memory,
+-# regardless of the parameter...
+-
+-if (MoL_Memory_Always_On)
+-{
+-  if (MoL_Num_Evolved_Vars)
+-  {
+-    if (MoL_Num_Scratch_Levels) 
+-    {
+-      STORAGE: ScratchSpace
+-      if (MoL_Max_Evolved_Array_Size)
+-      {
+-#	STORAGE: ArrayScratchSpace
+-      }
+-    }
+-  }
+-  else if (MoL_Num_Scratch_Levels) 
+-  {
+-    if (MoL_Max_Evolved_Array_Size)
+-    {
+-#      STORAGE: ArrayScratchSpace
+-    }
+-  }
+-  if (MoL_Num_SaveAndRestore_Vars)
+-  {
+-    STORAGE: SandRScratchSpace
+-  }  
+-  if (MoL_Max_Evolved_Array_Size)
+-  {
+-#    STORAGE: ArraySandRScratchSpace
+-  }
+-#  STORAGE: ComplexScratchSpace
+-#  STORAGE: ComplexArrayScratchSpace
+-#  STORAGE: ComplexSandRScratchSpace
+-#  STORAGE: ComplexArraySandRScratchSpace
+-}
+ 
+ ############################################################
+ ###  If using the generic Runge-Kutta solver, switch on  ###
+@@ -169,243 +128,10 @@
+ ###  boundary enforcement and so on.               ###
+ ######################################################
+ 
+-# This fairly complicated mess of conditionals is to try and
+-# ensure that we never ask for storage for a vector group with
+-# no members. It could probably be simplified.
+-
+-if (MoL_Num_Scratch_Levels)
+-{
+-  if (MoL_Num_Evolved_Vars)
+-  {
+-    if (MoL_Num_SaveAndRestore_Vars)
+-    {  
+-      if (MoL_Max_Evolved_Array_Size)
+-      {
+-	schedule GROUP MoL_Evolution AT Evol WHILE MoL::MoL_Stepsize_Bad
+-	{
+-	  STORAGE: ScratchSpace
+-	  STORAGE: SandRScratchSpace
+-# 	  STORAGE: ArrayScratchSpace
+-# 	  STORAGE: ArraySandRScratchSpace
+-	  #   STORAGE: ComplexScratchSpace
+-	  #   STORAGE: ComplexSandRScratchSpace
+-	  #   STORAGE: ComplexArrayScratchSpace
+-	  #   STORAGE: ComplexArraySandRScratchSpace
+-	} "A single Cactus evolution step using MoL"
+-      }
+-      else
+-      {
+-	schedule GROUP MoL_Evolution AT Evol WHILE MoL::MoL_Stepsize_Bad
+-	{
+-	  STORAGE: ScratchSpace
+-	  STORAGE: SandRScratchSpace
+-	  #   STORAGE: ComplexScratchSpace
+-	  #   STORAGE: ComplexSandRScratchSpace
+-	  #   STORAGE: ComplexArrayScratchSpace
+-	  #   STORAGE: ComplexArraySandRScratchSpace
+-	} "A single Cactus evolution step using MoL"
+-      }
+-    }
+-    else
+-    {
+-      if (MoL_Max_Evolved_Array_Size)
+-      {
+-	schedule GROUP MoL_Evolution AT Evol WHILE MoL::MoL_Stepsize_Bad
+-	{
+-	  STORAGE: ScratchSpace
+-# 	  STORAGE: ArrayScratchSpace
+-# 	  STORAGE: ArraySandRScratchSpace
+-	  #   STORAGE: ComplexScratchSpace
+-	  #   STORAGE: ComplexSandRScratchSpace
+-	  #   STORAGE: ComplexArrayScratchSpace
+-	  #   STORAGE: ComplexArraySandRScratchSpace
+-	} "A single Cactus evolution step using MoL"
+-      }
+-      else
+-      {
+-	schedule GROUP MoL_Evolution AT Evol WHILE MoL::MoL_Stepsize_Bad
+-	{
+-	  STORAGE: ScratchSpace
+-	  #   STORAGE: ComplexScratchSpace
+-	  #   STORAGE: ComplexSandRScratchSpace
+-	  #   STORAGE: ComplexArrayScratchSpace
+-	  #   STORAGE: ComplexArraySandRScratchSpace
+-	} "A single Cactus evolution step using MoL"
+-      }
+-    }
+-  }
+-  else 
+-  {
+-    if (MoL_Num_SaveAndRestore_Vars)
+-    {
+-      if (MoL_Max_Evolved_Array_Size)
+-      {
+-	schedule GROUP MoL_Evolution AT Evol WHILE MoL::MoL_Stepsize_Bad
+-	{
+-	  STORAGE: SandRScratchSpace
+-# 	  STORAGE: ArrayScratchSpace
+-# 	  STORAGE: ArraySandRScratchSpace
+-	  #   STORAGE: ComplexScratchSpace
+-	  #   STORAGE: ComplexSandRScratchSpace
+-	  #   STORAGE: ComplexArrayScratchSpace
+-	  #   STORAGE: ComplexArraySandRScratchSpace
+-	} "A single Cactus evolution step using MoL"
+-      }
+-      else
+-      {
+-	schedule GROUP MoL_Evolution AT Evol WHILE MoL::MoL_Stepsize_Bad
+-	{
+-	  STORAGE: SandRScratchSpace
+-	  #   STORAGE: ComplexScratchSpace
+-	  #   STORAGE: ComplexSandRScratchSpace
+-	  #   STORAGE: ComplexArrayScratchSpace
+-	  #   STORAGE: ComplexArraySandRScratchSpace
+-	} "A single Cactus evolution step using MoL"
+-      }
+-    }
+-    else
+-    {
+-      if (MoL_Max_Evolved_Array_Size)
+-      {
+-	schedule GROUP MoL_Evolution AT Evol WHILE MoL::MoL_Stepsize_Bad
+-	{
+-# 	  STORAGE: ArrayScratchSpace
+-# 	  STORAGE: ArraySandRScratchSpace
+-	  #   STORAGE: ComplexScratchSpace
+-	  #   STORAGE: ComplexSandRScratchSpace
+-	  #   STORAGE: ComplexArrayScratchSpace
+-	  #   STORAGE: ComplexArraySandRScratchSpace
+-	} "A single Cactus evolution step using MoL"
+-      }
+-      else
+-      {
+-	schedule GROUP MoL_Evolution AT Evol WHILE MoL::MoL_Stepsize_Bad
+-	{
+-	  #   STORAGE: ComplexScratchSpace
+-	  #   STORAGE: ComplexSandRScratchSpace
+-	  #   STORAGE: ComplexArrayScratchSpace
+-	  #   STORAGE: ComplexArraySandRScratchSpace
+-	} "A single Cactus evolution step using MoL"
+-      }
+-    }
+-  }
+-}
+-else 
++schedule GROUP MoL_Evolution AT Evol WHILE MoL::MoL_Stepsize_Bad
+ {
+-  if (MoL_Num_Evolved_Vars)
+-  {
+-    if (MoL_Num_SaveAndRestore_Vars)
+-    {
+-      if (MoL_Max_Evolved_Array_Size)
+-      {
+-	schedule GROUP MoL_Evolution AT Evol WHILE MoL::MoL_Stepsize_Bad
+-	{
+-	  STORAGE: SandRScratchSpace
+-# 	  STORAGE: ArraySandRScratchSpace
+-	  #   STORAGE: ComplexScratchSpace
+-	  #   STORAGE: ComplexSandRScratchSpace
+-	  #   STORAGE: ComplexArrayScratchSpace
+-	  #   STORAGE: ComplexArraySandRScratchSpace
+-	} "A single Cactus evolution step using MoL"
+-      }
+-      else
+-      {
+-	schedule GROUP MoL_Evolution AT Evol WHILE MoL::MoL_Stepsize_Bad
+-	{
+-	  STORAGE: SandRScratchSpace
+-	  #   STORAGE: ComplexScratchSpace
+-	  #   STORAGE: ComplexSandRScratchSpace
+-	  #   STORAGE: ComplexArrayScratchSpace
+-	  #   STORAGE: ComplexArraySandRScratchSpace
+-	} "A single Cactus evolution step using MoL"
+-      }
+-    }
+-    else
+-    {
+-      if (MoL_Max_Evolved_Array_Size)
+-      {
+-	schedule GROUP MoL_Evolution AT Evol WHILE MoL::MoL_Stepsize_Bad
+-	{
+-# 	  STORAGE: ArraySandRScratchSpace
+-	  #   STORAGE: ComplexScratchSpace
+-	  #   STORAGE: ComplexSandRScratchSpace
+-	  #   STORAGE: ComplexArrayScratchSpace
+-	  #   STORAGE: ComplexArraySandRScratchSpace
+-	} "A single Cactus evolution step using MoL"
+-      }
+-      else
+-      {
+-	schedule GROUP MoL_Evolution AT Evol WHILE MoL::MoL_Stepsize_Bad
+-	{
+-	  #   STORAGE: ComplexScratchSpace
+-	  #   STORAGE: ComplexSandRScratchSpace
+-	  #   STORAGE: ComplexArrayScratchSpace
+-	  #   STORAGE: ComplexArraySandRScratchSpace
+-	} "A single Cactus evolution step using MoL"
+-      }
+-    }
+-  }
+-  else 
+-  {
+-    if (MoL_Num_SaveAndRestore_Vars)
+-    {
+-      if (MoL_Max_Evolved_Array_Size)
+-      {
+-	schedule GROUP MoL_Evolution AT Evol WHILE MoL::MoL_Stepsize_Bad
+-	{
+-	  STORAGE: SandRScratchSpace
+-# 	  STORAGE: ArraySandRScratchSpace
+-	  #   STORAGE: ComplexScratchSpace
+-	  #   STORAGE: ComplexSandRScratchSpace
+-	  #   STORAGE: ComplexArrayScratchSpace
+-	  #   STORAGE: ComplexArraySandRScratchSpace
+-	} "A single Cactus evolution step using MoL"
+-      }
+-      else
+-      {
+-	schedule GROUP MoL_Evolution AT Evol WHILE MoL::MoL_Stepsize_Bad
+-	{
+-	  STORAGE: SandRScratchSpace
+-	  #   STORAGE: ComplexScratchSpace
+-	  #   STORAGE: ComplexSandRScratchSpace
+-	  #   STORAGE: ComplexArrayScratchSpace
+-	  #   STORAGE: ComplexArraySandRScratchSpace
+-	} "A single Cactus evolution step using MoL"
+-      }
+-    }
+-    else
+-    {
+-      if (MoL_Max_Evolved_Array_Size)
+-      {
+-	schedule GROUP MoL_Evolution AT Evol WHILE MoL::MoL_Stepsize_Bad
+-	{
+-# 	  STORAGE: ArraySandRScratchSpace
+-	  #   STORAGE: ComplexScratchSpace
+-	  #   STORAGE: ComplexSandRScratchSpace
+-	  #   STORAGE: ComplexArrayScratchSpace
+-	  #   STORAGE: ComplexArraySandRScratchSpace
+-	} "A single Cactus evolution step using MoL"
+-      }
+-      else
+-      {
+-	schedule GROUP MoL_Evolution AT Evol WHILE MoL::MoL_Stepsize_Bad
+-	{
+-	  #   STORAGE: ComplexScratchSpace
+-	  #   STORAGE: ComplexSandRScratchSpace
+-	  #   STORAGE: ComplexArrayScratchSpace
+-	  #   STORAGE: ComplexArraySandRScratchSpace
+-	} "A single Cactus evolution step using MoL"
+-      }
+-    }
+-  }
+-}
+-
+-
+-if (MoL_Num_Evolved_Vars_Slow)
+-{
+-   STORAGE: ScratchSpaceSlow
+-}
+-
++} "A single Cactus evolution step using MoL"
++    
+ ######################################################
+ ###  StartStep contains the routines that just do  ###
+ ###  internal MoL stuff; setting the counter, and  ###
+@@ -434,6 +160,12 @@
+   OPTIONS: LEVEL
+ } "Ensure the correct time and timestep are used"
+ 
++schedule MoL_AllocateScratchSpace IN MoL_StartStep 
++{
++  LANG: C
++  OPTIONS: LEVEL
++} "Allocate storage for scratch levels"
++
+ #################################################################
+ ###  PreStep is where physics thorns can do their own setup.  ###
+ ###  This would include scheduling the function calls to      ###
+@@ -584,7 +316,7 @@
+ }
+ else if (CCTK_Equals(ODE_Method,"RK45") || CCTK_Equals(ODE_Method,"RK45CK"))
+ {
+-  STORAGE: ErrorEstimate ErrorScalars
++  STORAGE: ErrorScalars
+ 
+   schedule MoL_RK45Add AS MoL_Add IN MoL_Step AFTER MoL_CalcRHS BEFORE MoL_PostStep
+   {
+@@ -593,7 +325,7 @@
+ }
+ else if (CCTK_Equals(ODE_Method,"RK65")) 
+ {
+-  STORAGE: ErrorEstimate ErrorScalars
++  STORAGE: ErrorScalars
+ 
+   schedule MoL_RK65Add AS MoL_Add IN MoL_Step AFTER MoL_CalcRHS BEFORE MoL_PostStep
+   {
+@@ -602,7 +334,7 @@
+ }
+ else if (CCTK_Equals(ODE_Method,"RK87")) 
+ {
+-  STORAGE: ErrorEstimate ErrorScalars
++  STORAGE: ErrorScalars
+ 
+   schedule MoL_RK87Add AS MoL_Add IN MoL_Step AFTER MoL_CalcRHS BEFORE MoL_PostStep
+   {
+@@ -789,6 +521,13 @@
+   LANG: C
+ } "Restoring the Save and Restore variables to the original state"
+ 
++schedule MoL_FreeScratchSpace IN MoL_Evolution AFTER MoL_RestoreSandR
++{
++  LANG: C
++  OPTIONS: LEVEL
++} "Free storage for scratch levels"
++
++
+ ###################################################
+ ###  Loop until the step size was small enough  ###
+ ###################################################
+Index: MoL/src/ChangeType.c
+===================================================================
+--- MoL.orig/src/ChangeType.c	2014-03-10 16:24:01.411163553 -0700
++++ MoL/src/ChangeType.c	2014-03-10 16:24:01.383163323 -0700
+@@ -157,16 +157,17 @@
+           CCTK_WARN(0, "The index passed does not correspond to a GF.");
+         }
+ 
+-        if (!(MoLNumEvolvedVariables < MoL_Num_Evolved_Vars))
++        if (!(MoLNumEvolvedVariables < MoLMaxNumRegisteredVariables))
+         {
+           CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+                      "Warning whilst trying to change variable "
+                      "index %i (%s) to evolved.", 
+                      EvolvedIndex, CCTK_VarName(EvolvedIndex));
+-          CCTK_WARN(0, "When changing type there are more variables "
+-                    "than the accumulator parameter "
+-                    "MoL_Num_Evolved_Vars allows. Check that "
+-                    "you are accumulating onto this parameter correctly");
++          CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                     "When changing type there are more than %d variables. "
++                     " Since this should be the total number of Cactus "
++                     "variables, this looks like a bug.",
++                     MoLMaxNumRegisteredVariables);
+         }
+ 
+         EvolvedVariableIndex[MoLNumEvolvedVariables] = EvolvedIndex;
+@@ -238,16 +239,17 @@
+           CCTK_WARN(0, "The RHS index passed does not correspond to a GF.");
+         }
+ 
+-        if (!(MoLNumEvolvedVariables < MoL_Num_Evolved_Vars))
++        if (!(MoLNumEvolvedVariables < MoLMaxNumRegisteredVariables))
+         {
+           CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+                      "Warning whilst trying to change variable "
+                      "index %i (%s) to evolved.", 
+                      EvolvedIndex, CCTK_VarName(EvolvedIndex));
+-          CCTK_WARN(0, "When changing type there are more variables "
+-                    "than the accumulator parameter "
+-                    "MoL_Num_Evolved_Vars allows. Check that "
+-                    "you are accumulating onto this parameter correctly");
++          CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                     "When changing type there are more than %d variables. "
++                     " Since this should be the total number of Cactus "
++                     "variables, this looks like a bug.",
++                     MoLMaxNumRegisteredVariables);
+         }
+ 
+         for (index = usedindex; index < MoLNumConstrainedVariables - 1; 
+@@ -279,16 +281,17 @@
+           CCTK_WARN(0, "The RHS index passed does not correspond to a GF.");
+         }
+ 
+-        if (!(MoLNumEvolvedVariables < MoL_Num_Evolved_Vars))
++        if (!(MoLNumEvolvedVariables < MoLMaxNumRegisteredVariables))
+         {
+           CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+                      "Warning whilst trying to change variable "
+                      "index %i (%s) to evolved.", 
+                      EvolvedIndex, CCTK_VarName(EvolvedIndex));
+-          CCTK_WARN(0, "When changing type there are more variables "
+-                    "than the accumulator parameter "
+-                    "MoL_Num_Evolved_Vars allows. Check that "
+-                    "you are accumulating onto this parameter correctly");
++          CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                     "When changing type there are more than %d variables. "
++                     " Since this should be the total number of Cactus "
++                     "variables, this looks like a bug.",
++                     MoLMaxNumRegisteredVariables);
+         }
+ 
+         for (index = usedindex; index < MoLNumSandRVariables - 1; index++)
+@@ -315,7 +318,7 @@
+       }
+       
+   }
+-      
++
+   return 0;
+   
+ }
+@@ -673,16 +676,17 @@
+         if (timelevs > 1)
+         {
+ 
+-          if ( !(MoLNumConstrainedVariables < MoL_Num_Constrained_Vars))
++          if ( !(MoLNumConstrainedVariables < MoLMaxNumRegisteredVariables))
+           {
+             CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+                        "Warning whilst trying to change variable "
+                        "index %i (%s) to constrained.", 
+                        ConstrainedIndex, CCTK_VarName(ConstrainedIndex));
+-            CCTK_WARN(0, "When changing type there are more variables "
+-                      "than the accumulator parameter "
+-                      "MoL_Num_Constrained_Vars allows. Check that "
+-                      "you are accumulating onto this parameter correctly");
++            CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                       "When changing type there are more than %d variables. "
++                       " Since this should be the total number of Cactus "
++                       "variables, this looks like a bug.",
++                       MoLMaxNumRegisteredVariables);
+           }
+ 
+           ConstrainedVariableIndex[MoLNumConstrainedVariables] = 
+@@ -703,16 +707,17 @@
+         MoLNumEvolvedVariables--;
+         if (timelevs > 1)
+         {
+-          if ( !(MoLNumConstrainedVariables < MoL_Num_Constrained_Vars))
++          if ( !(MoLNumConstrainedVariables < MoLMaxNumRegisteredVariables))
+           {
+             CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+                        "Warning whilst trying to change variable "
+                        "index %i (%s) to constrained.", 
+                        ConstrainedIndex, CCTK_VarName(ConstrainedIndex));
+-            CCTK_WARN(0, "When changing type there are more variables "
+-                      "than the accumulator parameter "
+-                      "MoL_Num_Constrained_Vars allows. Check that "
+-                      "you are accumulating onto this parameter correctly");
++            CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                       "When changing type there are more than %d variables. "
++                       " Since this should be the total number of Cactus "
++                       "variables, this looks like a bug.",
++                       MoLMaxNumRegisteredVariables);
+           }
+           ConstrainedVariableIndex[MoLNumConstrainedVariables] = ConstrainedIndex;
+           MoLNumConstrainedVariables++;
+@@ -764,16 +769,17 @@
+         MoLNumSandRVariables--;
+         if (timelevs > 1)
+         {
+-          if ( !(MoLNumConstrainedVariables < MoL_Num_Constrained_Vars))
++          if ( !(MoLNumConstrainedVariables < MoLMaxNumRegisteredVariables))
+           {
+             CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+                        "Warning whilst trying to change variable "
+                        "index %i (%s) to constrained.", 
+                        ConstrainedIndex, CCTK_VarName(ConstrainedIndex));
+-            CCTK_WARN(0, "When changing type there are more variables "
+-                      "than the accumulator parameter "
+-                      "MoL_Num_Constrained_Vars allows. Check that "
+-                      "you are accumulating onto this parameter correctly");
++            CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                       "When changing type there are more than %d variables. "
++                       " Since this should be the total number of Cactus "
++                       "variables, this looks like a bug.",
++                       MoLMaxNumRegisteredVariables);
+           }
+           ConstrainedVariableIndex[MoLNumConstrainedVariables] = ConstrainedIndex;
+           MoLNumConstrainedVariables++;
+@@ -877,16 +883,17 @@
+ 
+       {
+ 
+-        if (!(MoLNumSandRVariables < MoL_Num_SaveAndRestore_Vars))
++        if (!(MoLNumSandRVariables < MoLMaxNumRegisteredVariables))
+         {
+           CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+                      "Warning whilst trying to change variable "
+                      "index %i (%s) to save and restore.", 
+                      SandRIndex, CCTK_VarName(SandRIndex));
+-          CCTK_WARN(0, "When changing type there are more variables "
+-                    "than the accumulator parameter "
+-                    "MoL_Num_SaveAndRestore_Vars allows. Check that "
+-                    "you are accumulating onto this parameter correctly");
++          CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                     "When changing type there are more than %d variables. "
++                     " Since this should be the total number of Cactus "
++                     "variables, this looks like a bug.",
++                     MoLMaxNumRegisteredVariables);
+         }
+         SandRVariableIndex[MoLNumSandRVariables] = SandRIndex;
+         MoLNumSandRVariables++;
+@@ -897,16 +904,17 @@
+       
+       {
+ 
+-        if (!(MoLNumSandRVariables < MoL_Num_SaveAndRestore_Vars))
++        if (!(MoLNumSandRVariables < MoLMaxNumRegisteredVariables))
+         {
+           CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+                      "Warning whilst trying to change variable "
+                      "index %i (%s) to save and restore.", 
+                      SandRIndex, CCTK_VarName(SandRIndex));
+-          CCTK_WARN(0, "When changing type there are more variables "
+-                    "than the accumulator parameter "
+-                    "MoL_Num_SaveAndRestore_Vars allows. Check that "
+-                    "you are accumulating onto this parameter correctly");
++          CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                     "When changing type there are more than %d variables. "
++                     " Since this should be the total number of Cactus "
++                     "variables, this looks like a bug.",
++                     MoLMaxNumRegisteredVariables);
+         }
+         for (index = usedindex; index < MoLNumEvolvedVariables - 1; index++)
+         {
+@@ -949,16 +957,17 @@
+       
+       {
+ 
+-        if (!(MoLNumSandRVariables < MoL_Num_SaveAndRestore_Vars))
++        if (!(MoLNumSandRVariables < MoLMaxNumRegisteredVariables))
+         {
+           CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+                      "Warning whilst trying to change variable "
+                      "index %i (%s) to save and restore.", 
+                      SandRIndex, CCTK_VarName(SandRIndex));
+-          CCTK_WARN(0, "When changing type there are more variables "
+-                    "than the accumulator parameter "
+-                    "MoL_Num_SaveAndRestore_Vars allows. Check that "
+-                    "you are accumulating onto this parameter correctly");
++          CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                     "When changing type there are more than %d variables. "
++                     " Since this should be the total number of Cactus "
++                     "variables, this looks like a bug.",
++                     MoLMaxNumRegisteredVariables);
+         }
+         for (index = usedindex; index < MoLNumConstrainedVariables -
+                1; 
+Index: MoL/src/ExternalVariables.h
+===================================================================
+--- MoL.orig/src/ExternalVariables.h	2014-03-10 16:24:01.411163553 -0700
++++ MoL/src/ExternalVariables.h	2014-03-10 16:24:01.387163356 -0700
+@@ -71,3 +71,5 @@
+ extern CCTK_REAL *ArrayScratchSpace;
+ extern CCTK_INT *ArrayScratchSizes;
+ extern CCTK_INT CurrentArrayScratchSize;
++
++extern CCTK_INT MoLMaxNumRegisteredVariables;
+Index: MoL/src/GenericRK.c
+===================================================================
+--- MoL.orig/src/GenericRK.c	2014-03-10 16:24:01.411163553 -0700
++++ MoL/src/GenericRK.c	2014-03-10 16:24:01.387163356 -0700
+@@ -87,6 +87,7 @@
+ #endif
+ 
+   static CCTK_INT scratchspace_firstindex = -99;
++  static CCTK_INT complexscratchspace_firstindex = -99;
+   CCTK_INT index, var, scratchstep, alphaindex, scratchindex;
+   CCTK_INT totalsize;
+   CCTK_REAL alpha, beta;
+@@ -105,6 +106,7 @@
+   if (scratchspace_firstindex == -99)
+   {
+     scratchspace_firstindex = CCTK_FirstVarIndex("MOL::SCRATCHSPACE");
++    complexscratchspace_firstindex = CCTK_FirstVarIndex("MOL::COMPLEXSCRATCHSPACE");
+   }
+ 
+   beta = RKBetaCoefficients[MoL_Intermediate_Steps - 
+@@ -181,16 +183,14 @@
+           ScratchVar = &ScratchSpace[(var * MoL_Num_Scratch_Levels + 
+                                    scratchindex) * totalsize];
+         */
+-        ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
++        ScratchVar = CCTK_VarDataPtrI(cctkGH, var, 
+                                       scratchspace_firstindex
+-                                      + var 
+-                                      + MoL_Num_Evolved_Vars * scratchindex);
++                                      + scratchindex);
+ #ifdef MOLDEBUG
+         if (CCTK_EQUALS(verbose,"extreme"))
+         {
+-          printf("Reading from scratch space, initial address %ld index %d\n", 
+-                 ScratchVar, (var * MoL_Num_Scratch_Levels + 
+-                              scratchindex) * totalsize);
++          printf("Reading from scratch space var %d, initial index %d\n", 
++                 var, scratchindex);
+         }
+ #endif
+       }
+@@ -237,16 +237,12 @@
+                                  MoL_Intermediate_Steps -
+                                  (*MoL_Intermediate_Step)) * totalsize];
+       */
+-      ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
++      ScratchVar = CCTK_VarDataPtrI(cctkGH, var, 
+                                     scratchspace_firstindex
+-                                    + var 
+-                                    + MoL_Num_Evolved_Vars * (MoL_Intermediate_Steps - (*MoL_Intermediate_Step)));
++                                    + (MoL_Intermediate_Steps - (*MoL_Intermediate_Step)));
+ #ifdef MOLDEBUG
+-      printf("Writing to scratch space, initial address %ld, "
+-             "index %d, totalsize %d \n", 
+-             ScratchVar, (var * MoL_Num_Scratch_Levels + 
+-                          MoL_Intermediate_Steps -
+-                          (*MoL_Intermediate_Step)) * totalsize, totalsize);
++      printf("Writing to scratch space, var %d, index %d\n", 
++             var, MoL_Intermediate_Steps - (*MoL_Intermediate_Step));
+ #endif
+ #pragma omp parallel for
+       for (index = 0; index < totalsize; index++)
+@@ -300,14 +296,14 @@
+ 
+       if (scratchstep) 
+       {
+-        ScratchComplexVar = &ComplexScratchSpace[(var *
+-                                                  MoL_Num_Scratch_Levels +
+-                                                  scratchindex) * totalsize];
++        ScratchComplexVar = CCTK_VarDataPtrI(cctkGH, var, 
++                                      complexscratchspace_firstindex
++                                      + scratchindex);
+       }
+       else
+       {
+         ScratchComplexVar = (CCTK_COMPLEX*)CCTK_VarDataPtrI(cctkGH, 1, 
+-                                                            EvolvedComplexVariableIndex[var]);
++                                                  EvolvedComplexVariableIndex[var]);
+       }
+       
+       if ( (alpha > MoL_Tiny)||(alpha < -MoL_Tiny) )
+@@ -332,10 +328,9 @@
+     {
+       UpdateComplexVar = (CCTK_COMPLEX *)CCTK_VarDataPtrI(cctkGH, 0, 
+                                                           EvolvedComplexVariableIndex[var]);
+-      ScratchComplexVar = &ComplexScratchSpace[(var * MoL_Num_Scratch_Levels + 
+-                                                MoL_Intermediate_Steps -
+-                                                (*MoL_Intermediate_Step)) * 
+-                                              totalsize];
++      ScratchComplexVar = CCTK_VarDataPtrI(cctkGH, var, 
++                                    complexscratchspace_firstindex
++                                    + (MoL_Intermediate_Steps - (*MoL_Intermediate_Step)));
+ #pragma omp parallel for
+       for (index = 0; index < totalsize; index++)
+       {
+Index: MoL/src/IndexArrays.c
+===================================================================
+--- MoL.orig/src/IndexArrays.c	2014-03-10 16:24:01.411163553 -0700
++++ MoL/src/IndexArrays.c	2014-03-10 16:24:01.387163356 -0700
+@@ -82,6 +82,13 @@
+   *Original_Delta_Time = cctkGH->cctk_delta_time;
+ 
+   /* 
++     Presumably a user will not try to register more variables than the total
++     number of Cactus variables
++   */
++
++  MoLMaxNumRegisteredVariables = CCTK_NumVars();
++
++  /* 
+      We only want to set up the index arrays once.
+      With mesh refinement this routine could be scheduled
+      multiple times, leading to multiple copies of the
+@@ -94,16 +101,16 @@
+   }
+ 
+ 
+-  if (MoL_Num_Evolved_Vars)
++  if (MoLMaxNumRegisteredVariables)
+   {
+-    EvolvedVariableIndex = (CCTK_INT *)malloc(MoL_Num_Evolved_Vars * 
++    EvolvedVariableIndex = (CCTK_INT *)malloc(MoLMaxNumRegisteredVariables * 
+ 					      sizeof(CCTK_INT));
+     if (!EvolvedVariableIndex)
+       {
+ 	CCTK_WARN(0,"Failed to allocate the evolved variable index array");
+       }
+ 
+-    RHSVariableIndex = (CCTK_INT *)malloc(MoL_Num_Evolved_Vars * 
++    RHSVariableIndex = (CCTK_INT *)malloc(MoLMaxNumRegisteredVariables * 
+ 					  sizeof(CCTK_INT));
+     if (!RHSVariableIndex)
+       {
+@@ -111,16 +118,16 @@
+       }
+   }
+ 
+-  if (MoL_Num_Evolved_Vars_Slow)
++  if (MoLMaxNumRegisteredVariables)
+   {
+-    EvolvedVariableIndexSlow = (CCTK_INT *)malloc(MoL_Num_Evolved_Vars_Slow * 
++    EvolvedVariableIndexSlow = (CCTK_INT *)malloc(MoLMaxNumRegisteredVariables * 
+ 					      sizeof(CCTK_INT));
+     if (!EvolvedVariableIndexSlow)
+       {
+ 	CCTK_WARN(0,"Failed to allocate the slow evolved variable index array");
+       }
+ 
+-    RHSVariableIndexSlow = (CCTK_INT *)malloc(MoL_Num_Evolved_Vars_Slow * 
++    RHSVariableIndexSlow = (CCTK_INT *)malloc(MoLMaxNumRegisteredVariables * 
+ 					  sizeof(CCTK_INT));
+     if (!RHSVariableIndexSlow)
+       {
+@@ -128,9 +135,9 @@
+       }
+   }
+ 
+-  if (MoL_Num_Constrained_Vars)
++  if (MoLMaxNumRegisteredVariables)
+   {
+-    ConstrainedVariableIndex = (CCTK_INT *)malloc(MoL_Num_Constrained_Vars * 
++    ConstrainedVariableIndex = (CCTK_INT *)malloc(MoLMaxNumRegisteredVariables * 
+ 						  sizeof(CCTK_INT));
+     if (!ConstrainedVariableIndex)
+       {
+@@ -138,9 +145,9 @@
+       }
+   }
+ 
+-  if (MoL_Num_SaveAndRestore_Vars)
++  if (MoLMaxNumRegisteredVariables)
+   {
+-    SandRVariableIndex = (CCTK_INT *)malloc(MoL_Num_SaveAndRestore_Vars * 
++    SandRVariableIndex = (CCTK_INT *)malloc(MoLMaxNumRegisteredVariables * 
+ 					    sizeof(CCTK_INT));
+     if (!SandRVariableIndex)
+     {
+@@ -154,16 +161,16 @@
+     return;
+   }
+ 
+-  if (MoL_Num_ComplexEvolved_Vars)
++  if (MoLMaxNumRegisteredVariables)
+   {
+-    EvolvedComplexVariableIndex = (CCTK_INT *)malloc(MoL_Num_ComplexEvolved_Vars * 
++    EvolvedComplexVariableIndex = (CCTK_INT *)malloc(MoLMaxNumRegisteredVariables * 
+ 						     sizeof(CCTK_INT));
+     if (!EvolvedComplexVariableIndex)
+       {
+ 	CCTK_WARN(0,"Failed to allocate the evolved complex variable index array");
+       }
+     
+-    RHSComplexVariableIndex = (CCTK_INT *)malloc(MoL_Num_ComplexEvolved_Vars * 
++    RHSComplexVariableIndex = (CCTK_INT *)malloc(MoLMaxNumRegisteredVariables * 
+ 						 sizeof(CCTK_INT));
+     if (!RHSComplexVariableIndex)
+     {
+@@ -171,9 +178,9 @@
+     }
+   }
+ 
+-  if (MoL_Num_ComplexConstrained_Vars)
++  if (MoLMaxNumRegisteredVariables)
+   {
+-    ConstrainedComplexVariableIndex = (CCTK_INT *)malloc(MoL_Num_ComplexConstrained_Vars * 
++    ConstrainedComplexVariableIndex = (CCTK_INT *)malloc(MoLMaxNumRegisteredVariables * 
+ 							 sizeof(CCTK_INT));
+     if (!ConstrainedComplexVariableIndex)
+     {
+@@ -182,9 +189,9 @@
+     }
+   }
+ 
+-  if (MoL_Num_ComplexSaveAndRestore_Vars)
++  if (MoLMaxNumRegisteredVariables)
+   {
+-    SandRComplexVariableIndex = (CCTK_INT *)malloc(MoL_Num_ComplexSaveAndRestore_Vars * 
++    SandRComplexVariableIndex = (CCTK_INT *)malloc(MoLMaxNumRegisteredVariables * 
+ 						   sizeof(CCTK_INT));
+     if (!SandRComplexVariableIndex)
+     {
+@@ -198,16 +205,16 @@
+     return;
+   }
+ 
+-  if (MoL_Num_ArrayEvolved_Vars)
++  if (MoLMaxNumRegisteredVariables)
+   {
+-    EvolvedArrayVariableIndex = (CCTK_INT *)malloc(MoL_Num_ArrayEvolved_Vars * 
++    EvolvedArrayVariableIndex = (CCTK_INT *)malloc(MoLMaxNumRegisteredVariables * 
+ 						   sizeof(CCTK_INT));
+     if (!EvolvedArrayVariableIndex)
+     {
+       CCTK_WARN(0,"Failed to allocate the evolved array variable index array");
+     }
+   
+-    RHSArrayVariableIndex = (CCTK_INT *)malloc(MoL_Num_ArrayEvolved_Vars * 
++    RHSArrayVariableIndex = (CCTK_INT *)malloc(MoLMaxNumRegisteredVariables * 
+ 					       sizeof(CCTK_INT));
+     if (!RHSArrayVariableIndex)
+     {
+@@ -215,9 +222,9 @@
+     }
+   }
+ 
+-  if (MoL_Num_ArrayConstrained_Vars)
++  if (MoLMaxNumRegisteredVariables)
+   {
+-    ConstrainedArrayVariableIndex = (CCTK_INT *)malloc(MoL_Num_ArrayConstrained_Vars * 
++    ConstrainedArrayVariableIndex = (CCTK_INT *)malloc(MoLMaxNumRegisteredVariables * 
+ 						       sizeof(CCTK_INT));
+     if (!ConstrainedArrayVariableIndex)
+     {
+@@ -226,9 +233,9 @@
+     }
+   }
+ 
+-  if (MoL_Num_ArraySaveAndRestore_Vars)
++  if (MoLMaxNumRegisteredVariables)
+   {
+-    SandRArrayVariableIndex = (CCTK_INT *)malloc(MoL_Num_ArraySaveAndRestore_Vars * 
++    SandRArrayVariableIndex = (CCTK_INT *)malloc(MoLMaxNumRegisteredVariables * 
+ 						 sizeof(CCTK_INT));
+     if (!SandRArrayVariableIndex)
+     {
+@@ -242,9 +249,9 @@
+     return;
+   }
+ 
+-  if (MoL_Num_ComplexArrayEvolved_Vars)
++  if (MoLMaxNumRegisteredVariables)
+   {
+-    EvolvedComplexArrayVariableIndex = (CCTK_INT *)malloc(MoL_Num_ComplexArrayEvolved_Vars * 
++    EvolvedComplexArrayVariableIndex = (CCTK_INT *)malloc(MoLMaxNumRegisteredVariables * 
+ 							  sizeof(CCTK_INT));
+     if (!EvolvedComplexArrayVariableIndex)
+     {
+@@ -252,7 +259,7 @@
+ 		"array variable index array");
+     }
+     
+-    RHSComplexArrayVariableIndex = (CCTK_INT *)malloc(MoL_Num_ComplexArrayEvolved_Vars * 
++    RHSComplexArrayVariableIndex = (CCTK_INT *)malloc(MoLMaxNumRegisteredVariables * 
+ 						      sizeof(CCTK_INT));
+     if (!RHSComplexArrayVariableIndex)
+     {
+@@ -261,9 +268,9 @@
+     }
+   }
+ 
+-  if (MoL_Num_ComplexArrayConstrained_Vars)
++  if (MoLMaxNumRegisteredVariables)
+   {
+-    ConstrainedComplexArrayVariableIndex = (CCTK_INT *)malloc(MoL_Num_ComplexArrayConstrained_Vars * 
++    ConstrainedComplexArrayVariableIndex = (CCTK_INT *)malloc(MoLMaxNumRegisteredVariables * 
+ 							      sizeof(CCTK_INT));
+     if (!ConstrainedComplexArrayVariableIndex)
+     {
+@@ -272,9 +279,9 @@
+     }
+   }
+ 
+-  if (MoL_Num_ComplexArraySaveAndRestore_Vars)
++  if (MoLMaxNumRegisteredVariables)
+   {
+-    SandRComplexArrayVariableIndex = (CCTK_INT *)malloc(MoL_Num_ComplexArraySaveAndRestore_Vars * 
++    SandRComplexArrayVariableIndex = (CCTK_INT *)malloc(MoLMaxNumRegisteredVariables * 
+ 							sizeof(CCTK_INT));
+     if (!SandRComplexArrayVariableIndex)
+     {
+Index: MoL/src/InitialCopy.c
+===================================================================
+--- MoL.orig/src/InitialCopy.c	2014-03-10 16:24:01.411163553 -0700
++++ MoL/src/InitialCopy.c	2014-03-10 16:24:01.387163356 -0700
+@@ -297,9 +297,8 @@
+     /*
+       ScratchVar = &SandRScratchSpace[var*totalsize];
+     */
+-    ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
+-                                  CCTK_FirstVarIndex("MOL::SANDRSCRATCHSPACE")
+-                                  + var);
++    ScratchVar = CCTK_VarDataPtrI(cctkGH, var, 
++                                  CCTK_FirstVarIndex("MOL::SANDRSCRATCHSPACE"));
+ #ifdef MOLDEBUG
+     printf("Pointers for the SandR vars are to %ld, %ld and %ld.\n",
+            PreviousVar, CurrentVar, ScratchVar);
+@@ -351,7 +350,8 @@
+                                                SandRComplexVariableIndex[var]);
+     CurrentComplexVar = (CCTK_COMPLEX*)CCTK_VarDataPtrI(cctkGH, 0, 
+                                               SandRComplexVariableIndex[var]);
+-    ScratchComplexVar = &ComplexSandRScratchSpace[var*totalsize];
++    ScratchComplexVar = CCTK_VarDataPtrI(cctkGH, var, 
++                                  CCTK_FirstVarIndex("MOL::COMPLEXSANDRSCRATCHSPACE"));
+ #ifdef MOLDEBUG
+     printf("Pointers for the SandR vars are to %ld, %ld and %ld.\n",
+            PreviousComplexVar, CurrentComplexVar, ScratchComplexVar);
+@@ -424,7 +424,7 @@
+     
+   }
+ 
+-  /* FIXME */
++  /* FIXME: constrained GA are not copied forward the way constrained GF are */
+ 
+ #ifdef MOLDOESCOMPLEX
+ 
+@@ -762,71 +762,76 @@
+   DECLARE_CCTK_PARAMETERS;
+ 
+   CCTK_INT var;
+-  
++
+   CCTK_VInfo(CCTK_THORNSTRING,
+              "The maximum number of evolved variables is %d. "
+              "%d are registered.",
+-             MoL_Num_Evolved_Vars,MoLNumEvolvedVariables);
++             MoLMaxNumRegisteredVariables,MoLNumEvolvedVariables);
++
++  CCTK_VInfo(CCTK_THORNSTRING,
++             "The maximum number of slow evolved variables is %d. "
++             "%d are registered.",
++             MoLMaxNumRegisteredVariables,MoLNumEvolvedVariablesSlow);
+ 
+   CCTK_VInfo(CCTK_THORNSTRING,
+              "The maximum number of constrained variables is %d. "
+              "%d are registered.",
+-             MoL_Num_Constrained_Vars,MoLNumConstrainedVariables);
++             MoLMaxNumRegisteredVariables,MoLNumConstrainedVariables);
+   
+   CCTK_VInfo(CCTK_THORNSTRING,
+              "The maximum number of SandR variables is %d. "
+              "%d are registered.",
+-             MoL_Num_SaveAndRestore_Vars,MoLNumSandRVariables);
++             MoLMaxNumRegisteredVariables,MoLNumSandRVariables);
+   
+ 
+   CCTK_VInfo(CCTK_THORNSTRING,
+              "The maximum number of evolved complex variables is %d. "
+              "%d are registered.",
+-             MoL_Num_ComplexEvolved_Vars,MoLNumEvolvedComplexVariables);
++             MoLMaxNumRegisteredVariables,MoLNumEvolvedComplexVariables);
+   
+   CCTK_VInfo(CCTK_THORNSTRING,
+              "The maximum number of constrained complex variables is %d. "
+              "%d are registered.",
+-             MoL_Num_ComplexConstrained_Vars,MoLNumConstrainedComplexVariables);
++             MoLMaxNumRegisteredVariables,MoLNumConstrainedComplexVariables);
+   
+   CCTK_VInfo(CCTK_THORNSTRING,
+              "The maximum number of SandR complex variables is %d. "
+              "%d are registered.",
+-             MoL_Num_ComplexSaveAndRestore_Vars,MoLNumSandRComplexVariables);
++             MoLMaxNumRegisteredVariables,MoLNumSandRComplexVariables);
+   
+ 
+   CCTK_VInfo(CCTK_THORNSTRING,
+              "The maximum number of evolved array variables is %d. "
+              "%d are registered.",
+-             MoL_Num_ArrayEvolved_Vars,MoLNumEvolvedArrayVariables);
++             MoLMaxNumRegisteredVariables,MoLNumEvolvedArrayVariables);
+   
+   CCTK_VInfo(CCTK_THORNSTRING,
+              "The maximum number of constrained array variables is %d. "
+              "%d are registered.",
+-             MoL_Num_ArrayConstrained_Vars,MoLNumConstrainedArrayVariables);
++             MoLMaxNumRegisteredVariables,MoLNumConstrainedArrayVariables);
+   
+   CCTK_VInfo(CCTK_THORNSTRING,
+              "The maximum number of SandR array variables is %d. "
+              "%d are registered.",
+-             MoL_Num_ArraySaveAndRestore_Vars,MoLNumSandRArrayVariables);
++             MoLMaxNumRegisteredVariables,MoLNumSandRArrayVariables);
+   
+ 
+   CCTK_VInfo(CCTK_THORNSTRING,
+              "The maximum number of evolved complex array variables is %d. "
+              "%d are registered.",
+-             MoL_Num_ComplexArrayEvolved_Vars,
++             MoLMaxNumRegisteredVariables,
+              MoLNumEvolvedComplexArrayVariables);
+   
+   CCTK_VInfo(CCTK_THORNSTRING,
+              "The maximum number of constrained complex array "
+              "variables is %d. %d are registered.",
+-             MoL_Num_ComplexArrayConstrained_Vars,
++             MoLMaxNumRegisteredVariables,
+              MoLNumConstrainedComplexArrayVariables);
+   
+   CCTK_VInfo(CCTK_THORNSTRING,
+              "The maximum number of SandR complex array "
+              "variables is %d. %d are registered.",
+-             MoL_Num_ComplexArraySaveAndRestore_Vars,
++             MoLMaxNumRegisteredVariables,
+              MoLNumSandRComplexArrayVariables);  
+   
+   CCTK_VInfo(CCTK_THORNSTRING,
+@@ -960,7 +965,3 @@
+ 
+   return;
+ }
+-
+-/********************************************************************
+- *********************     Local Routines   *************************
+- ********************************************************************/
+Index: MoL/src/Operators.c
+===================================================================
+--- MoL.orig/src/Operators.c	2014-03-10 16:24:01.411163553 -0700
++++ MoL/src/Operators.c	2014-03-10 16:24:01.387163356 -0700
+@@ -168,7 +168,12 @@
+    @var     var
+    @vdesc   global index of target variable
+    @vtype   int
+-   @vio     inout
++   @vio     in
++   @endvar
++   @var     tl
++   @vdesc   timelevel of target variable
++   @vtype   int
++   @vio     in
+    @endvar
+    @var     rl
+    @vdesc   refinement level of all variables
+Index: MoL/src/RK2-MR-2_1.c
+===================================================================
+--- MoL.orig/src/RK2-MR-2_1.c	2014-03-10 16:24:01.411163553 -0700
++++ MoL/src/RK2-MR-2_1.c	2014-03-10 16:24:01.387163356 -0700
+@@ -192,10 +192,9 @@
+            beta[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)]);
+ #endif
+ 
+-    ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
++    ScratchVar = CCTK_VarDataPtrI(cctkGH, var, 
+                                       scratchspace_firstindex
+-                                      + var
+-                                      + MoLNumEvolvedVariables * (MoL_Intermediate_Steps - (*MoL_Intermediate_Step)));
++                                      + (MoL_Intermediate_Steps - (*MoL_Intermediate_Step)));
+ 
+ #pragma omp parallel for
+     for (index = 0; index < totalsize; index++)
+@@ -227,10 +226,9 @@
+          
+          //printf("Scratch Step %d, alpha %g \n", scratchstep, alpha[scratchstep]);
+          
+-         ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
++         ScratchVar = CCTK_VarDataPtrI(cctkGH, var, 
+                                        scratchspace_firstindex
+-                                       + var
+-                                       + MoLNumEvolvedVariables * scratchstep);
++                                       + scratchstep);
+       
+ #pragma omp parallel for
+          for (index = 0; index < totalsize; index++)
+@@ -248,10 +246,9 @@
+          
+          //printf("Scratch Step %d, beta %g \n", scratchstep, beta[scratchstep]);
+          
+-         ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
++         ScratchVar = CCTK_VarDataPtrI(cctkGH, var, 
+                                        scratchspace_firstindex
+-                                       + var
+-                                       + MoLNumEvolvedVariables * scratchstep);
++                                       + scratchstep);
+       
+ #pragma omp parallel for
+          for (index = 0; index < totalsize; index++)
+@@ -283,10 +280,9 @@
+            beta[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)]);
+ #endif
+ 
+-    ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
++    ScratchVar = CCTK_VarDataPtrI(cctkGH, var, 
+                                       scratchspace_firstindex_slow
+-                                      + var
+-                                      + MoLNumEvolvedVariablesSlow * (MoL_Intermediate_Steps - (*MoL_Intermediate_Step)));
++                                      + (MoL_Intermediate_Steps - (*MoL_Intermediate_Step)));
+ 
+ #pragma omp parallel for
+     for (index = 0; index < totalsize; index++)
+@@ -318,10 +314,9 @@
+          
+          //printf("Scratch Step %d, alpha %g \n", scratchstep, alpha_slow[scratchstep]);
+          
+-         ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
++         ScratchVar = CCTK_VarDataPtrI(cctkGH, var, 
+                                        scratchspace_firstindex_slow
+-                                       + var
+-                                       + MoLNumEvolvedVariablesSlow * scratchstep);
++                                       + scratchstep);
+       
+ #pragma omp parallel for
+          for (index = 0; index < totalsize; index++)
+@@ -339,10 +334,9 @@
+          
+          //printf("Scratch Step %d, beta %g \n", scratchstep, beta_slow[scratchstep]);
+          
+-         ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
++         ScratchVar = CCTK_VarDataPtrI(cctkGH, var, 
+                                        scratchspace_firstindex_slow
+-                                       + var
+-                                       + MoLNumEvolvedVariablesSlow * scratchstep);
++                                       + scratchstep);
+       
+ #pragma omp parallel for
+          for (index = 0; index < totalsize; index++)
+Index: MoL/src/RK4-MR-2_1.c
+===================================================================
+--- MoL.orig/src/RK4-MR-2_1.c	2014-03-10 16:24:01.411163553 -0700
++++ MoL/src/RK4-MR-2_1.c	2014-03-10 16:24:01.387163356 -0700
+@@ -336,10 +336,9 @@
+            beta[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)]);
+ #endif
+ 
+-    ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
++    ScratchVar = CCTK_VarDataPtrI(cctkGH, var, 
+                                       scratchspace_firstindex
+-                                      + var
+-                                      + MoLNumEvolvedVariables * (MoL_Intermediate_Steps - (*MoL_Intermediate_Step)));
++                                      + (MoL_Intermediate_Steps - (*MoL_Intermediate_Step)));
+ 
+ #pragma omp parallel for
+     for (index = 0; index < totalsize; index++)
+@@ -371,10 +370,9 @@
+          
+          //printf("Scratch Step %d, alpha %g \n", scratchstep, alpha[scratchstep]);
+          
+-         ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
++         ScratchVar = CCTK_VarDataPtrI(cctkGH, var, 
+                                        scratchspace_firstindex
+-                                       + var
+-                                       + MoLNumEvolvedVariables * scratchstep);
++                                       + scratchstep);
+       
+ #pragma omp parallel for
+          for (index = 0; index < totalsize; index++)
+@@ -392,10 +390,9 @@
+          
+          //printf("Scratch Step %d, beta %g \n", scratchstep, beta[scratchstep]);
+          
+-         ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
++         ScratchVar = CCTK_VarDataPtrI(cctkGH, var, 
+                                        scratchspace_firstindex
+-                                       + var
+-                                       + MoLNumEvolvedVariables * scratchstep);
++                                       + scratchstep);
+       
+ #pragma omp parallel for
+          for (index = 0; index < totalsize; index++)
+@@ -427,10 +424,9 @@
+            beta[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)]);
+ #endif
+ 
+-    ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
++    ScratchVar = CCTK_VarDataPtrI(cctkGH, var, 
+                                       scratchspace_firstindex_slow
+-                                      + var
+-                                      + MoLNumEvolvedVariablesSlow * (MoL_Intermediate_Steps - (*MoL_Intermediate_Step)));
++                                      + (MoL_Intermediate_Steps - (*MoL_Intermediate_Step)));
+ 
+ #pragma omp parallel for
+     for (index = 0; index < totalsize; index++)
+@@ -462,10 +458,9 @@
+          
+          //printf("Scratch Step %d, alpha %g \n", scratchstep, alpha[scratchstep]);
+          
+-         ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
++         ScratchVar = CCTK_VarDataPtrI(cctkGH, var, 
+                                        scratchspace_firstindex_slow
+-                                       + var
+-                                       + MoLNumEvolvedVariablesSlow * scratchstep);
++                                       + scratchstep);
+       
+ #pragma omp parallel for
+          for (index = 0; index < totalsize; index++)
+@@ -483,10 +478,9 @@
+          
+          //printf("Scratch Step %d, beta %g \n", scratchstep, beta[scratchstep]);
+          
+-         ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
++         ScratchVar = CCTK_VarDataPtrI(cctkGH, var, 
+                                        scratchspace_firstindex_slow
+-                                       + var
+-                                       + MoLNumEvolvedVariablesSlow * scratchstep);
++                                       + scratchstep);
+       
+ #pragma omp parallel for
+          for (index = 0; index < totalsize; index++)
+Index: MoL/src/RK4-RK2.c
+===================================================================
+--- MoL.orig/src/RK4-RK2.c	2014-03-10 16:24:01.411163553 -0700
++++ MoL/src/RK4-RK2.c	2014-03-10 16:24:01.387163356 -0700
+@@ -76,9 +76,9 @@
+         CCTK_VarDataPtrI(cctkGH, 0, RHSVariableIndex[var]);
+       
+ #define SCRATCHINDEX(step)                                              \
+-      (scratchspace_firstindex + var + MoLNumEvolvedVariables * (step))
++      (scratchspace_firstindex + (step))
+       CCTK_REAL *restrict const ScratchVar =
+-        CCTK_VarDataPtrI(cctkGH, 0, SCRATCHINDEX(0));
++        CCTK_VarDataPtrI(cctkGH, var, SCRATCHINDEX(0));
+       
+       switch (step) {
+         
+@@ -131,9 +131,9 @@
+         CCTK_VarDataPtrI(cctkGH, 0, RHSVariableIndexSlow[var]);
+       
+ #define SCRATCHINDEX(step)                                              \
+-      (scratchspace_firstindex_slow + var + MoLNumEvolvedVariablesSlow * (step))
++      (scratchspace_firstindex_slow + (step))
+       CCTK_REAL *restrict const ScratchVar =
+-        CCTK_VarDataPtrI(cctkGH, 0, SCRATCHINDEX(0));
++        CCTK_VarDataPtrI(cctkGH, var, SCRATCHINDEX(0));
+       
+       switch (step) {
+         
+Index: MoL/src/RK4.c
+===================================================================
+--- MoL.orig/src/RK4.c	2014-03-10 16:24:01.411163553 -0700
++++ MoL/src/RK4.c	2014-03-10 16:24:01.387163356 -0700
+@@ -175,7 +175,7 @@
+     if ((*MoL_Intermediate_Step) == MoL_Intermediate_Steps)
+     {
+       MoL_LinearCombination(cctkGH,
+-                            scratchspace_firstindex + var, rl, tl, 0.0,
++                            scratchspace_firstindex, rl, var, 0.0,
+                             NULL, NULL, NULL, 0);
+       scratch_time = 0.0;
+     }
+@@ -187,7 +187,7 @@
+       CCTK_INT const tls[] = {0};
+       CCTK_REAL const facts[] = {alpha};
+       MoL_LinearCombination(cctkGH,
+-                            scratchspace_firstindex + var, rl, tl, 1.0,
++                            scratchspace_firstindex, rl, var, 1.0,
+                             srcs, tls, facts, nsrcs);
+       scratch_time += facts[0] * time;
+     }
+@@ -195,8 +195,8 @@
+     {
+       int const nsrcs = 2;
+       CCTK_INT const srcs[] =
+-        {scratchspace_firstindex + var, EvolvedVariableIndex[var]};
+-      CCTK_INT const tls[] = {0, 1};
++        {scratchspace_firstindex, EvolvedVariableIndex[var]};
++      CCTK_INT const tls[] = {var, 1};
+       CCTK_REAL const facts[] = {1.0, -4.0/3.0};
+       MoL_LinearCombination(cctkGH,
+                             EvolvedVariableIndex[var], rl, tl, 1.0,
+Index: MoL/src/RK45.c
+===================================================================
+--- MoL.orig/src/RK45.c	2014-03-10 16:24:01.411163553 -0700
++++ MoL/src/RK45.c	2014-03-10 16:24:01.387163356 -0700
+@@ -174,11 +174,9 @@
+                                               EvolvedVariableIndex[var]);
+     RHSVar = (CCTK_REAL const *)CCTK_VarDataPtrI(cctkGH, 0, 
+ 						 RHSVariableIndex[var]);
+-    ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
++    ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, var, 
+                                               CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+-                                              + var 
+-                                              + MoL_Num_Evolved_Vars * 
+-                                              (MoL_Intermediate_Steps - 
++                                              + (MoL_Intermediate_Steps - 
+                                                (*MoL_Intermediate_Step)));
+ #pragma omp parallel for
+     for (int index = 0; index < totalsize; index++)
+@@ -194,15 +192,8 @@
+ 						 EvolvedVariableIndex[var]);
+     UpdateVar = (CCTK_REAL *)CCTK_VarDataPtrI(cctkGH, 0, 
+                                               EvolvedVariableIndex[var]);
+-    RHSVar = (CCTK_REAL const *)CCTK_VarDataPtrI(cctkGH, 0, 
+-						 CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+-						 + var 
+-						 + MoL_Num_Evolved_Vars * 
+-						 (MoL_Intermediate_Steps - 
+-						  (*MoL_Intermediate_Step)));
+-    ErrorVar =  (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                             CCTK_FirstVarIndex("MOL::ERRORESTIMATE")
+-                                             + var);
++    ErrorVar =  (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, var, 
++                                             CCTK_FirstVarIndex("MOL::ERRORESTIMATE"));
+ 
+     if (*MoL_Intermediate_Step - 1)
+     { 
+@@ -218,10 +209,9 @@
+            scratchstep++)
+       {
+         
+-        ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
++        ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, var, 
+                                                   CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+-                                                  + var 
+-                                                  + MoL_Num_Evolved_Vars * scratchstep);
++                                                  + scratchstep);
+         
+         beta = beta_array[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)][scratchstep];
+         
+@@ -250,10 +240,9 @@
+       for (int scratchstep = 0; scratchstep < 6; scratchstep++)
+       {
+         
+-        ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
++        ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, var, 
+                                                   CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+-                                                  + var 
+-                                                  + MoL_Num_Evolved_Vars * scratchstep);
++                                                  + scratchstep);
+         
+         gamma = gamma_array[scratchstep];
+         gamma_error = gamma - gammastar_array[scratchstep];
+Index: MoL/src/RK65.c
+===================================================================
+--- MoL.orig/src/RK65.c	2014-03-10 16:24:01.411163553 -0700
++++ MoL/src/RK65.c	2014-03-10 16:24:01.387163356 -0700
+@@ -130,11 +130,9 @@
+                                               EvolvedVariableIndex[var]);
+     RHSVar = (CCTK_REAL const *)CCTK_VarDataPtrI(cctkGH, 0, 
+ 						 RHSVariableIndex[var]);
+-    ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
++    ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, var, 
+                                               CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+-                                              + var 
+-                                              + MoL_Num_Evolved_Vars * 
+-                                              (MoL_Intermediate_Steps - 
++                                              + (MoL_Intermediate_Steps - 
+                                                (*MoL_Intermediate_Step)));
+ #pragma omp parallel for
+     for (index = 0; index < totalsize; index++)
+@@ -150,15 +148,12 @@
+ 						 EvolvedVariableIndex[var]);
+     UpdateVar = (CCTK_REAL *)CCTK_VarDataPtrI(cctkGH, 0, 
+                                               EvolvedVariableIndex[var]);
+-    RHSVar = (CCTK_REAL const *)CCTK_VarDataPtrI(cctkGH, 0, 
++    RHSVar = (CCTK_REAL const *)CCTK_VarDataPtrI(cctkGH, var, 
+ 						 CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+-						 + var 
+-						 + MoL_Num_Evolved_Vars * 
+-						 (MoL_Intermediate_Steps - 
++						 + (MoL_Intermediate_Steps - 
+ 						  (*MoL_Intermediate_Step)));
+-    ErrorVar =  (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                             CCTK_FirstVarIndex("MOL::ERRORESTIMATE")
+-                                             + var);
++    ErrorVar =  (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, var, 
++                                             CCTK_FirstVarIndex("MOL::ERRORESTIMATE"));
+ 
+     if (*MoL_Intermediate_Step - 1)
+     { 
+@@ -174,10 +169,9 @@
+            scratchstep++)
+       {
+         
+-        ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
++        ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, var, 
+                                                   CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+-                                                  + var 
+-                                                  + MoL_Num_Evolved_Vars * scratchstep);
++                                                  + scratchstep);
+         
+         beta = beta_array[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)][scratchstep];
+         
+@@ -206,10 +200,9 @@
+       for (scratchstep = 0; scratchstep < 8; scratchstep++)
+       {
+         
+-        ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
++        ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, var, 
+                                                   CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+-                                                  + var 
+-                                                  + MoL_Num_Evolved_Vars * scratchstep);
++                                                  + scratchstep);
+         
+         gamma = gamma_array[scratchstep];
+         gamma_error = gamma - gammastar_array[scratchstep];
+Index: MoL/src/RK87.c
+===================================================================
+--- MoL.orig/src/RK87.c	2014-03-10 16:24:01.411163553 -0700
++++ MoL/src/RK87.c	2014-03-10 16:25:14.415762550 -0700
+@@ -150,15 +150,14 @@
+   for (var = 0; var < MoLNumEvolvedVariables; var++)
+   {
+     int const step = MoL_Intermediate_Steps - (*MoL_Intermediate_Step);
+-    int const scratchvarindex =
+-      scratchspace_firstindex + MoLNumEvolvedVariables * step + var;
++    int const scratchvarindex = scratchspace_firstindex + step;
+ 
+     int const nsrcs = 1;
+     CCTK_INT const srcs[] = {RHSVariableIndex[var]};
+     CCTK_INT const tls[] = {0};
+     CCTK_REAL const facts[] = {(*Original_Delta_Time) / cctkGH->cctk_timefac};
+     MoL_LinearCombination(cctkGH,
+-                          scratchvarindex, rl, tl, 0.0,
++                          scratchvarindex, rl, var, 0.0,
+                           srcs, tls, facts, nsrcs);
+   }
+ 
+@@ -178,10 +177,9 @@
+ 
+       for (scratchstep = 0; scratchstep < step + 1; scratchstep++)
+       {
+-        int const scratchvarindex =
+-          scratchspace_firstindex + MoLNumEvolvedVariables * scratchstep + var;
++        int const scratchvarindex = scratchspace_firstindex + scratchstep;
+         srcs [scratchstep+1] = scratchvarindex;
+-        tls  [scratchstep+1] = 0;
++        tls  [scratchstep+1] = var;
+         facts[scratchstep+1] = beta_array[step][scratchstep];
+       }
+ 
+@@ -202,10 +200,9 @@
+         
+         for (scratchstep = 0; scratchstep < 13; scratchstep++)
+         {
+-          int const scratchvarindex =
+-            scratchspace_firstindex + MoLNumEvolvedVariables * scratchstep + var;
++          int const scratchvarindex = scratchspace_firstindex + scratchstep;
+           srcs [scratchstep+1] = scratchvarindex;
+-          tls  [scratchstep+1] = 0;
++          tls  [scratchstep+1] = var;
+           facts[scratchstep+1] = gamma_array[scratchstep];
+         }
+ 
+@@ -222,16 +219,15 @@
+         
+         for (scratchstep = 0; scratchstep < 13; scratchstep++)
+         {
+-          int const scratchvarindex =
+-            scratchspace_firstindex + MoLNumEvolvedVariables * scratchstep + var;
++          int const scratchvarindex = scratchspace_firstindex + scratchstep;
+           srcs [scratchstep] = scratchvarindex;
+-          tls  [scratchstep] = 0;
++          tls  [scratchstep] = var;
+           facts[scratchstep] =
+             gamma_array[scratchstep] - gammastar_array[scratchstep];
+         }
+ 
+         MoL_LinearCombination(cctkGH,
+-                              error_firstindex + var, rl, tl, 0.0,
++                              error_firstindex, rl, var, 0.0,
+                               srcs, tls, facts, nsrcs);
+       }
+ 
+Index: MoL/src/Registration.c
+===================================================================
+--- MoL.orig/src/Registration.c	2014-03-10 16:24:01.411163553 -0700
++++ MoL/src/Registration.c	2014-03-10 16:24:01.387163356 -0700
+@@ -16,6 +16,9 @@
+ #include <assert.h>
+ 
+ #include <stdlib.h>
++#ifdef MOLDEBUG
++#include <stdio.h>
++#endif
+ 
+ #include "cctk.h"
+ #include "cctk_Arguments.h"
+@@ -1142,19 +1145,17 @@
+   else
+   {
+ 
+-    if (MoLNumEvolvedVariables+1 > MoL_Num_Evolved_Vars)
++    if (MoLNumEvolvedVariables+1 > MoLMaxNumRegisteredVariables)
+     {
+       const char *evolvedvarname = CCTK_VarName(EvolvedIndex);
+       char *registeredvars = 
+         VarListToString(EvolvedVariableIndex, MoLNumEvolvedVariables);
+       CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                "You have tried to register more evolved "
+-                "variables than the accumulator parameter "
+-                "MoL_Num_Evolved_Variables allows. Check that "
+-                "you are accumulating onto this parameter correctly. "
+-                "You tried to register '%s'. The maximum number of registered "
+-                "variables is %d, they are: %s.",
+-                evolvedvarname, MoL_Num_Evolved_Vars, registeredvars);
++                 "You tried to register more than %d evolved variables. Since "
++                 "this should be the total number of Cactus variables, this "
++                 "looks like a bug. You tried to register '%s'. The "
++                 "registered variables are: %s.",
++                 MoLMaxNumRegisteredVariables, evolvedvarname, registeredvars);
+       free(registeredvars); /* NOTREACHED */
+     }
+   
+@@ -1339,22 +1340,20 @@
+   else
+   {
+ 
+-    if (MoLNumEvolvedVariablesSlow+1 > MoL_Num_Evolved_Vars_Slow)
++    if (MoLNumEvolvedVariablesSlow+1 > MoLMaxNumRegisteredVariables)
+     {
+       const char *evolvedvarname = CCTK_VarName(EvolvedIndex);
+       char *registeredvars = 
+         VarListToString(EvolvedVariableIndex, MoLNumEvolvedVariablesSlow);
+       CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                "You have tried to register more slow evolved "
+-                "variables than the accumulator parameter "
+-                "MoL_Num_Evolved_Variables allows. Check that "
+-                "you are accumulating onto this parameter correctly. "
+-                "You tried to register '%s'. The maximum number of registered "
+-                "variables is %d, they are: %s.",
+-                evolvedvarname, MoL_Num_Evolved_Vars_Slow, registeredvars);
++                 "You tried to register more than %d slow evolved variables. "
++                 "Since this should be the total number of Cactus variables, "
++                 "this looks like a bug. You tried to register '%s'. The "
++                 "registered variables are: %s.",
++                 MoLMaxNumRegisteredVariables, evolvedvarname, registeredvars);
+       free(registeredvars); /* NOTREACHED */
+     }
+-  
++
+     EvolvedVariableIndexSlow[MoLNumEvolvedVariablesSlow] = EvolvedIndex;
+     RHSVariableIndexSlow[MoLNumEvolvedVariablesSlow] = RHSIndexSlow;
+   
+@@ -1497,19 +1496,18 @@
+     if (!varused)
+     {
+ 
+-      if (MoLNumConstrainedVariables+1 > MoL_Num_Constrained_Vars)
++      if (MoLNumConstrainedVariables+1 > MoLMaxNumRegisteredVariables)
+       {
+         const char *constrainedvarname = CCTK_VarName(ConstrainedIndex);
+         char *registeredvars = 
+           VarListToString(ConstrainedVariableIndex, MoLNumConstrainedVariables);
+         CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                  "You have tried to register more constrained "
+-                  "variables than the accumulator parameter "
+-                  "MoL_Num_Constrained_Variables allows. Check that "
+-                  "you are accumulating onto this parameter correctly. "
+-                  "You tried to register '%s'. The maximum number of "
+-                  "registered variables is %d, they are: %s.",
+-                  constrainedvarname, MoL_Num_Constrained_Vars, registeredvars);
++                   "You tried to register more than %d constrained variables. Since "
++                   "this should be the total number of Cactus variables, this "
++                   "looks like a bug. You tried to register '%s'. The "
++                   "registered variables are: %s.",
++                   MoLMaxNumRegisteredVariables, constrainedvarname,
++                   registeredvars);
+         free(registeredvars); /* NOTREACHED */
+       }
+ 
+@@ -1626,20 +1624,18 @@
+     if (!varused)
+     {
+ 
+-      if (MoLNumSandRVariables+1 > MoL_Num_SaveAndRestore_Vars)
++      if (MoLNumSandRVariables+1 > MoLMaxNumRegisteredVariables)
+       {
+         const char *saveandrestorevarname = CCTK_VarName(SandRIndex);
+         char *registeredvars = 
+           VarListToString(SandRVariableIndex, MoLNumSandRVariables);
+         CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                  "You have tried to register more save and restore "
+-                  "variables than the accumulator parameter "
+-                  "MoL_Num_SaveAndRestore_Variables allows. Check that "
+-                  "you are accumulating onto this parameter correctly. "
+-                  "You tried to register '%s'. The maximum number of "
+-                  "registered variables is %d, they are: %s.",
+-                  saveandrestorevarname, MoL_Num_SaveAndRestore_Vars,
+-                  registeredvars);
++                   "You tried to register more than %d safe and restore variables. Since "
++                   "this should be the total number of Cactus variables, this "
++                   "looks like a bug. You tried to register '%s'. The "
++                   "registered variables are: %s.",
++                   MoLMaxNumRegisteredVariables, saveandrestorevarname,
++                   registeredvars);
+         free(registeredvars); /* NOTREACHED */
+       }
+ 
+@@ -1924,19 +1920,17 @@
+   else
+   {
+   
+-    if (MoLNumEvolvedComplexVariables+1 > MoL_Num_ComplexEvolved_Vars)
++    if (MoLNumEvolvedComplexVariables+1 > MoLMaxNumRegisteredVariables)
+     {
+       const char *evolvedvarname = CCTK_VarName(EvolvedIndex);
+       char *registeredvars = 
+         VarListToString(Complexcomplex evolvedVariableIndex, MoLNumComplexcomplex evolvedVariables);
+       CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                "You have tried to register more complex evolved "
+-                "variables than the accumulator parameter "
+-                "MoL_Num_Complexcomplex evolved_Variables allows. Check that "
+-                "you are accumulating onto this parameter correctly. "
+-                "You tried to register '%s'. The maximum number of registered "
+-                "variables is %d, they are: %s.",
+-                evolvedvarname, MoL_Num_ComplexEvolved_Vars, registeredvars);
++                 "You tried to register more than %d evolved complex variables. Since "
++                 "this should be the total number of Cactus variables, this "
++                 "looks like a bug. You tried to register '%s'. The "
++                 "registered variables are: %s.",
++                 MoLMaxNumRegisteredVariables, evolvedvarname, registeredvars);
+       free(registeredvars); /* NOTREACHED */
+     }
+ 
+@@ -2053,21 +2047,18 @@
+     if (!varused)
+     {
+ 
+-      if (MoLNumConstrainedComplexVariables+1 >
+-          MoL_Num_ComplexConstrained_Vars) 
++      if (MoLNumConstrainedComplexVariables+1 > MoLMaxNumRegisteredVariables)
+       {
+         const char *constrainedvarname = CCTK_VarName(ConstrainedIndex);
+         char *registeredvars = 
+           VarListToString(ComplexConstrainedVariableIndex, MoLNumComplexConstrainedVariables);
+         CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                  "You have tried to register more complex constrained "
+-                  "variables than the accumulator parameter "
+-                  "MoL_Num_ComplexConstrained_Variables allows. Check that "
+-                  "you are accumulating onto this parameter correctly. "
+-                  "You tried to register '%s'. The maximum number of "
+-                  "registered variables is %d, they are: %s.",
+-                  constrainedvarname, MoL_Num_ComplexConstrained_Vars,
+-                  registeredvars);
++                   "You tried to register more than %d constrained complex "
++                   "variables. Since this should be the total number of "
++                   "Cactus variables, this looks like a bug. You tried to "
++                   "register '%s'. The registered variables are: %s.",
++                   MoLMaxNumRegisteredVariables, constrainedvarname,
++                   registeredvars);
+         free(registeredvars); /* NOTREACHED */
+       }
+ 
+@@ -2181,21 +2172,19 @@
+     if (!varused)
+     {
+ 
+-      if (MoLNumSandRComplexVariables+1 > MoL_Num_ComplexSaveAndRestore_Vars)
++      if (MoLNumSandRComplexVariables+1 > MoLMaxNumRegisteredVariables)
+       {
+         const char *saveandrestorevarname = CCTK_VarName(SandRIndex);
+         char *registeredvars = 
+           VarListToString(ComplexSandRVariableIndex, 
+                           MoLNumComplexSandRVariables);
+         CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                  "You have tried to register more complex save and restore "
+-                  "variables than the accumulator parameter "
+-                  "MoL_Num_ComplexSaveAndRestore_Variables allows. Check that "
+-                  "you are accumulating onto this parameter correctly. "
+-                  "You tried to register '%s'. The maximum number of "
+-                  "registered variables is %d, they are: %s.",
+-                  saveandrestorevarname, MoL_Num_ComplexSaveAndRestore_Vars,
+-                  registeredvars);  
++                   "You tried to register more than %d save and restore complex "
++                   "variables. Since this should be the total number of "
++                   "Cactus variables, this looks like a bug. You tried to "
++                   "register '%s'. The registered variables are: %s.",
++                   MoLMaxNumRegisteredVariables, saveandrestorevarname,
++                   registeredvars);
+         free(registeredvars); /* NOTREACHED */
+       }
+ 
+@@ -2424,19 +2413,17 @@
+   else
+   {
+   
+-    if (MoLNumEvolvedArrayVariables+1 > MoL_Num_ArrayEvolved_Vars)
++    if (MoLNumEvolvedArrayVariables+1 > MoLMaxNumRegisteredVariables)
+     {
+       const char *evolvedvarname = CCTK_VarName(EvolvedIndex);
+       char *registeredvars = 
+         VarListToString(EvolvedArrayVariableIndex, MoLNumEvolvedArrayVariables);
+       CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                "You have tried to register more evolved array "
+-                "variables than the accumulator parameter "
+-                "MoL_Num_Arrayevolved array_Variables allows. Check that "
+-                "you are accumulating onto this parameter correctly. "
+-                "You tried to register '%s'. The maximum number of registered "
+-                "variables is %d, they are: %s.",
+-                evolvedvarname, MoL_Num_ArrayEvolved_Vars, registeredvars);
++                 "You tried to register more than %d evolved array variables. "
++                 "Since this should be the total number of Cactus variables, "
++                 "this looks like a bug. You tried to register '%s'. The "
++                 "registered variables are: %s.",
++                 MoLMaxNumRegisteredVariables, evolvedvarname, registeredvars);
+       free(registeredvars); /* NOTREACHED */
+     }
+ 
+@@ -2540,21 +2527,18 @@
+     if (!varused)
+     {
+ 
+-      if (MoLNumConstrainedArrayVariables+1 >
+-          MoL_Num_ArrayConstrained_Vars) 
++      if (MoLNumConstrainedArrayVariables+1 > MoLMaxNumRegisteredVariables)
+       {
+         const char *constrainedvarname = CCTK_VarName(ConstrainedIndex);
+         char *registeredvars = 
+           VarListToString(ConstrainedArrayVariableIndex, MoLNumConstrainedArrayVariables);
+         CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                  "You have tried to register more constrained array "
+-                  "variables than the accumulator parameter "
+-                  "MoL_Num_ArrayConstrained_Variables allows. Check that "
+-                  "you are accumulating onto this parameter correctly. "
+-                  "You tried to register '%s'. The maximum number of "
+-                  "registered variables is %d, they are: %s.",
+-                  constrainedvarname, MoL_Num_ArrayConstrained_Vars,
+-                  registeredvars);
++                   "You tried to register more than %d constrained array "
++                   "variables. Since " "this should be the total number of "
++                   "Cactus variables, this looks like a bug. You tried to "
++                   "register '%s'. The " "registered variables are: %s.",
++                   MoLMaxNumRegisteredVariables, constrainedvarname,
++                   registeredvars);
+         free(registeredvars); /* NOTREACHED */
+       }
+ 
+@@ -2659,20 +2643,18 @@
+     if (!varused)
+     {
+ 
+-      if (MoLNumSandRArrayVariables+1 > MoL_Num_ArraySaveAndRestore_Vars)
++      if (MoLNumSandRArrayVariables+1 > MoLMaxNumRegisteredVariables)
+       {
+         const char *saveandrestorevarname = CCTK_VarName(SandRIndex);
+         char *registeredvars = 
+           VarListToString(SandRVariableIndex, MoLNumSandRArrayVariables);
+         CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                  "You have tried to register more save and restore array "
+-                  "variables than the accumulator parameter "
+-                  "MoL_Num_ArraySaveAndRestore_Variables allows. Check that "
+-                  "you are accumulating onto this parameter correctly. "
+-                  "You tried to register '%s'. The maximum number of "
+-                  "registered variables is %d, they are: %s.",
+-                  saveandrestorevarname, MoL_Num_ArraySaveAndRestore_Vars,
+-                  registeredvars);
++                   "You tried to register more than %d save and restore array "
++                   "variables. Since this should be the total number of "
++                   "Cactus variables, this looks like a bug. You tried to "
++                   "register '%s'. The registered variables are: %s.",
++                   MoLMaxNumRegisteredVariables, saveandrestorevarname,
++                   registeredvars);
+         free(registeredvars); /* NOTREACHED */
+       }
+ 
+@@ -2908,22 +2890,17 @@
+   else
+   {
+   
+-    if (MoLNumEvolvedComplexArrayVariables+1 > 
+-        MoL_Num_ComplexArrayEvolved_Vars)
++    if (MoLNumEvolvedComplexArrayVariables+1 > MoLMaxNumRegisteredVariables)
+     {
+       const char *evolvedvarname = CCTK_VarName(EvolvedIndex);
+       char *registeredvars = 
+         VarListToString(ComplexArrayevolved complex arrayVariableIndex, MoLNumComplexArrayevolved complex arrayVariables);
+       CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                "You have tried to register more evolved complex array "
+-                "variables than the accumulator parameter "
+-                "MoL_Num_ComplexArrayevolved complex array_Variables allows. "
+-                "Check that you are accumulating onto this parameter "
+-                "correctly. "
+-                "You tried to register '%s'. The maximum number of registered "
+-                "variables is %d, they are: %s.",
+-                evolvedvarname, MoL_Num_ComplexArrayEvolved_Vars,
+-                registeredvars);
++                 "You tried to register more than %d evolved complex array "
++                 "variables. Since this should be the total number of Cactus "
++                 "variables, this looks like a bug. You tried to register '%s'. The "
++                 "registered variables are: %s.",
++                 MoLMaxNumRegisteredVariables, evolvedvarname, registeredvars);
+       free(registeredvars); /* NOTREACHED */
+     }
+ 
+@@ -3040,21 +3017,18 @@
+     if (!varused)
+     {
+ 
+-      if (MoLNumConstrainedComplexArrayVariables+1 >
+-          MoL_Num_ComplexArrayConstrained_Vars) 
++      if (MoLNumConstrainedComplexArrayVariables+1 > MoLMaxNumRegisteredVariables)
+       {
+         const char *constrainedvarname = CCTK_VarName(ConstrainedIndex);
+         char *registeredvars = 
+           VarListToString(ComplexArrayConstrainedVariableIndex, MoLNumComplexArrayConstrainedVariables);
+         CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                  "You have tried to register more constrained complex array "
+-                  "variables than the accumulator parameter "
+-                  "MoL_Num_ComplexArrayConstrained_Variables allows. Check "
+-                  "that you are accumulating onto this parameter correctly. "
+-                  "You tried to register '%s'. The maximum number of registered "
+-                  "variables is %d, they are: %s.",
+-                  constrainedvarname, MoL_Num_ComplexArrayConstrained_Vars,
+-                  registeredvars)
++                   "You tried to register more than %d constrained complex "
++                   "variables. Since this should be the total number of "
++                   "Cactus variables, this looks like a bug. You tried to
++                   register '%s'. The registered variables are: %s.",
++                   MoLMaxNumRegisteredVariables, constrainedvarname,
++                   registeredvars);
+         free(registeredvars); /* NOTREACHED */
+       }
+ 
+@@ -3167,21 +3141,18 @@
+     if (!varused)
+     {
+ 
+-      if (MoLNumSandRComplexArrayVariables+1 > 
+-          MoL_Num_ComplexArraySaveAndRestore_Vars)
++      if (MoLNumSandRComplexArrayVariables+1 > MoLMaxNumRegisteredVariables)
+       {
+         const char *saveandrestorevarname = CCTK_VarName(SandRIndex);
+         char *registeredvars = 
+           VarListToString(SandRVariableIndex, MoLNumComplexArraySandRVariables);
+         CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                  "You have tried to register more save and restore complex "
+-                  "array variables than the accumulator parameter "
+-                  "MoL_Num_ComplexArraySaveAndRestore_Variables allows. Check "
+-                  "that you are accumulating onto this parameter correctly. "
+-                  "You tried to register '%s'. The maximum number of "
+-                  "registered variables is %d, they are: %s.",
+-                  saveandrestorevarname,
+-                  MoL_Num_ComplexArraySaveAndRestore_Vars, registeredvars);
++                   "You tried to register more than %d save and restore complex "
++                   "variables. Since this should be the total number of "
++                   "Cactus variables, this looks like a bug. You tried to
++                   register '%s'. The " "registered variables are: %s.",
++                   MoLMaxNumRegisteredVariables, saveandrestorevarname,
++                   registeredvars);
+         free(registeredvars); /* NOTREACHED */
+       }
+ 
+Index: MoL/src/SandR.c
+===================================================================
+--- MoL.orig/src/SandR.c	2014-03-10 16:24:01.411163553 -0700
++++ MoL/src/SandR.c	2014-03-10 16:24:01.387163356 -0700
+@@ -100,9 +100,8 @@
+     SandRDataArray = (CCTK_REAL *)CCTK_VarDataPtrI(cctkGH, 0, 
+                                                    SandRVariableIndex[var]);
+ 
+-    ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
+-                                  CCTK_FirstVarIndex("MOL::SANDRSCRATCHSPACE")
+-                                  + var);
++    ScratchVar = CCTK_VarDataPtrI(cctkGH, var, 
++                                  CCTK_FirstVarIndex("MOL::SANDRSCRATCHSPACE"));
+ 
+ #ifdef MOLDEBUG    
+     printf("Restore:Variable %s, first entry %g, scratch %g\n",
+@@ -124,9 +123,8 @@
+     SandRComplexDataArray = (CCTK_COMPLEX *)CCTK_VarDataPtrI(cctkGH, 0, 
+                                                              SandRComplexVariableIndex[var]);
+     
+-    ComplexScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
+-                                         CCTK_FirstVarIndex("MOL::COMPLEXSANDRSCRATCHSPACE")
+-                                         + var);
++    ComplexScratchVar = CCTK_VarDataPtrI(cctkGH, var, 
++                                         CCTK_FirstVarIndex("MOL::COMPLEXSANDRSCRATCHSPACE"));
+ 
+     memcpy(SandRComplexDataArray, ComplexScratchVar, 
+            totalsize * sizeof(CCTK_COMPLEX));
+Index: MoL/src/ScratchSpace.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ MoL/src/ScratchSpace.c	2014-03-10 16:24:01.387163356 -0700
+@@ -0,0 +1,227 @@
++ /*@@
++   @file      ScratchSpace.c
++   @date      Tue Jul 10 11:26:48 PDT 2012
++   @author    Roland Haas
++   @desc 
++   Allocates and deallocates memory for scratch levels.
++   @enddesc 
++   @version   $Header$
++ @@*/
++
++#include <stdlib.h>
++#include <stdio.h>
++#include <string.h>
++
++#include "cctk.h"
++#include "cctk_Arguments.h"
++#include "cctk_Parameters.h"
++
++#include "ExternalVariables.h"
++
++static const char *rcsid = "$Header$";
++
++CCTK_FILEVERSION(CactusBase_MoL_ScratchSpace_c);
++
++/********************************************************************
++ *********************     Local Data Types   ***********************
++ ********************************************************************/
++
++/********************************************************************
++ ********************* Local Routine Prototypes *********************
++ ********************************************************************/
++
++static void MoL_AllocateScratchLevelsForVar(const cGH *cctkGH, const char *scratchgroupname, int timelevels);
++
++static void MoL_FreeScratchLevelsForVar(const cGH *cctkGH, const char *scratchgroupname);
++
++/********************************************************************
++ ***************** Scheduled Routine Prototypes *********************
++ ********************************************************************/
++
++/********************************************************************
++ ********************* Other Routine Prototypes *********************
++ ********************************************************************/
++
++/********************************************************************
++ *********************     Local Data   *****************************
++ ********************************************************************/
++
++/********************************************************************
++ *********************     External Routines   **********************
++ ********************************************************************/
++
++ /*@@
++   @routine    MoL_AllocateScratchSpace
++   @date       Tue Jul 10 11:29:00 PDT 2012
++   @author     Roland Haas
++   @desc 
++   Allocates scratch space for a all registered variables.
++   @enddesc 
++   @calls      MoL_AllocateScratchLevelsForVar
++   @calledby   
++   @history 
++ 
++   @endhistory 
++
++@@*/
++
++void MoL_AllocateScratchSpace(CCTK_ARGUMENTS)
++{
++  DECLARE_CCTK_PARAMETERS;
++
++  const int need_error_estimate = CCTK_Equals(ODE_Method,"RK45") || 
++    CCTK_Equals(ODE_Method,"RK45CK") || CCTK_Equals(ODE_Method,"RK65") || CCTK_Equals(ODE_Method,"RK87");
++
++  /* we abuse the Cactus timelevels (since they are something we can change at
++   * run time) to obtain mesh refined scratch space */
++
++  /* CCTK_REAL GF */
++  MoL_AllocateScratchLevelsForVar(cctkGH, "MoL::ScratchSpace", MoLNumEvolvedVariables);
++  MoL_AllocateScratchLevelsForVar(cctkGH, "MoL::ScratchSpaceSlow", MoLNumEvolvedVariablesSlow);
++  MoL_AllocateScratchLevelsForVar(cctkGH, "MoL::SandRScratchSpace", MoLNumSandRVariables);
++  if (need_error_estimate) /* adaptive stepping is only supported for CCTK_REAL grid functions */
++    MoL_AllocateScratchLevelsForVar(cctkGH, "MoL::ErrorEstimate", MoLNumEvolvedVariables);
++
++  /* CCTK_COMPLEX GF */
++  /*MoL_AllocateScratchLevelsForVar(cctkGH, "MoL::ComplexScratchSpace", MoLNumEvolvedComplexVariables);*/
++  /*MoL_AllocateScratchLevelsForVar(cctkGH, "MoL::ComplexSandRScratchSpace", MoLNumSandRComplexVariables);*/
++
++  /* CCTK_REAL GA */
++  /*MoL_AllocateScratchLevelsForVar(cctkGH, "MoL::ArrayScratchSpace", MoLNumEvolvedArrayVariables);*/
++  /*MoL_AllocateScratchLevelsForVar(cctkGH, "MoL::ArraySandRScratchSpace", MoLNumSandRArrayVariables);*/
++
++  /* CCTK_COMPLEX GA */
++  /*MoL_AllocateScratchLevelsForVar(cctkGH, "MoL::ComplexArrayScratchSpace", MoLNumEvolvedComplexArrayVariables);*/
++  /*MoL_AllocateScratchLevelsForVar(cctkGH, "MoL::ComplexArraySandRScratchSpace", MoLNumSandRComplexArrayVariables);*/
++}
++
++ /*@@
++   @routine    MoL_FreeScratchSpace
++   @date       Tue Jul 10 11:29:00 PDT 2012
++   @author     Roland Haas
++   @desc 
++   Free all scratch space.
++   @enddesc 
++   @calls      MoL_FreeScratchLevelsForVar
++   @calledby   
++   @history 
++ 
++   @endhistory 
++
++@@*/
++
++void MoL_FreeScratchSpace(CCTK_ARGUMENTS)
++{
++  /* CCTK_REAL GF */
++  MoL_FreeScratchLevelsForVar(cctkGH, "MoL::ScratchSpace");
++  MoL_FreeScratchLevelsForVar(cctkGH, "MoL::ScratchSpaceSlow");
++  MoL_FreeScratchLevelsForVar(cctkGH, "MoL::SandRScratchSpace");
++  MoL_FreeScratchLevelsForVar(cctkGH, "MoL::ErrorEstimate");
++
++  /* CCTK_COMPLEX GF */
++  /*MoL_FreeScratchLevelsForVar(cctkGH, "MoL::ComplexScratchSpace");*/
++  /*MoL_FreeScratchLevelsForVar(cctkGH, "MoL::ComplexSandRScratchSpace");*/
++
++  /* CCTK_REAL GA */
++  /*MoL_FreeScratchLevelsForVar(cctkGH, "MoL::ArrayScratchSpace");*/
++  /*MoL_FreeScratchLevelsForVar(cctkGH, "MoL::ArraySandRScratchSpace");*/
++
++  /* CCTK_COMPLEX GA */
++  /*MoL_FreeScratchLevelsForVar(cctkGH, "MoL::ComplexArrayScratchSpace");*/
++  /*MoL_FreeScratchLevelsForVar(cctkGH, "MoL::ComplexArraySandRScratchSpace");*/
++}
++
++/********************************************************************
++ *********************     Local Routines   *************************
++ ********************************************************************/
++
++ /*@@
++   @routine    MoL_AllocateScratchLevelsForVar
++   @date       Tue Jul 10 11:29:00 PDT 2012
++   @author     Roland Haas
++   @desc 
++   Allocates scratch space for a single variable by manipulating the number of
++   timelevels present.
++   @enddesc 
++   @calls      CCTK_GroupStorageIncrease
++   @calledby   
++   @history 
++ 
++   @endhistory 
++
++@@*/
++
++static void MoL_AllocateScratchLevelsForVar(const cGH *cctkGH, const char *scratchgroupname, int timelevels)
++{
++  CCTK_INT scratchgroup, ierr, activetimelevels;
++  cGroup group;
++
++  scratchgroup = CCTK_GroupIndex(scratchgroupname);
++  if (scratchgroup < 0)
++  {
++    CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++               "Failed to obtain group index for group %s, ierr = %d.", 
++               scratchgroupname, scratchgroup);
++  }
++  /* ODE methods without scratch levels lead to SCRATCHSPACE having 0 variables */
++  CCTK_GroupData(scratchgroup, &group);
++  if (group.numvars > 0)
++  {
++    CCTK_INT maxtimelevels = CCTK_MaxTimeLevelsGI(scratchgroup);
++    if (timelevels > maxtimelevels)
++    {
++      CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                 "Too many (%d) scratch variables required. Only %d are supported. You will have to change interface.ccl",
++                 timelevels, maxtimelevels);
++    }
++
++    ierr = CCTK_GroupStorageIncrease(cctkGH, 1, &scratchgroup, &timelevels, NULL);
++    ierr += CCTK_GroupStorageDecrease(cctkGH, 1, &scratchgroup, &timelevels, NULL);
++    activetimelevels = CCTK_ActiveTimeLevelsGI(cctkGH, scratchgroup);
++    if (ierr < 0 || timelevels != activetimelevels)
++    {
++      CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                 "Failed to adjust space for %s, ierr = %d, %d variables of %d active.", 
++                 scratchgroupname, ierr, activetimelevels, timelevels);
++    }
++  }
++}
++
++ /*@@
++   @routine    MoL_FreeScratchLevelsForVar
++   @date       Tue Jul 10 11:29:00 PDT 2012
++   @author     Roland Haas
++   @desc 
++   Deallocates scratch space for a single variable by manipulating the number
++   of timelevels present.
++   @enddesc 
++   @calls      CCTK_GroupStorageDecrease
++   @calledby   
++   @history 
++ 
++   @endhistory 
++
++@@*/
++
++static void MoL_FreeScratchLevelsForVar(const cGH *cctkGH, const char *scratchgroupname)
++{
++  CCTK_INT scratchgroup, ierr, activetimelevels;
++  int timelevels = 0;
++
++  scratchgroup = CCTK_GroupIndex(scratchgroupname);
++  if (scratchgroup < 0)
++  {
++    CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++               "Failed to obtain group index for group %s, ierr = %d.", 
++               scratchgroupname, scratchgroup);
++  }
++  ierr = CCTK_GroupStorageDecrease(cctkGH, 1, &scratchgroup, &timelevels, NULL);
++  activetimelevels = CCTK_ActiveTimeLevelsGI(cctkGH, scratchgroup);
++  if (ierr < 0 || timelevels != activetimelevels)
++  {
++    CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++               "Failed to deallocate space for %s, ierr = %d, %d variables of %d still active.", 
++               scratchgroupname, ierr, activetimelevels, timelevels);
++  }
++}
++
+Index: MoL/src/Startup.c
+===================================================================
+--- MoL.orig/src/Startup.c	2014-03-10 16:24:01.411163553 -0700
++++ MoL/src/Startup.c	2014-03-10 16:24:01.387163356 -0700
+@@ -73,6 +73,8 @@
+ CCTK_INT *ArrayScratchSizes = NULL;
+ CCTK_INT CurrentArrayScratchSize = 0;
+ 
++CCTK_INT MoLMaxNumRegisteredVariables = 0;
++
+ /********************************************************************
+  *********************     Local Data Types   ***********************
+  ********************************************************************/
+Index: MoL/src/make.code.defn
+===================================================================
+--- MoL.orig/src/make.code.defn	2014-03-10 16:24:01.411163553 -0700
++++ MoL/src/make.code.defn	2014-03-10 16:24:01.387163356 -0700
+@@ -12,6 +12,7 @@
+ 	InitialCopy.c \
+ 	Operators.c \
+ 	ParamCheck.c \
++	ScratchSpace.c \
+ 	RK2.c \
+ 	RK2-MR-2_1.c \
+ 	RK4-MR-2_1.c \
+Index: MoL/src/StepSize.c
+===================================================================
+--- MoL.orig/src/StepSize.c	2014-03-10 16:24:01.411163553 -0700
++++ MoL/src/StepSize.c	2014-03-10 16:24:01.387163356 -0700
+@@ -158,8 +158,8 @@
+       RHSVar = CCTK_VarDataPtrI(cctkGH, 0, RHSVariableIndex[var]);
+     CCTK_REAL const * restrict const
+       ErrorVar
+-      = CCTK_VarDataPtrI(cctkGH, 0, 
+-                         CCTK_FirstVarIndex("MOL::ERRORESTIMATE") + var);
++      = CCTK_VarDataPtrI(cctkGH, var,
++                         CCTK_FirstVarIndex("MOL::ERRORESTIMATE"));
+ 
+     CCTK_REAL const rhs_relative_error
+       = maximum_relative_error * RHS_error_weight * (*Original_Delta_Time);
+Index: MoL/param.ccl
+===================================================================
+--- MoL.orig/param.ccl	2014-03-10 16:24:01.411163553 -0700
++++ MoL/param.ccl	2014-03-10 16:24:01.387163356 -0700
+@@ -3,38 +3,38 @@
+ 
+ restricted:
+ 
+-CCTK_INT MoL_Num_Evolved_Vars "The maximum number of variables to be evolved by MoL" ACCUMULATOR = (x+y)
++CCTK_INT MoL_Num_Evolved_Vars "The maximum number of variables to be evolved by MoL (DPRECATED)" ACCUMULATOR = (x+y)
+ {
+   0:*		:: "Anything non negative. Added to by other thorns."
+ } 0
+ 
+-CCTK_INT MoL_Num_Evolved_Vars_Slow "The maximum number of 'slow' variables to be evolved by MoL" ACCUMULATOR = (x+y)
++CCTK_INT MoL_Num_Evolved_Vars_Slow "The maximum number of 'slow' variables to be evolved by MoL (DPRECATED)" ACCUMULATOR = (x+y)
+ {
+   0:*		:: "Anything non negative. Added to by other thorns."
+ } 0
+ 
+ 
+-CCTK_INT MoL_Num_Constrained_Vars "The maximum number of constrained variables with timelevels that MoL needs to know about" ACCUMULATOR = (x+y)
++CCTK_INT MoL_Num_Constrained_Vars "The maximum number of constrained variables with timelevels that MoL needs to know about (DPRECATED)" ACCUMULATOR = (x+y)
+ {
+   0:*		:: "Anything non negative. Added to by other thorns."
+ } 0
+ 
+-CCTK_INT MoL_Num_SaveAndRestore_Vars "The maximum number of variables to be evolved outside of MoL but that MoL needs to know about" ACCUMULATOR = (x+y)
++CCTK_INT MoL_Num_SaveAndRestore_Vars "The maximum number of variables to be evolved outside of MoL but that MoL needs to know about (DPRECATED)" ACCUMULATOR = (x+y)
+ {
+   0:*		:: "Anything non negative. Added to by other thorns."
+ } 0
+ 
+-CCTK_INT MoL_Num_ComplexEvolved_Vars "The maximum number of complex variables to be evolved by MoL" ACCUMULATOR = (x+y)
++CCTK_INT MoL_Num_ComplexEvolved_Vars "The maximum number of complex variables to be evolved by MoL (DPRECATED)" ACCUMULATOR = (x+y)
+ {
+   0:*		:: "Anything non negative. Added to by other thorns."
+ } 0
+ 
+-CCTK_INT MoL_Num_ComplexConstrained_Vars "The maximum number of complex constrained variables with timelevels that MoL needs to know about" ACCUMULATOR = (x+y)
++CCTK_INT MoL_Num_ComplexConstrained_Vars "The maximum number of complex constrained variables with timelevels that MoL needs to know about (DPRECATED)" ACCUMULATOR = (x+y)
+ {
+   0:*		:: "Anything non negative. Added to by other thorns."
+ } 0
+ 
+-CCTK_INT MoL_Num_ComplexSaveAndRestore_Vars "The maximum number of complex variables to be evolved outside of MoL but that MoL needs to know about" ACCUMULATOR = (x+y)
++CCTK_INT MoL_Num_ComplexSaveAndRestore_Vars "The maximum number of complex variables to be evolved outside of MoL but that MoL needs to know about (DPRECATED)" ACCUMULATOR = (x+y)
+ {
+   0:*		:: "Anything non negative. Added to by other thorns."
+ } 0
+@@ -49,32 +49,32 @@
+   0:*          :: "Anything non negative. Accumulated by other thorns"
+ } 0
+ 
+-CCTK_INT MoL_Num_ArrayEvolved_Vars "The maximum number of array variables to be evolved by MoL" ACCUMULATOR = (x+y)
++CCTK_INT MoL_Num_ArrayEvolved_Vars "The maximum number of array variables to be evolved by MoL (DPRECATED)" ACCUMULATOR = (x+y)
+ {
+   0:*		:: "Anything non negative. Added to by other thorns."
+ } 0
+ 
+-CCTK_INT MoL_Num_ArrayConstrained_Vars "The maximum number of array constrained variables with timelevels that MoL needs to know about" ACCUMULATOR = (x+y)
++CCTK_INT MoL_Num_ArrayConstrained_Vars "The maximum number of array constrained variables with timelevels that MoL needs to know about (DPRECATED)" ACCUMULATOR = (x+y)
+ {
+   0:*		:: "Anything non negative. Added to by other thorns."
+ } 0
+ 
+-CCTK_INT MoL_Num_ArraySaveAndRestore_Vars "The maximum number of array variables to be evolved outside of MoL but that MoL needs to know about" ACCUMULATOR = (x+y)
++CCTK_INT MoL_Num_ArraySaveAndRestore_Vars "The maximum number of array variables to be evolved outside of MoL but that MoL needs to know about (DPRECATED)" ACCUMULATOR = (x+y)
+ {
+   0:*		:: "Anything non negative. Added to by other thorns."
+ } 0
+ 
+-CCTK_INT MoL_Num_ComplexArrayEvolved_Vars "The maximum number of complex array variables to be evolved by MoL" ACCUMULATOR = (x+y)
++CCTK_INT MoL_Num_ComplexArrayEvolved_Vars "The maximum number of complex array variables to be evolved by MoL (DPRECATED)" ACCUMULATOR = (x+y)
+ {
+   0:*		:: "Anything non negative. Added to by other thorns."
+ } 0
+ 
+-CCTK_INT MoL_Num_ComplexArrayConstrained_Vars "The maximum number of complex array constrained variables with timelevels that MoL needs to know about" ACCUMULATOR = (x+y)
++CCTK_INT MoL_Num_ComplexArrayConstrained_Vars "The maximum number of complex array constrained variables with timelevels that MoL needs to know about (DPRECATED)" ACCUMULATOR = (x+y)
+ {
+   0:*		:: "Anything non negative. Added to by other thorns."
+ } 0
+ 
+-CCTK_INT MoL_Num_ComplexArraySaveAndRestore_Vars "The maximum number of complex array variables to be evolved outside of MoL but that MoL needs to know about" ACCUMULATOR = (x+y)
++CCTK_INT MoL_Num_ComplexArraySaveAndRestore_Vars "The maximum number of complex array variables to be evolved outside of MoL but that MoL needs to know about (DPRECATED)" ACCUMULATOR = (x+y)
+ {
+   0:*		:: "Anything non negative. Added to by other thorns."
+ } 0

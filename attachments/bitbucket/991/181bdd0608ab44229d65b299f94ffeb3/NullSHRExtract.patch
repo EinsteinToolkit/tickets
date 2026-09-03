@@ -1,0 +1,40 @@
+Index: src/wt_SphHarmDecomp.F90
+===================================================================
+--- src/wt_SphHarmDecomp.F90	(revision 9)
++++ src/wt_SphHarmDecomp.F90	(working copy)
+@@ -90,13 +90,13 @@
+ 
+   ! NullDecomp_WriteCoefFile(FieldName, TruncateFile, Lmin, Lmax, YlmCoef, time)
+ 
+-  call  NullDecomp_WriteCoefRadiusFile('J_wt',   cctk_iteration.eq.0, 2, lmax, JSphCoeff, cctk_time, null_rb(Nradial))
++  call  NullDecomp_WriteCoefRadiusFile('nullgridJ_wt',   cctk_iteration.eq.0, 2, lmax, JSphCoeff, cctk_time, null_rb(Nradial))
+ 
+-  call  NullDecomp_WriteCoefRadiusFile('U_wt',   cctk_iteration.eq.0, 1, lmax, USphCoeff, cctk_time, null_rb(Nradial))
++  call  NullDecomp_WriteCoefRadiusFile('nullgridU_wt',   cctk_iteration.eq.0, 1, lmax, USphCoeff, cctk_time, null_rb(Nradial))
+ 
+-  call  NullDecomp_WriteCoefRadiusFile('B_wt',   cctk_iteration.eq.0, 0, lmax, betaSphCoeff, cctk_time, null_rb(Nradial))
++  call  NullDecomp_WriteCoefRadiusFile('nullgridB_wt',   cctk_iteration.eq.0, 0, lmax, betaSphCoeff, cctk_time, null_rb(Nradial))
+ 
+-  call  NullDecomp_WriteCoefRadiusFile('W_wt',   cctk_iteration.eq.0, 0, lmax, WSphCoeff, cctk_time, null_rb(Nradial))
++  call  NullDecomp_WriteCoefRadiusFile('nullgridW_wt',   cctk_iteration.eq.0, 0, lmax, WSphCoeff, cctk_time, null_rb(Nradial))
+ 
+ 
+ 
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 9)
++++ param.ccl	(working copy)
+@@ -104,11 +104,11 @@
+ {
+ } "no"
+ 
+-BOOLEAN WT_spherical_harmonics "Output the spherical harmonics of the Worldtube to a file?"
++BOOLEAN WT_spherical_harmonics "Output the spherical harmonics of the Worldtube to a file?" STEERABLE=ALWAYS
+ {
+ } "no"
+ 
+-BOOLEAN WT_spherical_harmonics_on_nullgrid "Output the spherical harmonics on the nullgrid just off the Worldtube to a file?"
++BOOLEAN WT_spherical_harmonics_on_nullgrid "Output the spherical harmonics on the nullgrid just off the Worldtube to a file?" STEERABLE=ALWAYS
+ {
+ } "no"
+ 

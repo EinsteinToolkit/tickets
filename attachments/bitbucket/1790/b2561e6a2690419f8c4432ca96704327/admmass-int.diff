@@ -1,0 +1,80 @@
+Index: src/surface_integral.c
+===================================================================
+--- src/surface_integral.c	(revision 68)
++++ src/surface_integral.c	(working copy)
+@@ -19,9 +19,9 @@
+ 
+ #define PI 3.1415926535897932384626433832795028841971693993751058209749445923
+ 
+-CCTK_INT find_closest(const cGH *cctkGH, const CCTK_INT *cctk_lsh,
+-                      const CCTK_REAL *cctk_delta_space, CCTK_INT ghost,
+-                      CCTK_REAL *coord, CCTK_REAL coord_min, CCTK_INT dir);
++int find_closest(const cGH *cctkGH, const int *cctk_lsh,
++                 const CCTK_REAL *cctk_delta_space, int ghost,
++                 CCTK_REAL *coord, CCTK_REAL coord_min, int dir);
+ 
+ void ADMMass_Surface(CCTK_ARGUMENTS);
+ 
+@@ -34,11 +34,11 @@
+ 
+ 
+ 
+-CCTK_INT find_closest(const cGH *cctkGH, const CCTK_INT *cctk_lsh,
+-                      const CCTK_REAL *cctk_delta_space, CCTK_INT ghost,
+-                      CCTK_REAL *coord, CCTK_REAL coord_min, CCTK_INT dir)
++int find_closest(const cGH *cctkGH, const int *cctk_lsh,
++                 const CCTK_REAL *cctk_delta_space, int ghost,
++                 CCTK_REAL *coord, CCTK_REAL coord_min, int dir)
+ {
+-    CCTK_INT i, ijk, min_i = -1;
++    int i, ijk, min_i = -1;
+     CCTK_REAL min = 1.e100;
+     
+     for(i=ghost; i<cctk_lsh[dir]-ghost; i++)
+@@ -342,7 +342,7 @@
+     if (ADMMass_Debug)
+     CCTK_VInfo(CCTK_THORNSTRING,
+                "detector %d: ADM mass  %g, surface (cube): xmin %g, xmax %g, ymin %g, ymax %g, zmin %g, zmax %g",
+-               *ADMMass_LoopCounter,
++               (int)*ADMMass_LoopCounter,
+                ADMMass_SurfaceMass[*ADMMass_LoopCounter],
+                *ADMMass_box_x_min,*ADMMass_box_x_max,
+                *ADMMass_box_y_min,*ADMMass_box_y_max,
+@@ -400,7 +400,7 @@
+     if (ADMMass_Debug)
+     CCTK_VInfo(CCTK_THORNSTRING,
+                "detector %d: ADM mass with lapse  %g, surface (cube): xmin %g, xmax %g, ymin %g, ymax %g, zmin %g, zmax %g",
+-               *ADMMass_LoopCounter,
++               (int)*ADMMass_LoopCounter,
+                ADMMass_SurfaceMass_Lapse[*ADMMass_LoopCounter],
+                *ADMMass_box_x_min,*ADMMass_box_x_max,
+                *ADMMass_box_y_min,*ADMMass_box_y_max,
+Index: src/volume_integral.c
+===================================================================
+--- src/volume_integral.c	(revision 68)
++++ src/volume_integral.c	(working copy)
+@@ -312,7 +312,7 @@
+         if (ADMMass_Debug)
+         CCTK_VInfo(CCTK_THORNSTRING,
+                    "detector %d: ADM mass  %g, volume (sphere of radius) %g",
+-                   *ADMMass_LoopCounter,
++                   (int)*ADMMass_LoopCounter,
+                    ADMMass_VolumeMass[*ADMMass_LoopCounter],
+                    ADMMass_surface_distance[*ADMMass_LoopCounter]);
+     }
+@@ -320,13 +320,13 @@
+     {
+         if (ADMMass_Debug)
+         CCTK_VInfo(CCTK_THORNSTRING," detector %d: ADM mass %g, volume: the whole grid",
+-            *ADMMass_LoopCounter, ADMMass_VolumeMass[*ADMMass_LoopCounter]);
++               (int)*ADMMass_LoopCounter, ADMMass_VolumeMass[*ADMMass_LoopCounter]);
+     }
+     else
+     {
+         if (ADMMass_Debug)
+         CCTK_VInfo(CCTK_THORNSTRING," detector %d: ADM mass %g, volume (sphere of radius) %g",
+-               *ADMMass_LoopCounter, ADMMass_VolumeMass[*ADMMass_LoopCounter],
++               (int)*ADMMass_LoopCounter, ADMMass_VolumeMass[*ADMMass_LoopCounter],
+                ADMMass_volume_radius[*ADMMass_LoopCounter]);
+     }
+ }

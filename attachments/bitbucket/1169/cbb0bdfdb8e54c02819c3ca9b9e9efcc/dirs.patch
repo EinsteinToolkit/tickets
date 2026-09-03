@@ -1,0 +1,28 @@
+Index: configuration.ccl
+===================================================================
+--- configuration.ccl	(revision 33)
++++ configuration.ccl	(working copy)
+@@ -4,7 +4,7 @@
+ {
+   SCRIPT configure.sh
+   LANG bash
+-  OPTIONS LAPACK_DIR LAPACK_INSTALL_DIR LAPACK_LIBS
++  OPTIONS LAPACK_DIR LAPACK_INC_DIRS LAPACK_LIB_DIRS LAPACK_INSTALL_DIR LAPACK_LIBS
+ }
+ 
+ REQUIRES BLAS
+Index: configure.sh
+===================================================================
+--- configure.sh	(revision 33)
++++ configure.sh	(working copy)
+@@ -166,8 +166,8 @@
+ 
+ # Set options
+ if [ "${LAPACK_DIR}" != '/usr/lib' -a "${LAPACK_DIR}" != '/usr/local/lib' ]; then
+-    LAPACK_INC_DIRS=
+-    LAPACK_LIB_DIRS="${LAPACK_DIR}"
++    : ${LAPACK_INC_DIRS=}
++    : ${LAPACK_LIB_DIRS="${LAPACK_DIR}"}
+ fi
+ : ${LAPACK_LIBS='lapack'}
+ 

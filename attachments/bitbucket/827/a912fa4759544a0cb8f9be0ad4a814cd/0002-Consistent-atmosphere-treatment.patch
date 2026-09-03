@@ -1,0 +1,52 @@
+From 3ae13adf2fbb3c7cb4790ec0c0baa65306254e44 Mon Sep 17 00:00:00 2001
+From: Philipp Moesta <pmoesta@tapir.caltech.edu>
+Date: Fri, 24 Feb 2012 11:09:22 -0800
+Subject: [PATCH 02/11] Consistent atmosphere treatment.
+
+---
+ src/GRHydro_Con2PrimM_pt.c |   15 +++++++++++++--
+ 1 files changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/src/GRHydro_Con2PrimM_pt.c b/src/GRHydro_Con2PrimM_pt.c
+index 2c3fa68..a26b52d 100644
+--- a/src/GRHydro_Con2PrimM_pt.c
++++ b/src/GRHydro_Con2PrimM_pt.c
+@@ -45,6 +45,7 @@
+ #include <complex.h>
+ 
+ #include "cctk.h"
++#include "cctk_Parameters.h"
+ 
+ /* Set this to be 1 if you want debug output */
+ #define DEBUG_CON2PRIMM (0)
+@@ -215,8 +216,10 @@ void CCTK_FCALL CCTK_FNAME(GRHydro_Con2PrimM_pt)  (
+   CCTK_REAL detg = (*det);
+   CCTK_REAL sqrt_detg = sqrt(detg);
+   CCTK_REAL inv_sqrt_detg = 1./sqrt_detg; 
+-  CCTK_INT i,j, i_increase ;
+-  
++  CCTK_INT i,j, i_increase;
++ 
++  DECLARE_CCTK_PARAMETERS;
++ 
+   struct LocGlob lg; 
+ 
+   gammaeos = *gamma_eos;
+@@ -395,6 +398,14 @@ void CCTK_FCALL CCTK_FNAME(GRHydro_Con2PrimM_pt)  (
+   *vely = g_o_WBsq * ( usy + QdB_o_W*(*By) ) ;
+   *velz = g_o_WBsq * ( usz + QdB_o_W*(*Bz) ) ;
+ 
++  if (*rho <= rho_abs_min*(1.0+GRHydro_atmo_tolerance) ) {
++    *rho = rho_abs_min;
++    *velx = 0.0;
++    *vely = 0.0;
++    *velz = 0.0;
++    *w_lorentz = 1.0;
++  }
++
+ 
+ #if(DEBUG_CON2PRIMM)
+   fprintf(stdout,"rho          = %26.16e \n",*rho      );
+-- 
+1.7.8
+

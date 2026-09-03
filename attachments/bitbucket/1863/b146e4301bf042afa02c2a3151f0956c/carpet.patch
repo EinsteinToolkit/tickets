@@ -1,0 +1,113 @@
+diff --git a/Carpet/interface.ccl b/Carpet/interface.ccl
+index 5f4ab8e..1675704 100644
+--- a/Carpet/interface.ccl
++++ b/Carpet/interface.ccl
+@@ -4,6 +4,7 @@ IMPLEMENTS: Driver
+ 
+ include header: carpet_public.hh in carpet.hh
+ include header: carpet_public.h in carpet.h
++include header: CallFunctionHooks.h in CarpetFunctionHooks.h
+ 
+ uses include header: Requirements.hh
+ 
+@@ -215,6 +216,16 @@ CCTK_INT FUNCTION Accelerator_Cycle             \
+   (CCTK_POINTER_TO_CONST IN cctkGH)
+ USES FUNCTION Accelerator_Cycle
+ 
++CCTK_INT FUNCTION Diagnostic_PreCallFunction   \
++  (CCTK_POINTER_TO_CONST IN cctkGH,             \
++   CCTK_POINTER_TO_CONST IN attribute)
++USES FUNCTION Diagnostic_PreCallFunction
++
++CCTK_INT FUNCTION Diagnostic_PostCallFunction  \
++  (CCTK_POINTER_TO_CONST IN cctkGH,             \
++   CCTK_POINTER_TO_CONST IN attribute)
++USES FUNCTION Diagnostic_PostCallFunction
++
+ CCTK_INT FUNCTION Accelerator_PreCallFunction   \
+   (CCTK_POINTER_TO_CONST IN cctkGH,             \
+    CCTK_POINTER_TO_CONST IN attribute)
+diff --git a/Carpet/src/CallFunction.cc b/Carpet/src/CallFunction.cc
+index 1dbcbbc..e0f8e77 100644
+--- a/Carpet/src/CallFunction.cc
++++ b/Carpet/src/CallFunction.cc
+@@ -9,6 +9,7 @@
+ #include <cctk.h>
+ #include <cctk_Parameters.h>
+ #include <cctki_GHExtensions.h>
++#include "CallFunctionHooks.h"
+ 
+ #include <Requirements.hh>
+ 
+@@ -340,6 +341,47 @@ int CallFunction(void *function,           ///< the function to call
+   return 1;
+ }
+ 
++struct hook_info {
++  hook_function func;
++  void *data;
++};
++std::vector<hook_info> pre_call_hooks;
++std::vector<hook_info> post_call_hooks;
++extern "C" void AddPreCallFunction(hook_function hook,void *hook_data) {
++  hook_info hi;
++  hi.func = hook;
++  hi.data = hook_data;
++  pre_call_hooks.push_back(hi);
++}
++extern "C" void AddPostCallFunction(hook_function hook,void *hook_data) {
++  hook_info hi;
++  hi.func = hook;
++  hi.data = hook_data;
++  post_call_hooks.push_back(hi);
++}
++void RunPreCallFunctions(const cGH *GH,cFunctionData *const attributes) {
++  if(pre_call_hooks.size()==0)
++    return;
++  Timers::Timer pre_timer("PreCallFuncs");
++  pre_timer.start();
++  for(auto i=pre_call_hooks.begin();i != pre_call_hooks.end();++i) {
++    hook_info& hi = *i;
++    hi.func(GH,attributes,hi.data);
++  }
++  pre_timer.stop();
++}
++void RunPostCallFunctions(const cGH *GH,cFunctionData *const attributes) {
++  if(post_call_hooks.size()==0)
++    return;
++  Timers::Timer post_timer("PostCallFuncs");
++  post_timer.start();
++  for(auto i=post_call_hooks.begin();i != post_call_hooks.end();++i) {
++    hook_info& hi = *i;
++    hi.func(GH,attributes,hi.data);
++  }
++  post_timer.stop();
++}
++
+ void CallScheduledFunction(char const *restrict const time_and_mode,
+                            void *const function, cFunctionData *const attribute,
+                            void *const data, Timers::Timer &user_timer) {
+@@ -365,7 +407,9 @@ void CallScheduledFunction(char const *restrict const time_and_mode,
+       Accelerator_PreCallFunction(cctkGH, attribute);
+       pre_timer.stop();
+     }
++    RunPreCallFunctions(cctkGH,attribute);
+     int const res = CCTK_CallFunction(function, attribute, data);
++    RunPostCallFunctions(cctkGH,attribute);
+     assert(res == 0);
+     if (CCTK_IsFunctionAliased("Accelerator_PostCallFunction")) {
+       Timers::Timer post_timer("PostCall");
+diff --git a/Carpet/src/make.code.defn b/Carpet/src/make.code.defn
+index f28c614..8afeb19 100644
+--- a/Carpet/src/make.code.defn
++++ b/Carpet/src/make.code.defn
+@@ -25,7 +25,8 @@ SRCS =	CallFunction.cc				\
+ 	adler32.cc				\
+ 	helpers.cc				\
+ 	modes.cc				\
+-	variables.cc
++	variables.cc \
++  ReadWriteDiagnostics.cc
+ 
+ # Subdirectories containing source files
+ SUBDIRS = LoadBalanceReal

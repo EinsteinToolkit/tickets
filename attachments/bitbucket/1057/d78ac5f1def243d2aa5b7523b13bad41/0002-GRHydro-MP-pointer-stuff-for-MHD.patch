@@ -1,0 +1,1774 @@
+From 6fca10b02a032f840371dbb0d2611c58b06f7c77 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Wed, 18 Apr 2012 12:04:10 -0700
+Subject: [PATCH 02/10] GRHydro: MP pointer stuff for MHD
+
+this time with minimal replacements in SourceM.F90
+---
+ src/GRHydro_Boundaries.F90         |   13 --
+ src/GRHydro_CalcBcom.F90           |    7 +-
+ src/GRHydro_Con2PrimM.F90          |  341 ++++++++++++++++++++++++++------
+ src/GRHydro_HLLEM.F90              |  160 ++++++++++++---
+ src/GRHydro_ReconstructPoly.F90    |    6 +
+ src/GRHydro_SourceM.F90            |  272 ++++++++++++++++++--------
+ src/GRHydro_TransformTensorBasis.c |   22 ++-
+ src/GRHydro_UpdateMaskM.F90        |  374 ++++++++++++++++++++++++++++--------
+ 8 files changed, 926 insertions(+), 269 deletions(-)
+
+diff --git a/src/GRHydro_Boundaries.F90 b/src/GRHydro_Boundaries.F90
+index 5fad2e2..c04994c 100644
+--- a/src/GRHydro_Boundaries.F90
++++ b/src/GRHydro_Boundaries.F90
+@@ -15,19 +15,6 @@
+ 
+ #include "util_Table.h"
+ 
+-#define velx(i,j,k) lvel(i,j,k,1)
+-#define vely(i,j,k) lvel(i,j,k,2)
+-#define velz(i,j,k) lvel(i,j,k,3)
+-#define sx(i,j,k) scon(i,j,k,1)
+-#define sy(i,j,k) scon(i,j,k,2)
+-#define sz(i,j,k) scon(i,j,k,3)
+-#define Bvecx(i,j,k) lBvec(i,j,k,1)
+-#define Bvecy(i,j,k) lBvec(i,j,k,2)
+-#define Bvecz(i,j,k) lBvec(i,j,k,3)
+-#define Bconsx(i,j,k) Bcons(i,j,k,1)
+-#define Bconsy(i,j,k) Bcons(i,j,k,2)
+-#define Bconsz(i,j,k) Bcons(i,j,k,3)
+-
+  /*@@
+    @routine    GRHydro_InitSymBound
+    @date       Sat Jan 26 01:03:04 2002
+diff --git a/src/GRHydro_CalcBcom.F90 b/src/GRHydro_CalcBcom.F90
+index b1acd27..78bbae7 100644
+--- a/src/GRHydro_CalcBcom.F90
++++ b/src/GRHydro_CalcBcom.F90
+@@ -30,13 +30,18 @@
+ 
+    CCTK_REAL :: velxlow, velylow, velzlow
+    CCTK_REAL :: Bvecxlow,Bvecylow,Bveczlow
+-   CCTK_REAL :: bdotv,b2,bxlow,bylow,bzlow,btlow,dum
++   CCTK_REAL :: bdotv,b2,bxlow,bylow,bzlow,dum
+    CCTK_INT :: i,j,k
++   CCTK_INT :: GRHydro_UseGeneralCoordinates
+ 
+    if(stress_energy_state.ne.0) then
+      return
+    end if
+ 
++   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++     call CCTK_WARN(0,"MP not yet supported in GRHydro_CalcBcom")
++   end if
++
+    !$OMP PARALLEL DO PRIVATE(i,j,k,velxlow, velylow, velzlow,&
+    !$OMP Bvecxlow,Bvecylow,Bveczlow, bdotv,dum,b2,bxlow,bylow,bzlow)
+ 
+diff --git a/src/GRHydro_Con2PrimM.F90 b/src/GRHydro_Con2PrimM.F90
+index 1b0e831..af1d55f 100644
+--- a/src/GRHydro_Con2PrimM.F90
++++ b/src/GRHydro_Con2PrimM.F90
+@@ -46,6 +46,13 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+ 
+   implicit none
+   
++  ! save memory when MP is not used
++  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
++  TARGET gaa, gab, gac, gbb, gbc, gcc
++  TARGET gxx, gxy, gxz, gyy, gyz, gzz
++  TARGET lvel, vel
++  TARGET lBvec, Bvec
++
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+@@ -62,6 +69,45 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+ ! begin EOS Omni vars                                                                                       
+   integer :: n,keytemp,anyerr,keyerr(1)
+   real*8  :: xpress(1),xtemp(1),xye(1),xeps(1),xrho(1),one(1)=1.0d0
++! end EOS Omni vars                 
++
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
++
++  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++    g11 => gaa
++    g12 => gab
++    g13 => gac
++    g22 => gbb
++    g23 => gbc
++    g33 => gcc
++    vup => lvel
++    Bprim => lBvec
++  else
++    g11 => gxx
++    g12 => gxy
++    g13 => gxz
++    g22 => gyy
++    g23 => gyz
++    g33 => gzz
++    vup => vel
++    Bprim => Bvec
++  end if
++#define gxx faulty_gxx
++#define gxy faulty_gxy
++#define gxz faulty_gxz
++#define gyy faulty_gyy
++#define gyz faulty_gyz
++#define gzz faulty_gzz
++#define betax faulty_betax
++#define betay faulty_betay
++#define betaz faulty_betaz
++#define vel faulty_vel
++#define Bvec faulty_Bvec
++
++! begin EOS Omni vars                                                                                       
+   n=1;keytemp=0;anyerr=0;keyerr(1)=0
+   xpress(1)=0.0d0;xtemp(1)=0.0d0;xye(1)=0.0d0;xeps(1)=0.0d0
+ ! end EOS Omni vars                 
+@@ -104,10 +150,10 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+            
+            epsnegative = 0
+            
+-           det = SPATIAL_DETERMINANT(gxx(i,j,k),gxy(i,j,k),gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k))
++           det = SPATIAL_DETERMINANT(g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k))
+            call UpperMetric(uxx,uxy,uxz,uyy,uyz,uzz,det,&
+-                gxx(i,j,k),gxy(i,j,k),gxz(i,j,k),gyy(i,j,k),&
+-                gyz(i,j,k),gzz(i,j,k))        
++                g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),&
++                g23(i,j,k),g33(i,j,k))        
+            
+ !!$ Tracers don't need an MHD treatment!
+            if (evolve_tracer .ne. 0) then
+@@ -139,14 +185,14 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+               !      temperature(i,j,k),y_e(i,j,k)
+               !call CCTK_WARN(1,warnline)
+ 
+-              b2=gxx(i,j,k)*Bvec(i,j,k,1)**2+gyy(i,j,k)*Bvec(i,j,k,2)**2+gzz(i,j,k)*Bvec(i,j,k,3)**2+ &
+-                   2.0*(gxy(i,j,k)*Bvec(i,j,k,1)*Bvec(i,j,k,2)+gxz(i,j,k)*Bvec(i,j,k,1)*Bvec(i,j,k,3)+ &
+-                   gyz(i,j,k)*Bvec(i,j,k,2)*Bvec(i,j,k,3))
++              b2=g11(i,j,k)*Bprim(i,j,k,1)**2+g22(i,j,k)*Bprim(i,j,k,2)**2+g33(i,j,k)*Bprim(i,j,k,3)**2+ &
++                   2.0*(g12(i,j,k)*Bprim(i,j,k,1)*Bprim(i,j,k,2)+g13(i,j,k)*Bprim(i,j,k,1)*Bprim(i,j,k,3)+ &
++                   g23(i,j,k)*Bprim(i,j,k,2)*Bprim(i,j,k,3))
+               
+               dens(i,j,k) = sqrt(det)*GRHydro_rho_min !/(1.d0+GRHydro_atmo_tolerance)
+               rho(i,j,k) = GRHydro_rho_min
+               scon(i,j,k,:) = 0.d0
+-              vel(i,j,k,:) = 0.d0
++              vup(i,j,k,:) = 0.d0
+               w_lorentz(i,j,k) = 1.d0
+               
+               if(evolve_temper.ne.0) then
+@@ -186,29 +232,29 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+               call GRHydro_Con2PrimM_pt(GRHydro_eos_handle, keytemp, GRHydro_eos_rf_prec, local_gam(1), dens(i,j,k), &
+                    scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3), tau(i,j,k), &
+                    Bcons(i,j,k,1),Bcons(i,j,k,2),Bcons(i,j,k,3), xye(1), xtemp(1), rho(i,j,k),&
+-                   vel(i,j,k,1),vel(i,j,k,2),vel(i,j,k,3),eps(i,j,k),press(i,j,k),&
+-                   Bvec(i,j,k,1), Bvec(i,j,k,2), Bvec(i,j,k,3),b2, w_lorentz(i,j,k),&
+-                   gxx(i,j,k),gxy(i,j,k),gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k), &
++                   vup(i,j,k,1),vup(i,j,k,2),vup(i,j,k,3),eps(i,j,k),press(i,j,k),&
++                   Bprim(i,j,k,1), Bprim(i,j,k,2), Bprim(i,j,k,3),b2, w_lorentz(i,j,k),&
++                   g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k), &
+                    uxx,uxy,uxz,uyy,uyz,uzz,det, &
+                    epsnegative,GRHydro_C2P_failed(i,j,k))
+            else
+               keytemp = 1
+               !call Con2Prim_pt_hot(cctk_iteration,i,j,k,GRHydro_eos_handle, dens(i,j,k),scon(i,j,k,1),&
+-              !   scon(i,j,k,2),scon(i,j,k,3),tau(i,j,k),Y_e_con(i,j,k),rho(i,j,k),vel(i,j,k,1),&
+-              !   vel(i,j,k,2),vel(i,j,k,3),eps(i,j,k),temperature(i,j,k),y_e(i,j,k),&
++              !   scon(i,j,k,2),scon(i,j,k,3),tau(i,j,k),Y_e_con(i,j,k),rho(i,j,k),vup(i,j,k,1),&
++              !   vup(i,j,k,2),vup(i,j,k,3),eps(i,j,k),temperature(i,j,k),y_e(i,j,k),&
+               !   press(i,j,k),w_lorentz(i,j,k), &
+               !   uxx,uxy,uxz,uyy,uyz,uzz,det,x(i,j,k),y(i,j,k), &
+               !   z(i,j,k),r(i,j,k),epsnegative,GRHydro_rho_min,pmin, epsmin, & 
+               !   GRHydro_reflevel, GRHydro_C2P_failed(i,j,k), GRHydro_perc_ptol)
+-              !   Bvec(i,j,k,1) = 0.0d0
+-              !   Bvec(i,j,k,2) = 0.0d0
+-              !   Bvec(i,j,k,3) = 0.0d0
++              !   Bprim(i,j,k,1) = 0.0d0
++              !   Bprim(i,j,k,2) = 0.0d0
++              !   Bprim(i,j,k,3) = 0.0d0
+               call GRHydro_Con2PrimM_pt(GRHydro_eos_handle, keytemp, GRHydro_eos_rf_prec, local_gam(1), dens(i,j,k), &
+                    scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3), tau(i,j,k), &
+                    Bcons(i,j,k,1),Bcons(i,j,k,2),Bcons(i,j,k,3), Y_e(i,j,k), temperature(i,j,k), rho(i,j,k),&
+-                   vel(i,j,k,1),vel(i,j,k,2),vel(i,j,k,3),eps(i,j,k),press(i,j,k),&
+-                   Bvec(i,j,k,1), Bvec(i,j,k,2), Bvec(i,j,k,3),  b2, w_lorentz(i,j,k),&
+-                   gxx(i,j,k),gxy(i,j,k),gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k), &
++                   vup(i,j,k,1),vup(i,j,k,2),vup(i,j,k,3),eps(i,j,k),press(i,j,k),&
++                   Bprim(i,j,k,1), Bprim(i,j,k,2), Bprim(i,j,k,3),  b2, w_lorentz(i,j,k),&
++                   g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k), &
+                    uxx,uxy,uxz,uyy,uyz,uzz,det, &
+                    epsnegative,GRHydro_C2P_failed(i,j,k))
+               if(GRHydro_C2P_failed(i,j,k).eq.2) then
+@@ -220,9 +266,9 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+                 call GRHydro_Con2PrimM_pt(GRHydro_eos_handle, keytemp, local_perc_ptol, local_gam(1), dens(i,j,k), &
+                      scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3), tau(i,j,k), &
+                      Bcons(i,j,k,1),Bcons(i,j,k,2),Bcons(i,j,k,3), Y_e(i,j,k), temperature(i,j,k), rho(i,j,k),&
+-                     vel(i,j,k,1),vel(i,j,k,2),vel(i,j,k,3),eps(i,j,k),press(i,j,k),&
+-                     Bvec(i,j,k,1), Bvec(i,j,k,2), Bvec(i,j,k,3),  b2, w_lorentz(i,j,k),&
+-                     gxx(i,j,k),gxy(i,j,k),gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k), &
++                     vup(i,j,k,1),vup(i,j,k,2),vup(i,j,k,3),eps(i,j,k),press(i,j,k),&
++                     Bprim(i,j,k,1), Bprim(i,j,k,2), Bprim(i,j,k,3),  b2, w_lorentz(i,j,k),&
++                     g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k), &
+                      uxx,uxy,uxz,uyy,uyz,uzz,det, &
+                      epsnegative,GRHydro_C2P_failed(i,j,k))
+                 if(GRHydro_C2P_failed(i,j,k).eq.2) then
+@@ -271,7 +317,7 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+               dens(i,j,k) = sqrt(det)*GRHydro_rho_min !/(1.d0+GRHydro_atmo_tolerance)
+               rho(i,j,k) = GRHydro_rho_min
+               scon(i,j,k,:) = 0.d0
+-              vel(i,j,k,:) = 0.d0
++              vup(i,j,k,:) = 0.d0
+               w_lorentz(i,j,k) = 1.d0
+ 
+               call EOS_Omni_press(GRHydro_polytrope_handle,keytemp,GRHydro_eos_rf_prec,n,&
+@@ -280,9 +326,9 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+               call EOS_Omni_EpsFromPress(GRHydro_polytrope_handle,keytemp,GRHydro_eos_rf_prec,n,&
+                    rho(i,j,k),eps(i,j,k),xtemp,xye,press(i,j,k),eps(i,j,k),keyerr,anyerr)
+ 
+-              b2=gxx(i,j,k)*Bvec(i,j,k,1)**2+gyy(i,j,k)*Bvec(i,j,k,2)**2+gzz(i,j,k)*Bvec(i,j,k,3)**2+ &
+-                   2.0*(gxy(i,j,k)*Bvec(i,j,k,1)*Bvec(i,j,k,2)+gxz(i,j,k)*Bvec(i,j,k,1)*Bvec(i,j,k,3)+ &
+-                   gyz(i,j,k)*Bvec(i,j,k,2)*Bvec(i,j,k,3))
++              b2=g11(i,j,k)*Bprim(i,j,k,1)**2+g22(i,j,k)*Bprim(i,j,k,2)**2+g33(i,j,k)*Bprim(i,j,k,3)**2+ &
++                   2.0*(g12(i,j,k)*Bprim(i,j,k,1)*Bprim(i,j,k,2)+g13(i,j,k)*Bprim(i,j,k,1)*Bprim(i,j,k,3)+ &
++                   g23(i,j,k)*Bprim(i,j,k,2)*Bprim(i,j,k,3))
+               
+               
+               ! w_lorentz=1, so the expression for tau reduces to [see above]:
+@@ -310,9 +356,9 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+               call GRHydro_Con2PrimM_Polytype_pt(GRHydro_eos_handle, local_pgam, dens(i,j,k), &
+                    scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3), sc, &
+                    Bcons(i,j,k,1), Bcons(i,j,k,2), Bcons(i,j,k,3), rho(i,j,k),&
+-                   vel(i,j,k,1),vel(i,j,k,2),vel(i,j,k,3),eps(i,j,k),press(i,j,k),&
+-                   Bvec(i,j,k,1), Bvec(i,j,k,2), Bvec(i,j,k,3),b2, w_lorentz(i,j,k),&
+-                   gxx(i,j,k),gxy(i,j,k),gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k), &
++                   vup(i,j,k,1),vup(i,j,k,2),vup(i,j,k,3),eps(i,j,k),press(i,j,k),&
++                   Bprim(i,j,k,1), Bprim(i,j,k,2), Bprim(i,j,k,3),b2, w_lorentz(i,j,k),&
++                   g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k), &
+                    uxx,uxy,uxz,uyy,uyz,uzz,det, &
+                    epsnegative,GRHydro_C2P_failed(i,j,k))
+              
+@@ -323,14 +369,14 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+            if ( rho(i,j,k) .le. GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance)) then
+ !           if ( rho(i,j,k) .le. GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance) .or. GRHydro_C2P_failed(i,j,k) .ge. 1) then
+                
+-              b2=gxx(i,j,k)*Bvec(i,j,k,1)**2+gyy(i,j,k)*Bvec(i,j,k,2)**2+gzz(i,j,k)*Bvec(i,j,k,3)**2+ &
+-                   2.0*(gxy(i,j,k)*Bvec(i,j,k,1)*Bvec(i,j,k,2)+gxz(i,j,k)*Bvec(i,j,k,1)*Bvec(i,j,k,3)+ &
+-                   gyz(i,j,k)*Bvec(i,j,k,2)*Bvec(i,j,k,3))
++              b2=g11(i,j,k)*Bprim(i,j,k,1)**2+g22(i,j,k)*Bprim(i,j,k,2)**2+g33(i,j,k)*Bprim(i,j,k,3)**2+ &
++                   2.0*(g12(i,j,k)*Bprim(i,j,k,1)*Bprim(i,j,k,2)+g13(i,j,k)*Bprim(i,j,k,1)*Bprim(i,j,k,3)+ &
++                   g23(i,j,k)*Bprim(i,j,k,2)*Bprim(i,j,k,3))
+               
+               dens(i,j,k) = sqrt(det)*GRHydro_rho_min !/(1.d0+GRHydro_atmo_tolerance)
+               rho(i,j,k) = GRHydro_rho_min
+               scon(i,j,k,:) = 0.d0
+-              vel(i,j,k,:) = 0.d0
++              vup(i,j,k,:) = 0.d0
+               w_lorentz(i,j,k) = 1.d0
+ 
+               if(evolve_temper.ne.0) then
+@@ -364,6 +410,17 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+   !$OMP END PARALLEL DO
+   
+   return
++#undef faulty_gxx
++#undef faulty_gxy
++#undef faulty_gxz
++#undef faulty_gyy
++#undef faulty_gyz
++#undef faulty_gzz
++#undef faulty_betax
++#undef faulty_betay
++#undef faulty_betaz
++#undef faulty_vel
++#undef faulty_Bvec
+   
+ end subroutine Conservative2PrimitiveM
+ 
+@@ -395,6 +452,11 @@ subroutine Conservative2PrimitiveBoundsM(CCTK_ARGUMENTS)
+   
+   implicit none
+   
++  ! save memory when MP is not used
++  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
++  TARGET gaa, gab, gac, gbb, gbc, gcc
++  TARGET gxx, gxy, gxz, gyy, gyz, gzz
++
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+@@ -413,6 +475,40 @@ subroutine Conservative2PrimitiveBoundsM(CCTK_ARGUMENTS)
+ ! begin EOS Omni vars                                            
+   integer :: n,keytemp,anyerr,keyerr(1)
+   real*8  :: xpress(1),xtemp(1),xye(1),xeps(1),xrho(1),one(1)=1.0d0
++! end EOS Omni vars                       
++
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++
++  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++    g11 => gaa
++    g12 => gab
++    g13 => gac
++    g22 => gbb
++    g23 => gbc
++    g33 => gcc
++  else
++    g11 => gxx
++    g12 => gxy
++    g13 => gxz
++    g22 => gyy
++    g23 => gyz
++    g33 => gzz
++  end if
++#define gxx faulty_gxx
++#define gxy faulty_gxy
++#define gxz faulty_gxz
++#define gyy faulty_gyy
++#define gyz faulty_gyz
++#define gzz faulty_gzz
++#define betax faulty_betax
++#define betay faulty_betay
++#define betaz faulty_betaz
++#define vel faulty_vel
++#define Bvec faulty_Bvec
++
++! begin EOS Omni vars                                            
+   n=1;keytemp=0;anyerr=0;keyerr(1)=0
+   xpress(1)=0.0d0;xeps(1)=0.0d0;xtemp(1)=0.0d0;xye(1)=0.0d0
+ ! end EOS Omni vars                       
+@@ -447,18 +543,18 @@ subroutine Conservative2PrimitiveBoundsM(CCTK_ARGUMENTS)
+            if ((atmosphere_mask(i,j,k) .ne. 0) .or. &
+                 GRHydro_enable_internal_excision /= 0 .and. (hydro_excision_mask(i,j,k) .ne. 0)) cycle
+            
+-           gxxl = 0.5d0 * (gxx(i,j,k) + gxx(i-xoffset,j-yoffset,k-zoffset))
+-           gxyl = 0.5d0 * (gxy(i,j,k) + gxy(i-xoffset,j-yoffset,k-zoffset))
+-           gxzl = 0.5d0 * (gxz(i,j,k) + gxz(i-xoffset,j-yoffset,k-zoffset))
+-           gyyl = 0.5d0 * (gyy(i,j,k) + gyy(i-xoffset,j-yoffset,k-zoffset))
+-           gyzl = 0.5d0 * (gyz(i,j,k) + gyz(i-xoffset,j-yoffset,k-zoffset))
+-           gzzl = 0.5d0 * (gzz(i,j,k) + gzz(i-xoffset,j-yoffset,k-zoffset))
+-           gxxr = 0.5d0 * (gxx(i,j,k) + gxx(i+xoffset,j+yoffset,k+zoffset))
+-           gxyr = 0.5d0 * (gxy(i,j,k) + gxy(i+xoffset,j+yoffset,k+zoffset))
+-           gxzr = 0.5d0 * (gxz(i,j,k) + gxz(i+xoffset,j+yoffset,k+zoffset))
+-           gyyr = 0.5d0 * (gyy(i,j,k) + gyy(i+xoffset,j+yoffset,k+zoffset))
+-           gyzr = 0.5d0 * (gyz(i,j,k) + gyz(i+xoffset,j+yoffset,k+zoffset))
+-           gzzr = 0.5d0 * (gzz(i,j,k) + gzz(i+xoffset,j+yoffset,k+zoffset))
++           gxxl = 0.5d0 * (g11(i,j,k) + g11(i-xoffset,j-yoffset,k-zoffset))
++           gxyl = 0.5d0 * (g12(i,j,k) + g12(i-xoffset,j-yoffset,k-zoffset))
++           gxzl = 0.5d0 * (g13(i,j,k) + g13(i-xoffset,j-yoffset,k-zoffset))
++           gyyl = 0.5d0 * (g22(i,j,k) + g22(i-xoffset,j-yoffset,k-zoffset))
++           gyzl = 0.5d0 * (g23(i,j,k) + g23(i-xoffset,j-yoffset,k-zoffset))
++           gzzl = 0.5d0 * (g33(i,j,k) + g33(i-xoffset,j-yoffset,k-zoffset))
++           gxxr = 0.5d0 * (g11(i,j,k) + g11(i+xoffset,j+yoffset,k+zoffset))
++           gxyr = 0.5d0 * (g12(i,j,k) + g12(i+xoffset,j+yoffset,k+zoffset))
++           gxzr = 0.5d0 * (g13(i,j,k) + g13(i+xoffset,j+yoffset,k+zoffset))
++           gyyr = 0.5d0 * (g22(i,j,k) + g22(i+xoffset,j+yoffset,k+zoffset))
++           gyzr = 0.5d0 * (g23(i,j,k) + g23(i+xoffset,j+yoffset,k+zoffset))
++           gzzr = 0.5d0 * (g33(i,j,k) + g33(i+xoffset,j+yoffset,k+zoffset))
+            
+            epsnegative = 0
+            
+@@ -606,6 +702,18 @@ subroutine Conservative2PrimitiveBoundsM(CCTK_ARGUMENTS)
+      end do
+   end do
+   
++#undef faulty_gxx
++#undef faulty_gxy
++#undef faulty_gxz
++#undef faulty_gyy
++#undef faulty_gyz
++#undef faulty_gzz
++#undef faulty_betax
++#undef faulty_betay
++#undef faulty_betaz
++#undef faulty_vel
++#undef faulty_Bvec
++  
+ end subroutine Conservative2PrimitiveBoundsM
+ 
+ /*@@
+@@ -628,6 +736,13 @@ subroutine Conservative2PrimitivePolytypeM(CCTK_ARGUMENTS)
+   
+   implicit none
+   
++  ! save memory when MP is not used
++  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
++  TARGET gaa, gab, gac, gbb, gbc, gcc
++  TARGET gxx, gxy, gxz, gyy, gyz, gzz
++  TARGET lvel, vel
++  TARGET lBvec, Bvec
++
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -642,6 +757,45 @@ subroutine Conservative2PrimitivePolytypeM(CCTK_ARGUMENTS)
+ ! begin EOS Omni vars                                                                                       
+   integer :: n,keytemp,anyerr,keyerr(1)
+   real*8  :: xpress,xtemp,xye,xeps,xrho
++! end EOS Omni vars                 
++
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
++
++  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++    g11 => gaa
++    g12 => gab
++    g13 => gac
++    g22 => gbb
++    g23 => gbc
++    g33 => gcc
++    vup => lvel
++    Bprim => lBvec
++  else
++    g11 => gxx
++    g12 => gxy
++    g13 => gxz
++    g22 => gyy
++    g23 => gyz
++    g33 => gzz
++    vup => vel
++    Bprim => Bvec
++  end if
++#define gxx faulty_gxx
++#define gxy faulty_gxy
++#define gxz faulty_gxz
++#define gyy faulty_gyy
++#define gyz faulty_gyz
++#define gzz faulty_gzz
++#define betax faulty_betax
++#define betay faulty_betay
++#define betaz faulty_betaz
++#define vel faulty_vel
++#define Bvec faulty_Bvec
++
++! begin EOS Omni vars                                                                                       
+   n=1;keytemp=0;anyerr=0;keyerr(1)=0
+   xpress=0.0d0;xtemp=0.0d0;xye=0.0d0;xeps=0.0d0
+ ! end EOS Omni vars                 
+@@ -671,10 +825,10 @@ subroutine Conservative2PrimitivePolytypeM(CCTK_ARGUMENTS)
+            if ((atmosphere_mask(i,j,k) .ne. 0) .or. &
+                 GRHydro_enable_internal_excision /= 0 .and. (hydro_excision_mask(i,j,k) .ne. 0)) cycle
+            
+-        det = SPATIAL_DETERMINANT(gxx(i,j,k),gxy(i,j,k),gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k))
++        det = SPATIAL_DETERMINANT(g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k))
+            call UpperMetric(uxx,uxy,uxz,uyy,uyz,uzz,det,&
+-                gxx(i,j,k),gxy(i,j,k),gxz(i,j,k),gyy(i,j,k),&
+-                gyz(i,j,k),gzz(i,j,k))        
++                g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),&
++                g23(i,j,k),g33(i,j,k))        
+ 
+ !!$ No MHD changes to tracers
+            if (evolve_tracer .ne. 0) then
+@@ -708,9 +862,9 @@ subroutine Conservative2PrimitivePolytypeM(CCTK_ARGUMENTS)
+            call GRHydro_Con2PrimM_Polytype_pt(GRHydro_eos_handle, local_pgam, dens(i,j,k), &
+                    scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3), sc, &
+                    Bcons(i,j,k,1), Bcons(i,j,k,2), Bcons(i,j,k,3), rho(i,j,k),&
+-                   vel(i,j,k,1),vel(i,j,k,2),vel(i,j,k,3),eps(i,j,k),press(i,j,k),&
+-                   Bvec(i,j,k,1), Bvec(i,j,k,2), Bvec(i,j,k,3),b2, w_lorentz(i,j,k),&
+-                   gxx(i,j,k),gxy(i,j,k),gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k), &
++                   vup(i,j,k,1),vup(i,j,k,2),vup(i,j,k,3),eps(i,j,k),press(i,j,k),&
++                   Bprim(i,j,k,1), Bprim(i,j,k,2), Bprim(i,j,k,3),b2, w_lorentz(i,j,k),&
++                   g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k), &
+                    uxx,uxy,uxz,uyy,uyz,uzz,det, &
+                    epsnegative,GRHydro_C2P_failed(i,j,k))
+             
+@@ -722,6 +876,18 @@ subroutine Conservative2PrimitivePolytypeM(CCTK_ARGUMENTS)
+   
+   return
+ 
++#undef faulty_gxx
++#undef faulty_gxy
++#undef faulty_gxz
++#undef faulty_gyy
++#undef faulty_gyz
++#undef faulty_gzz
++#undef faulty_betax
++#undef faulty_betay
++#undef faulty_betaz
++#undef faulty_vel
++#undef faulty_Bvec
++  
+ end subroutine Conservative2PrimitivePolytypeM
+ 
+ 
+@@ -748,6 +914,11 @@ subroutine Con2PrimBoundsPolytypeM(CCTK_ARGUMENTS)
+   
+   implicit none
+   
++  ! save memory when MP is not used
++  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
++  TARGET gaa, gab, gac, gbb, gbc, gcc
++  TARGET gxx, gxy, gxz, gyy, gyz, gzz
++
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -764,6 +935,40 @@ subroutine Con2PrimBoundsPolytypeM(CCTK_ARGUMENTS)
+ ! begin EOS Omni vars                                                                                       
+   integer :: n,keytemp,anyerr,keyerr(1)
+   real*8  :: xpress,xtemp,xye,xeps,xrho
++! end EOS Omni vars                       
++
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++
++  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++    g11 => gaa
++    g12 => gab
++    g13 => gac
++    g22 => gbb
++    g23 => gbc
++    g33 => gcc
++  else
++    g11 => gxx
++    g12 => gxy
++    g13 => gxz
++    g22 => gyy
++    g23 => gyz
++    g33 => gzz
++  end if
++#define gxx faulty_gxx
++#define gxy faulty_gxy
++#define gxz faulty_gxz
++#define gyy faulty_gyy
++#define gyz faulty_gyz
++#define gzz faulty_gzz
++#define betax faulty_betax
++#define betay faulty_betay
++#define betaz faulty_betaz
++#define vel faulty_vel
++#define Bvec faulty_Bvec
++
++! begin EOS Omni vars                                            
+   n=1;keytemp=0;anyerr=0;keyerr(1)=0
+   xpress=0.0d0;xtemp=0.0d0;xye=0.0d0;xeps=0.0d0
+ ! end EOS Omni vars                 
+@@ -780,18 +985,18 @@ subroutine Con2PrimBoundsPolytypeM(CCTK_ARGUMENTS)
+            if ((atmosphere_mask(i,j,k) .ne. 0) .or. &
+                 GRHydro_enable_internal_excision /= 0 .and. (hydro_excision_mask(i,j,k) .ne. 0)) cycle
+            
+-           gxxl = 0.5d0 * (gxx(i,j,k) + gxx(i-xoffset,j-yoffset,k-zoffset))
+-           gxyl = 0.5d0 * (gxy(i,j,k) + gxy(i-xoffset,j-yoffset,k-zoffset))
+-           gxzl = 0.5d0 * (gxz(i,j,k) + gxz(i-xoffset,j-yoffset,k-zoffset))
+-           gyyl = 0.5d0 * (gyy(i,j,k) + gyy(i-xoffset,j-yoffset,k-zoffset))
+-           gyzl = 0.5d0 * (gyz(i,j,k) + gyz(i-xoffset,j-yoffset,k-zoffset))
+-           gzzl = 0.5d0 * (gzz(i,j,k) + gzz(i-xoffset,j-yoffset,k-zoffset))
+-           gxxr = 0.5d0 * (gxx(i,j,k) + gxx(i+xoffset,j+yoffset,k+zoffset))
+-           gxyr = 0.5d0 * (gxy(i,j,k) + gxy(i+xoffset,j+yoffset,k+zoffset))
+-           gxzr = 0.5d0 * (gxz(i,j,k) + gxz(i+xoffset,j+yoffset,k+zoffset))
+-           gyyr = 0.5d0 * (gyy(i,j,k) + gyy(i+xoffset,j+yoffset,k+zoffset))
+-           gyzr = 0.5d0 * (gyz(i,j,k) + gyz(i+xoffset,j+yoffset,k+zoffset))
+-           gzzr = 0.5d0 * (gzz(i,j,k) + gzz(i+xoffset,j+yoffset,k+zoffset))
++           gxxl = 0.5d0 * (g11(i,j,k) + g11(i-xoffset,j-yoffset,k-zoffset))
++           gxyl = 0.5d0 * (g12(i,j,k) + g12(i-xoffset,j-yoffset,k-zoffset))
++           gxzl = 0.5d0 * (g13(i,j,k) + g13(i-xoffset,j-yoffset,k-zoffset))
++           gyyl = 0.5d0 * (g22(i,j,k) + g22(i-xoffset,j-yoffset,k-zoffset))
++           gyzl = 0.5d0 * (g23(i,j,k) + g23(i-xoffset,j-yoffset,k-zoffset))
++           gzzl = 0.5d0 * (g33(i,j,k) + g33(i-xoffset,j-yoffset,k-zoffset))
++           gxxr = 0.5d0 * (g11(i,j,k) + g11(i+xoffset,j+yoffset,k+zoffset))
++           gxyr = 0.5d0 * (g12(i,j,k) + g12(i+xoffset,j+yoffset,k+zoffset))
++           gxzr = 0.5d0 * (g13(i,j,k) + g13(i+xoffset,j+yoffset,k+zoffset))
++           gyyr = 0.5d0 * (g22(i,j,k) + g22(i+xoffset,j+yoffset,k+zoffset))
++           gyzr = 0.5d0 * (g23(i,j,k) + g23(i+xoffset,j+yoffset,k+zoffset))
++           gzzr = 0.5d0 * (g33(i,j,k) + g33(i+xoffset,j+yoffset,k+zoffset))
+            
+            avg_detl = SPATIAL_DETERMINANT(gxxl,gxyl,gxzl,gyyl, gyzl,gzzl)
+            avg_detr = SPATIAL_DETERMINANT(gxxr,gxyr,gxzr,gyyr, gyzr,gzzr)
+@@ -832,6 +1037,18 @@ subroutine Con2PrimBoundsPolytypeM(CCTK_ARGUMENTS)
+      end do
+   end do
+   
++#undef faulty_gxx
++#undef faulty_gxy
++#undef faulty_gxz
++#undef faulty_gyy
++#undef faulty_gyz
++#undef faulty_gzz
++#undef faulty_betax
++#undef faulty_betay
++#undef faulty_betaz
++#undef faulty_vel
++#undef faulty_Bvec
++  
+ end subroutine Con2PrimBoundsPolytypeM
+ 
+ !!$ Con2Prim_ptTracer, Con2Prim_BoundsTracer, and Con2Prim_ptBoundsTracer need not be rewritten!
+diff --git a/src/GRHydro_HLLEM.F90 b/src/GRHydro_HLLEM.F90
+index 87df4d9..5edb76d 100644
+--- a/src/GRHydro_HLLEM.F90
++++ b/src/GRHydro_HLLEM.F90
+@@ -37,6 +37,13 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+ 
+   implicit none
+   
++  ! save memory when MP is not used
++  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
++  TARGET gaa, gab, gac, gbb, gbc, gcc
++  TARGET gxx, gxy, gxz, gyy, gyz, gzz
++  TARGET betaa, betab, betac
++  TARGET betax, betay, betaz
++
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -60,6 +67,44 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+   CCTK_INT :: type_bits, trivial, not_trivial
+   CCTK_REAL :: xtemp
+ 
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: beta1, beta2, beta3
++
++  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++    g11 => gaa
++    g12 => gab
++    g13 => gac
++    g22 => gbb
++    g23 => gbc
++    g33 => gcc
++    beta1 => betaa
++    beta2 => betab
++    beta3 => betac
++  else
++    g11 => gxx
++    g12 => gxy
++    g13 => gxz
++    g22 => gyy
++    g23 => gyz
++    g33 => gzz
++    beta1 => betax
++    beta2 => betay
++    beta3 => betaz
++  end if
++#define gxx faulty_gxx
++#define gxy faulty_gxy
++#define gxz faulty_gxz
++#define gyy faulty_gyy
++#define gyz faulty_gyz
++#define gzz faulty_gzz
++#define betax faulty_betax
++#define betay faulty_betay
++#define betaz faulty_betaz
++#define vel faulty_vel
++#define Bvec faulty_Bvec
++
+   if (flux_direction == 1) then
+     call SpaceMask_GetTypeBits(type_bits, "Hydro_RiemannProblemX")
+     call SpaceMask_GetStateBits(trivial, "Hydro_RiemannProblemX", &
+@@ -149,12 +194,12 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+ !!$        
+ !!$        In MHD, we need all three shift components regardless of the flux direction
+ 
+-        avg_betax = 0.5d0 * (betax(i+xoffset,j+yoffset,k+zoffset) + &
+-             betax(i,j,k))
+-        avg_betay = 0.5d0 * (betay(i+xoffset,j+yoffset,k+zoffset) + &
+-             betay(i,j,k))
+-        avg_betaz = 0.5d0 * (betaz(i+xoffset,j+yoffset,k+zoffset) + &
+-             betaz(i,j,k))
++        avg_betax = 0.5d0 * (beta1(i+xoffset,j+yoffset,k+zoffset) + &
++             beta1(i,j,k))
++        avg_betay = 0.5d0 * (beta2(i+xoffset,j+yoffset,k+zoffset) + &
++             beta2(i,j,k))
++        avg_betaz = 0.5d0 * (beta3(i+xoffset,j+yoffset,k+zoffset) + &
++             beta3(i,j,k))
+         if (flux_direction == 1) then
+            avg_beta=avg_betax
+         else if (flux_direction == 2) then
+@@ -167,12 +212,12 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+ 
+         avg_alp = 0.5 * (alp(i,j,k) + alp(i+xoffset,j+yoffset,k+zoffset))
+         
+-        gxxh = 0.5d0 * (gxx(i+xoffset,j+yoffset,k+zoffset) + gxx(i,j,k))
+-        gxyh = 0.5d0 * (gxy(i+xoffset,j+yoffset,k+zoffset) + gxy(i,j,k))
+-        gxzh = 0.5d0 * (gxz(i+xoffset,j+yoffset,k+zoffset) + gxz(i,j,k))
+-        gyyh = 0.5d0 * (gyy(i+xoffset,j+yoffset,k+zoffset) + gyy(i,j,k))
+-        gyzh = 0.5d0 * (gyz(i+xoffset,j+yoffset,k+zoffset) + gyz(i,j,k))
+-        gzzh = 0.5d0 * (gzz(i+xoffset,j+yoffset,k+zoffset) + gzz(i,j,k))
++        gxxh = 0.5d0 * (g11(i+xoffset,j+yoffset,k+zoffset) + g11(i,j,k))
++        gxyh = 0.5d0 * (g12(i+xoffset,j+yoffset,k+zoffset) + g12(i,j,k))
++        gxzh = 0.5d0 * (g13(i+xoffset,j+yoffset,k+zoffset) + g13(i,j,k))
++        gyyh = 0.5d0 * (g22(i+xoffset,j+yoffset,k+zoffset) + g22(i,j,k))
++        gyzh = 0.5d0 * (g23(i+xoffset,j+yoffset,k+zoffset) + g23(i,j,k))
++        gzzh = 0.5d0 * (g33(i+xoffset,j+yoffset,k+zoffset) + g33(i,j,k))
+ 
+         avg_det =  SPATIAL_DETERMINANT(gxxh,gxyh,gxzh,gyyh,gyzh,gzzh)
+         sdet = sqrt(avg_det)
+@@ -563,6 +608,17 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+       end do
+     end do
+   end do
++#undef faulty_gxx
++#undef faulty_gxy
++#undef faulty_gxz
++#undef faulty_gyy
++#undef faulty_gyz
++#undef faulty_gzz
++#undef faulty_betax
++#undef faulty_betay
++#undef faulty_betaz
++#undef faulty_vel
++#undef faulty_Bvec
+       
+ end subroutine GRHydro_HLLEM
+ 
+@@ -587,6 +643,13 @@ subroutine GRHydro_HLLE_TracerM(CCTK_ARGUMENTS)
+ 
+   implicit none
+   
++  ! save memory when MP is not used
++  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
++  TARGET gaa, gab, gac, gbb, gbc, gcc
++  TARGET gxx, gxy, gxz, gyy, gyz, gzz
++  TARGET betaa, betab, betac
++  TARGET betax, betay, betaz
++
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -604,6 +667,44 @@ subroutine GRHydro_HLLE_TracerM(CCTK_ARGUMENTS)
+     
+   CCTK_INT :: type_bits, trivial, not_trivial
+ 
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: beta1, beta2, beta3
++
++  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++    g11 => gaa
++    g12 => gab
++    g13 => gac
++    g22 => gbb
++    g23 => gbc
++    g33 => gcc
++    beta1 => betaa
++    beta2 => betab
++    beta3 => betac
++  else
++    g11 => gxx
++    g12 => gxy
++    g13 => gxz
++    g22 => gyy
++    g23 => gyz
++    g33 => gzz
++    beta1 => betax
++    beta2 => betay
++    beta3 => betaz
++  end if
++#define gxx faulty_gxx
++#define gxy faulty_gxy
++#define gxz faulty_gxz
++#define gyy faulty_gyy
++#define gyz faulty_gyz
++#define gzz faulty_gzz
++#define betax faulty_betax
++#define betay faulty_betay
++#define betaz faulty_betaz
++#define vel faulty_vel
++#define Bvec faulty_Bvec
++
+   if (flux_direction == 1) then
+     call SpaceMask_GetTypeBits(type_bits, "Hydro_RiemannProblemX")
+     call SpaceMask_GetStateBits(trivial, "Hydro_RiemannProblemX", &
+@@ -669,26 +770,26 @@ subroutine GRHydro_HLLE_TracerM(CCTK_ARGUMENTS)
+ !!$        left and right points.
+ 
+         if (flux_direction == 1) then
+-           avg_beta = 0.5d0 * (betax(i+xoffset,j+yoffset,k+zoffset) + &
+-                betax(i,j,k))
++           avg_beta = 0.5d0 * (beta1(i+xoffset,j+yoffset,k+zoffset) + &
++               beta1(i,j,k))
+         else if (flux_direction == 2) then
+-           avg_beta = 0.5d0 * (betay(i+xoffset,j+yoffset,k+zoffset) + &
+-                betay(i,j,k))
++           avg_beta = 0.5d0 * (beta2(i+xoffset,j+yoffset,k+zoffset) + &
++               beta2(i,j,k))
+         else if (flux_direction == 3) then
+-           avg_beta = 0.5d0 * (betaz(i+xoffset,j+yoffset,k+zoffset) + &
+-                betaz(i,j,k))
++           avg_beta = 0.5d0 * (beta3(i+xoffset,j+yoffset,k+zoffset) + &
++               beta3(i,j,k))
+         else
+            call CCTK_WARN(0, "Flux direction not x,y,z")
+         end if
+ 
+         avg_alp = 0.5 * (alp(i,j,k) + alp(i+xoffset,j+yoffset,k+zoffset))
+         
+-        gxxh = 0.5d0 * (gxx(i+xoffset,j+yoffset,k+zoffset) + gxx(i,j,k))
+-        gxyh = 0.5d0 * (gxy(i+xoffset,j+yoffset,k+zoffset) + gxy(i,j,k))
+-        gxzh = 0.5d0 * (gxz(i+xoffset,j+yoffset,k+zoffset) + gxz(i,j,k))
+-        gyyh = 0.5d0 * (gyy(i+xoffset,j+yoffset,k+zoffset) + gyy(i,j,k))
+-        gyzh = 0.5d0 * (gyz(i+xoffset,j+yoffset,k+zoffset) + gyz(i,j,k))
+-        gzzh = 0.5d0 * (gzz(i+xoffset,j+yoffset,k+zoffset) + gzz(i,j,k))
++        gxxh = 0.5d0 * (g11(i+xoffset,j+yoffset,k+zoffset) + g11(i,j,k))
++        gxyh = 0.5d0 * (g12(i+xoffset,j+yoffset,k+zoffset) + g12(i,j,k))
++        gxzh = 0.5d0 * (g13(i+xoffset,j+yoffset,k+zoffset) + g13(i,j,k))
++        gyyh = 0.5d0 * (g22(i+xoffset,j+yoffset,k+zoffset) + g22(i,j,k))
++        gyzh = 0.5d0 * (g23(i+xoffset,j+yoffset,k+zoffset) + g23(i,j,k))
++        gzzh = 0.5d0 * (g33(i+xoffset,j+yoffset,k+zoffset) + g33(i,j,k))
+ 
+         avg_det =  SPATIAL_DETERMINANT(gxxh,gxyh,gxzh,gyyh,gyzh,gzzh)
+ 
+@@ -805,6 +906,17 @@ subroutine GRHydro_HLLE_TracerM(CCTK_ARGUMENTS)
+      end do
+   end do
+ end do
++#undef faulty_gxx
++#undef faulty_gxy
++#undef faulty_gxz
++#undef faulty_gyy
++#undef faulty_gyz
++#undef faulty_gzz
++#undef faulty_betax
++#undef faulty_betay
++#undef faulty_betaz
++#undef faulty_vel
++#undef faulty_Bvec
+ 
+ 
+ end subroutine GRHydro_HLLE_TracerM
+diff --git a/src/GRHydro_ReconstructPoly.F90 b/src/GRHydro_ReconstructPoly.F90
+index f96ae61..fce45a3 100644
+--- a/src/GRHydro_ReconstructPoly.F90
++++ b/src/GRHydro_ReconstructPoly.F90
+@@ -70,6 +70,8 @@ subroutine ReconstructionPolytype(CCTK_ARGUMENTS)
+ 
+   CCTK_REAL :: local_min_tracer
+ 
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++
+   allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
+   if (ierr .ne. 0) then
+     call CCTK_WARN(0, "Allocation problems with trivial_rp")
+@@ -87,6 +89,10 @@ subroutine ReconstructionPolytype(CCTK_ARGUMENTS)
+     call CCTK_WARN(0, "Allocation problems with lbeta")
+   end if
+   
++  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++    call CCTK_WARN(0,"MP not yet supported in GRHydro_ReconstructionPolytype")
++  end if
++
+   call SpaceMask_GetTypeBits(type_bitsx, "Hydro_RiemannProblemX")
+   call SpaceMask_GetStateBits(trivialx, "Hydro_RiemannProblemX", &
+        &"trivial")
+diff --git a/src/GRHydro_SourceM.F90 b/src/GRHydro_SourceM.F90
+index 00d4c89..fb4d52c 100644
+--- a/src/GRHydro_SourceM.F90
++++ b/src/GRHydro_SourceM.F90
+@@ -27,12 +27,12 @@
+ #include "cctk_Arguments.h"
+ #include "GRHydro_Macros.h"
+ 
+-#define velx(i,j,k) vel(i,j,k,1)
+-#define vely(i,j,k) vel(i,j,k,2)
+-#define velz(i,j,k) vel(i,j,k,3)
+-#define Bvecx(i,j,k) Bvec(i,j,k,1)
+-#define Bvecy(i,j,k) Bvec(i,j,k,2)
+-#define Bvecz(i,j,k) Bvec(i,j,k,3)
++#define velx(i,j,k) vup(i,j,k,1)
++#define vely(i,j,k) vup(i,j,k,2)
++#define velz(i,j,k) vup(i,j,k,3)
++#define Bvecx(i,j,k) Bprim(i,j,k,1)
++#define Bvecy(i,j,k) Bprim(i,j,k,2)
++#define Bvecz(i,j,k) Bprim(i,j,k,3)
+ #define Bconsx(i,j,k) Bcons(i,j,k,1)
+ #define Bconsy(i,j,k) Bcons(i,j,k,2)
+ #define Bconsz(i,j,k) Bcons(i,j,k,3)
+@@ -59,6 +59,17 @@ subroutine SourceTermsM(CCTK_ARGUMENTS)
+       
+   implicit none
+   
++  ! save memory when MP is not used
++  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
++  TARGET gaa, gab, gac, gbb, gbc, gcc
++  TARGET gxx, gxy, gxz, gyy, gyz, gzz
++  TARGET kaa, kab, kac, kbb, kbc, kcc
++  TARGET kxx, kxy, kxz, kyy, kyz, kzz
++  TARGET betaa, betab, betac
++  TARGET betax, betay, betaz
++  TARGET lvel, vel
++  TARGET lBvec, Bvec
++
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -91,6 +102,83 @@ subroutine SourceTermsM(CCTK_ARGUMENTS)
+ 
+   logical, allocatable, dimension (:,:,:) :: force_spatial_second_order
+ 
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: k11, k12, k13, k22, k23, k33
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: beta1, beta2, beta3
++  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
++
++  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++    g11 => gaa
++    g12 => gab
++    g13 => gac
++    g22 => gbb
++    g23 => gbc
++    g33 => gcc
++    k11 => kaa
++    k12 => kab
++    k13 => kac
++    k22 => kbb
++    k23 => kbc
++    k33 => kcc
++    beta1 => betaa
++    beta2 => betab
++    beta3 => betac
++    vup => lvel
++    Bprim => lBvec
++  else
++    g11 => gxx
++    g12 => gxy
++    g13 => gxz
++    g22 => gyy
++    g23 => gyz
++    g33 => gzz
++    k11 => kxx
++    k12 => kxy
++    k13 => kxz
++    k22 => kyy
++    k23 => kyz
++    k33 => kzz
++    beta1 => betax
++    beta2 => betay
++    beta3 => betaz
++    vup => vel
++    Bprim => Bvec
++  end if
++#define gxx faulty_gxx
++#define gxy faulty_gxy
++#define gxz faulty_gxz
++#define gyy faulty_gyy
++#define gyz faulty_gyz
++#define gzz faulty_gzz
++#define kxx faulty_kxx
++#define kxy faulty_kxy
++#define kxz faulty_kxz
++#define kyy faulty_kyy
++#define kyz faulty_kyz
++#define kzz faulty_kzz
++#define betax faulty_betax
++#define betay faulty_betay
++#define betaz faulty_betaz
++#define gaa faulty_gaa
++#define gab faulty_gab
++#define gac faulty_gac
++#define gbb faulty_gbb
++#define gbc faulty_gbc
++#define gcc faulty_gcc
++#define kaa faulty_kaa
++#define kab faulty_kab
++#define kac faulty_kac
++#define kbb faulty_kbb
++#define kbc faulty_kbc
++#define kcc faulty_kcc
++#define betaa faulty_betaa
++#define betab faulty_betab
++#define betac faulty_betac
++#define vel faulty_vel
++#define Bvec faulty_Bvec
++
+   one = 1.0d0
+   two = 2.0d0
+   half = 0.5d0
+@@ -191,12 +279,12 @@ subroutine SourceTermsM(CCTK_ARGUMENTS)
+         
+ !!$        Set the metric terms.
+         
+-        localgxx = gxx(i,j,k)
+-        localgxy = gxy(i,j,k)
+-        localgxz = gxz(i,j,k)
+-        localgyy = gyy(i,j,k)
+-        localgyz = gyz(i,j,k)
+-        localgzz = gzz(i,j,k)
++        localgxx = g11(i,j,k)
++        localgxy = g12(i,j,k)
++        localgxz = g13(i,j,k)
++        localgyy = g22(i,j,k)
++        localgyz = g23(i,j,k)
++        localgzz = g33(i,j,k)
+ 
+         det =  SPATIAL_DETERMINANT(localgxx, localgxy, localgxz,\
+              localgyy, localgyz, localgzz)
+@@ -205,37 +293,37 @@ subroutine SourceTermsM(CCTK_ARGUMENTS)
+              localgxy, localgxz, localgyy, localgyz, localgzz)
+         
+ 
+-        shiftx = betax(i,j,k)
+-        shifty = betay(i,j,k)
+-        shiftz = betaz(i,j,k)
++        shiftx = beta1(i,j,k)
++        shifty = beta2(i,j,k)
++        shiftz = beta3(i,j,k)
+         
+         if (local_spatial_order .eq. 2) then
+            
+-           dx_betax = DIFF_X_2(betax)
+-           dx_betay = DIFF_X_2(betay)
+-           dx_betaz = DIFF_X_2(betaz)
++           dx_betax = DIFF_X_2(beta1)
++           dx_betay = DIFF_X_2(beta2)
++           dx_betaz = DIFF_X_2(beta3)
+            
+-           dy_betax = DIFF_Y_2(betax)
+-           dy_betay = DIFF_Y_2(betay)
+-           dy_betaz = DIFF_Y_2(betaz)
++           dy_betax = DIFF_Y_2(beta1)
++           dy_betay = DIFF_Y_2(beta2)
++           dy_betaz = DIFF_Y_2(beta3)
+             
+-           dz_betax = DIFF_Z_2(betax)
+-           dz_betay = DIFF_Z_2(betay)
+-           dz_betaz = DIFF_Z_2(betaz)
++           dz_betax = DIFF_Z_2(beta1)
++           dz_betay = DIFF_Z_2(beta2)
++           dz_betaz = DIFF_Z_2(beta3)
+ 
+         else
+ 
+-           dx_betax = DIFF_X_4(betax)
+-           dx_betay = DIFF_X_4(betay)
+-           dx_betaz = DIFF_X_4(betaz)
++           dx_betax = DIFF_X_4(beta1)
++           dx_betay = DIFF_X_4(beta2)
++           dx_betaz = DIFF_X_4(beta3)
+            
+-           dy_betax = DIFF_Y_4(betax)
+-           dy_betay = DIFF_Y_4(betay)
+-           dy_betaz = DIFF_Y_4(betaz)
++           dy_betax = DIFF_Y_4(beta1)
++           dy_betay = DIFF_Y_4(beta2)
++           dy_betaz = DIFF_Y_4(beta3)
+            
+-           dz_betax = DIFF_Z_4(betax)
+-           dz_betay = DIFF_Z_4(betay)
+-           dz_betaz = DIFF_Z_4(betaz)
++           dz_betax = DIFF_Z_4(beta1)
++           dz_betay = DIFF_Z_4(beta2)
++           dz_betaz = DIFF_Z_4(beta3)
+            
+         end if
+           
+@@ -300,65 +388,65 @@ subroutine SourceTermsM(CCTK_ARGUMENTS)
+         
+         if (local_spatial_order .eq. 2) then
+ 
+-           dx_gxx = DIFF_X_2(gxx)
+-           dx_gxy = DIFF_X_2(gxy)
+-           dx_gxz = DIFF_X_2(gxz)
+-           dx_gyy = DIFF_X_2(gyy)
+-           dx_gyz = DIFF_X_2(gyz)
+-           dx_gzz = DIFF_X_2(gzz)
+-           dy_gxx = DIFF_Y_2(gxx)
+-           dy_gxy = DIFF_Y_2(gxy)
+-           dy_gxz = DIFF_Y_2(gxz)
+-           dy_gyy = DIFF_Y_2(gyy)
+-           dy_gyz = DIFF_Y_2(gyz)
+-           dy_gzz = DIFF_Y_2(gzz)
+-           dz_gxx = DIFF_Z_2(gxx)
+-           dz_gxy = DIFF_Z_2(gxy)
+-           dz_gxz = DIFF_Z_2(gxz)
+-           dz_gyy = DIFF_Z_2(gyy)
+-           dz_gyz = DIFF_Z_2(gyz)
+-           dz_gzz = DIFF_Z_2(gzz)
++           dx_gxx = DIFF_X_2(g11)
++           dx_gxy = DIFF_X_2(g12)
++           dx_gxz = DIFF_X_2(g13)
++           dx_gyy = DIFF_X_2(g22)
++           dx_gyz = DIFF_X_2(g23)
++           dx_gzz = DIFF_X_2(g33)
++           dy_gxx = DIFF_Y_2(g11)
++           dy_gxy = DIFF_Y_2(g12)
++           dy_gxz = DIFF_Y_2(g13)
++           dy_gyy = DIFF_Y_2(g22)
++           dy_gyz = DIFF_Y_2(g23)
++           dy_gzz = DIFF_Y_2(g33)
++           dz_gxx = DIFF_Z_2(g11)
++           dz_gxy = DIFF_Z_2(g12)
++           dz_gxz = DIFF_Z_2(g13)
++           dz_gyy = DIFF_Z_2(g22)
++           dz_gyz = DIFF_Z_2(g23)
++           dz_gzz = DIFF_Z_2(g33)
+            
+         else
+ 
+-           dx_gxx = DIFF_X_4(gxx)
+-           dx_gxy = DIFF_X_4(gxy)
+-           dx_gxz = DIFF_X_4(gxz)
+-           dx_gyy = DIFF_X_4(gyy)
+-           dx_gyz = DIFF_X_4(gyz)
+-           dx_gzz = DIFF_X_4(gzz)
+-           dy_gxx = DIFF_Y_4(gxx)
+-           dy_gxy = DIFF_Y_4(gxy)
+-           dy_gxz = DIFF_Y_4(gxz)
+-           dy_gyy = DIFF_Y_4(gyy)
+-           dy_gyz = DIFF_Y_4(gyz)
+-           dy_gzz = DIFF_Y_4(gzz)
+-           dz_gxx = DIFF_Z_4(gxx)
+-           dz_gxy = DIFF_Z_4(gxy)
+-           dz_gxz = DIFF_Z_4(gxz)
+-           dz_gyy = DIFF_Z_4(gyy)
+-           dz_gyz = DIFF_Z_4(gyz)
+-           dz_gzz = DIFF_Z_4(gzz)
++           dx_gxx = DIFF_X_4(g11)
++           dx_gxy = DIFF_X_4(g12)
++           dx_gxz = DIFF_X_4(g13)
++           dx_gyy = DIFF_X_4(g22)
++           dx_gyz = DIFF_X_4(g23)
++           dx_gzz = DIFF_X_4(g33)
++           dy_gxx = DIFF_Y_4(g11)
++           dy_gxy = DIFF_Y_4(g12)
++           dy_gxz = DIFF_Y_4(g13)
++           dy_gyy = DIFF_Y_4(g22)
++           dy_gyz = DIFF_Y_4(g23)
++           dy_gzz = DIFF_Y_4(g33)
++           dz_gxx = DIFF_Z_4(g11)
++           dz_gxy = DIFF_Z_4(g12)
++           dz_gxz = DIFF_Z_4(g13)
++           dz_gyy = DIFF_Z_4(g22)
++           dz_gyz = DIFF_Z_4(g23)
++           dz_gzz = DIFF_Z_4(g33)
+ 
+         end if
+           
+ !!$        Contract the shift with the extrinsic curvature
+ 
+-        shiftshiftk = shiftx*shiftx*kxx(i,j,k) + &
+-                      shifty*shifty*kyy(i,j,k) + &
+-                      shiftz*shiftz*kzz(i,j,k) + &
+-             two*(shiftx*shifty*kxy(i,j,k) + &
+-                  shiftx*shiftz*kxz(i,j,k) + &
+-                  shifty*shiftz*kyz(i,j,k))
++        shiftshiftk = shiftx*shiftx*k11(i,j,k) + &
++                      shifty*shifty*k22(i,j,k) + &
++                      shiftz*shiftz*k33(i,j,k) + &
++             two*(shiftx*shifty*k12(i,j,k) + &
++                  shiftx*shiftz*k13(i,j,k) + &
++                  shifty*shiftz*k23(i,j,k))
+ 
+-        shiftkx = shiftx*kxx(i,j,k) + shifty*kxy(i,j,k) + shiftz*kxz(i,j,k)
+-        shiftky = shiftx*kxy(i,j,k) + shifty*kyy(i,j,k) + shiftz*kyz(i,j,k)
+-        shiftkz = shiftx*kxz(i,j,k) + shifty*kyz(i,j,k) + shiftz*kzz(i,j,k)
++        shiftkx = shiftx*k11(i,j,k) + shifty*k12(i,j,k) + shiftz*k13(i,j,k)
++        shiftky = shiftx*k12(i,j,k) + shifty*k22(i,j,k) + shiftz*k23(i,j,k)
++        shiftkz = shiftx*k13(i,j,k) + shifty*k23(i,j,k) + shiftz*k33(i,j,k)
+ 
+ !!$        Contract the matter terms with the extrinsic curvature
+ 
+-        sumTK = txx*kxx(i,j,k) + tyy*kyy(i,j,k) + tzz*kzz(i,j,k) &
+-             + two*(txy*kxy(i,j,k) + txz*kxz(i,j,k) + tyz*kyz(i,j,k))
++        sumTK = txx*k11(i,j,k) + tyy*k22(i,j,k) + tzz*k33(i,j,k) &
++             + two*(txy*k12(i,j,k) + txz*k13(i,j,k) + tyz*k23(i,j,k))
+ 
+ !!$        Update term for tau
+         
+@@ -598,6 +686,30 @@ subroutine SourceTermsM(CCTK_ARGUMENTS)
+   end do
+ #endif
+ 
++#undef faulty_gxx
++#undef faulty_gxy
++#undef faulty_gxz
++#undef faulty_gyy
++#undef faulty_gyz
++#undef faulty_gzz
++#undef faulty_vel
++#undef faulty_Bvec
++#undef faulty_gxx_p
++#undef faulty_gxy_p
++#undef faulty_gxz_p
++#undef faulty_gyy_p
++#undef faulty_gyz_p
++#undef faulty_gzz_p
++#undef faulty_vel_p
++#undef faulty_Bvec_p
++#undef faulty_gxx_p_p
++#undef faulty_gxy_p_p
++#undef faulty_gxz_p_p
++#undef faulty_gyy_p_p
++#undef faulty_gyz_p_p
++#undef faulty_gzz_p_p
++#undef faulty_vel_p_p
++#undef faulty_Bvec_p_p
+ end subroutine SourceTermsM
+ 
+ 
+diff --git a/src/GRHydro_TransformTensorBasis.c b/src/GRHydro_TransformTensorBasis.c
+index f36cb36..a4813c9 100644
+--- a/src/GRHydro_TransformTensorBasis.c
++++ b/src/GRHydro_TransformTensorBasis.c
+@@ -317,11 +317,14 @@ void GRHydroTransformPrimToLocalBasis(CCTK_ARGUMENTS)
+ 	    lvel[idx2] = vel[idx1]*J21[idx] + vel[idx2]*J22[idx] + vel[idx3]*J23[idx];
+ 	    lvel[idx3] = vel[idx1]*J31[idx] + vel[idx2]*J32[idx] + vel[idx3]*J33[idx];
+ 	    
+-	    /* Transform primitive B-field from global to local basis.
+-	     * Since B-field has contravariant index, use Jacobian */
+-/* 	    lBvec[idx1] = Bvec[idx1]*J11[idx] + Bvec[idx2]*J12[idx] + Bvec[idx3]*J13[idx]; */
+-/* 	    lBvec[idx2] = Bvec[idx1]*J21[idx] + Bvec[idx2]*J22[idx] + Bvec[idx3]*J23[idx]; */
+-/* 	    lBvec[idx3] = Bvec[idx1]*J31[idx] + Bvec[idx2]*J32[idx] + Bvec[idx3]*J33[idx]; */
++            if(*evolve_MHD)
++            {
++              /* Transform primitive B-field from global to local basis.
++               * Since B-field has contravariant index, use Jacobian */
++              lBvec[idx1] = Bvec[idx1]*J11[idx] + Bvec[idx2]*J12[idx] + Bvec[idx3]*J13[idx];
++              lBvec[idx2] = Bvec[idx1]*J21[idx] + Bvec[idx2]*J22[idx] + Bvec[idx3]*J23[idx];
++              lBvec[idx3] = Bvec[idx1]*J31[idx] + Bvec[idx2]*J32[idx] + Bvec[idx3]*J33[idx];
++            }
+          }
+       }
+    }
+@@ -425,6 +428,15 @@ void GRHydroTransformPrimToGlobalBasis(CCTK_ARGUMENTS)
+ 	    vel[idx1] = lvel[idx1]*iJ11[idx] + lvel[idx2]*iJ12[idx] + lvel[idx3]*iJ13[idx];
+ 	    vel[idx2] = lvel[idx1]*iJ21[idx] + lvel[idx2]*iJ22[idx] + lvel[idx3]*iJ23[idx];
+ 	    vel[idx3] = lvel[idx1]*iJ31[idx] + lvel[idx2]*iJ32[idx] + lvel[idx3]*iJ33[idx];
++
++            if(*evolve_MHD)
++            {
++              /* Transform primitive B-field from global to local basis.
++               * Since B-field has contravariant index, use Jacobian */
++              lBvec[idx1] = Bvec[idx1]*J11[idx] + Bvec[idx2]*J12[idx] + Bvec[idx3]*J13[idx];
++              lBvec[idx2] = Bvec[idx1]*J21[idx] + Bvec[idx2]*J22[idx] + Bvec[idx3]*J23[idx];
++              lBvec[idx3] = Bvec[idx1]*J31[idx] + Bvec[idx2]*J32[idx] + Bvec[idx3]*J33[idx];
++            }
+ 	    
+          }
+       }
+diff --git a/src/GRHydro_UpdateMaskM.F90 b/src/GRHydro_UpdateMaskM.F90
+index 8c3feef..d2bafaf 100644
+--- a/src/GRHydro_UpdateMaskM.F90
++++ b/src/GRHydro_UpdateMaskM.F90
+@@ -14,6 +14,16 @@
+ #include "GRHydro_Macros.h"
+ #include "SpaceMask.h"
+ 
++#define velx(i,j,k) vup(i,j,k,1)
++#define vely(i,j,k) vup(i,j,k,2)
++#define velz(i,j,k) vup(i,j,k,3)
++#define velx_p(i,j,k) vup_p(i,j,k,1)
++#define vely_p(i,j,k) vup_p(i,j,k,2)
++#define velz_p(i,j,k) vup_p(i,j,k,3)
++#define velx_p_p(i,j,k) vup_p_p(i,j,k,1)
++#define vely_p_p(i,j,k) vup_p_p(i,j,k,2)
++#define velz_p_p(i,j,k) vup_p_p(i,j,k,3)
++
+ !!$ We don't need to adapt GRHydroUpdateAtmosphereMask, GRHydro_SetupMask, or  
+ !!$ since we need to evolve Bvec in the atmosphere
+ 
+@@ -38,19 +48,66 @@ subroutine GRHydro_AtmosphereResetM(CCTK_ARGUMENTS)
+ 
+   implicit none
+ 
++  ! save memory when MP is not used
++  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
++  TARGET gaa, gab, gac, gbb, gbc, gcc
++  TARGET gxx, gxy, gxz, gyy, gyz, gzz
++  TARGET lvel, vel
++  TARGET lBvec, Bvec
++
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+ 
+   CCTK_INT :: i, j, k
+-  CCTK_REAL :: det, psi4pt
++  CCTK_REAL :: det
+ 
+ ! begin EOS Omni vars
+   integer :: n,keytemp,anyerr,keyerr(1)
+   real*8  :: xpress,xeps,xtemp,xye
++! end EOS Omni vars
++
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
++
++! begin EOS Omni vars
+   n=1;keytemp=0;anyerr=0;keyerr(1)=0
+   xpress=0.0d0;xye=0.0d0;xeps=0.0d0;xtemp=0.0d0
+-! end EOS Omni vars                             
++! end EOS Omni vars
+ 
++  ! save memory when MP is not used
++  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++    g11 => gaa
++    g12 => gab
++    g13 => gac
++    g22 => gbb
++    g23 => gbc
++    g33 => gcc
++    vup => lvel
++    Bprim => lBvec
++  else
++    g11 => gxx
++    g12 => gxy
++    g13 => gxz
++    g22 => gyy
++    g23 => gyz
++    g33 => gzz
++    vup => vel
++    Bprim => Bvec
++  end if
++#define gxx faulty_gxx
++#define gxy faulty_gxy
++#define gxz faulty_gxz
++#define gyy faulty_gyy
++#define gyz faulty_gyz
++#define gzz faulty_gzz
++#define vel faulty_vel
++#define Bvec faulty_Bvec
++
++  if (verbose.eq.1) call CCTK_INFO("Entering AtmosphereReset.")
++
++!$OMP PARALLEL DO PRIVATE(det,keytemp,i,j,k,anyerr,keyerr)
+   do k = 1, cctk_lsh(3)
+     do j = 1, cctk_lsh(2)
+       do i = 1, cctk_lsh(1)
+@@ -58,11 +115,11 @@ subroutine GRHydro_AtmosphereResetM(CCTK_ARGUMENTS)
+         if (atmosphere_mask(i, j, k) .ne. 0) then
+ 
+           rho(i,j,k) = GRHydro_rho_min
+-          vel(i,j,k,1) = 0.0d0
+-          vel(i,j,k,2) = 0.0d0
+-          vel(i,j,k,3) = 0.0d0
+-          det = SPATIAL_DETERMINANT(gxx(i,j,k), gxy(i,j,k), gxz(i,j,k), \
+-               gyy(i,j,k), gyz(i,j,k), gzz(i,j,k))
++          vup(i,j,k,1) = 0.0d0
++          vup(i,j,k,2) = 0.0d0
++          vup(i,j,k,3) = 0.0d0
++          det = SPATIAL_DETERMINANT(g11(i,j,k), g12(i,j,k), g13(i,j,k), \
++               g22(i,j,k), g23(i,j,k), g33(i,j,k))
+ 
+           if(evolve_temper.ne.0) then
+ 
+@@ -74,26 +131,26 @@ subroutine GRHydro_AtmosphereResetM(CCTK_ARGUMENTS)
+                   rho(i,j,k),eps(i,j,k),temperature(i,j,k),y_e(i,j,k),&
+                   press(i,j,k),keyerr,anyerr)
+              call prim2conM_hot(GRHydro_eos_handle, GRHydro_reflevel,&
+-                  i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),gxx(i,j,k),&
+-                  gxy(i,j,k),gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k),&
++                  i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),g11(i,j,k),&
++                  g12(i,j,k),g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k),&
+                   det, dens(i,j,k),scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3),&
+                   tau(i,j,k),Bcons(i,j,k,1),Bcons(i,j,k,2),Bcons(i,j,k,3),&
+-                  rho(i,j,k),vel(i,j,k,1),vel(i,j,k,2),vel(i,j,k,3),&
+-                  eps(i,j,k),press(i,j,k),Bvec(i,j,k,1), &
+-                  Bvec(i,j,k,2), Bvec(i,j,k,3), w_lorentz(i,j,k),&
++                  rho(i,j,k),vup(i,j,k,1),vup(i,j,k,2),vup(i,j,k,3),&
++                  eps(i,j,k),press(i,j,k),Bprim(i,j,k,1), &
++                  Bprim(i,j,k,2), Bprim(i,j,k,3), w_lorentz(i,j,k),&
+                   temperature(i,j,k),y_e(i,j,k))
+              y_e_con(i,j,k) = dens(i,j,k) * y_e(i,j,k)
+ 
+           else
+ 
+             call prim2conpolytypeM(GRHydro_polytrope_handle, &
+-                 gxx(i,j,k), gxy(i,j,k), gxz(i,j,k), &
+-                 gyy(i,j,k), gyz(i,j,k), gzz(i,j,k), det, &
++                 g11(i,j,k), g12(i,j,k), g13(i,j,k), &
++                 g22(i,j,k), g23(i,j,k), g33(i,j,k), det, &
+                  dens(i,j,k), scon(i,j,k,1), scon(i,j,k,2), scon(i,j,k,3), &
+                  tau(i,j,k), Bcons(i,j,k,1),Bcons(i,j,k,2),Bcons(i,j,k,3),&
+-                 rho(i,j,k), vel(i,j,k,1), vel(i,j,k,2), &
+-                 vel(i,j,k,3), eps(i,j,k), press(i,j,k), &
+-                 Bvec(i,j,k,1),Bvec(i,j,k,2),Bvec(i,j,k,3),w_lorentz(i,j,k))
++                 rho(i,j,k), vup(i,j,k,1), vup(i,j,k,2), &
++                 vup(i,j,k,3), eps(i,j,k), press(i,j,k), &
++                 Bprim(i,j,k,1),Bprim(i,j,k,2),Bprim(i,j,k,3),w_lorentz(i,j,k))
+             if (wk_atmosphere .eq. 0) then
+               atmosphere_mask(i, j, k) = 0
+             end if
+@@ -106,6 +163,14 @@ subroutine GRHydro_AtmosphereResetM(CCTK_ARGUMENTS)
+   end do
+ 
+ !!$  call GRHydro_BoundariesM(CCTK_PASS_FTOF)
++#undef faulty_gxx
++#undef faulty_gxy
++#undef faulty_gxz
++#undef faulty_gyy
++#undef faulty_gyz
++#undef faulty_gzz
++#undef faulty_vel
++#undef faulty_Bvec
+   
+ end subroutine GRHydro_AtmosphereResetM
+ 
+@@ -113,15 +178,42 @@ subroutine GRHydro_InitialAtmosphereResetM(CCTK_ARGUMENTS)
+ 
+   implicit none
+ 
++  ! save memory when MP is not used
++  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
++  TARGET gaa, gab, gac, gbb, gbc, gcc
++  TARGET gxx, gxy, gxz, gyy, gyz, gzz
++  TARGET lvel, vel
++  TARGET lBvec, Bvec
++  TARGET gaa_p, gab_p, gac_p, gbb_p, gbc_p, gcc_p
++  TARGET gxx_p, gxy_p, gxz_p, gyy_p, gyz_p, gzz_p
++  TARGET lvel_p, vel_p
++  TARGET lBvec_p, Bvec_p
++  TARGET gaa_p_p, gab_p_p, gac_p_p, gbb_p_p, gbc_p_p, gcc_p_p
++  TARGET gxx_p_p, gxy_p_p, gxz_p_p, gyy_p_p, gyz_p_p, gzz_p_p
++  TARGET lvel_p_p, vel_p_p
++  TARGET lBvec_p_p, Bvec_p_p
++
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+ 
+   CCTK_INT :: i, j, k
+-  CCTK_REAL :: det, psi4pt
++  CCTK_REAL :: det
+   CCTK_REAL :: rho_min
+ 
+   CCTK_INT :: eos_handle
+ 
++
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11_p, g12_p, g13_p, g22_p, &
++                                          g23_p, g33_p
++  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup_p, Bprim_p
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11_p_p, g12_p_p, g13_p_p, g22_p_p, &
++                                          g23_p_p, g33_p_p
++  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup_p_p, Bprim_p_p
++
+ ! begin EOS Omni vars
+   integer :: n,keytemp,anyerr,keyerr(1)
+   real*8  :: xpress,xeps,xtemp,xye
+@@ -129,6 +221,94 @@ subroutine GRHydro_InitialAtmosphereResetM(CCTK_ARGUMENTS)
+   xpress=0.0d0;xye=0.0d0;xeps=0.0d0;xtemp=0.0d0
+ ! end EOS Omni vars
+ 
++  ! save memory when MP is not used
++  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++    g11 => gaa
++    g12 => gab
++    g13 => gac
++    g22 => gbb
++    g23 => gbc
++    g33 => gcc
++    vup => lvel
++    Bprim => lBvec
++  else
++    g11 => gxx
++    g12 => gxy
++    g13 => gxz
++    g22 => gyy
++    g23 => gyz
++    g33 => gzz
++    vup => vel
++    Bprim => Bvec
++  end if
++  if (timelevels .gt. 1) then
++    if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++      g11_p => gaa_p
++      g12_p => gab_p
++      g13_p => gac_p
++      g22_p => gbb_p
++      g23_p => gbc_p
++      g33_p => gcc_p
++      vup_p => lvel_p
++      Bprim => Bvec_p
++    else
++      g11_p => gxx_p
++      g12_p => gxy_p
++      g13_p => gxz_p
++      g22_p => gyy_p
++      g23_p => gyz_p
++      g33_p => gzz_p
++      vup_p => vel_p
++      Bprim => Bvec_p
++    end if
++  end if 
++  if (timelevels .gt. 2) then
++    if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++      g11_p_p => gaa_p_p
++      g12_p_p => gab_p_p
++      g13_p_p => gac_p_p
++      g22_p_p => gbb_p_p
++      g23_p_p => gbc_p_p
++      g33_p_p => gcc_p_p
++      vup_p_p => lvel_p_p
++      Bprim => lBvec_p_p
++    else
++      g11_p_p => gxx_p_p
++      g12_p_p => gxy_p_p
++      g13_p_p => gxz_p_p
++      g22_p_p => gyy_p_p
++      g23_p_p => gyz_p_p
++      g33_p_p => gzz_p_p
++      vup_p_p => vel_p_p
++      Bprim => Bvec_p_p
++    end if
++  end if 
++#define gxx faulty_gxx
++#define gxy faulty_gxy
++#define gxz faulty_gxz
++#define gyy faulty_gyy
++#define gyz faulty_gyz
++#define gzz faulty_gzz
++#define vel faulty_vel
++#define Bvec faulty_Bvec
++#define gxx_p faulty_gxx_p
++#define gxy_p faulty_gxy_p
++#define gxz_p faulty_gxz_p
++#define gyy_p faulty_gyy_p
++#define gyz_p faulty_gyz_p
++#define gzz_p faulty_gzz_p
++#define vel_p faulty_vel_p
++#define Bvec_p faulty_Bvec_p
++#define gxx_p_p faulty_gxx_p_p
++#define gxy_p_p faulty_gxy_p_p
++#define gxz_p_p faulty_gxz_p_p
++#define gyy_p_p faulty_gyy_p_p
++#define gyz_p_p faulty_gyz_p_p
++#define gzz_p_p faulty_gzz_p_p
++#define vel_p_p faulty_vel_p_p
++#define Bvec_p_p faulty_Bvec_p_p
++
++
+   eos_handle = GRHydro_polytrope_handle
+   
+   rho_min = GRHydro_rho_min
+@@ -142,12 +322,12 @@ subroutine GRHydro_InitialAtmosphereResetM(CCTK_ARGUMENTS)
+         
+         if (rho(i,j,k) .le. rho_min) then
+           rho(i,j,k) = rho_min
+-          vel(i,j,k,1) = 0.0d0
+-          vel(i,j,k,2) = 0.0d0
+-          vel(i,j,k,3) = 0.0d0
++          vup(i,j,k,1) = 0.0d0
++          vup(i,j,k,2) = 0.0d0
++          vup(i,j,k,3) = 0.0d0
+ 
+-          det = SPATIAL_DETERMINANT(gxx(i,j,k), gxy(i,j,k), gxz(i,j,k), \
+-               gyy(i,j,k), gyz(i,j,k), gzz(i,j,k))
++          det = SPATIAL_DETERMINANT(g11(i,j,k), g12(i,j,k), g13(i,j,k), \
++               g22(i,j,k), g23(i,j,k), g33(i,j,k))
+ 
+           if(evolve_temper.ne.0) then
+ !             ! set the temperature to be relatively low
+@@ -158,13 +338,13 @@ subroutine GRHydro_InitialAtmosphereResetM(CCTK_ARGUMENTS)
+                   rho(i,j,k),eps(i,j,k),temperature(i,j,k),y_e(i,j,k),&
+                   press(i,j,k),keyerr,anyerr)
+              call prim2conM_hot(GRHydro_eos_handle, GRHydro_reflevel,&
+-                  i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),gxx(i,j,k),&
+-                  gxy(i,j,k),gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k),&
++                  i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),g11(i,j,k),&
++                  g12(i,j,k),g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k),&
+                   det, dens(i,j,k),scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3),&
+                   tau(i,j,k),Bcons(i,j,k,1),Bcons(i,j,k,2),Bcons(i,j,k,3),&
+-                  rho(i,j,k),vel(i,j,k,1),vel(i,j,k,2),vel(i,j,k,3),&
+-                  eps(i,j,k),press(i,j,k),Bvec(i,j,k,1), &
+-                  Bvec(i,j,k,2), Bvec(i,j,k,3), w_lorentz(i,j,k),&
++                  rho(i,j,k),vup(i,j,k,1),vup(i,j,k,2),vup(i,j,k,3),&
++                  eps(i,j,k),press(i,j,k),Bprim(i,j,k,1), &
++                  Bprim(i,j,k,2), Bprim(i,j,k,3), w_lorentz(i,j,k),&
+                   temperature(i,j,k),y_e(i,j,k))
+              y_e_con(i,j,k) = dens(i,j,k) * y_e(i,j,k)
+ 
+@@ -176,24 +356,25 @@ subroutine GRHydro_InitialAtmosphereResetM(CCTK_ARGUMENTS)
+                  rho(i,j,k),xeps,xtemp,xye,press(i,j,k),eps(i,j,k),keyerr,anyerr)
+ 
+           call prim2conpolytypeM(eos_handle, &
+-               gxx(i,j,k), gxy(i,j,k), gxz(i,j,k), &
+-               gyy(i,j,k), gyz(i,j,k), gzz(i,j,k), det, &
++               g11(i,j,k), g12(i,j,k), g13(i,j,k), &
++               g22(i,j,k), g23(i,j,k), g33(i,j,k), det, &
+                dens(i,j,k), scon(i,j,k,1), scon(i,j,k,2), scon(i,j,k,3), &
+                tau(i,j,k), Bcons(i,j,k,1),Bcons(i,j,k,2),Bcons(i,j,k,3),&
+-               rho(i,j,k), vel(i,j,k,1), vel(i,j,k,2), &
+-               vel(i,j,k,3), eps(i,j,k), press(i,j,k), &
+-               Bvec(i,j,k,1),Bvec(i,j,k,2),Bvec(i,j,k,3),w_lorentz(i,j,k))
++               rho(i,j,k), vup(i,j,k,1), vup(i,j,k,2), &
++               vup(i,j,k,3), eps(i,j,k), press(i,j,k), &
++               Bprim(i,j,k,1),Bprim(i,j,k,2),Bprim(i,j,k,3),w_lorentz(i,j,k))
+           end if
+         end if
+         if (timelevels .gt. 1) then
+-          if (rho_p(i,j,k) .le. GRHydro_rho_min) then
+-            rho_p(i,j,k) = GRHydro_rho_min
+-            vel_p(i,j,k,1) = 0.0d0
+-            vel_p(i,j,k,2) = 0.0d0
+-            vel_p(i,j,k,3) = 0.0d0
+-            
+-            det = SPATIAL_DETERMINANT(gxx_p(i,j,k), gxy_p(i,j,k), gxz_p(i,j,k), \
+-                    gyy_p(i,j,k), gyz_p(i,j,k), gzz_p(i,j,k))
++          if (rho_p(i,j,k) .le. rho_min) then
++            rho_p(i,j,k) = rho_min
++            vup_p(i,j,k,1) = 0.0d0
++            vup_p(i,j,k,2) = 0.0d0
++            vup_p(i,j,k,3) = 0.0d0
++
++            det = SPATIAL_DETERMINANT(g11_p(i,j,k), g12_p(i,j,k), g13_p(i,j,k), \
++                 g22_p(i,j,k), g23_p(i,j,k), g33_p(i,j,k))
++
+             if(evolve_temper.ne.0) then
+ !             ! set the temperature to be relatively low
+                temperature_p(i,j,k) = grhydro_hot_atmo_temp
+@@ -203,43 +384,44 @@ subroutine GRHydro_InitialAtmosphereResetM(CCTK_ARGUMENTS)
+                     rho_p(i,j,k),eps_p(i,j,k),temperature_p(i,j,k),y_e_p(i,j,k),&
+                     press_p(i,j,k),keyerr,anyerr)
+                call prim2conM_hot(GRHydro_eos_handle, GRHydro_reflevel,&
+-                    i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),gxx_p(i,j,k),&
+-                    gxy_p(i,j,k),gxz_p(i,j,k),gyy_p(i,j,k),gyz_p(i,j,k),gzz_p(i,j,k),&
++                    i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),g11_p(i,j,k),&
++                    g12_p(i,j,k),g13_p(i,j,k),g22_p(i,j,k),g23_p(i,j,k),g33_p(i,j,k),&
+                     det, dens_p(i,j,k),scon_p(i,j,k,1),scon_p(i,j,k,2),scon_p(i,j,k,3),&
+                     tau_p(i,j,k),Bcons_p(i,j,k,1),Bcons_p(i,j,k,2),Bcons_p(i,j,k,3),&
+-                    rho_p(i,j,k),vel_p(i,j,k,1),vel_p(i,j,k,2),vel_p(i,j,k,3),&
+-                    eps_p(i,j,k),press_p(i,j,k),Bvec_p(i,j,k,1), &
+-                    Bvec_p(i,j,k,2), Bvec_p(i,j,k,3), w_lorentz_p(i,j,k),&
++                    rho_p(i,j,k),vup_p(i,j,k,1),vup_p(i,j,k,2),vup_p(i,j,k,3),&
++                    eps_p(i,j,k),press_p(i,j,k),Bprim_p(i,j,k,1), &
++                    Bprim_p(i,j,k,2), Bprim_p(i,j,k,3), w_lorentz_p(i,j,k),&
+                     temperature_p(i,j,k),y_e_p(i,j,k))
+                y_e_con_p(i,j,k) = dens_p(i,j,k) * y_e_p(i,j,k)
+ 
+             else
+ 
+-              call EOS_Omni_press(eos_handle,keytemp,GRHydro_eos_rf_prec,n,&
+-                     rho_p(i,j,k),eps_p(i,j,k),xtemp,xye,press_p(i,j,k),keyerr,anyerr)
+-              call EOS_Omni_EpsFromPress(eos_handle,keytemp,GRHydro_eos_rf_prec,n,&
+-                     rho_p(i,j,k),xeps,xtemp,xye,press_p(i,j,k),eps_p(i,j,k),keyerr,anyerr)
+-              call prim2conpolytypeM(eos_handle, &
+-                   gxx_p(i,j,k), gxy_p(i,j,k), gxz_p(i,j,k), &
+-                   gyy_p(i,j,k), gyz_p(i,j,k), gzz_p(i,j,k), det, &
+-                   dens_p(i,j,k), scon_p(i,j,k,1), scon_p(i,j,k,2), scon_p(i,j,k,3), &
+-                   tau_p(i,j,k), Bcons_p(i,j,k,1),Bcons_p(i,j,k,2),Bcons_p(i,j,k,3),&
+-                   rho_p(i,j,k), vel_p(i,j,k,1), vel_p(i,j,k,2), &
+-                   vel_p(i,j,k,3), eps_p(i,j,k), press_p(i,j,k), &
+-                   Bvec_p(i,j,k,1),Bvec_p(i,j,k,2),Bvec_p(i,j,k,3),w_lorentz_p(i,j,k))
+-
++            call EOS_Omni_press(eos_handle,keytemp,GRHydro_eos_rf_prec,n,&
++                   rho_p(i,j,k),eps_p(i,j,k),xtemp,xye,press_p(i,j,k),keyerr,anyerr)
++            call EOS_Omni_EpsFromPress(eos_handle,keytemp,GRHydro_eos_rf_prec,n,&
++                   rho_p(i,j,k),xeps,xtemp,xye,press_p(i,j,k),eps_p(i,j,k),keyerr,anyerr)
++
++            call prim2conpolytypeM(eos_handle, &
++                 g11_p(i,j,k), g12_p(i,j,k), g13_p(i,j,k), &
++                 g22_p(i,j,k), g23_p(i,j,k), g33_p(i,j,k), det, &
++                 dens_p(i,j,k), scon_p(i,j,k,1), scon_p(i,j,k,2), scon_p(i,j,k,3), &
++                 tau_p(i,j,k), Bcons_p(i,j,k,1),Bcons_p(i,j,k,2),Bcons_p(i,j,k,3),&
++                 rho_p(i,j,k), vup_p(i,j,k,1), vup_p(i,j,k,2), &
++                 vup_p(i,j,k,3), eps_p(i,j,k), press_p(i,j,k), &
++                 Bprim_p(i,j,k,1),Bprim_p(i,j,k,2),Bprim_p(i,j,k,3),w_lorentz_p(i,j,k))
+             end if
+           end if
+         end if
+ 
+         if (timelevels .gt. 2) then
+-          if (rho_p_p(i,j,k) .le. GRHydro_rho_min) then
+-            rho_p_p(i,j,k) = GRHydro_rho_min
+-            vel_p_p(i,j,k,1) = 0.0d0
+-            vel_p_p(i,j,k,2) = 0.0d0
+-            vel_p_p(i,j,k,3) = 0.0d0
+-            det = SPATIAL_DETERMINANT(gxx_p_p(i,j,k), gxy_p_p(i,j,k), gxz_p_p(i,j,k), \
+-                    gyy_p_p(i,j,k), gyz_p_p(i,j,k), gzz_p_p(i,j,k))
++          if (rho_p_p(i,j,k) .le. rho_min) then
++            rho_p_p(i,j,k) = rho_min
++            vup_p_p(i,j,k,1) = 0.0d0
++            vup_p_p(i,j,k,2) = 0.0d0
++            vup_p_p(i,j,k,3) = 0.0d0
++
++            det = SPATIAL_DETERMINANT(g11_p_p(i,j,k), g12_p_p(i,j,k), g13_p_p(i,j,k), \
++                 g22_p_p(i,j,k), g23_p_p(i,j,k), g33_p_p(i,j,k))
+ 
+             if(evolve_temper.ne.0) then
+ !             ! set the temperature to be relatively low
+@@ -250,31 +432,31 @@ subroutine GRHydro_InitialAtmosphereResetM(CCTK_ARGUMENTS)
+                     rho_p_p(i,j,k),eps_p_p(i,j,k),temperature_p_p(i,j,k),y_e_p_p(i,j,k),&
+                     press_p_p(i,j,k),keyerr,anyerr)
+                call prim2conM_hot(GRHydro_eos_handle, GRHydro_reflevel,&
+-                    i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),gxx_p_p(i,j,k),&
+-                    gxy_p_p(i,j,k),gxz_p_p(i,j,k),gyy_p_p(i,j,k),gyz_p_p(i,j,k),gzz_p_p(i,j,k),&
++                    i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),g11_p_p(i,j,k),&
++                    g12_p_p(i,j,k),g13_p_p(i,j,k),g22_p_p(i,j,k),g23_p_p(i,j,k),g33_p_p(i,j,k),&
+                     det, dens_p_p(i,j,k),scon_p_p(i,j,k,1),scon_p_p(i,j,k,2),scon_p_p(i,j,k,3),&
+                     tau_p_p(i,j,k),Bcons_p_p(i,j,k,1),Bcons_p_p(i,j,k,2),Bcons_p_p(i,j,k,3),&
+-                    rho_p_p(i,j,k),vel_p_p(i,j,k,1),vel_p_p(i,j,k,2),vel_p_p(i,j,k,3),&
+-                    eps_p_p(i,j,k),press_p_p(i,j,k),Bvec_p_p(i,j,k,1), &
+-                    Bvec_p_p(i,j,k,2), Bvec_p_p(i,j,k,3), w_lorentz_p_p(i,j,k),&
++                    rho_p_p(i,j,k),vup_p_p(i,j,k,1),vup_p_p(i,j,k,2),vup_p_p(i,j,k,3),&
++                    eps_p_p(i,j,k),press_p_p(i,j,k),Bprim_p_p(i,j,k,1), &
++                    Bprim_p_p(i,j,k,2), Bprim_p_p(i,j,k,3), w_lorentz_p_p(i,j,k),&
+                     temperature_p_p(i,j,k),y_e_p_p(i,j,k))
+                y_e_con_p_p(i,j,k) = dens_p_p(i,j,k) * y_e_p_p(i,j,k)
+ 
+             else
+ 
+-              call EOS_Omni_press(eos_handle,keytemp,GRHydro_eos_rf_prec,n,&
+-                     rho_p_p(i,j,k),eps_p_p(i,j,k),xtemp,xye,press_p_p(i,j,k),keyerr,anyerr)
+-              call EOS_Omni_EpsFromPress(eos_handle,keytemp,GRHydro_eos_rf_prec,n,&
+-                     rho_p_p(i,j,k),xeps,xtemp,xye,press_p_p(i,j,k),eps_p_p(i,j,k),keyerr,anyerr)
+-              call prim2conpolytypeM(eos_handle, &
+-                   gxx_p_p(i,j,k), gxy_p_p(i,j,k), gxz_p_p(i,j,k), &
+-                   gyy_p_p(i,j,k), gyz_p_p(i,j,k), gzz_p_p(i,j,k), det, &
+-                   dens_p_p(i,j,k), scon_p_p(i,j,k,1), scon_p_p(i,j,k,2), scon_p_p(i,j,k,3), &
+-                   tau_p_p(i,j,k), Bcons_p_p(i,j,k,1),Bcons_p_p(i,j,k,2),Bcons_p_p(i,j,k,3),&
+-                   rho_p_p(i,j,k), vel_p_p(i,j,k,1), vel_p_p(i,j,k,2), &
+-                   vel_p_p(i,j,k,3), eps_p_p(i,j,k), press_p_p(i,j,k), &
+-                   Bvec_p_p(i,j,k,1),Bvec_p_p(i,j,k,2),Bvec_p_p(i,j,k,3),w_lorentz_p_p(i,j,k))
+-
++            call EOS_Omni_press(eos_handle,keytemp,GRHydro_eos_rf_prec,n,&
++                   rho_p_p(i,j,k),eps_p_p(i,j,k),xtemp,xye,press_p_p(i,j,k),keyerr,anyerr)
++            call EOS_Omni_EpsFromPress(eos_handle,keytemp,GRHydro_eos_rf_prec,n,&
++                   rho_p_p(i,j,k),xeps,xtemp,xye,press_p_p(i,j,k),eps_p_p(i,j,k),keyerr,anyerr)
++
++            call prim2conpolytypeM(eos_handle, &
++                 g11_p_p(i,j,k), g12_p_p(i,j,k), g13_p_p(i,j,k), &
++                 g22_p_p(i,j,k), g23_p_p(i,j,k), g33_p_p(i,j,k), det, &
++                 dens_p_p(i,j,k), scon_p_p(i,j,k,1), scon_p_p(i,j,k,2), scon_p_p(i,j,k,3), &
++                 tau_p_p(i,j,k), Bcons_p_p(i,j,k,1),Bcons_p_p(i,j,k,2),Bcons_p_p(i,j,k,3),&
++                 rho_p_p(i,j,k), vup_p_p(i,j,k,1), vup_p_p(i,j,k,2), &
++                 vup_p_p(i,j,k,3), eps_p_p(i,j,k), press_p_p(i,j,k), &
++                 Bprim_p_p(i,j,k,1),Bprim_p_p(i,j,k,2),Bprim_p_p(i,j,k,3),w_lorentz_p_p(i,j,k))
+             end if
+           end if
+         end if
+@@ -285,6 +467,30 @@ subroutine GRHydro_InitialAtmosphereResetM(CCTK_ARGUMENTS)
+ 
+   write(*,*) "     GRHydro_InitialAtmosphereReset"
+ !!$  call GRHydro_BoundariesM(CCTK_PASS_FTOF)
++#undef faulty_gxx
++#undef faulty_gxy
++#undef faulty_gxz
++#undef faulty_gyy
++#undef faulty_gyz
++#undef faulty_gzz
++#undef faulty_vel
++#undef faulty_Bvec
++#undef faulty_gxx_p
++#undef faulty_gxy_p
++#undef faulty_gxz_p
++#undef faulty_gyy_p
++#undef faulty_gyz_p
++#undef faulty_gzz_p
++#undef faulty_vel_p
++#undef faulty_Bvec_p
++#undef faulty_gxx_p_p
++#undef faulty_gxy_p_p
++#undef faulty_gxz_p_p
++#undef faulty_gyy_p_p
++#undef faulty_gyz_p_p
++#undef faulty_gzz_p_p
++#undef faulty_vel_p_p
++#undef faulty_Bvec_p_p
+ 
+ end subroutine GRHydro_InitialAtmosphereResetM
+ 
+-- 
+1.7.10.4
+

@@ -1,0 +1,1121 @@
+--- original.patch	2012-04-30 11:28:03.000000000 -0700
++++ revised.2.patch	2012-07-31 11:27:42.000000000 -0700
+@@ -1,7 +1,7 @@
+-diff -rupN --exclude=.svn --exclude=doc arrangements/CactusNumerical/MoL/interface.ccl repos/Zelmani/MoL/interface.ccl
+---- arrangements/CactusNumerical/MoL/interface.ccl	2012-03-02 10:13:10.000000000 -0800
+-+++ repos/Zelmani/MoL/interface.ccl	2012-04-30 11:08:06.141814795 -0700
+-@@ -34,10 +34,15 @@ USES FUNCTION EnableProlongating
++diff '-x*~' -xdoc -x.svn -x.git -urPN b/interface.ccl a/interface.ccl
++--- b/interface.ccl	2012-05-24 08:50:02.082390941 -0700
+++++ a/interface.ccl	2012-07-31 11:15:23.359964554 -0700
++@@ -34,14 +34,21 @@
+  
+  CCTK_INT FUNCTION MoLRegisterEvolved(CCTK_INT IN EvolvedIndex, \
+                                       CCTK_INT IN RHSIndex)
+@@ -17,7 +17,13 @@
+  CCTK_INT FUNCTION MoLRegisterConstrainedGroup(CCTK_INT IN ConstrainedIndex)
+  CCTK_INT FUNCTION MoLRegisterSaveAndRestoreGroup(CCTK_INT IN SandRIndex)
+  CCTK_INT FUNCTION MoLChangeToEvolved(CCTK_INT IN EvolvedIndex, \
+-@@ -49,12 +54,15 @@ CCTK_INT FUNCTION MoLQueryEvolvedRHS(CCT
++                                      CCTK_INT IN RHSIndex)
+++CCTK_INT FUNCTION MoLChangeToEvolvedSlow(CCTK_INT IN EvolvedIndex, \
+++                                         CCTK_INT IN RHSIndexSlow)
++ CCTK_INT FUNCTION MoLChangeToConstrained(CCTK_INT IN ConstrainedIndex)
++ CCTK_INT FUNCTION MoLChangeToSaveAndRestore(CCTK_INT IN SandRIndex)
++ CCTK_INT FUNCTION MoLChangeToNone(CCTK_INT IN RemoveIndex)
++@@ -49,17 +56,21 @@
+  CCTK_INT FUNCTION MoLNumIntegratorSubsteps()
+  
+  PROVIDES FUNCTION MoLRegisterEvolved WITH MoL_RegisterEvolved LANGUAGE C
+@@ -33,7 +39,13 @@
+  PROVIDES FUNCTION MoLRegisterConstrainedGroup WITH \
+                    MoL_RegisterConstrainedGroup LANGUAGE C
+  PROVIDES FUNCTION MoLRegisterSaveAndRestoreGroup WITH \
+-@@ -226,6 +234,16 @@ CCTK_INT MoL_Counters \
++                   MoL_RegisterSaveAndRestoreGroup LANGUAGE C
++ PROVIDES FUNCTION MoLChangeToEvolved WITH MoL_ChangeToEvolved LANGUAGE C
+++PROVIDES FUNCTION MoLChangeToEvolvedSlow WITH MoL_ChangeToEvolvedSlow LANGUAGE C
++ PROVIDES FUNCTION MoLChangeToConstrained WITH MoL_ChangeToConstrained \
++                   LANGUAGE C
++ PROVIDES FUNCTION MoLChangeToSaveAndRestore WITH MoL_ChangeToSaveAndRestore \
++@@ -226,6 +237,17 @@
+  {
+    MoL_Intermediate_Step
+    MoL_Stepsize_Bad
+@@ -47,25 +59,26 @@
+ +  # Oustide the MoL loop, it is guaranteed to be 1.
+ +  # It is only zero for certain MoL substeps when multirate methods are used.
+ +  MoL_SlowPostStep
+++  
+  } "The counter for the time integration method"
+  
+  CCTK_REAL MoL_Original_Time \
+-@@ -241,6 +259,11 @@ CCTK_REAL ScratchSpace[MoL_Num_Evolved_V
++@@ -240,6 +262,11 @@
++             TYPE       = GF \
+              Timelevels = 1 \
+              TAGS       = 'Prolongation="None" Checkpoint="no"'
+- 
+++
+ +CCTK_REAL ScratchSpaceSlow[MoL_Num_Evolved_Vars_Slow*MoL_Num_Scratch_Levels] \
+ +            TYPE       = GF \
+ +            Timelevels = 1 \
+ +            TAGS       = 'Prolongation="None" Checkpoint="no"'
+-+
++ 
+  CCTK_REAL SandRScratchSpace[MoL_Num_SaveAndRestore_Vars] \
+              TYPE       = GF \
+-             Timelevels = 1 \
+-diff -rupN --exclude=.svn --exclude=doc arrangements/CactusNumerical/MoL/param.ccl repos/Zelmani/MoL/param.ccl
+---- arrangements/CactusNumerical/MoL/param.ccl	2012-03-02 10:13:10.000000000 -0800
+-+++ repos/Zelmani/MoL/param.ccl	2012-04-21 11:25:53.133380304 -0700
+-@@ -8,6 +8,12 @@ CCTK_INT MoL_Num_Evolved_Vars "The maxim
++diff '-x*~' -xdoc -x.svn -x.git -urPN b/param.ccl a/param.ccl
++--- b/param.ccl	2012-06-20 22:11:02.553409569 -0700
+++++ a/param.ccl	2012-07-31 11:00:10.806723937 -0700
++@@ -8,6 +8,12 @@
+    0:*		:: "Anything non negative. Added to by other thorns."
+  } 0
+  
+@@ -78,7 +91,7 @@
+  CCTK_INT MoL_Num_Constrained_Vars "The maximum number of constrained variables with timelevels that MoL needs to know about" ACCUMULATOR = (x+y)
+  {
+    0:*		:: "Anything non negative. Added to by other thorns."
+-@@ -92,6 +98,9 @@ KEYWORD ODE_Method "The ODE method use b
++@@ -92,6 +98,9 @@
+    "RK45CK"      :: "RK45CK (Cash-Karp) with error estimation"
+    "RK65"        :: "RK65 with error estimation"
+    "RK87"        :: "RK87 with error estimation"
+@@ -88,10 +101,10 @@
+  } "ICN"
+  
+  KEYWORD Generic_Type "If using the generic method, which sort"
+-diff -rupN --exclude=.svn --exclude=doc arrangements/CactusNumerical/MoL/schedule.ccl repos/Zelmani/MoL/schedule.ccl
+---- arrangements/CactusNumerical/MoL/schedule.ccl	2012-03-02 10:13:10.000000000 -0800
+-+++ repos/Zelmani/MoL/schedule.ccl	2012-04-21 11:25:53.133380304 -0700
+-@@ -399,7 +399,13 @@ else 
++diff '-x*~' -xdoc -x.svn -x.git -urPN b/schedule.ccl a/schedule.ccl
++--- b/schedule.ccl	2012-06-20 22:11:02.553409569 -0700
+++++ a/schedule.ccl	2012-07-31 11:01:24.595147376 -0700
++@@ -399,7 +399,13 @@
+      }
+    }
+  }
+@@ -106,7 +119,7 @@
+  ######################################################
+  ###  StartStep contains the routines that just do  ###
+  ###  internal MoL stuff; setting the counter, and  ###
+-@@ -604,6 +610,28 @@ else if (CCTK_Equals(ODE_Method,"ICN-avg
++@@ -607,6 +610,28 @@
+      LANG: C
+    } "Updates calculated with the averaging ICN method"
+  }
+@@ -135,10 +148,10 @@
+  
+  ##################################################
+  ###  Physics thorns can apply boundaries and   ###
+-diff -rupN --exclude=.svn --exclude=doc arrangements/CactusNumerical/MoL/src/Counter.c repos/Zelmani/MoL/src/Counter.c
+---- arrangements/CactusNumerical/MoL/src/Counter.c	2012-03-02 10:13:10.000000000 -0800
+-+++ repos/Zelmani/MoL/src/Counter.c	2012-04-30 11:08:06.141814795 -0700
+-@@ -69,7 +69,13 @@ void MoL_SetCounter(CCTK_ARGUMENTS)
++diff '-x*~' -xdoc -x.svn -x.git -urPN b/src/Counter.c a/src/Counter.c
++--- b/src/Counter.c	2012-05-24 08:50:02.046390942 -0700
+++++ a/src/Counter.c	2012-07-31 11:16:47.428449155 -0700
++@@ -69,7 +69,13 @@
+  
+    *MoL_Intermediate_Step = MoL_Intermediate_Steps;
+  
+@@ -153,10 +166,11 @@
+  /* #ifdef HAVE_CARPET */
+    if ((*MoL_Intermediate_Step))
+    {
+-@@ -114,6 +120,70 @@ void MoL_DecrementCounter(CCTK_ARGUMENTS
++@@ -114,6 +120,71 @@
+    
+    (*MoL_Intermediate_Step) --;
+  
+++
+ +  if (CCTK_EQUALS(ODE_Method, "RK2-MR-2:1"))
+ +  {
+ +     switch (MoL_Intermediate_Steps - *MoL_Intermediate_Step)
+@@ -224,9 +238,9 @@
+  /* #ifdef HAVE_CARPET */
+    if (! (*MoL_Intermediate_Step))
+    {
+-diff -rupN --exclude=.svn --exclude=doc arrangements/CactusNumerical/MoL/src/ExternalVariables.h repos/Zelmani/MoL/src/ExternalVariables.h
+---- arrangements/CactusNumerical/MoL/src/ExternalVariables.h	2012-03-02 10:13:10.000000000 -0800
+-+++ repos/Zelmani/MoL/src/ExternalVariables.h	2012-04-21 11:25:53.133380304 -0700
++diff '-x*~' -xdoc -x.svn -x.git -urPN b/src/ExternalVariables.h a/src/ExternalVariables.h
++--- b/src/ExternalVariables.h	2012-05-24 08:50:02.046390942 -0700
+++++ a/src/ExternalVariables.h	2012-07-31 11:00:42.542906074 -0700
+ @@ -16,12 +16,15 @@
+  
+  
+@@ -243,10 +257,10 @@
+  extern CCTK_INT MoLNumConstrainedVariables;
+  extern CCTK_INT MoLNumSandRVariables;
+  
+-diff -rupN --exclude=.svn --exclude=doc arrangements/CactusNumerical/MoL/src/IndexArrays.c repos/Zelmani/MoL/src/IndexArrays.c
+---- arrangements/CactusNumerical/MoL/src/IndexArrays.c	2012-03-02 10:13:10.000000000 -0800
+-+++ repos/Zelmani/MoL/src/IndexArrays.c	2012-04-30 11:08:06.141814795 -0700
+-@@ -110,6 +110,23 @@ void MoL_SetupIndexArrays(CCTK_ARGUMENTS
++diff '-x*~' -xdoc -x.svn -x.git -urPN b/src/IndexArrays.c a/src/IndexArrays.c
++--- b/src/IndexArrays.c	2012-05-24 08:50:02.050390942 -0700
+++++ a/src/IndexArrays.c	2012-07-31 11:15:50.736122376 -0700
++@@ -110,6 +110,23 @@
+        }
+    }
+  
+@@ -270,7 +284,7 @@
+    if (MoL_Num_Constrained_Vars)
+    {
+      ConstrainedVariableIndex = (CCTK_INT *)malloc(MoL_Num_Constrained_Vars * 
+-@@ -335,6 +352,18 @@ void MoL_SetupIndexArrays(CCTK_ARGUMENTS
++@@ -335,6 +352,18 @@
+              "Averaging iterative Crank Nicholson with %i iterations", 
+              MoL_Intermediate_Steps);
+    }
+@@ -289,20 +303,20 @@
+    else 
+    {
+      CCTK_WARN(0, "ODE_Method not recognized!");
+-@@ -345,6 +374,12 @@ void MoL_SetupIndexArrays(CCTK_ARGUMENTS
++@@ -345,6 +374,12 @@
+    free(infoline);
+    infoline = NULL;
+  
+ +  // These scalars must be 1 oustide of the MoL loop.
+ +  // They will only be zero for certain substeps when multirate methods are used.
+-+  // Otherwise, they are guaranteed to always be one.
+++  // Otherwise, they are guaranteed to always be ONE.
+ +  *MoL_SlowPostStep = 1;
+ +  *MoL_SlowStep = 1;
+ +
+    return;
+  
+  }
+-@@ -381,6 +416,18 @@ void MoL_FreeIndexArrays(CCTK_ARGUMENTS)
++@@ -381,6 +416,18 @@
+      RHSVariableIndex = NULL;
+    }
+  
+@@ -321,10 +335,10 @@
+    if (ConstrainedVariableIndex)
+    {
+      free(ConstrainedVariableIndex);
+-diff -rupN --exclude=.svn --exclude=doc arrangements/CactusNumerical/MoL/src/make.code.defn repos/Zelmani/MoL/src/make.code.defn
+---- arrangements/CactusNumerical/MoL/src/make.code.defn	2012-03-02 10:13:10.000000000 -0800
+-+++ repos/Zelmani/MoL/src/make.code.defn	2012-04-21 11:25:53.133380304 -0700
+-@@ -21,8 +21,11 @@ SRCS = 	ChangeType.c \
++diff '-x*~' -xdoc -x.svn -x.git -urPN b/src/make.code.defn a/src/make.code.defn
++--- b/src/make.code.defn	2012-05-24 08:50:02.046390942 -0700
+++++ a/src/make.code.defn	2012-07-31 11:00:42.542906074 -0700
++@@ -21,8 +21,11 @@
+  	SandR.c \
+  	SetTime.c \
+  	Startup.c \
+@@ -338,18 +352,18 @@
+  # Subdirectories containing source files
+  SUBDIRS = 
+  
+-diff -rupN --exclude=.svn --exclude=doc arrangements/CactusNumerical/MoL/src/MoLFunctions.h repos/Zelmani/MoL/src/MoLFunctions.h
+---- arrangements/CactusNumerical/MoL/src/MoLFunctions.h	2012-03-02 10:13:10.000000000 -0800
+-+++ repos/Zelmani/MoL/src/MoLFunctions.h	2012-04-21 11:25:53.133380304 -0700
+-@@ -13,6 +13,7 @@
+- #define MOL_FUNCTIONS_H
++diff '-x*~' -xdoc -x.svn -x.git -urPN b/src/MoL.h a/src/MoL.h
++--- b/src/MoL.h	2012-05-24 08:50:02.050390942 -0700
+++++ a/src/MoL.h	2012-07-31 11:00:10.810723960 -0700
++@@ -20,6 +20,7 @@
++ #ifdef CCODE
+  
+  CCTK_INT MoL_RegisterEvolved(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex);
+ +CCTK_INT MoL_RegisterEvolvedSlow(CCTK_INT EvolvedIndex, CCTK_INT RHSIndexSlow);
+  CCTK_INT MoL_RegisterConstrained(CCTK_INT ConstrainedIndex);
+  CCTK_INT MoL_RegisterSaveAndRestore(CCTK_INT SandRIndex);
+  CCTK_INT MoL_ChangeToEvolved(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex);
+-@@ -21,6 +22,8 @@ CCTK_INT MoL_ChangeToSaveAndRestore(CCTK
++@@ -28,6 +29,8 @@
+  CCTK_INT MoL_ChangeToNone(CCTK_INT RemoveIndex);
+  CCTK_INT MoL_RegisterEvolvedGroup(CCTK_INT EvolvedGroupIndex, 
+                                    CCTK_INT RHSGroupIndex);
+@@ -358,30 +372,30 @@
+  CCTK_INT MoL_RegisterConstrainedGroup(CCTK_INT ConstrainedGroupIndex);
+  CCTK_INT MoL_RegisterSaveAndRestoreGroup(CCTK_INT SandRGroupIndex);
+  
+-diff -rupN --exclude=.svn --exclude=doc arrangements/CactusNumerical/MoL/src/MoL.h repos/Zelmani/MoL/src/MoL.h
+---- arrangements/CactusNumerical/MoL/src/MoL.h	2012-03-02 10:13:10.000000000 -0800
+-+++ repos/Zelmani/MoL/src/MoL.h	2012-04-21 11:25:53.133380304 -0700
+-@@ -20,6 +20,7 @@ extern "C" {
+- #ifdef CCODE
++diff '-x*~' -xdoc -x.svn -x.git -urPN b/src/MoLFunctions.h a/src/MoLFunctions.h
++--- b/src/MoLFunctions.h	2012-05-24 08:50:02.050390942 -0700
+++++ a/src/MoLFunctions.h	2012-07-31 11:00:10.810723960 -0700
++@@ -13,6 +13,7 @@
++ #define MOL_FUNCTIONS_H
+  
+  CCTK_INT MoL_RegisterEvolved(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex);
+ +CCTK_INT MoL_RegisterEvolvedSlow(CCTK_INT EvolvedIndex, CCTK_INT RHSIndexSlow);
+  CCTK_INT MoL_RegisterConstrained(CCTK_INT ConstrainedIndex);
+  CCTK_INT MoL_RegisterSaveAndRestore(CCTK_INT SandRIndex);
+  CCTK_INT MoL_ChangeToEvolved(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex);
+-@@ -28,6 +29,8 @@ CCTK_INT MoL_ChangeToSaveAndRestore(CCTK
++@@ -21,6 +22,8 @@
+  CCTK_INT MoL_ChangeToNone(CCTK_INT RemoveIndex);
+  CCTK_INT MoL_RegisterEvolvedGroup(CCTK_INT EvolvedGroupIndex, 
+                                    CCTK_INT RHSGroupIndex);
+-+CCTK_INT MoL_RegisterEvolvedGroupSlow(CCTK_INT EvolvedGroupIndex, 
+-+                                  CCTK_INT RHSGroupIndexSlow);
+++CCTK_INT MoL_RegisterEvolvedGroupSlow(CCTK_INT EvolvedGroupIndexSlow,
+++                                      CCTK_INT RHSGroupIndexSlow);
+  CCTK_INT MoL_RegisterConstrainedGroup(CCTK_INT ConstrainedGroupIndex);
+  CCTK_INT MoL_RegisterSaveAndRestoreGroup(CCTK_INT SandRGroupIndex);
+  
+-diff -rupN --exclude=.svn --exclude=doc arrangements/CactusNumerical/MoL/src/ParamCheck.c repos/Zelmani/MoL/src/ParamCheck.c
+---- arrangements/CactusNumerical/MoL/src/ParamCheck.c	2012-03-02 10:13:10.000000000 -0800
+-+++ repos/Zelmani/MoL/src/ParamCheck.c	2012-04-21 11:25:53.133380304 -0700
+-@@ -159,6 +159,24 @@ void MoL_ParamCheck(CCTK_ARGUMENTS)
++diff '-x*~' -xdoc -x.svn -x.git -urPN b/src/ParamCheck.c a/src/ParamCheck.c
++--- b/src/ParamCheck.c	2012-05-24 08:50:02.042390942 -0700
+++++ a/src/ParamCheck.c	2012-07-31 11:00:10.810723960 -0700
++@@ -159,6 +159,24 @@
+                     "number of intermediate steps must be 13 " 
+                     "and the number of scratch levels at least 13.");
+    }
+@@ -406,10 +420,10 @@
+  
+    if (adaptive_stepsize)
+    {
+-diff -rupN --exclude=.svn --exclude=doc arrangements/CactusNumerical/MoL/src/Registration.c repos/Zelmani/MoL/src/Registration.c
+---- arrangements/CactusNumerical/MoL/src/Registration.c	2012-03-12 06:04:41.000000000 -0700
+-+++ repos/Zelmani/MoL/src/Registration.c	2012-04-21 11:25:53.133380304 -0700
+-@@ -40,6 +40,8 @@ void MoL_SetScheduleStatus(CCTK_ARGUMENT
++diff '-x*~' -xdoc -x.svn -x.git -urPN b/src/Registration.c a/src/Registration.c
++--- b/src/Registration.c	2012-05-24 08:50:02.046390942 -0700
+++++ a/src/Registration.c	2012-07-31 11:01:24.595147376 -0700
++@@ -40,6 +40,8 @@
+  
+  CCTK_INT MoL_RegisterEvolved(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex);
+  
+@@ -418,7 +432,7 @@
+  CCTK_INT MoL_RegisterConstrained(CCTK_INT ConstrainedIndex);
+  
+  CCTK_INT MoL_RegisterSaveAndRestore(CCTK_INT SandRIndex);
+-@@ -52,9 +54,10 @@ CCTK_INT MoL_RegisterConstrainedGroup(CC
++@@ -52,9 +54,10 @@
+  CCTK_INT MoL_RegisterSaveAndRestoreGroup(CCTK_INT SandRGroupIndex);
+  
+  
+@@ -430,7 +444,7 @@
+  CCTK_INT MoL_RegisterConstrainedReal(CCTK_INT ConstrainedIndex);
+  
+  CCTK_INT MoL_RegisterSaveAndRestoreReal(CCTK_INT SandRIndex);
+-@@ -62,6 +65,10 @@ CCTK_INT MoL_RegisterSaveAndRestoreReal(
++@@ -62,6 +65,10 @@
+  CCTK_INT MoL_RegisterEvolvedRealGroup(CCTK_INT EvolvedGroupIndex, 
+                                    CCTK_INT RHSGroupIndex);
+  
+@@ -441,7 +455,7 @@
+  CCTK_INT MoL_RegisterConstrainedRealGroup(CCTK_INT ConstrainedGroupIndex);
+  
+  CCTK_INT MoL_RegisterSaveAndRestoreRealGroup(CCTK_INT SandRGroupIndex);
+-@@ -269,6 +276,109 @@ CCTK_INT MoL_RegisterEvolved(CCTK_INT Ev
++@@ -269,6 +276,109 @@
+  
+  }
+  
+@@ -551,7 +565,7 @@
+   /*@@
+     @routine    MoL_RegisterConstrained
+     @date       Thu May 30 12:35:58 2002
+-@@ -606,6 +716,91 @@ CCTK_INT MoL_RegisterEvolvedGroup(CCTK_I
++@@ -606,6 +716,91 @@
+  }
+  
+  
+@@ -643,7 +657,7 @@
+  CCTK_INT MoL_RegisterConstrainedGroup(CCTK_INT ConstrainedGroupIndex)
+  {
+  
+-@@ -992,6 +1187,198 @@ CCTK_INT MoL_RegisterEvolvedReal(CCTK_IN
++@@ -992,6 +1187,198 @@
+  
+  }
+  
+@@ -842,7 +856,7 @@
+   /*@@
+     @routine    MoL_RegisterConstrained
+     @date       Thu May 30 12:35:58 2002
+-@@ -1256,6 +1643,51 @@ CCTK_INT MoL_RegisterEvolvedRealGroup(CC
++@@ -1256,6 +1643,51 @@
+  }
+  
+  
+@@ -894,16 +908,42 @@
+  CCTK_INT MoL_RegisterConstrainedRealGroup(CCTK_INT ConstrainedGroupIndex)
+  {
+    
+-diff -rupN --exclude=.svn --exclude=doc arrangements/CactusNumerical/MoL/src/RK2-MR-2_1.c repos/Zelmani/MoL/src/RK2-MR-2_1.c
+---- arrangements/CactusNumerical/MoL/src/RK2-MR-2_1.c	1969-12-31 16:00:00.000000000 -0800
+-+++ repos/Zelmani/MoL/src/RK2-MR-2_1.c	2012-04-21 11:25:53.133380304 -0700
+-@@ -0,0 +1,369 @@
++@@ -2741,6 +3173,7 @@
++    @desc 
++    Given the index of a registered evolved GF,
++    returns the corresponding RHS GF.
+++   Checks both regular and slow evolved variables.
++    @enddesc 
++    @calls     
++    @calledby   
++@@ -2769,6 +3202,17 @@
++     }
++   }
++   
+++  // If we haven't found any registered variable that matches,
+++  // we also try to check whether this has been registered with the slow multirate sector!
+++  
+++  for (index = 0; index < MoLNumEvolvedVariablesSlow; index++)
+++  {
+++    if (EvolvedVariableIndexSlow[index] == EvolvedIndex)
+++    {
+++      return RHSVariableIndexSlow[index];
+++    }
+++  }
+++  
++   return -1;
++ 
++ }
++diff '-x*~' -xdoc -x.svn -x.git -urPN b/src/RK2-MR-2_1.c a/src/RK2-MR-2_1.c
++--- b/src/RK2-MR-2_1.c	1969-12-31 16:00:00.000000000 -0800
+++++ a/src/RK2-MR-2_1.c	2012-07-31 11:00:42.542906074 -0700
++@@ -0,0 +1,358 @@
+ + /*@@
+-+   @file      RK4.c
+-+   @date      Fri July 14, 2006
+-+   @author    Yosef Zlochower
+++   @file      RK2-MR-2_1.c
+++   @date      2012-03-25
+++   @author    Christian Reisswig
+ +   @desc 
+-+   A routine to perform RK4 evolution. Mostly copied from
+++   A routine to perform RK2 2:1 MR evolution. Mostly copied from
+ +   genericRK.c
+ +   @enddesc 
+ +   @version   $Header$
+@@ -949,11 +989,11 @@
+ + ********************************************************************/
+ +
+ + /*@@
+-+   @routine    MoL_RK4Add
+++   @routine    MoL_RK2_MR_2_1_Add
+ +   @date       
+ +   @author     
+ +   @desc 
+-+   Performs a single step of a RK4 type time
+++   Performs a single step of a RK2_MR_2_1 type time
+ +   integration.
+ +   @enddesc 
+ +   @calls     
+@@ -970,9 +1010,7 @@
+ +  DECLARE_CCTK_ARGUMENTS;
+ +  DECLARE_CCTK_PARAMETERS;
+ +    
+-+  cGroupDynamicData arraydata;
+-+  CCTK_INT groupindex, ierr;
+-+  CCTK_INT arraytotalsize, arraydim;
+++  CCTK_INT arraydim;
+ +
+ +  /* FIXME */
+ +
+@@ -998,15 +1036,6 @@
+ +  CCTK_REAL const * restrict RHSVar;
+ +  CCTK_REAL * restrict ScratchVar;
+ +
+-+  CCTK_INT arrayscratchlocation;
+-+
+-+  /* Keep a running total of alpha as we perform the substeps, so that
+-+     we know the "real" alpha (including round-off errors) when we
+-+     calculate the final result. */
+-+  static CCTK_REAL sum_alpha;
+-+  /* the last MoL intermediate step that was summed */
+-+  static CCTK_INT last_sum_step;
+-+
+ +  totalsize = 1;
+ +  for (arraydim = 0; arraydim < cctk_dim; arraydim++)
+ +  {
+@@ -1267,17 +1296,17 @@
+ +
+ +  return;
+ +}
+-diff -rupN --exclude=.svn --exclude=doc arrangements/CactusNumerical/MoL/src/RK4-MR-2_1.c repos/Zelmani/MoL/src/RK4-MR-2_1.c
+---- arrangements/CactusNumerical/MoL/src/RK4-MR-2_1.c	1969-12-31 16:00:00.000000000 -0800
+-+++ repos/Zelmani/MoL/src/RK4-MR-2_1.c	2012-04-21 11:25:53.133380304 -0700
+-@@ -0,0 +1,513 @@
++diff '-x*~' -xdoc -x.svn -x.git -urPN b/src/RK4-MR-2_1.c a/src/RK4-MR-2_1.c
++--- b/src/RK4-MR-2_1.c	1969-12-31 16:00:00.000000000 -0800
+++++ a/src/RK4-MR-2_1.c	2012-07-31 11:00:42.542906074 -0700
++@@ -0,0 +1,502 @@
+ + /*@@
+-+   @file      RK4.c
+-+   @date      Fri July 14, 2006
+-+   @author    Yosef Zlochower
+++   @file      RK4-MR-2_1.c
+++   @date      2012-03-25
+++   @author    Christian Reisswig
+ +   @desc 
+-+   A routine to perform RK4 evolution. Mostly copied from
+-+   genericRK.c
+++   A routine to perform 3rd order 2:1 multirate RK evolution. Mostly copied
+++   from genericRK.c
+ +   @enddesc 
+ +   @version   $Header$
+ + @@*/
+@@ -1322,11 +1351,11 @@
+ + ********************************************************************/
+ +
+ + /*@@
+-+   @routine    MoL_RK4Add
+++   @routine    MoL_RK4_MR_2_1_Add
+ +   @date       
+ +   @author     
+ +   @desc 
+-+   Performs a single step of a RK4 type time
+++   Performs a single step of a RK43 2:1 type time
+ +   integration.
+ +   @enddesc 
+ +   @calls     
+@@ -1343,9 +1372,7 @@
+ +  DECLARE_CCTK_ARGUMENTS;
+ +  DECLARE_CCTK_PARAMETERS;
+ +    
+-+  cGroupDynamicData arraydata;
+-+  CCTK_INT groupindex, ierr;
+-+  CCTK_INT arraytotalsize, arraydim;
+++  CCTK_INT arraydim;
+ +
+ +  /* FIXME */
+ +
+@@ -1371,15 +1398,6 @@
+ +  CCTK_REAL const * restrict RHSVar;
+ +  CCTK_REAL * restrict ScratchVar;
+ +
+-+  CCTK_INT arrayscratchlocation;
+-+
+-+  /* Keep a running total of alpha as we perform the substeps, so that
+-+     we know the "real" alpha (including round-off errors) when we
+-+     calculate the final result. */
+-+  static CCTK_REAL sum_alpha;
+-+  /* the last MoL intermediate step that was summed */
+-+  static CCTK_INT last_sum_step;
+-+
+ +  totalsize = 1;
+ +  for (arraydim = 0; arraydim < cctk_dim; arraydim++)
+ +  {
+@@ -1784,16 +1802,16 @@
+ +
+ +  return;
+ +}
+-diff -rupN --exclude=.svn --exclude=doc arrangements/CactusNumerical/MoL/src/RK4-RK2.c repos/Zelmani/MoL/src/RK4-RK2.c
+---- arrangements/CactusNumerical/MoL/src/RK4-RK2.c	1969-12-31 16:00:00.000000000 -0800
+-+++ repos/Zelmani/MoL/src/RK4-RK2.c	2012-04-21 11:25:53.133380304 -0700
+-@@ -0,0 +1,353 @@
++diff '-x*~' -xdoc -x.svn -x.git -urPN b/src/RK4-RK2.c a/src/RK4-RK2.c
++--- b/src/RK4-RK2.c	1969-12-31 16:00:00.000000000 -0800
+++++ a/src/RK4-RK2.c	2012-07-31 11:00:42.542906074 -0700
++@@ -0,0 +1,342 @@
+ + /*@@
+-+   @file      RK4.c
+-+   @date      Fri July 14, 2006
+-+   @author    Yosef Zlochower
+++   @file      RK4-RK2.c
+++   @date      2012-03-25
+++   @author    Christian Reisswig
+ +   @desc 
+-+   A routine to perform RK4 evolution. Mostly copied from
+++   A routine to perform homegrown RK4RK2 evolution. Mostly copied from
+ +   genericRK.c
+ +   @enddesc 
+ +   @version   $Header$
+@@ -1839,11 +1857,11 @@
+ + ********************************************************************/
+ +
+ + /*@@
+-+   @routine    MoL_RK4Add
+++   @routine    MoL_RK4_RK2_Add
+ +   @date       
+ +   @author     
+ +   @desc 
+-+   Performs a single step of a RK4 type time
+++   Performs a single step of a RK4_RK2 type time
+ +   integration.
+ +   @enddesc 
+ +   @calls     
+@@ -1860,9 +1878,7 @@
+ +  DECLARE_CCTK_ARGUMENTS;
+ +  DECLARE_CCTK_PARAMETERS;
+ +    
+-+  cGroupDynamicData arraydata;
+-+  CCTK_INT groupindex, ierr;
+-+  CCTK_INT arraytotalsize, arraydim;
+++  CCTK_INT arraydim;
+ +
+ +  /* FIXME */
+ +
+@@ -1888,15 +1904,6 @@
+ +  CCTK_REAL const * restrict RHSVar;
+ +  CCTK_REAL * restrict ScratchVar;
+ +
+-+  CCTK_INT arrayscratchlocation;
+-+
+-+  /* Keep a running total of alpha as we perform the substeps, so that
+-+     we know the "real" alpha (including round-off errors) when we
+-+     calculate the final result. */
+-+  static CCTK_REAL sum_alpha;
+-+  /* the last MoL intermediate step that was summed */
+-+  static CCTK_INT last_sum_step;
+-+
+ +  totalsize = 1;
+ +  for (arraydim = 0; arraydim < cctk_dim; arraydim++)
+ +  {
+@@ -2141,10 +2148,10 @@
+ +
+ +  return;
+ +}
+-diff -rupN --exclude=.svn --exclude=doc arrangements/CactusNumerical/MoL/src/SetTime.c repos/Zelmani/MoL/src/SetTime.c
+---- arrangements/CactusNumerical/MoL/src/SetTime.c	2012-03-02 10:13:10.000000000 -0800
+-+++ repos/Zelmani/MoL/src/SetTime.c	2012-04-21 11:25:53.133380304 -0700
+-@@ -298,6 +298,63 @@ void MoL_ResetTime(CCTK_ARGUMENTS)
++diff '-x*~' -xdoc -x.svn -x.git -urPN b/src/SetTime.c a/src/SetTime.c
++--- b/src/SetTime.c	2012-05-24 08:50:02.046390942 -0700
+++++ a/src/SetTime.c	2012-07-31 11:00:10.814723983 -0700
++@@ -298,6 +298,63 @@
+           + ((alpha_array87[substep] - 1)
+              * (* Original_Delta_Time) / cctkGH->cctk_timefac));
+    }
+@@ -2208,10 +2215,10 @@
+  #ifdef MOLDEBUG
+    printf("MoL has once more reset t (%d): %f.\n", 
+           *MoL_Intermediate_Step, cctkGH->cctk_time);
+-diff -rupN --exclude=.svn --exclude=doc arrangements/CactusNumerical/MoL/src/Startup.c repos/Zelmani/MoL/src/Startup.c
+---- arrangements/CactusNumerical/MoL/src/Startup.c	2012-03-02 10:13:10.000000000 -0800
+-+++ repos/Zelmani/MoL/src/Startup.c	2012-04-21 11:25:53.133380304 -0700
+-@@ -26,11 +26,14 @@ CCTK_FILEVERSION(CactusBase_MoL_Startup_
++diff '-x*~' -xdoc -x.svn -x.git -urPN b/src/Startup.c a/src/Startup.c
++--- b/src/Startup.c	2012-05-24 08:50:02.046390942 -0700
+++++ a/src/Startup.c	2012-07-31 11:00:42.542906074 -0700
++@@ -26,11 +26,14 @@
+   ********************************************************************/
+  
+  CCTK_INT *EvolvedVariableIndex = NULL;
+@@ -2226,17 +2233,506 @@
+  CCTK_INT MoLNumConstrainedVariables = 0;
+  CCTK_INT MoLNumSandRVariables = 0;
+  
+-diff -rupN --exclude=.svn --exclude=doc arrangements/CactusNumerical/MoL/src/StepSize.c repos/Zelmani/MoL/src/StepSize.c
+---- arrangements/CactusNumerical/MoL/src/StepSize.c	2012-03-02 10:13:10.000000000 -0800
+-+++ repos/Zelmani/MoL/src/StepSize.c	2012-04-30 11:08:06.151757329 -0700
+-@@ -358,6 +358,10 @@ void MoL_FinishLoop(CCTK_ARGUMENTS)
++diff '-x*~' -xdoc -x.svn -x.git -urPN b/src/StepSize.c a/src/StepSize.c
++--- b/src/StepSize.c	2012-05-24 08:50:02.046390942 -0700
+++++ a/src/StepSize.c	2012-07-31 11:15:55.336148893 -0700
++@@ -358,6 +358,10 @@
+  
+    /* Keep time step size unchanged */
+    *MoL_Stepsize_Bad = 0;
+ +  
+-+  // Set these flags to one outside of MoL-loop!
+++  // Set these flags to ONE outside of MoL-loop!
+ +  *MoL_SlowPostStep = 1;
+ +  *MoL_SlowStep = 1;
+  }
+  
+  /********************************************************************
++diff '-x*~' -xdoc -x.svn -x.git -urPN b/src/ChangeType.c a/src/ChangeType.c
++--- b/src/ChangeType.c	2012-05-24 08:50:02.050390942 -0700
+++++ a/src/ChangeType.c	2012-07-31 11:00:42.542906074 -0700
++@@ -27,6 +27,7 @@
++ #define MOL_EVOLVED_VARTYPE 1
++ #define MOL_CONSTRAINED_VARTYPE 2
++ #define MOL_SANDR_VARTYPE 3
+++#define MOL_EVOLVEDSLOW_VARTYPE 4
++ 
++ /********************************************************************
++  ********************* Local Routine Prototypes *********************
++@@ -42,6 +43,8 @@
++ 
++ CCTK_INT MoL_ChangeToEvolved(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex);
++ 
+++CCTK_INT MoL_ChangeToEvolvedSlow(CCTK_INT EvolvedIndex, CCTK_INT RHSIndexSlow);
+++
++ CCTK_INT MoL_ChangeToConstrained(CCTK_INT ConstrainedIndex);
++ 
++ CCTK_INT MoL_ChangeToSaveAndRestore(CCTK_INT SandRIndex);
++@@ -95,6 +98,16 @@
++     }
++   }
++   
+++  for (index = 0; (index < MoLNumEvolvedVariablesSlow)&&(!vartype); index++)
+++  {
+++    vartype = MOL_EVOLVEDSLOW_VARTYPE * 
+++      (EvolvedVariableIndexSlow[index] == EvolvedIndex);
+++    if (vartype)
+++    {
+++      usedindex = index;
+++    }
+++  }
+++  
++   for (index = 0; (index < MoLNumConstrainedVariables)&&(!vartype); index++)
++   {
++     vartype = MOL_CONSTRAINED_VARTYPE * 
++@@ -174,6 +187,46 @@
++         break;
++       }
++ 
+++    case MOL_EVOLVEDSLOW_VARTYPE:
+++      
+++      {
+++        timelevs = CCTK_MaxTimeLevelsVI(RHSIndex);
+++        if (timelevs < 1) {
+++          CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+++                     "Warning whilst trying to change variable "
+++                     "index %i to evolved type from constrained.", RHSIndex);
+++          CCTK_WARN(0, "The RHS index passed does not correspond to a GF.");
+++        }
+++
+++        if (!(MoLNumEvolvedVariables < MoL_Num_Evolved_Vars))
+++        {
+++          CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+++                     "Warning whilst trying to change variable "
+++                     "index %i (%s) to evolved.", 
+++                     EvolvedIndex, CCTK_VarName(EvolvedIndex));
+++          CCTK_WARN(0, "When changing type there are more variables "
+++                    "than the accumulator parameter "
+++                    "MoL_Num_Evolved_Vars allows. Check that "
+++                    "you are accumulating onto this parameter correctly");
+++        }
+++
+++        for (index = usedindex; index < MoLNumEvolvedVariablesSlow - 1; 
+++             index++)
+++        {
+++          EvolvedVariableIndexSlow[index] = EvolvedVariableIndexSlow[index+1];
+++        }
+++        MoLNumEvolvedVariablesSlow--;
+++        EvolvedVariableIndex[MoLNumEvolvedVariables] = EvolvedIndex;
+++        RHSVariableIndex[MoLNumEvolvedVariables] = RHSIndex;
+++        MoLNumEvolvedVariables++;
+++#ifdef MOLDEBUG
+++        printf("Changing (constrained): vars %d var %d (%s).\n",
+++               MoLNumEvolvedVariables, EvolvedIndex,
+++               CCTK_VarName(EvolvedIndex));
+++#endif
+++        break;
+++      }
+++      
++     case MOL_CONSTRAINED_VARTYPE:
++       
++       {
++@@ -268,6 +321,266 @@
++ }
++ 
++  /*@@
+++   @routine    MoL_ChangeToEvolvedSlow
+++   @date       Thu May 30 16:45:30 2002
+++   @author     Ian Hawke, Roland Haas
+++   @desc 
+++   Changes a variable to evolved slow type. Checks to see which type it was
+++   before and does the bookkeeping on the index arrays.
+++   @enddesc 
+++   @calls     
+++   @calledby   
+++   @history 
+++ 
+++   @endhistory 
+++
+++@@*/
+++
+++CCTK_INT MoL_ChangeToEvolvedSlow(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex)
+++{
+++
+++  DECLARE_CCTK_PARAMETERS;
+++
+++  CCTK_INT index, usedindex;
+++  CCTK_INT vartype; /* See the defines at the top of file */
+++  CCTK_INT timelevs;
+++  
+++  vartype = 0;
+++  usedindex = -1;
+++  
+++  for (index = 0; (index < MoLNumEvolvedVariables)&&(!vartype); index++)
+++  {
+++    vartype = MOL_EVOLVED_VARTYPE * 
+++      (EvolvedVariableIndex[index] == EvolvedIndex);
+++    if (vartype)
+++    {
+++      usedindex = index;
+++    }
+++  }
+++  
+++  for (index = 0; (index < MoLNumEvolvedVariablesSlow)&&(!vartype); index++)
+++  {
+++    vartype = MOL_EVOLVEDSLOW_VARTYPE * 
+++      (EvolvedVariableIndexSlow[index] == EvolvedIndex);
+++    if (vartype)
+++    {
+++      usedindex = index;
+++    }
+++  }
+++  
+++  for (index = 0; (index < MoLNumConstrainedVariables)&&(!vartype); index++)
+++  {
+++    vartype = MOL_CONSTRAINED_VARTYPE * 
+++      (ConstrainedVariableIndex[index] == EvolvedIndex);
+++    if (vartype)
+++    {
+++      usedindex = index;
+++    }
+++  }
+++  
+++  for (index = 0; (index < MoLNumSandRVariables)&&(!vartype); index++)
+++  {
+++    vartype = MOL_SANDR_VARTYPE * 
+++      (SandRVariableIndex[index] == EvolvedIndex);
+++    if (vartype)
+++    {
+++      usedindex = index;
+++    }
+++  }
+++
+++  switch (vartype)
+++  {
+++    
+++    case MOL_UNKNOWN_VARTYPE:
+++
+++      {
+++        timelevs = CCTK_MaxTimeLevelsVI(EvolvedIndex);
+++        if (timelevs < 1)
+++        {
+++          CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+++                     "Warning whilst trying to change variable "
+++                     "index %i to slow evolved.", EvolvedIndex);
+++          CCTK_WARN(0, "The index passed does not correspond to a GF.");
+++        }
+++        else if (timelevs == 1) 
+++        {
+++          CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+++                     "Warning whilst trying to change variable "
+++                     "index %i to slow evolved.", EvolvedIndex);
+++          CCTK_WARN(0, "The index passed only has a single timelevel.");
+++        }
+++        timelevs = CCTK_MaxTimeLevelsVI(RHSIndex);
+++        if (timelevs < 1) {
+++          CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+++                     "Warning whilst trying to change variable "
+++                     "index %i to slow evolved (RHS GF).", RHSIndex);
+++          CCTK_WARN(0, "The index passed does not correspond to a GF.");
+++        }
+++
+++        if (!(MoLNumEvolvedVariablesSlow < MoL_Num_Evolved_Vars_Slow))
+++        {
+++          CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+++                     "Warning whilst trying to change variable "
+++                     "index %i (%s) to slow evolved.", 
+++                     EvolvedIndex, CCTK_VarName(EvolvedIndex));
+++          CCTK_WARN(0, "When changing type there are more variables "
+++                    "than the accumulator parameter "
+++                    "MoL_Num_Evolved_Vars_Slow allows. Check that "
+++                    "you are accumulating onto this parameter correctly");
+++        }
+++
+++        EvolvedVariableIndexSlow[MoLNumEvolvedVariablesSlow] = EvolvedIndex;
+++        RHSVariableIndexSlow[MoLNumEvolvedVariablesSlow] = RHSIndex;
+++        MoLNumEvolvedVariablesSlow++;
+++#ifdef MOLDEBUG
+++        printf("Changing (unknown): vars %d var %d (%s).\n",
+++               MoLNumEvolvedVariablesSlow, EvolvedIndex,
+++               CCTK_VarName(EvolvedIndex));
+++#endif
+++        break;
+++      }
+++      
+++    case MOL_EVOLVED_VARTYPE:
+++      
+++      {
+++        timelevs = CCTK_MaxTimeLevelsVI(RHSIndex);
+++        if (timelevs < 1) {
+++          CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+++                     "Warning whilst trying to change variable "
+++                     "index %i to slow evolved type from constrained.", RHSIndex);
+++          CCTK_WARN(0, "The RHS index passed does not correspond to a GF.");
+++        }
+++
+++        if (!(MoLNumEvolvedVariablesSlow < MoL_Num_Evolved_Vars_Slow))
+++        {
+++          CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+++                     "Warning whilst trying to change variable "
+++                     "index %i (%s) to slow evolved.", 
+++                     EvolvedIndex, CCTK_VarName(EvolvedIndex));
+++          CCTK_WARN(0, "When changing type there are more variables "
+++                    "than the accumulator parameter "
+++                    "MoL_Num_Evolved_Vars_Slow allows. Check that "
+++                    "you are accumulating onto this parameter correctly");
+++        }
+++
+++        for (index = usedindex; index < MoLNumEvolvedVariables - 1; 
+++             index++)
+++        {
+++          EvolvedVariableIndex[index] = EvolvedVariableIndex[index+1];
+++        }
+++        MoLNumEvolvedVariables--;
+++        EvolvedVariableIndexSlow[MoLNumEvolvedVariablesSlow] = EvolvedIndex;
+++        RHSVariableIndexSlow[MoLNumEvolvedVariablesSlow] = RHSIndex;
+++        MoLNumEvolvedVariablesSlow++;
+++#ifdef MOLDEBUG
+++        printf("Changing (constrained): vars %d var %d (%s).\n",
+++               MoLNumEvolvedVariablesSlow, EvolvedIndex,
+++               CCTK_VarName(EvolvedIndex));
+++#endif
+++        break;
+++      }
+++      
+++    case MOL_EVOLVEDSLOW_VARTYPE:
+++      
+++      {
+++        RHSVariableIndex[usedindex] = RHSIndex;
+++        break;
+++      }
+++
+++    case MOL_CONSTRAINED_VARTYPE:
+++      
+++      {
+++        timelevs = CCTK_MaxTimeLevelsVI(RHSIndex);
+++        if (timelevs < 1) {
+++          CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+++                     "Warning whilst trying to change variable "
+++                     "index %i to slow evolved type from constrained.", RHSIndex);
+++          CCTK_WARN(0, "The RHS index passed does not correspond to a GF.");
+++        }
+++
+++        if (!(MoLNumEvolvedVariablesSlow < MoL_Num_Evolved_Vars_Slow))
+++        {
+++          CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+++                     "Warning whilst trying to change variable "
+++                     "index %i (%s) to slow evolved.", 
+++                     EvolvedIndex, CCTK_VarName(EvolvedIndex));
+++          CCTK_WARN(0, "When changing type there are more variables "
+++                    "than the accumulator parameter "
+++                    "MoL_Num_Evolved_Vars_Slow allows. Check that "
+++                    "you are accumulating onto this parameter correctly");
+++        }
+++
+++        for (index = usedindex; index < MoLNumConstrainedVariables - 1; 
+++             index++)
+++        {
+++          ConstrainedVariableIndex[index] = ConstrainedVariableIndex[index+1];
+++        }
+++        MoLNumConstrainedVariables--;
+++        EvolvedVariableIndexSlow[MoLNumEvolvedVariablesSlow] = EvolvedIndex;
+++        RHSVariableIndexSlow[MoLNumEvolvedVariablesSlow] = RHSIndex;
+++        MoLNumEvolvedVariablesSlow++;
+++#ifdef MOLDEBUG
+++        printf("Changing (constrained): vars %d var %d (%s).\n",
+++               MoLNumEvolvedVariables, EvolvedIndex,
+++               CCTK_VarName(EvolvedIndex));
+++#endif
+++        break;
+++      }
+++      
+++    case MOL_SANDR_VARTYPE:
+++      
+++      {
+++        timelevs = CCTK_MaxTimeLevelsVI(RHSIndex);
+++        if (timelevs < 1) {
+++          CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+++                     "Warning whilst trying to change variable "
+++                     "index %i to slow evolved type from save and "
+++                     "restore.", RHSIndex);
+++          CCTK_WARN(0, "The RHS index passed does not correspond to a GF.");
+++        }
+++
+++        if (!(MoLNumEvolvedVariablesSlow < MoL_Num_Evolved_Vars_Slow))
+++        {
+++          CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+++                     "Warning whilst trying to change variable "
+++                     "index %i (%s) to slow evolved.", 
+++                     EvolvedIndex, CCTK_VarName(EvolvedIndex));
+++          CCTK_WARN(0, "When changing type there are more variables "
+++                    "than the accumulator parameter "
+++                    "MoL_Num_Evolved_Vars_Slow allows. Check that "
+++                    "you are accumulating onto this parameter correctly");
+++        }
+++
+++        for (index = usedindex; index < MoLNumSandRVariables - 1; index++)
+++        {
+++          SandRVariableIndex[index] = SandRVariableIndex[index+1];
+++        }
+++        MoLNumSandRVariables--;
+++        EvolvedVariableIndexSlow[MoLNumEvolvedVariablesSlow] = EvolvedIndex;
+++        RHSVariableIndexSlow[MoLNumEvolvedVariablesSlow] = RHSIndex;
+++        MoLNumEvolvedVariablesSlow++;
+++#ifdef MOLDEBUG
+++        printf("Changing (SandR): vars %d var %d (%s).\n",
+++               MoLNumEvolvedVariablesSlow, EvolvedIndex,
+++               CCTK_VarName(EvolvedIndex));
+++#endif
+++        break;
+++      }
+++      
+++    default:
+++      
+++      {
+++        CCTK_WARN(0, "Something is seriously wrong in ChangeType.c! "
+++                  "Case out of range in switch statement.");
+++      }
+++      
+++  }
+++      
+++  return 0;
+++  
+++}
+++
+++ /*@@
++    @routine    MoL_ChangeToConstrained
++    @date       Thu May 30 16:47:08 2002
++    @author     Ian Hawke
++@@ -321,6 +634,16 @@
++     }
++   }
++   
+++  for (index = 0; (index < MoLNumEvolvedVariablesSlow)&&(!vartype); index++)
+++  {
+++    vartype = MOL_EVOLVEDSLOW_VARTYPE * 
+++      (EvolvedVariableIndexSlow[index] == ConstrainedIndex);
+++    if (vartype)
+++    {
+++      usedindex = index;
+++    }
+++  }
+++  
++   for (index = 0; (index < MoLNumConstrainedVariables)&&(!vartype); index++)
++   {
++     vartype = MOL_CONSTRAINED_VARTYPE * 
++@@ -397,6 +720,34 @@
++         break;
++       }
++ 
+++    case MOL_EVOLVEDSLOW_VARTYPE:
+++      
+++      {
+++        for (index = usedindex; index < MoLNumEvolvedVariablesSlow - 1; index++)
+++        {
+++          EvolvedVariableIndex[index] = EvolvedVariableIndex[index+1];
+++          RHSVariableIndex[index] = RHSVariableIndex[index+1];
+++        }
+++        MoLNumEvolvedVariablesSlow--;
+++        if (timelevs > 1)
+++        {
+++          if ( !(MoLNumConstrainedVariables < MoL_Num_Constrained_Vars))
+++          {
+++            CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+++                       "Warning whilst trying to change variable "
+++                       "index %i (%s) to constrained.", 
+++                       ConstrainedIndex, CCTK_VarName(ConstrainedIndex));
+++            CCTK_WARN(0, "When changing type there are more variables "
+++                      "than the accumulator parameter "
+++                      "MoL_Num_Constrained_Vars allows. Check that "
+++                      "you are accumulating onto this parameter correctly");
+++          }
+++          ConstrainedVariableIndex[MoLNumConstrainedVariables] = ConstrainedIndex;
+++          MoLNumConstrainedVariables++;
+++        }
+++        break;
+++      }
+++
++     case MOL_CONSTRAINED_VARTYPE:
++       
++       {
++@@ -489,6 +840,16 @@
++     }
++   }
++   
+++  for (index = 0; (index < MoLNumEvolvedVariablesSlow)&&(!vartype); index++)
+++  {
+++    vartype = MOL_EVOLVEDSLOW_VARTYPE * 
+++      (EvolvedVariableIndexSlow[index] == SandRIndex);
+++    if (vartype)
+++    {
+++      usedindex = index;
+++    }
+++  }
+++  
++   for (index = 0; (index < MoLNumConstrainedVariables)&&(!vartype); index++)
++   {
++     vartype = MOL_CONSTRAINED_VARTYPE * 
++@@ -558,6 +919,32 @@
++         break;
++       }
++ 
+++    case MOL_EVOLVEDSLOW_VARTYPE:
+++      
+++      {
+++
+++        if (!(MoLNumSandRVariables < MoL_Num_SaveAndRestore_Vars))
+++        {
+++          CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+++                     "Warning whilst trying to change variable "
+++                     "index %i (%s) to save and restore.", 
+++                     SandRIndex, CCTK_VarName(SandRIndex));
+++          CCTK_WARN(0, "When changing type there are more variables "
+++                    "than the accumulator parameter "
+++                    "MoL_Num_SaveAndRestore_Vars allows. Check that "
+++                    "you are accumulating onto this parameter correctly");
+++        }
+++        for (index = usedindex; index < MoLNumEvolvedVariablesSlow - 1; index++)
+++        {
+++          EvolvedVariableIndex[index] = EvolvedVariableIndex[index+1];
+++          RHSVariableIndex[index] = RHSVariableIndex[index+1];
+++        }
+++        MoLNumEvolvedVariablesSlow--;
+++        SandRVariableIndex[MoLNumSandRVariables] = SandRIndex;
+++        MoLNumSandRVariables++;
+++        break;
+++      }
+++
++     case MOL_CONSTRAINED_VARTYPE:
++       
++       {
++@@ -639,6 +1026,16 @@
++     }
++   }
++   
+++  for (index = 0; (index < MoLNumEvolvedVariablesSlow)&&(!vartype); index++)
+++  {
+++    vartype = MOL_EVOLVEDSLOW_VARTYPE * 
+++      (EvolvedVariableIndexSlow[index] == RemoveIndex);
+++    if (vartype)
+++    {
+++      usedindex = index;
+++    }
+++  }
+++  
++   for (index = 0; (index < MoLNumConstrainedVariables)&&(!vartype); index++)
++   {
++     vartype = MOL_CONSTRAINED_VARTYPE * 
++@@ -680,6 +1077,18 @@
++         break;
++       }
++ 
+++    case MOL_EVOLVEDSLOW_VARTYPE:
+++      
+++      {
+++        for (index = usedindex; index < MoLNumEvolvedVariablesSlow - 1; index++)
+++        {
+++          EvolvedVariableIndex[index] = EvolvedVariableIndex[index+1];
+++          RHSVariableIndex[index] = RHSVariableIndex[index+1];
+++        }
+++        MoLNumEvolvedVariablesSlow--;
+++        break;
+++      }
+++
++     case MOL_CONSTRAINED_VARTYPE:
++       
++       {

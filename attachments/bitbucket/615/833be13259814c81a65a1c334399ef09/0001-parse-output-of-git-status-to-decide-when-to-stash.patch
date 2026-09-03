@@ -1,0 +1,28 @@
+From 2f24f434e41032fb0a31d5ee7eeb5aca1bd5a519 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Tue, 18 Oct 2011 16:48:26 -0700
+Subject: [PATCH] parse output of git status to decide when to stash
+ rather than relying on its exit code
+
+---
+ GetComponents |    4 ++--
+ 1 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/GetComponents b/GetComponents
+index 85128c5..96a499c 100755
+--- a/GetComponents
++++ b/GetComponents
+@@ -1619,8 +1619,8 @@ sub git_stash_update_repo {
+     my ( $git_repo, $repo_loc, $checkout, @branches ) = @_;
+     
+     # determine if we need to stash local changes
+-    my ( $err, $out ) = run_command("cd $repo_loc && $git status --porcelain --untracked-files=no");
+-    my $stash = $out;
++    my ( $err, $out ) = run_command("cd $repo_loc && $git status --untracked-files=no");
++    my $stash = $out !~ m/^nothing to commit/m;
+     if ($stash) {
+         # found local changes, stash them
+         my ( $err, $out ) = run_command("cd $repo_loc && $git stash");
+-- 
+1.7.1
+

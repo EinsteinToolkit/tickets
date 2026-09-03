@@ -1,0 +1,112 @@
+Index: lib/archive/uberftp.py
+===================================================================
+--- lib/archive/uberftp.py	(revision 2178)
++++ lib/archive/uberftp.py	(working copy)
+@@ -31,7 +31,7 @@
+         
+         dprint("Executing authcmd: %s\n" % authcmd)
+         
+-        ret = os.system(authcmd)
++        ret = simenv.system(authcmd)
+ 
+         if ret != 0:
+             dprint("Error: could not authenticate using myproxy-logon")
+@@ -114,4 +114,4 @@
+         fd.close()
+         
+         return output
+-        
+\ No newline at end of file
++        
+Index: lib/restartlib.py
+===================================================================
+--- lib/restartlib.py	(revision 2178)
++++ lib/restartlib.py	(working copy)
+@@ -473,7 +473,7 @@
+ def SubmitInteractiveRequest(command):
+     
+     #give up control to the executing terminal
+-    os.system(command)
++    simenv.system(command)
+     
+     #nodes = []
+     
+Index: lib/simenv.py
+===================================================================
+--- lib/simenv.py	(revision 2178)
++++ lib/simenv.py	(working copy)
+@@ -38,6 +38,12 @@
+ CommandDoc = dict()
+ CommandOptions = dict()
+ 
++def system(cmd):
++    global_dict = globals()
++    if global_dict['VERBOSE']:
++        print 'COMMAND:',cmd
++    return os.system(cmd)
++
+ def init(base, callingExecutable, usageString, optionGroups):
+ 
+     import simopts
+Index: lib/simlib.py
+===================================================================
+--- lib/simlib.py	(revision 2178)
++++ lib/simlib.py	(working copy)
+@@ -493,7 +493,7 @@
+         logonly("executing command: %s\n" % command)
+         
+     if not output:
+-        ret = os.system(command)
++        ret = simenv.system(command)
+         if ret != 0:
+             dprint("Error while executing command \"%s\":" % command)
+             signal = ret & 0xff
+Index: lib/simrestart.py
+===================================================================
+--- lib/simrestart.py	(revision 2178)
++++ lib/simrestart.py	(working copy)
+@@ -1085,7 +1085,7 @@
+                 shutil.copy(parfile, self.RestartDir)
+                 restart_rpar = simlib.BuildPath(self.RestartDir, simlib.BaseName(parfile))
+                 os.chmod(restart_rpar,os.stat(restart_rpar).st_mode | stat.S_IXUSR)
+-                ret = os.system(restart_rpar)
++                ret = simenv.system(restart_rpar)
+                 if ret != 0:
+                     fatal("Error while executing parameter file script %s" % restart_rpar)
+                 restart_par = re.sub(r'(.*)\.rpar$', r'\1.par', restart_rpar)
+@@ -1144,7 +1144,7 @@
+ 
+         simlib.ExecuteReplaceCommand(cmd)
+ 
+-        display("Simfactory Done at date: %s" % os.system("date")) # This is wrong because system doesn't return the command output
++        display("Simfactory Done at date: %s" % simenv.system("date")) # This is wrong because system doesn't return the command output
+     
+     def done(self):
+         """This function cleans up the simulation. Specifically, it closes the simulation log file."""
+@@ -1594,7 +1594,7 @@
+             
+         # step 5. remove half written checkpoint files
+         try:
+-            os.system("find %s -name *.chkpt.tmp.it_*.* -exec rm -rf {} \;" % self.RestartDir)
++            simenv.system("find %s -name *.chkpt.tmp.it_*.* -exec rm -rf {} \;" % self.RestartDir)
+         except:
+             pass
+         
+@@ -1710,7 +1710,7 @@
+         
+         if not(os.path.exists(trashPath)):
+             try:
+-                os.system("mkdir -p %s" % trashPath)
++                simenv.system("mkdir -p %s" % trashPath)
+             except OSError, e:
+                 fatal("could not make trash path \"%s\", %s" % (trashPath, e))
+         
+@@ -1738,7 +1738,7 @@
+         
+         if not(os.path.exists(trashFolder)):
+             try:
+-                os.system("mkdir -p %s" % trashFolder)
++                simenv.system("mkdir -p %s" % trashFolder)
+             except OSError, e:
+                 fatal("could not make trash folder \"%s\", %s" % (trashFolder, e))
+         

@@ -1,0 +1,44 @@
+From eb508832f8e97147571d6a13633b6e85f37c428a Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Wed, 23 Oct 2013 22:47:16 -0700
+Subject: [PATCH 1/2] do not try to re-create local branch during update
+
+if the branch already exists, then git checkout -b branch outputs a
+warning
+---
+ GetComponents | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/GetComponents b/GetComponents
+index 6b4e91a..64c488a 100755
+--- a/GetComponents
++++ b/GetComponents
+@@ -1701,7 +1701,9 @@ sub git_update_repo {
+             # checkout branch and pull --rebase
+             ( $err, $out ) = run_command(
+                             "cd $repo_loc && " .
+-                            "$git checkout -b $branch origin/$branch && " .
++                            "if [ x`$git rev-parse $branch` != x`$git rev-parse HEAD` ] ; then " .
++                            "  $git checkout $branch ; " .
++                            "fi && " .
+                             "$git pull --rebase origin $branch");
+             if ($err) {
+                 push( @components_error, $checkout );
+@@ -1727,8 +1729,12 @@ sub git_update_repo {
+         } # no need for else statement, do nothing for tags
+     }
+     
+-    # now checkout original branch
+-    ( $err, $out ) = run_command("cd $repo_loc && $git checkout -b $current_branch origin/$current_branch");
++    # now checkout original branch if required
++    ( $err, $out ) = run_command(
++                "cd $repo_loc && " .
++                "if [ x`$git rev-parse $current_branch` != x`$git rev-parse HEAD` ] ; then " .
++                "  $git checkout $current_branch ; " .
++                "fi");
+     if ($err) {
+         push( @components_error, $checkout );
+         my $logmsg = "Could not update $git_repo. "
+-- 
+1.8.4.rc3
+

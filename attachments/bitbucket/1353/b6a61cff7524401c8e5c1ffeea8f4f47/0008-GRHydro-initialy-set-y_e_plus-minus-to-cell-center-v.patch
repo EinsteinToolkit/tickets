@@ -1,0 +1,113 @@
+From 62263b6fcfcbec280584cb2b56bd3f5a03efa2d4 Mon Sep 17 00:00:00 2001
+From: Christian Ott <cott@bethe.tapir.caltech.edu>
+Date: Sat, 4 May 2013 21:01:12 -0700
+Subject: [PATCH 08/12] GRHydro: initialy set y_e_plus/minus to cell center
+ value in reconstruct
+
+This ensures that all EOS calls have some sensible y_e to work with.
+---
+ src/GRHydro_ENOReconstruct_drv.F90  |    7 +++++--
+ src/GRHydro_PPMMReconstruct_drv.F90 |   10 ++++++++--
+ src/GRHydro_PPMReconstruct_drv.F90  |    7 +++++--
+ src/GRHydro_TVDReconstruct_drv.F90  |    7 +++++--
+ src/GRHydro_WENOReconstruct_drv.F90 |    7 +++++--
+ 5 files changed, 28 insertions(+), 10 deletions(-)
+
+diff --git a/src/GRHydro_ENOReconstruct_drv.F90 b/src/GRHydro_ENOReconstruct_drv.F90
+index 26bbb58..17a2494 100644
+--- a/src/GRHydro_ENOReconstruct_drv.F90
++++ b/src/GRHydro_ENOReconstruct_drv.F90
+@@ -157,8 +157,11 @@ subroutine GRHydro_ENOReconstruct_drv(CCTK_ARGUMENTS)
+            endif
+ 
+            if (evolve_Y_e .ne. 0) then
+-              Y_e_plus(i,j,k) = 0.0d0
+-              Y_e_minus(i,j,k) = 0.0d0
++              ! set this to the cell center values
++              ! to make sure we have good Y_e even in
++              ! the boundary region (for full GF EOS calls)       
++              Y_e_plus(i,j,k) = Y_e(i,j,k)
++              Y_e_minus(i,j,k) = Y_e(i,j,k)
+            endif
+ 
+            if (evolve_temper .ne. 0) then
+diff --git a/src/GRHydro_PPMMReconstruct_drv.F90 b/src/GRHydro_PPMMReconstruct_drv.F90
+index 096d056..370d764 100644
+--- a/src/GRHydro_PPMMReconstruct_drv.F90
++++ b/src/GRHydro_PPMMReconstruct_drv.F90
+@@ -175,10 +175,16 @@ subroutine GRHydro_PPMMReconstruct_drv(CCTK_ARGUMENTS)
+            endif
+ 
+            if (evolve_Y_e .ne. 0) then
+-              Y_e_plus(i,j,k) = 0.0d0
+-              Y_e_minus(i,j,k) = 0.0d0
++              Y_e_plus(i,j,k) = Y_e(i,j,k)
++              Y_e_minus(i,j,k) = Y_e(i,j,k)
+            endif
+ 
++           if(evolve_temper .ne. 0) then
++              tempplus(i,j,k) = temperature(i,j,k)
++              tempminus(i,j,k) = temperature(i,j,k)
++           endif
++
++
+         enddo
+      enddo
+   enddo
+diff --git a/src/GRHydro_PPMReconstruct_drv.F90 b/src/GRHydro_PPMReconstruct_drv.F90
+index fd29560..2f30fae 100644
+--- a/src/GRHydro_PPMReconstruct_drv.F90
++++ b/src/GRHydro_PPMReconstruct_drv.F90
+@@ -142,8 +142,11 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+            endif
+ 
+            if (evolve_Y_e .ne. 0) then
+-              Y_e_plus(i,j,k) = 0.0d0
+-              Y_e_minus(i,j,k) = 0.0d0
++              ! set this to the cell center values
++              ! to make sure we have good Y_e even in
++              ! the boundary region (for full GF EOS calls)
++              Y_e_plus(i,j,k) = Y_e(i,j,k)
++              Y_e_minus(i,j,k) = Y_e(i,j,k)
+            endif
+ 
+            if (evolve_temper .ne. 0) then
+diff --git a/src/GRHydro_TVDReconstruct_drv.F90 b/src/GRHydro_TVDReconstruct_drv.F90
+index 47605ec..eb633b2 100644
+--- a/src/GRHydro_TVDReconstruct_drv.F90
++++ b/src/GRHydro_TVDReconstruct_drv.F90
+@@ -189,8 +189,11 @@ subroutine GRHydro_TVDReconstruct_drv(CCTK_ARGUMENTS)
+            endif
+ 
+            if (evolve_Y_e .ne. 0) then
+-              Y_e_plus(i,j,k) = 0.0d0
+-              Y_e_minus(i,j,k) = 0.0d0
++              ! set this to the cell center values
++              ! to make sure we have good Y_e even in
++              ! the boundary region (for full GF EOS calls)
++              Y_e_plus(i,j,k) = Y_e(i,j,k)
++              Y_e_minus(i,j,k) = Y_e(i,j,k)
+            endif
+            
+            if(evolve_temper .ne. 0) then
+diff --git a/src/GRHydro_WENOReconstruct_drv.F90 b/src/GRHydro_WENOReconstruct_drv.F90
+index bf3ff13..ae3bd01 100644
+--- a/src/GRHydro_WENOReconstruct_drv.F90
++++ b/src/GRHydro_WENOReconstruct_drv.F90
+@@ -234,8 +234,11 @@ subroutine GRHydro_WENOReconstruct_drv(CCTK_ARGUMENTS)
+            endif
+ 
+            if (evolve_Y_e .ne. 0) then
+-              Y_e_plus(i,j,k) = 0.0d0
+-              Y_e_minus(i,j,k) = 0.0d0
++              ! set this to the cell center values
++              ! to make sure we have good Y_e even in 
++              ! the boundary region (for full GF EOS calls)
++              Y_e_plus(i,j,k) = Y_e(i,j,k)
++              Y_e_minus(i,j,k) = Y_e(i,j,k)
+            endif
+ 
+            if (evolve_temper .ne. 0) then
+-- 
+1.7.10.4
+

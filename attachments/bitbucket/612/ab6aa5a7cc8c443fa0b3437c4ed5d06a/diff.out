@@ -1,0 +1,42 @@
+--- /Volumes/Apps_and_Docs/bgiacoma/Cactus/arrangements/Carpet/CarpetIOASCII/src/util/Carpet2ygraph.pl	2011-08-05 17:19:10.000000000 -0400
++++ /Volumes/Apps_and_Docs/bgiacoma/Cactus/arrangements/Carpet_Mercurial/CarpetIOASCII/src/util/Carpet2ygraph.pl	2010-08-27 14:51:46.000000000 -0400
+@@ -34,7 +34,6 @@
+ 
+ my $direction = $ARGV[0]+9; 
+ my $flag = 0;
+-my $newflag = 0;
+ my $refinementlevel = 0;
+ my %componentflag = ();
+ $componentflag{$refinementlevel} = 0;
+@@ -67,7 +66,7 @@
+ 	    @outputdata=("\n");
+ 	    $flag = 0;
+ 	}
+-	if ($line =~ /refinement level ([0-9]{1,2})/) # Line gives ref. level
++	if ($line =~ /refinement level ([0-9])/) # Line gives ref. level
+ 	{
+ 	    $refinementlevel = $1;
+ 	    $line =~ /component ([0-9+])/;
+@@ -87,7 +86,6 @@
+ 	if (0 == $componentflag{$refinementlevel})
+ 	{
+ 	    push(@outputdata, ("\"",$line)); # Add ygraph comment marker
+-	    $newflag = 0;
+ 	}
+ 	else
+ 	{
+@@ -98,11 +96,11 @@
+     else # The line contains real data
+     {
+ 	@data = split(/[ \t]+/,$line);
+-	if (($newflag==0)) # This is the first line of data
++	if ($flag== 0) # This is the first line of data
+ 	{
+-	    $newflag = 1;
++	    $flag = 1;
+ 	    my $timeset = $data[8]; # Magic number gives the Cactus time
+-	    @outputdata = ("\n\n\#Time = $timeset \n",@outputdata);
++	    @outputdata = ("\n\"Time = $timeset",@outputdata);
+ 	}
+         chomp ($data[12]);
+         push(@outputdata, "$data[$direction] $data[12]\n");

@@ -1,0 +1,387 @@
+From f83de5b817f8623f4ae5d38bbd7e79ab55677b77 Mon Sep 17 00:00:00 2001
+From: Philipp Moesta <pmoesta@tapir.caltech.edu>
+Date: Tue, 16 Jul 2013 11:39:36 -0700
+Subject: [PATCH 18/19] Get rid of old heat injection in C2P MHD
+
+---
+ src/GRHydro_Con2PrimM_pt_EOSOmni.c |  350 ++++++++++++++++++------------------
+ 1 file changed, 175 insertions(+), 175 deletions(-)
+
+diff --git a/src/GRHydro_Con2PrimM_pt_EOSOmni.c b/src/GRHydro_Con2PrimM_pt_EOSOmni.c
+index 3700b5b..7c30ba2 100644
+--- a/src/GRHydro_Con2PrimM_pt_EOSOmni.c
++++ b/src/GRHydro_Con2PrimM_pt_EOSOmni.c
+@@ -411,65 +411,65 @@ void CCTK_FCALL CCTK_FNAME(GRHydro_Con2PrimM_pt)  (
+ //  fprintf(stdout,"rho0=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,*epsilon,eosvars.eos_temp[0],eosvars.eos_y_e[0]);
+ //  fprintf(stdout,"keyerr=%d, anyerr=%d \n", eosvars.eoskeyerr[0], eosvars.eosanyerr[0]);
+ //  #pragma omp critical 
+-  if (eosvars.eosanyerr[0] != 0) {
+-     fprintf(stdout,"inside 1: anyerr=%d\n",eosvars.eosanyerr[0]);
+-     if (eosvars.eosrl >= GRHydro_c2p_warn_from_reflevel) {
+-        fprintf(stdout,"inside 2: anyerr=%d\n",eosvars.eosanyerr[0]);
+-        if(eosvars.eoskeyerr[0] == 667 && GRHydro_eos_hot_eps_fix != 0) {
+-           fprintf(stdout,"inside 3: anyerr=%d, keyerr=%d\n",eosvars.eosanyerr[0],eosvars.eoskeyerr[0]);
+-           // Handling of the case when no new temperature can be
+-           // found for a given epsilon. The amount of times
+-           // we get to this place should be monitored, as this
+-           // 'failsafe' mode creates artificial heat.
+-
+-           nf = 0;
+-           while(eosvars.eosanyerr[0] != 0 && nf<= nfudgemax) {
+-              eosvars.eosanyerr[0] = 0;
+-              tau = tau + rho0*abs((*epsilon))*0.05*w*w;
+-              *epsilon = (*epsilon) + abs((*epsilon))*0.05;
+-              u = (*epsilon) * rho0;
+-              EOS_Omni_press(eosvars.eoshandle,eosvars.eoskeytemp,eosvars.eosprec,1,
+-                 &rho0,epsilon,eosvars.eos_temp,
+-                 eosvars.eos_y_e,&p,eosvars.eoskeyerr,eosvars.eosanyerr);
+-              nf = nf + 1;
+-           } 
+-           fprintf(stdout, "Iterations of heat injection: %d \n",nf);
+-           fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars.eosit,eosvars.eosrl,eosvars.eosi,eosvars.eosj,eosvars.eosk,eosvars.eosx,eosvars.eosy,eosvars.eosz);
+-           if(nf >= nfudgemax) { 
+-              if(GRHydro_c2p_reset_eps_tau_hot_eos != 1) {
+-                 CCTK_WARN(failinfomode,"EOS error in c2p 0: injected heat too many times");
+-                 fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars.eosit,eosvars.eosrl,eosvars.eosi,eosvars.eosj,eosvars.eosk,eosvars.eosx,eosvars.eosy,eosvars.eosz);
+-                 //CCTK_WARN(failinfomode,warnline);
+-                 fprintf(stdout,"rho=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,*epsilon,eosvars.eos_temp[0],eosvars.eos_y_e[0]);
+-                 //call CCTK_WARN(failinfomode,warnline)
+-                 fprintf(stdout,"code=%d\n",eosvars.eoskeyerr[0]);
+-                 //call CCTK_WARN(failinfomode,warnline)
+-                 CCTK_WARN(failwarnmode,"Aborting!!!");
+-              } 
+-              else {
+-                 CCTK_WARN(failinfomode,"EOS error in c2p 0: LAST RESORT -- reset eps and tau based on old temp");
+-                 fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars.eosit,eosvars.eosrl,eosvars.eosi,eosvars.eosj,eosvars.eosk,eosvars.eosx,eosvars.eosy,eosvars.eosz);
+-                 fprintf(stdout,"rho=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,*epsilon,eosvars.eos_temp[0],eosvars.eos_y_e[0]);
+-                 eosvars.eoskeytemp =1; 
+-                 EOS_Omni_press(eosvars.eoshandle,eosvars.eoskeytemp,eosvars.eosprec,1,
+-                 &rho0,epsilon,eosvars.eos_temp,eosvars.eos_y_e,&p,eosvars.eoskeyerr,eosvars.eosanyerr);
+-                 tau = (rho0 + rho0*(*epsilon) + lg.bsq + p)*w*w - (p + lg.bsq/2.0) - w*w*lg.VdotBsq - rho0*w;
+-                 u = (*epsilon) * rho0;
+-                 //tau = ( (rho + rho*epsilon) + xpress ) * w_lorentz**2 - xpress - rho*w_lorentz;
+-                 fprintf(stdout,"rho=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,*epsilon,eosvars.eos_temp[0],eosvars.eos_y_e[0]);
+-                 eosvars.eoskeytemp =0; 
+-              }
+-           }
+-        }
+-        else {
+-          CCTK_WARN(failinfomode,"EOS error in c2p 0");
+-          fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars.eosit,eosvars.eosrl,eosvars.eosi,eosvars.eosj,eosvars.eosk,eosvars.eosx,eosvars.eosy,eosvars.eosz);
+-          fprintf(stdout,"rho=%f, dens=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,dens,*epsilon,eosvars.eos_temp[0],eosvars.eos_y_e[0]);
+-          fprintf(stdout,"code=%d\n",eosvars.eoskeyerr[0]);
+-          CCTK_WARN(failwarnmode,"Aborting!!!");
+-       }
+-    } 
+-  }
++//  if (eosvars.eosanyerr[0] != 0) {
++//     fprintf(stdout,"inside 1: anyerr=%d\n",eosvars.eosanyerr[0]);
++//     if (eosvars.eosrl >= GRHydro_c2p_warn_from_reflevel) {
++//        fprintf(stdout,"inside 2: anyerr=%d\n",eosvars.eosanyerr[0]);
++//        if(eosvars.eoskeyerr[0] == 667 && GRHydro_eos_hot_eps_fix != 0) {
++//           fprintf(stdout,"inside 3: anyerr=%d, keyerr=%d\n",eosvars.eosanyerr[0],eosvars.eoskeyerr[0]);
++//           // Handling of the case when no new temperature can be
++//           // found for a given epsilon. The amount of times
++//           // we get to this place should be monitored, as this
++//           // 'failsafe' mode creates artificial heat.
++//
++//           nf = 0;
++//           while(eosvars.eosanyerr[0] != 0 && nf<= nfudgemax) {
++//              eosvars.eosanyerr[0] = 0;
++//              tau = tau + rho0*abs((*epsilon))*0.05*w*w;
++//              *epsilon = (*epsilon) + abs((*epsilon))*0.05;
++//              u = (*epsilon) * rho0;
++//              EOS_Omni_press(eosvars.eoshandle,eosvars.eoskeytemp,eosvars.eosprec,1,
++//                 &rho0,epsilon,eosvars.eos_temp,
++//                 eosvars.eos_y_e,&p,eosvars.eoskeyerr,eosvars.eosanyerr);
++//              nf = nf + 1;
++//           } 
++//           fprintf(stdout, "Iterations of heat injection: %d \n",nf);
++//           fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars.eosit,eosvars.eosrl,eosvars.eosi,eosvars.eosj,eosvars.eosk,eosvars.eosx,eosvars.eosy,eosvars.eosz);
++//           if(nf >= nfudgemax) { 
++//              if(GRHydro_c2p_reset_eps_tau_hot_eos != 1) {
++//                 CCTK_WARN(failinfomode,"EOS error in c2p 0: injected heat too many times");
++//                 fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars.eosit,eosvars.eosrl,eosvars.eosi,eosvars.eosj,eosvars.eosk,eosvars.eosx,eosvars.eosy,eosvars.eosz);
++//                 //CCTK_WARN(failinfomode,warnline);
++//                 fprintf(stdout,"rho=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,*epsilon,eosvars.eos_temp[0],eosvars.eos_y_e[0]);
++//                 //call CCTK_WARN(failinfomode,warnline)
++//                 fprintf(stdout,"code=%d\n",eosvars.eoskeyerr[0]);
++//                 //call CCTK_WARN(failinfomode,warnline)
++//                 CCTK_WARN(failwarnmode,"Aborting!!!");
++//              } 
++//              else {
++//                 CCTK_WARN(failinfomode,"EOS error in c2p 0: LAST RESORT -- reset eps and tau based on old temp");
++//                 fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars.eosit,eosvars.eosrl,eosvars.eosi,eosvars.eosj,eosvars.eosk,eosvars.eosx,eosvars.eosy,eosvars.eosz);
++//                 fprintf(stdout,"rho=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,*epsilon,eosvars.eos_temp[0],eosvars.eos_y_e[0]);
++//                 eosvars.eoskeytemp =1; 
++//                 EOS_Omni_press(eosvars.eoshandle,eosvars.eoskeytemp,eosvars.eosprec,1,
++//                 &rho0,epsilon,eosvars.eos_temp,eosvars.eos_y_e,&p,eosvars.eoskeyerr,eosvars.eosanyerr);
++//                 tau = (rho0 + rho0*(*epsilon) + lg.bsq + p)*w*w - (p + lg.bsq/2.0) - w*w*lg.VdotBsq - rho0*w;
++//                 u = (*epsilon) * rho0;
++//                 //tau = ( (rho + rho*epsilon) + xpress ) * w_lorentz**2 - xpress - rho*w_lorentz;
++//                 fprintf(stdout,"rho=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,*epsilon,eosvars.eos_temp[0],eosvars.eos_y_e[0]);
++//                 eosvars.eoskeytemp =0; 
++//              }
++//           }
++//        }
++//        else {
++//          CCTK_WARN(failinfomode,"EOS error in c2p 0");
++//          fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars.eosit,eosvars.eosrl,eosvars.eosi,eosvars.eosj,eosvars.eosk,eosvars.eosx,eosvars.eosy,eosvars.eosz);
++//          fprintf(stdout,"rho=%f, dens=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,dens,*epsilon,eosvars.eos_temp[0],eosvars.eos_y_e[0]);
++//          fprintf(stdout,"code=%d\n",eosvars.eoskeyerr[0]);
++//          CCTK_WARN(failwarnmode,"Aborting!!!");
++//       }
++//    } 
++//  }
+ 
+   lg.tau = tau;
+ 
+@@ -585,63 +585,63 @@ void CCTK_FCALL CCTK_FNAME(GRHydro_Con2PrimM_pt)  (
+     p = pressure_rho0_eps_eosomni(rho0,*epsilon,&dum1,&dum2,&eosvars) ;  // EOSOMNI
+ 
+ //    #pragma omp critical 
+-    if (eosvars.eosanyerr[0] != 0) {
+-     fprintf(stdout,"inside 4: anyerr=%d\n",eosvars.eosanyerr[0]);
+-       if (eosvars.eosrl >= GRHydro_c2p_warn_from_reflevel) {
+-          if(eosvars.eoskeyerr[0] == 667 && GRHydro_eos_hot_eps_fix != 0) {
+-             // Handling of the case when no new temperature can be
+-             // found for a given epsilon. The amount of times
+-             // we get to this place should be monitored, as this
+-             // 'failsafe' mode creates artificial heat.
+-             nf = 0;
+-             while(eosvars.eosanyerr[0] != 0 && nf<= nfudgemax) {
+-                eosvars.eosanyerr[0] = 0;
+-                tau = tau + rho0*abs((*epsilon))*0.05*w*w;
+-                *epsilon = (*epsilon) + abs((*epsilon))*0.05;
+-                u = (*epsilon) * rho0;
+-                EOS_Omni_press(eosvars.eoshandle,eosvars.eoskeytemp,eosvars.eosprec,1,
+-                   &rho0,epsilon,eosvars.eos_temp,
+-                   eosvars.eos_y_e,&p,eosvars.eoskeyerr,eosvars.eosanyerr);
+-                nf = nf + 1;
+-             } 
+-             fprintf(stdout, "Iterations of heat injection: %d \n",nf);
+-             fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars.eosit,eosvars.eosrl,eosvars.eosi,eosvars.eosj,eosvars.eosk,eosvars.eosx,eosvars.eosy,eosvars.eosz);
+-             if(nf >= nfudgemax) { 
+-                if(GRHydro_c2p_reset_eps_tau_hot_eos != 1) {
+-                   CCTK_WARN(failinfomode,"EOS error in c2p 0: injected heat too many times");
+-                   fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars.eosit,eosvars.eosrl,eosvars.eosi,eosvars.eosj,eosvars.eosk,eosvars.eosx,eosvars.eosy,eosvars.eosz);
+-                   //CCTK_WARN(failinfomode,warnline);
+-                   fprintf(stdout,"rho=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,*epsilon,eosvars.eos_temp[0],eosvars.eos_y_e[0]);
+-                   //call CCTK_WARN(failinfomode,warnline)
+-                   fprintf(stdout,"code=%d\n",eosvars.eoskeyerr[0]);
+-                   //call CCTK_WARN(failinfomode,warnline)
+-                   CCTK_WARN(failwarnmode,"Aborting!!!");
+-                } 
+-                else {
+-                   CCTK_WARN(failinfomode,"EOS error in c2p 0: LAST RESORT -- reset eps and tau based on old temp");
+-                   fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars.eosit,eosvars.eosrl,eosvars.eosi,eosvars.eosj,eosvars.eosk,eosvars.eosx,eosvars.eosy,eosvars.eosz);
+-                   fprintf(stdout,"rho=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,*epsilon,eosvars.eos_temp[0],eosvars.eos_y_e[0]);
+-                   eosvars.eoskeytemp =1; 
+-                   EOS_Omni_press(eosvars.eoshandle,eosvars.eoskeytemp,eosvars.eosprec,1,
+-                   &rho0,epsilon,eosvars.eos_temp,eosvars.eos_y_e,&p,eosvars.eoskeyerr,eosvars.eosanyerr);
+-                 //  tau = (rho0 + rho0*(*epsilon) + lg.bsq + p)*w*w - (p + lg.bsq/2.0) - rho0*w;
+-                   tau = (rho0 + rho0*(*epsilon) + lg.bsq + p)*w*w - (p + lg.bsq/2.0) - w*w*lg.VdotBsq - rho0*w;
+-                   u = (*epsilon) * rho0;
+-                   //tau = ( (rho + rho*epsilon) + xpress ) * w_lorentz**2 - xpress - rho*w_lorentz;
+-                   //fprintf(stdout,"rho=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,*epsilon,eosvars.eos_temp[0],eosvars.eos_y_e[0]);
+-                   eosvars.eoskeytemp =0; 
+-                }
+-             }
+-          }
+-          else {
+-            CCTK_WARN(failinfomode,"EOS error in c2p 0");
+-            fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars.eosit,eosvars.eosrl,eosvars.eosi,eosvars.eosj,eosvars.eosk,eosvars.eosx,eosvars.eosy,eosvars.eosz);
+-            fprintf(stdout,"rho=%f, dens=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,dens,*epsilon,eosvars.eos_temp[0],eosvars.eos_y_e[0]);
+-            fprintf(stdout,"code=%d\n",eosvars.eoskeyerr[0]);
+-            CCTK_WARN(0,"Aborting!!!");
+-         }
+-       } 
+-     }
++//    if (eosvars.eosanyerr[0] != 0) {
++//     fprintf(stdout,"inside 4: anyerr=%d\n",eosvars.eosanyerr[0]);
++//       if (eosvars.eosrl >= GRHydro_c2p_warn_from_reflevel) {
++//          if(eosvars.eoskeyerr[0] == 667 && GRHydro_eos_hot_eps_fix != 0) {
++//             // Handling of the case when no new temperature can be
++//             // found for a given epsilon. The amount of times
++//             // we get to this place should be monitored, as this
++//             // 'failsafe' mode creates artificial heat.
++//             nf = 0;
++//             while(eosvars.eosanyerr[0] != 0 && nf<= nfudgemax) {
++//                eosvars.eosanyerr[0] = 0;
++//                tau = tau + rho0*abs((*epsilon))*0.05*w*w;
++//                *epsilon = (*epsilon) + abs((*epsilon))*0.05;
++//                u = (*epsilon) * rho0;
++//                EOS_Omni_press(eosvars.eoshandle,eosvars.eoskeytemp,eosvars.eosprec,1,
++//                   &rho0,epsilon,eosvars.eos_temp,
++//                   eosvars.eos_y_e,&p,eosvars.eoskeyerr,eosvars.eosanyerr);
++//                nf = nf + 1;
++//             } 
++//             fprintf(stdout, "Iterations of heat injection: %d \n",nf);
++//             fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars.eosit,eosvars.eosrl,eosvars.eosi,eosvars.eosj,eosvars.eosk,eosvars.eosx,eosvars.eosy,eosvars.eosz);
++//             if(nf >= nfudgemax) { 
++//                if(GRHydro_c2p_reset_eps_tau_hot_eos != 1) {
++//                   CCTK_WARN(failinfomode,"EOS error in c2p 0: injected heat too many times");
++//                   fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars.eosit,eosvars.eosrl,eosvars.eosi,eosvars.eosj,eosvars.eosk,eosvars.eosx,eosvars.eosy,eosvars.eosz);
++//                   //CCTK_WARN(failinfomode,warnline);
++//                   fprintf(stdout,"rho=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,*epsilon,eosvars.eos_temp[0],eosvars.eos_y_e[0]);
++//                   //call CCTK_WARN(failinfomode,warnline)
++//                   fprintf(stdout,"code=%d\n",eosvars.eoskeyerr[0]);
++//                   //call CCTK_WARN(failinfomode,warnline)
++//                   CCTK_WARN(failwarnmode,"Aborting!!!");
++//                } 
++//                else {
++//                   CCTK_WARN(failinfomode,"EOS error in c2p 0: LAST RESORT -- reset eps and tau based on old temp");
++//                   fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars.eosit,eosvars.eosrl,eosvars.eosi,eosvars.eosj,eosvars.eosk,eosvars.eosx,eosvars.eosy,eosvars.eosz);
++//                   fprintf(stdout,"rho=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,*epsilon,eosvars.eos_temp[0],eosvars.eos_y_e[0]);
++//                   eosvars.eoskeytemp =1; 
++//                   EOS_Omni_press(eosvars.eoshandle,eosvars.eoskeytemp,eosvars.eosprec,1,
++//                   &rho0,epsilon,eosvars.eos_temp,eosvars.eos_y_e,&p,eosvars.eoskeyerr,eosvars.eosanyerr);
++//                 //  tau = (rho0 + rho0*(*epsilon) + lg.bsq + p)*w*w - (p + lg.bsq/2.0) - rho0*w;
++//                   tau = (rho0 + rho0*(*epsilon) + lg.bsq + p)*w*w - (p + lg.bsq/2.0) - w*w*lg.VdotBsq - rho0*w;
++//                   u = (*epsilon) * rho0;
++//                   //tau = ( (rho + rho*epsilon) + xpress ) * w_lorentz**2 - xpress - rho*w_lorentz;
++//                   //fprintf(stdout,"rho=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,*epsilon,eosvars.eos_temp[0],eosvars.eos_y_e[0]);
++//                   eosvars.eoskeytemp =0; 
++//                }
++//             }
++//          }
++//          else {
++//            CCTK_WARN(failinfomode,"EOS error in c2p 0");
++//            fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars.eosit,eosvars.eosrl,eosvars.eosi,eosvars.eosj,eosvars.eosk,eosvars.eosx,eosvars.eosy,eosvars.eosz);
++//            fprintf(stdout,"rho=%f, dens=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,dens,*epsilon,eosvars.eos_temp[0],eosvars.eos_y_e[0]);
++//            fprintf(stdout,"code=%d\n",eosvars.eoskeyerr[0]);
++//            CCTK_WARN(0,"Aborting!!!");
++//         }
++//       } 
++//     }
+ 
+     // printf("%g %g %g %g\n",rho0,u,*epsilon,p);
+    }
+@@ -1173,65 +1173,65 @@ static void func_vsq_eosomni(CCTK_REAL x[], CCTK_REAL dx[], CCTK_REAL resid[],
+   
+ //  fprintf(stdout,"vsq: keyerr=%d, eosrl = %d, anyerr = %d \n",eosvars->eoskeyerr[0],eosvars->eosrl, eosvars->eosanyerr[0]);
+ //  fprintf(stdout,"vsq: rho0=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,epsilon,eosvars->eos_temp[0],eosvars->eos_y_e[0]);
+-  #pragma omp critical 
+-  if (eosvars->eosanyerr[0] != 0) {
+-     fprintf(stdout,"inside vsq_omni: anyerr=%d rl=%d\n",eosvars->eosanyerr[0], eosvars->eosrl);
+-     if (eosvars->eosrl >= GRHydro_c2p_warn_from_reflevel) {
+-        if(eosvars->eoskeyerr[0] == 667 && GRHydro_eos_hot_eps_fix != 0) {
+-           // Handling of the case when no new temperature can be
+-           // found for a given epsilon. The amount of times
+-           // we get to this place should be monitored, as this
+-           // 'failsafe' mode creates artificial heat.
+-           nf = 0;
+-           while(eosvars->eosanyerr[0] != 0 && nf<= nfudgemax) {
+-              eosvars->eosanyerr[0] = 0;
+-              lgp->tau = lgp->tau + rho0*abs(epsilon)*0.05*Lor*Lor;
+-              epsilon = epsilon + abs(epsilon)*0.05;
+-              u = epsilon*rho0;
+-              CCTK_WARN(failwarnmode,"Injecting heat inside vsq_omni without resetting tau");
+-              fprintf(stdout,"Injecting heat inside vsq_omni without resetting tau: anyerr=%d\n",eosvars->eosanyerr[0]);
+-              EOS_Omni_press(eosvars->eoshandle,eosvars->eoskeytemp,eosvars->eosprec,1,
+-                 &rho0,&epsilon,eosvars->eos_temp,
+-                 eosvars->eos_y_e,&p_tmp,eosvars->eoskeyerr,eosvars->eosanyerr);
+-              nf = nf + 1;
+-           } 
+-           fprintf(stdout, "Iterations of heat injection: %d \n",nf);
+-           fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars->eosit,eosvars->eosrl,eosvars->eosi,eosvars->eosj,eosvars->eosk,eosvars->eosx,eosvars->eosy,eosvars->eosz);
+-           if(nf >= nfudgemax) { 
+-              if(GRHydro_c2p_reset_eps_tau_hot_eos != 1) {
+-                 CCTK_WARN(failinfomode,"EOS error in c2p 0: injected heat too many times");
+-                 fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars->eosit,eosvars->eosrl,eosvars->eosi,eosvars->eosj,eosvars->eosk,eosvars->eosx,eosvars->eosy,eosvars->eosz);
+-                 //CCTK_WARN(failinfomode,warnline);
+-                 fprintf(stdout,"rho=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,epsilon,eosvars->eos_temp[0],eosvars->eos_y_e[0]);
+-                 //call CCTK_WARN(failinfomode,warnline)
+-                 fprintf(stdout,"code=%d\n",eosvars->eoskeyerr[0]);
+-                 //call CCTK_WARN(failinfomode,warnline)
+-                 CCTK_WARN(failwarnmode,"Aborting!!!");
+-              } 
+-              else {
+-                 CCTK_WARN(failinfomode,"EOS error in c2p 0: LAST RESORT -- reset eps and tau based on old temp");
+-                 fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars->eosit,eosvars->eosrl,eosvars->eosi,eosvars->eosj,eosvars->eosk,eosvars->eosx,eosvars->eosy,eosvars->eosz);
+-                 fprintf(stdout,"rho=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,epsilon,eosvars->eos_temp[0],eosvars->eos_y_e[0]);
+-                 eosvars->eoskeytemp =1; 
+-                 EOS_Omni_press(eosvars->eoshandle,eosvars->eoskeytemp,eosvars->eosprec,1,
+-                 &rho0,&epsilon,eosvars->eos_temp,eosvars->eos_y_e,&p_tmp,eosvars->eoskeyerr,eosvars->eosanyerr);
+-                 //tau = (rho0 + rho0*(*epsilon) + lg.bsq + p)*w*w - (p + lg.bsq/2.0) - w*w*lg.VdotBsq - rho0*w;
+-                 lgp->tau = (rho0 + rho0*epsilon + lgp->bsq + p_tmp)*Lor*Lor - (p_tmp + lgp->bsq/2.0) - Lor*Lor*lgp->VdotBsq - rho0*Lor;
+-                 u = epsilon*rho0;
+-                 eosvars->eoskeytemp = 0;
+-                 fprintf(stdout,"rho=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,epsilon,eosvars->eos_temp[0],eosvars->eos_y_e[0]);
+-              }
+-           }
+-        }
+-        else {
+-          CCTK_WARN(failinfomode,"EOS error in c2p 0");
+-          fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars->eosit,eosvars->eosrl,eosvars->eosi,eosvars->eosj,eosvars->eosk,eosvars->eosx,eosvars->eosy,eosvars->eosz);
+-          fprintf(stdout,"rho=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,epsilon,eosvars->eos_temp[0],eosvars->eos_y_e[0]);
+-          fprintf(stdout,"code=%d\n",eosvars->eoskeyerr[0]);
+-          CCTK_WARN(failwarnmode,"Aborting!!!");
+-       }
+-    } 
+-  }
++//  #pragma omp critical 
++//  if (eosvars->eosanyerr[0] != 0) {
++//     fprintf(stdout,"inside vsq_omni: anyerr=%d rl=%d\n",eosvars->eosanyerr[0], eosvars->eosrl);
++//     if (eosvars->eosrl >= GRHydro_c2p_warn_from_reflevel) {
++//        if(eosvars->eoskeyerr[0] == 667 && GRHydro_eos_hot_eps_fix != 0) {
++//           // Handling of the case when no new temperature can be
++//           // found for a given epsilon. The amount of times
++//           // we get to this place should be monitored, as this
++//           // 'failsafe' mode creates artificial heat.
++//           nf = 0;
++//           while(eosvars->eosanyerr[0] != 0 && nf<= nfudgemax) {
++//              eosvars->eosanyerr[0] = 0;
++//              lgp->tau = lgp->tau + rho0*abs(epsilon)*0.05*Lor*Lor;
++//              epsilon = epsilon + abs(epsilon)*0.05;
++//              u = epsilon*rho0;
++//              CCTK_WARN(failwarnmode,"Injecting heat inside vsq_omni without resetting tau");
++//              fprintf(stdout,"Injecting heat inside vsq_omni without resetting tau: anyerr=%d\n",eosvars->eosanyerr[0]);
++//              EOS_Omni_press(eosvars->eoshandle,eosvars->eoskeytemp,eosvars->eosprec,1,
++//                 &rho0,&epsilon,eosvars->eos_temp,
++//                 eosvars->eos_y_e,&p_tmp,eosvars->eoskeyerr,eosvars->eosanyerr);
++//              nf = nf + 1;
++//           } 
++//           fprintf(stdout, "Iterations of heat injection: %d \n",nf);
++//           fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars->eosit,eosvars->eosrl,eosvars->eosi,eosvars->eosj,eosvars->eosk,eosvars->eosx,eosvars->eosy,eosvars->eosz);
++//           if(nf >= nfudgemax) { 
++//              if(GRHydro_c2p_reset_eps_tau_hot_eos != 1) {
++//                 CCTK_WARN(failinfomode,"EOS error in c2p 0: injected heat too many times");
++//                 fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars->eosit,eosvars->eosrl,eosvars->eosi,eosvars->eosj,eosvars->eosk,eosvars->eosx,eosvars->eosy,eosvars->eosz);
++//                 //CCTK_WARN(failinfomode,warnline);
++//                 fprintf(stdout,"rho=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,epsilon,eosvars->eos_temp[0],eosvars->eos_y_e[0]);
++//                 //call CCTK_WARN(failinfomode,warnline)
++//                 fprintf(stdout,"code=%d\n",eosvars->eoskeyerr[0]);
++//                 //call CCTK_WARN(failinfomode,warnline)
++//                 CCTK_WARN(failwarnmode,"Aborting!!!");
++//              } 
++//              else {
++//                 CCTK_WARN(failinfomode,"EOS error in c2p 0: LAST RESORT -- reset eps and tau based on old temp");
++//                 fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars->eosit,eosvars->eosrl,eosvars->eosi,eosvars->eosj,eosvars->eosk,eosvars->eosx,eosvars->eosy,eosvars->eosz);
++//                 fprintf(stdout,"rho=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,epsilon,eosvars->eos_temp[0],eosvars->eos_y_e[0]);
++//                 eosvars->eoskeytemp =1; 
++//                 EOS_Omni_press(eosvars->eoshandle,eosvars->eoskeytemp,eosvars->eosprec,1,
++//                 &rho0,&epsilon,eosvars->eos_temp,eosvars->eos_y_e,&p_tmp,eosvars->eoskeyerr,eosvars->eosanyerr);
++//                 //tau = (rho0 + rho0*(*epsilon) + lg.bsq + p)*w*w - (p + lg.bsq/2.0) - w*w*lg.VdotBsq - rho0*w;
++//                 lgp->tau = (rho0 + rho0*epsilon + lgp->bsq + p_tmp)*Lor*Lor - (p_tmp + lgp->bsq/2.0) - Lor*Lor*lgp->VdotBsq - rho0*Lor;
++//                 u = epsilon*rho0;
++//                 eosvars->eoskeytemp = 0;
++//                 fprintf(stdout,"rho=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,epsilon,eosvars->eos_temp[0],eosvars->eos_y_e[0]);
++//              }
++//           }
++//        }
++//        else {
++//          CCTK_WARN(failinfomode,"EOS error in c2p 0");
++//          fprintf(stdout, "it=%d, rl=%d, i=%d, j=%d, k=%d, x=%f,y=%f,z=%f\n",eosvars->eosit,eosvars->eosrl,eosvars->eosi,eosvars->eosj,eosvars->eosk,eosvars->eosx,eosvars->eosy,eosvars->eosz);
++//          fprintf(stdout,"rho=%f, epsilon=%f, temp=%f, ye=%f\n", rho0,epsilon,eosvars->eos_temp[0],eosvars->eos_y_e[0]);
++//          fprintf(stdout,"code=%d\n",eosvars->eoskeyerr[0]);
++//          CCTK_WARN(failwarnmode,"Aborting!!!");
++//       }
++//    } 
++//  }
+ 
+   lgp->Qdotn = -(lgp->tau + lgp->D);
+   B2plusW = lgp->Bsq+W;
+-- 
+1.7.10.4
+

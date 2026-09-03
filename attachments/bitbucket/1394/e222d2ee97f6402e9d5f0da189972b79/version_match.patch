@@ -1,0 +1,15 @@
+Index: lib/simlib.py
+===================================================================
+--- lib/simlib.py	(revision 2120)
++++ lib/simlib.py	(working copy)
+@@ -1014,5 +1014,9 @@
+     (rsynccmd, rsyncopts) = rsyncInfo
+     versionText = ExecuteCommand('%s --version' % rsynccmd, True)
+     # use search rather than match to skip possible text output by envsetup
+-    (major, minor, revision) = re.search('rsync  version (\d).(\d).(\d)', versionText).groups()
++    match = re.search('rsync +version +(\d+).(\d+).(\d+)', versionText)
++    if not match:
++      fatal("Could not identify rsync version. rsync --version returned '%s'" % versionText.rstrip())
++    else:
++      (major, minor, revision) = match.groups()
+     return (int(major), int(minor), int(revision))

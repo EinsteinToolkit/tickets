@@ -1,0 +1,493 @@
+Index: MoL/src/Registration.c
+===================================================================
+--- MoL-orig/src/Registration.c	(revision 204)
++++ MoL/src/Registration.c	(working copy)
+@@ -15,6 +15,8 @@
+ #include <stdlib.h>
+ #include <assert.h>
+ 
++#include <stdlib.h>
++
+ #include "cctk.h"
+ #include "cctk_Arguments.h"
+ #include "cctk_Parameters.h"
+@@ -198,7 +200,7 @@
+   if (GroupType < 0)
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "Evolved index %i is not a real variable index.",
++               "Evolved index %i is not a valid variable index.",
+                EvolvedIndex);
+     retval++;
+   }
+@@ -321,7 +323,7 @@
+   if (GroupType < 0)
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "Evolved index %i is not a real variable index.",
++               "Evolved index %i is not a valid variable index.",
+                EvolvedIndex);
+     retval++;
+   }
+@@ -424,7 +426,7 @@
+   if (GroupType < 0)
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "Constrained index %i is not a real variable index.",
++               "Constrained index %i is not a valid variable index.",
+                ConstrainedIndex);
+     retval++;
+     return retval;
+@@ -539,7 +541,7 @@
+   if (GroupType < 0)
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "SaveAndRestore index %i is not a real variable index.",
++               "SaveAndRestore index %i is not a valid variable index.",
+                SandRIndex);
+     retval++;
+     return retval;
+@@ -640,7 +642,7 @@
+   if (GroupFirstVar < 0)
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "Evolved group index %i is not a real group index.",
++               "Evolved group index %i is not a valid group index.",
+                EvolvedGroupIndex);
+     retval++;
+   }
+@@ -668,9 +670,11 @@
+             }
+           default:
+             {
++              char *groupname = CCTK_GroupName(EvolvedGroupIndex);
+               CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,
+                          "The group '%s' is not a GF or an array", 
+-                         CCTK_GroupName(EvolvedGroupIndex));
++                         groupname);
++              free(groupname);
+               retval++;
+               break;
+             }
+@@ -698,9 +702,11 @@
+             }
+           default:
+             {
++              char *groupname = CCTK_GroupName(EvolvedGroupIndex);
+               CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,
+                          "The group '%s' is not a GF or an array", 
+-                         CCTK_GroupName(EvolvedGroupIndex));
++                         groupname);
++              free(groupname);
+               retval++;
+               break;
+             }
+@@ -709,9 +715,11 @@
+       }
+     default:
+       {
++        char *groupname = CCTK_GroupName(EvolvedGroupIndex);
+         CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,
+                    "The group '%s' is neither REAL nor COMPLEX.", 
+-                   CCTK_GroupName(EvolvedGroupIndex));
++                   groupname);
++        free(groupname);
+         retval++;
+         break;
+       }
+@@ -745,7 +753,7 @@
+   if (GroupFirstVar < 0)
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "Evolved group index %i is not a real group index.",
++               "Evolved group index %i is not a valid group index.",
+                EvolvedGroupIndex);
+     retval++;
+   }
+@@ -766,17 +774,21 @@
+           case CCTK_ARRAY:
+           case CCTK_SCALAR:
+             {
++              char *groupname = CCTK_GroupName(EvolvedGroupIndex);
+               CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,
+                          "The group '%s' is not supported by multirate RK", 
+-                         CCTK_GroupName(EvolvedGroupIndex));
++                         groupname);
++              free(groupname);
+               retval++;
+               break;
+             }
+           default:
+             {
++              char *groupname = CCTK_GroupName(EvolvedGroupIndex);
+               CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,
+                          "The group '%s' is not supported by multirate RK", 
+-                         CCTK_GroupName(EvolvedGroupIndex));
++                         groupname);
++              free(groupname);
+               retval++;
+               break;
+             }
+@@ -785,17 +797,21 @@
+       }
+     case CCTK_VARIABLE_COMPLEX:
+       {
++        char *groupname = CCTK_GroupName(EvolvedGroupIndex);
+         CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,
+                          "The COMPLEX group '%s' is not supported by multirate RK", 
+-                         CCTK_GroupName(EvolvedGroupIndex));
+-              retval++;
++                         groupname);
++        free(groupname);
++        retval++;
+         break;
+       }
+     default:
+       {
++        char *groupname = CCTK_GroupName(EvolvedGroupIndex);
+         CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,
+                    "The group '%s' is neither REAL nor COMPLEX.", 
+-                   CCTK_GroupName(EvolvedGroupIndex));
++                   groupname);
++        free(groupname);
+         retval++;
+         break;
+       }
+@@ -829,7 +845,7 @@
+   if (GroupFirstVar < 0)
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "Constrained group index %i is not a real group index.",
++               "Constrained group index %i is not a valid group index.",
+                ConstrainedGroupIndex);
+     retval++;
+   }
+@@ -854,9 +870,11 @@
+             }
+           default:
+             {
++              char *groupname = CCTK_GroupName(ConstrainedGroupIndex);
+               CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,
+                          "The group '%s' is not a GF or an array", 
+-                         CCTK_GroupName(ConstrainedGroupIndex));
++                         groupname);
++              free(groupname);
+               retval++;
+               break;
+             }
+@@ -881,9 +899,11 @@
+             }
+           default:
+             {
++              char *groupname = CCTK_GroupName(ConstrainedGroupIndex);
+               CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,
+                          "The group '%s' is not a GF or an array", 
+-                         CCTK_GroupName(ConstrainedGroupIndex));
++                         groupname);
++              free(groupname);
+               retval++;
+               break;
+             }
+@@ -892,9 +912,11 @@
+       }
+     default:
+       {
++        char *groupname = CCTK_GroupName(ConstrainedGroupIndex);
+         CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,
+                    "The group '%s' is neither REAL nor COMPLEX.", 
+-                   CCTK_GroupName(ConstrainedGroupIndex));
++                   groupname);
++        free(groupname);
+         retval++;
+         break;
+       }
+@@ -926,7 +948,7 @@
+   if (GroupFirstVar < 0)
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "SaveAndRestore group index %i is not a real group index.",
++               "SaveAndRestore group index %i is not a valid group index.",
+                SandRGroupIndex);
+     retval++;
+   }
+@@ -951,9 +973,11 @@
+             }
+           default:
+             {
++              char *groupname = CCTK_GroupName(SandRGroupIndex);
+               CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,
+                          "The group '%s' is not a GF or an array", 
+-                         CCTK_GroupName(SandRGroupIndex));
++                         groupname);
++              free(groupname);
+               retval++;
+               break;
+             }
+@@ -978,9 +1002,11 @@
+             }
+           default:
+             {
++              char *groupname = CCTK_GroupName(SandRGroupIndex);
+               CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,
+                          "The group '%s' is not a GF or an array", 
+-                         CCTK_GroupName(SandRGroupIndex));
++                         groupname);
++              free(groupname);
+               retval++;
+               break;
+             }
+@@ -989,9 +1015,11 @@
+       }
+     default:
+       {
++        char *groupname = CCTK_GroupName(SandRGroupIndex);
+         CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,
+                    "The group '%s' is neither REAL nor COMPLEX.", 
+-                   CCTK_GroupName(SandRGroupIndex));
++                   groupname);
++        free(groupname);
+         retval++;
+         break;
+       }
+@@ -1647,25 +1675,29 @@
+   if (EvolvedGroupFirstVar < 0)
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "Evolved group index %i is not a real group index.",
+-              EvolvedGroupIndex);
++               "Evolved group index %i is not a valid group index.",
++               EvolvedGroupIndex);
+   }
+   
+   RHSGroupFirstVar = CCTK_FirstVarIndexI(RHSGroupIndex);
+   if (RHSGroupFirstVar < 0)
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "RHS group index %d is not a real group index.",
++               "RHS group index %d is not a valid group index.",
+               RHSGroupIndex);
+   }
+ 
+   GroupNumVars = CCTK_NumVarsInGroupI(EvolvedGroupIndex);
+   if (CCTK_NumVarsInGroupI(RHSGroupIndex) != GroupNumVars)
+   {
++    char *groupname = CCTK_GroupName(EvolvedGroupIndex);
++    char *rhsgroupname = CCTK_GroupName(RHSGroupIndex);
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+                "There are a different number of variables in "
+-               "evolved group %d and RHS group %d.", 
+-               EvolvedGroupIndex, RHSGroupIndex);
++               "evolved group %d ('%s') and RHS group %d ('%s').", 
++               EvolvedGroupIndex, groupname, RHSGroupIndex, rhsgroupname);
++    free(rhsgroupname);
++    free(groupname);
+   }
+   
+   retval = 0;
+@@ -1692,25 +1724,29 @@
+   if (EvolvedGroupFirstVar < 0)
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "Evolved group index %i is not a real group index.",
+-              EvolvedGroupIndex);
++               "Evolved group index %i is not a valid group index.",
++               EvolvedGroupIndex);
+   }
+   
+   RHSGroupFirstVar = CCTK_FirstVarIndexI(RHSGroupIndexSlow);
+   if (RHSGroupFirstVar < 0)
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "RHS group index %d is not a real group index.",
++               "RHS group index %d is not a valid group index.",
+               RHSGroupIndexSlow);
+   }
+ 
+   GroupNumVars = CCTK_NumVarsInGroupI(EvolvedGroupIndex);
+   if (CCTK_NumVarsInGroupI(RHSGroupIndexSlow) != GroupNumVars)
+   {
++    char *groupname = CCTK_GroupName(EvolvedGroupIndex);
++    char * rhsgroupname = CCTK_GroupName(RHSGroupIndexSlow);
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+                "There are a different number of variables in "
+-               "evolved group %d and RHS group %d.", 
+-               EvolvedGroupIndex, RHSGroupIndexSlow);
++               "evolved group %d ('%s') and RHS group %d ('%s').", 
++               EvolvedGroupIndex, groupname, RHSGroupIndexSlow, rhsgroupname);
++    free(rhsgroupname);
++    free(groupname);
+   }
+   
+   retval = 0;
+@@ -1736,7 +1772,7 @@
+   if (ConstrainedGroupFirstVar < 0)
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "Constrained group index %i is not a real group index.",
++               "Constrained group index %i is not a valid group index.",
+               ConstrainedGroupIndex);
+   }
+   
+@@ -1764,7 +1800,7 @@
+   if (SandRGroupFirstVar < 0)
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "Save and Restore group index %i is not a real group index.",
++               "Save and Restore group index %i is not a valid group index.",
+               SandRGroupIndex);
+   }
+   
+@@ -2198,7 +2234,7 @@
+   if (EvolvedGroupFirstVar < 0)
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "Evolved complex group index %i is not a real group index.",
++               "Evolved complex group index %i is not a valid group index.",
+               EvolvedGroupIndex);
+   }
+   
+@@ -2206,7 +2242,7 @@
+   if (RHSGroupFirstVar < 0)
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "RHS complex group index %d is not a real group index.",
++               "RHS complex group index %d is not a valid group index.",
+               RHSGroupIndex);
+   }
+ 
+@@ -2242,7 +2278,7 @@
+   if (ConstrainedGroupFirstVar < 0)
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "Constrained complex group index %i is not a real group index.",
++               "Constrained complex group index %i is not a valid group index.",
+                ConstrainedGroupIndex);
+   }
+   
+@@ -2272,7 +2308,7 @@
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+                "Save and Restore complex group index %i "
+-               "is not a real group index.",
++               "is not a valid group index.",
+               SandRGroupIndex);
+   }
+   
+@@ -2348,7 +2384,8 @@
+   if ( (numtimelevs1 < 0) || (numtimelevs2 < 0) ) 
+   {
+     CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+-               "Warning for variable index %i", EvolvedIndex); 
++               "Warning for variable index %i name %s", 
++               EvolvedIndex, CCTK_VarName(EvolvedIndex)); 
+     CCTK_WARN(0, "The index passed does not correspond to an array.");
+   }
+ 
+@@ -2478,8 +2515,8 @@
+   if (numtimelevs < 1) {
+ 
+     CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+-               "Warning for constrained array variable index %i", 
+-               ConstrainedIndex);
++               "Warning for constrained array variable index %i name %s", 
++               ConstrainedIndex, CCTK_VarName(ConstrainedIndex));
+     CCTK_WARN(0, "The index passed does not correspond to a array.");
+ 
+   }
+@@ -2672,7 +2709,7 @@
+   if (EvolvedGroupFirstVar < 0)
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "Evolved array group index %i is not a real group index.",
++               "Evolved array group index %i is not a valid group index.",
+                EvolvedGroupIndex);
+   }
+   
+@@ -2680,17 +2717,21 @@
+   if (RHSGroupFirstVar < 0)
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "RHS array group index %d is not a real group index.",
++               "RHS array group index %d is not a valid group index.",
+               RHSGroupIndex);
+   }
+ 
+   GroupNumVars = CCTK_NumVarsInGroupI(EvolvedGroupIndex);
+   if (CCTK_NumVarsInGroupI(RHSGroupIndex) != GroupNumVars)
+   {
++    char *groupname = CCTK_GroupName(EvolvedGroupIndex);
++    char *rhsgroupname = CCTK_GroupName(RHSGroupIndex);
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+                "There are a different number of variables in "
+-               "evolved array group %d and RHS group %d.", 
+-               EvolvedGroupIndex, RHSGroupIndex);
++               "evolved array group %d ('%s') and RHS group %d ('%s').", 
++               EvolvedGroupIndex, groupname, RHSGroupIndex, rhsgroupname);
++    free(rhsgroupname);
++    free(groupname);
+   }
+   
+   retval = 0;
+@@ -2716,7 +2757,7 @@
+   if (ConstrainedGroupFirstVar < 0)
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "Constrained array group index %i is not a real group index.",
++               "Constrained array group index %i is not a valid group index.",
+               ConstrainedGroupIndex);
+   }
+   
+@@ -2746,7 +2787,7 @@
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+                "Save and Restore array group index %i is "
+-               "not a real group index.",
++               "not a valid group index.",
+               SandRGroupIndex);
+   }
+   
+@@ -3181,7 +3222,7 @@
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+                "Evolved complex array group index %i is not a "
+-               "real group index.",
++               "valid group index.",
+               EvolvedGroupIndex);
+   }
+   
+@@ -3189,7 +3230,7 @@
+   if (RHSGroupFirstVar < 0)
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "RHS complex array group index %d is not a real group index.",
++               "RHS complex array group index %d is not a valid group index.",
+               RHSGroupIndex);
+   }
+ 
+@@ -3226,7 +3267,7 @@
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+                "Constrained complex array group index %i is not "
+-               "a real group index.",
++               "a valid group index.",
+               ConstrainedGroupIndex);
+   }
+   
+@@ -3256,7 +3297,7 @@
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+                "Save and Restore complex array group index %i is "
+-               "not a real group index.",
++               "not a valid group index.",
+               SandRGroupIndex);
+   }
+   
+@@ -3299,7 +3340,7 @@
+   if (EvolvedIndex < 0)
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "Evolved variables index %i is not a real variable index.",
++               "Evolved variables index %i is not a valid variable index.",
+                EvolvedIndex);
+   }
+   

@@ -1,0 +1,282 @@
+From 8661d9a0404ae8b1f3f29618a38e7904673beb48 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Mon, 7 May 2012 14:26:12 -0700
+Subject: [PATCH 06/17] GRHydro_InitData: make rotor parameters Cactus
+ parameters
+
+* cite paper with description of system
+* reverse sense of rotation
+* add openmp statements
+---
+ param.ccl              |   71 ++++++++++++++++++++++++-
+ src/GRHydro_RotorM.F90 |  134 +++++++++++++++++++++---------------------------
+ 2 files changed, 128 insertions(+), 77 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index 09c6d3a..950be6d 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -14,7 +14,7 @@ EXTENDS KEYWORD initial_hydro ""
+   "simple_wave" :: "Set initial data from Anile Miller Motta, Phys.Fluids. 26, 1450 (1983)"
+   "monopole"    :: "Monopole at the center"
+   "cylexp"      :: "Cylindrical Explosion"
+-  "rotor"       :: "Magnetic Rotor test"
++  "rotor"       :: "Magnetic Rotor test from DelZanna,Bucciantini, and Londrillo A&A 400, 397–413 (2003)"
+   "advectedloop":: "Magnetic advected loop test"
+   "alfvenwave"  :: "Circularly polarized Alfven wave"
+   "hydro_bondi_solution" :: "Spherical single black hole Bondi solution"
+@@ -275,6 +275,75 @@ CCTK_REAL poloidal_rho_max  "Maximum initial density"
+   (0:*	:: "Anything positive."
+ } 1.0e-3
+ 
++# for the Magnetic Rotor test:
++# default values are from DelZanna,Bucciantini, and Londrillo A&A 400, 397–413 (2003) though notation differs
++
++CCTK_REAL rotor_xc "center of rotation"
++{
++  *:* :: "Any location"
++} 0.5
++
++CCTK_REAL rotor_yc "center of rotation"
++{
++  *:* :: "Any location"
++} 0.5
++
++CCTK_REAL rotor_bvcxl "intial component of Bvec[0]"
++{
++  *:* :: "any real number"
++} 1.0
++
++CCTK_REAL rotor_bvcyl "intial component of Bvec[1]"
++{
++  *:* :: "any real number"
++} 0.0
++
++CCTK_REAL rotor_bvczl "intial component of Bvec[2]"
++{
++  *:* :: "any real number"
++} 0.0
++  
++CCTK_REAL rotor_r_rot "radius of rotor"
++{
++  (0:* :: "any positive number"
++} 0.1
++  
++CCTK_REAL rotor_v_max "Maximum velocity"
++{
++  (-1:1) :: "any subluminal speed (negative is clockwise)"
++} 0.995
++
++
++CCTK_REAL rotor_rhoin "initial density inside rotor"
++{
++  (0:* :: "any positive number"
++} 10.d0
++
++CCTK_REAL rotor_pressin "initial pressure inside rotor"
++{
++  (0:* :: "any positive number"
++} 1.d0
++
++CCTK_REAL rotor_rhoout "initial density outside rotor"
++{
++  (0:* :: "any positive number"
++} 1.d0
++
++CCTK_REAL rotor_pressout "initial pressure outside rotor"
++{
++  (0:* :: "any positive number"
++} 1.d0
++
++CCTK_BOOLEAN rotor_use_smoothing "Smooth the edge?"
++{
++} yes
++
++CCTK_REAL rotor_rsmooth_rel "Define the radius in relative terms if so"
++{
++  (0:* :: "any positive number"
++} 0.05
++
++
+ shares:GRHydro
+ 
+ USES real GRHydro_eos_rf_prec
+diff --git a/src/GRHydro_RotorM.F90 b/src/GRHydro_RotorM.F90
+index 6191b8a..deb19fe 100644
+--- a/src/GRHydro_RotorM.F90
++++ b/src/GRHydro_RotorM.F90
+@@ -44,93 +44,82 @@
+ 
+ subroutine GRHydro_RotorM(CCTK_ARGUMENTS)
+ 
++  use cctk
++
+   implicit none
+-  
++
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+-  
++
+   CCTK_INT :: i, j, k, nx, ny, nz
+-  CCTK_REAL :: radius, det, v_max
+-  CCTK_REAL :: rhoin, rhoout, pressin, pressout
+-  CCTK_REAL :: bvcxl,bvcyl,bvczl
+-  CCTK_REAL :: tmp,tmp2,gam,r_rot
+-
+-  CCTK_INT :: use_smoothing
+-  CCTK_REAL :: rsmooth_rel,rfact
+-
+-!!$Hardwired bfield and gamma values
+-  bvcxl = 1.0
+-  bvcyl = 0.0
+-  bvczl = 0.0
+-  
+-!!$Adiabatic index for test
+-  gam = (5.d0/3.d0)
+-  
+-!!$radius of rotor is 0.1
+-  r_rot = 0.1
+-  
+-!!$Maximum velocity is 0.995
+-  v_max = 0.995
+-
+-!!$Inner values
+-  rhoin   = 10.d0
+-  pressin = 1.d0
+-  
+-!!$Outer values
+-  rhoout   = 1.d0
+-  pressout = 1.d0
+-
+-
+-!!$ Smooth the edge?  Define the radius in relative terms if so
+-  use_smoothing = 0
+-  rsmooth_rel = 0.05
+-  
++  CCTK_REAL :: radius, det, rfact
++
++  !begin EOS_Omni stuff
++  CCTK_REAL :: tempEOS(1), yeEOS(1), xepsEOS(1)
++  CCTK_INT :: keyerr(1), anyerr
++  CCTK_INT, parameter :: have_temp = 0, n = 1
++  !end EOS_Omni
++
+   nx = cctk_lsh(1)
+   ny = cctk_lsh(2)
+   nz = cctk_lsh(3)
+-  
+-  if(v_max>1.0) then
+-     write(*,*)"No superluminal speeds!!!!  v_max=",v_max," reset to 0.995"
+-     v_max=0.995
+-  endif
+ 
++  !$OMP PARALLEL DO PRIVATE(i,j,k,radius,det,rfact,tempEOS,yeEOS,xepsEOS,keyerr,anyerr) &
++  !$OMP default(none) &
++  !$OMP firstprivate(nx,ny,nz,GRHydro_eos_handle, GRHydro_eos_rf_prec, grhydro_eos_type, &
++  !$OMP              rotor_xc,rotor_yc, rotor_rsmooth_rel, rotor_use_smoothing, &
++  !$OMP              rotor_r_rot, rotor_rhoin,rotor_pressin,rotor_rhoout,rotor_pressout, &
++  !$OMP              rotor_v_max, rotor_bvcxl, rotor_bvcyl, rotor_bvczl) &
++  !$OMP shared(x,y,z,rho,press,eps,vel,Bvec,w_lorentz,dens,Scon,tau,Bcons, &
++  !$OMP        gxx,gxy,gxz,gyy,gyz,gzz)
+   do i=1,nx
+      do j=1,ny
+         do k=1,nz
+-           
+-           radius = sqrt(x(i,j,k)**2+y(i,j,k)**2)
+-           
+-           if(radius.le.r_rot) then
+-              rho(i,j,k) = rhoin
+-              press(i,j,k) = pressin
+-              velx(i,j,k) = v_max/r_rot*y(i,j,k)
+-              vely(i,j,k) = -1.d0*v_max/r_rot*x(i,j,k)
++
++           radius = sqrt((x(i,j,k)-rotor_xc)**2+(y(i,j,k)-rotor_yc)**2)
++
++           if(radius.le.rotor_r_rot) then
++              rho(i,j,k) = rotor_rhoin
++              press(i,j,k) = rotor_pressin
++              velx(i,j,k) = -1.d0*rotor_v_max/rotor_r_rot*(y(i,j,k)-rotor_yc)
++              vely(i,j,k) = +1.d0*rotor_v_max/rotor_r_rot*(x(i,j,k)-rotor_xc)
+               velz(i,j,k) = 0.d0
+-           else if((use_smoothing.eq.1) .and. &
+-                ((radius.gt.r_rot) .and. &
+-                (radius.le.((1.0+rsmooth_rel)*r_rot)))) then
+-              rfact = (radius/r_rot - 1.d0) / rsmooth_rel
+-              rho(i,j,k) = rfact*rhoout + (1.d0-rfact)*rhoin
+-              press(i,j,k) = rfact*pressout + (1.d0-rfact)*pressin
+-              velx(i,j,k) = (1.d0-rfact)*v_max * y(i,j,k) / radius
+-              velx(i,j,k) = -1.d0*(1.d0-rfact)*v_max * x(i,j,k) / radius
++           else if((rotor_use_smoothing.eq.1) .and. &
++                ((radius.gt.rotor_r_rot) .and. &
++                (radius.le.((1.0+rotor_rsmooth_rel)*rotor_r_rot)))) then
++              rfact = (radius/rotor_r_rot - 1.d0) / rotor_rsmooth_rel
++              rho(i,j,k) = rfact*rotor_rhoout + (1.d0-rfact)*rotor_rhoin
++              press(i,j,k) = rfact*rotor_pressout + (1.d0-rfact)*rotor_pressin
++              velx(i,j,k) = -1.d0*(1.d0-rfact)*rotor_v_max * (y(i,j,k)-rotor_yc) / radius
++              velx(i,j,k) = +1.d0*(1.d0-rfact)*rotor_v_max * (x(i,j,k)-rotor_xc) / radius
+               velz(i,j,k) = 0.d0
+            else
+-              rho(i,j,k) = rhoout
+-              press(i,j,k) = pressout
++              rho(i,j,k) = rotor_rhoout
++              press(i,j,k) = rotor_pressout
+               velx(i,j,k) = 0.d0
+               vely(i,j,k) = 0.d0
+               velz(i,j,k) = 0.d0
+            endif
+-           eps(i,j,k)=press(i,j,k)/(gam-1.d0)/rho(i,j,k)
+-           
+-           Bvecx(i,j,k)=bvcxl
+-           Bvecy(i,j,k)=bvcyl
+-           Bvecz(i,j,k)=bvczl
+-           
++           keyerr = 0; anyerr = 0
++           call EOS_Omni_EpsFromPress(GRHydro_eos_handle, have_temp, GRHydro_eos_rf_prec, &
++                                      n, rho(i:i,j:j,k:k), eps(i:i,j:j,k:k), &
++                                      tempEOS, yeEOS, press(i:i,j:j,k:k), &
++                                      eps(i:i,j:j,k:k), & ! xeps argument
++                                      keyerr, anyerr)
++           if(anyerr .ne. 0) then
++              call CCTK_WARN(0, "Error when calling EOS. After stopping swearing at me, add a decent output text.")
++           end if
++
++           Bvecx(i,j,k)=rotor_bvcxl
++           Bvecy(i,j,k)=rotor_bvcyl
++           Bvecz(i,j,k)=rotor_bvczl
++
+            det=SPATIAL_DETERMINANT(gxx(i,j,k),gxy(i,j,k),gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k))
+-           
++           if(abs(det - 1d0) .gt. 1e-8) then
++              call CCTK_WARN(0, "Rotor initial data only supports flat spacetime right now")
++           end if
++
+            if (CCTK_EQUALS(GRHydro_eos_type,"Polytype")) then
+               call Prim2ConPolyM(GRHydro_eos_handle,gxx(i,j,k),gxy(i,j,k),&
+                    gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k),&
+@@ -148,19 +137,12 @@ subroutine GRHydro_RotorM(CCTK_ARGUMENTS)
+                    eps(i,j,k),press(i,j,k),Bvecx(i,j,k),Bvecy(i,j,k),Bvecz(i,j,k),&
+                    w_lorentz(i,j,k))
+            end if
+-           
++
+         enddo
+      enddo
+   enddo
+-  
+-  densrhs = 0.d0
+-  srhs = 0.d0
+-  taurhs = 0.d0
+-  Bconsrhs = 0.d0
+-
++  !$OMP END PARALLEL DO
+ 
+-  return
+-  
+ end subroutine GRHydro_RotorM
+ 
+ 
+-- 
+1.7.10.4
+

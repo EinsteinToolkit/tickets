@@ -1,0 +1,43 @@
+From 012b3a6abfb85c5b61392f1133cfb4c434cf7f20 Mon Sep 17 00:00:00 2001
+From: Seth Hopper <hopper.seth@gmail.com>
+Date: Mon, 28 Jan 2013 15:52:16 +0100
+Subject: [PATCH] Carpet: Output grid structure after initialization/recovery
+
+Previously, the first iteration was always 0 on recovery.
+---
+ Carpet/Carpet/src/Initialise.cc | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/Carpet/Carpet/src/Initialise.cc b/Carpet/Carpet/src/Initialise.cc
+index 3599c2d..77074f9 100644
+--- a/Carpet/Carpet/src/Initialise.cc
++++ b/Carpet/Carpet/src/Initialise.cc
+@@ -96,12 +96,6 @@ namespace Carpet {
+     
+     CCTKi_InitGHExtensions (cctkGH);
+     
+-    // Write grid structure to file
+-    for (int m=0; m<maps; ++m) {
+-      OutputGridStructure (cctkGH, m, vhh.AT(m)->regions);
+-      OutputGridCoordinates (cctkGH, m, vhh.AT(m)->regions);
+-    } // for m
+-    
+     CallSetup (cctkGH);
+     
+     if (fc->recovered) {
+@@ -128,6 +122,12 @@ namespace Carpet {
+       }
+     }
+     
++      // Write grid structure to file
++      for (int m=0; m<maps; ++m) {
++          OutputGridStructure (cctkGH, m, vhh.AT(m)->regions);
++          OutputGridCoordinates (cctkGH, m, vhh.AT(m)->regions);
++      } // for m
++      
+     // Analyse initial data
+     CallAnalysis (cctkGH, fc->recovered);
+     print_internal_data ();
+-- 
+1.7.12.3
+

@@ -1,0 +1,139 @@
+Wed Jun  1 08:40:56 EDT 2011  "Roland Haas" <roland.haas@physics.gatech.edu>
+  * visitCarpetHDF5: remove unused/redundant variables, free memory
+  
+    * attempt to reduce VisIt's memory footprint to bring it below 2GB/core
+diff -rN -u old-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C new-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C
+--- old-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C	2011-07-12 09:18:52.000000000 -0400
++++ new-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C	2011-07-12 09:18:52.000000000 -0400
+@@ -830,6 +830,9 @@
+    Attribute attrib(group.openAttribute("nioprocs"));
+    int n_io_procs = 0;
+    attrib.read(PredType::NATIVE_INT, &n_io_procs);
++   attrib.close();
++
++   group.close();
+ 
+    H5f.close();
+    
+@@ -861,21 +864,24 @@
+       for (int j=0; j < files[i]->dsetnames.size(); j++)
+       {
+          files[i]->dsetnames[j].set_file_id(i);
+-         dsetnames.push_back(files[i]->dsetnames[j]);
+       }
+    }
+       
+    // get number of times and cycles by browsing all available datasets of ALL files
+    std::set<int> cycle_seen;
+-   for (int i=0; i < dsetnames.size(); i++)
++   for (int f=0; f < files.size(); f++)
+    {
+-      bool found = cycle_seen.count(dsetnames[i].cycle());
+-         
+-      if (!found)
++      vector<dataset_entry>& dsetnames = files[f]->dsetnames;
++      for (int i=0; i < dsetnames.size(); i++)
+       {
+-         cycles.push_back(dsetnames[i].cycle());
+-         times.push_back(dsetnames[i].time());
+-         cycle_seen.insert(dsetnames[i].cycle());
++         bool found = cycle_seen.count(dsetnames[i].cycle());
++
++         if (!found)
++         {
++            cycles.push_back(dsetnames[i].cycle());
++            times.push_back(dsetnames[i].time());
++            cycle_seen.insert(dsetnames[i].cycle());
++         }
+       }
+    }
+    n_timesteps = cycles.size();
+@@ -886,15 +892,19 @@
+    
+    // get varnames
+    std::set<string> varname_seen;
+-   for (int i=0; i < dsetnames.size(); i++)
++   for (int f=0; f < files.size(); f++)
+    {
+-      // replacable by varnames.assign(varname_seen.begin(), varname_end())
+-      bool found = varname_seen.count(dsetnames[i].varname());
+-      if (!found)
++      vector<dataset_entry> &dsetnames = files[f]->dsetnames;
++      for (int i=0; i < dsetnames.size(); i++)
+       {
+-         varnames.push_back(dsetnames[i].varname());
+-         //varnames.back().replace(varnames.back().find("::"), 2, "--");
+-         varname_seen.insert(dsetnames[i].varname());
++         // replacable by varnames.assign(varname_seen.begin(), varname_end())
++         bool found = varname_seen.count(dsetnames[i].varname());
++         if (!found)
++         {
++            varnames.push_back(dsetnames[i].varname());
++            //varnames.back().replace(varnames.back().find("::"), 2, "--");
++            varname_seen.insert(dsetnames[i].varname());
++         }
+       }
+    }
+    
+@@ -1148,6 +1158,9 @@
+    else {
+      file->iterateElems("/", NULL, H5iter, &dsetnames);
+    }
++
++   // try to free memory allocated during file traversal
++   H5garbage_collect();
+ }
+ 
+ 
+@@ -1155,32 +1168,6 @@
+ void avtCarpetHDF5FileFormat::file_t::set_varnames(const vector<string>& v, const vector<int>& cycles)
+ {
+    varnames = v;
+-
+-   variables.resize(varnames.size());
+-   
+-   for (int i=0; i < variables.size(); i++)
+-      variables[i].resize(cycles.size());
+-
+-   // we could probably also replace these with some binary searches, but the
+-   // maps are simpler to use and fulfill the same purpose
+-   map<string,int> varmap;
+-   map<int,int> cyclemap;
+-   for (int j=0; j < varnames.size(); j++)
+-   {
+-     varmap[varnames[j]] = j;
+-   }
+-   for (int it=0; it < cycles.size(); it++)
+-   {
+-     cyclemap[cycles[it]] = it;
+-   }
+-   
+-   // extract datasets
+-   for (int i=0; i < dsetnames.size(); i++)
+-   {
+-      const int j = varmap[dsetnames[i].name()];
+-      const int c = cyclemap[dsetnames[i].cycle()];
+-      variables[j][c] = dsetnames[i];
+-   }
+ }
+ 
+ 
+diff -rN -u old-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.h new-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.h
+--- old-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.h	2011-07-12 09:18:52.000000000 -0400
++++ new-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.h	2011-07-12 09:18:52.000000000 -0400
+@@ -482,7 +482,6 @@
+                // read in complex data from HDF5
+                void get_complex_data(const dataset_entry& dset, float*** data, const bool removeGhosts=true);
+                
+-               vector<vector<dataset_entry> > variables;   // datasetnames contained only in this file of each variable for each timestep (sorted)
+                vector<string>                 varnames;    // the variable names
+                vector<dataset_entry>          dsetnames;   // datasetnames contained only in this file
+                
+@@ -613,7 +612,6 @@
+                
+                vector<timestep_t>     timesteps; // all datasets sorted by timestep
+                
+-               vector<dataset_entry>  dsetnames;   // ALL datasetnames over all processors
+                vector<string>         varnames;    // the pure variable names
+                
+                vector<file_t*> files;              // the files containing the variables

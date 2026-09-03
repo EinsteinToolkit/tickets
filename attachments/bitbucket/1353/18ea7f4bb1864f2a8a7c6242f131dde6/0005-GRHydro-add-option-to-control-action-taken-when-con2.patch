@@ -1,0 +1,58 @@
+From 8a2213b97f1317dfa3ad238c5161b2a6e8221804 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@caltech.edu>
+Date: Thu, 4 Apr 2013 19:53:28 -0700
+Subject: [PATCH 05/12] GRHydro: add option to control action taken when
+ con2prim failed
+
+---
+ param.ccl                |    6 ++++++
+ src/GRHydro_Con2Prim.F90 |    9 ++++++++-
+ 2 files changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/param.ccl b/param.ccl
+index f48fa7a..b56d061 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -397,6 +397,12 @@ int GRHydro_c2p_warnlevel "Warnlevel for Con2Prim warnings" STEERABLE=ALWAYS
+   0:1           :: "Either 0 or 1"
+ } 0
+ 
++keyword GRHydro_c2p_failed_action "what to do when we detect a c2p failure"
++{
++  "abort"     :: "abort with error"
++  "terminate" :: "request termination"
++} "abort"
++
+ REAL sqrtdet_thr "Threshold to apply cons rescalings deep inside the horizon" STEERABLE=ALWAYS
+ {
+  1.0:    :: "Larger values guarantees this sort of rescaling only deep inside the horizon"
+diff --git a/src/GRHydro_Con2Prim.F90 b/src/GRHydro_Con2Prim.F90
+index 5a931f4..b8ad845 100644
+--- a/src/GRHydro_Con2Prim.F90
++++ b/src/GRHydro_Con2Prim.F90
+@@ -2289,6 +2289,7 @@ subroutine check_GRHydro_C2P_failed(CCTK_ARGUMENTS)
+ 
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_ARGUMENTS
++  DECLARE_CCTK_FUNCTIONS
+ 
+   integer :: i, j, k, nx, ny, nz
+   character(len=300) warnline
+@@ -2402,7 +2403,13 @@ subroutine check_GRHydro_C2P_failed(CCTK_ARGUMENTS)
+           write(warnline,'(a32,4g16.7)') 'lapse, shift: ',&
+                alp(i,j,k),betax(i,j,k),betay(i,j,k),betaz(i,j,k)
+           call CCTK_WARN(1,warnline)
+-          call CCTK_WARN(0,"Aborting.")
++          if (CCTK_EQUALS(GRHydro_c2p_failed_action, "terminate")) then
++            call CCTK_TerminateNext(cctkGH)
++          else if (CCTK_EQUALS(GRHydro_c2p_failed_action, "abort")) then
++            call CCTK_ERROR("Aborting.")
++          else
++            call CCTK_ERROR("Internal error, unknown action")
++          end if
+           !$OMP END CRITICAL
+ 
+         end if
+-- 
+1.7.10.4
+

@@ -1,0 +1,628 @@
+From f614c6eeda0a6d090f03aed85fcae946d8c459f8 Mon Sep 17 00:00:00 2001
+From: Barry Wardell <barry.wardell@gmail.com>
+Date: Mon, 12 Dec 2011 23:39:04 +0000
+Subject: [PATCH 1/2] Update FFTW options for all machines.
+
+* The FFTW_DIR option has been renamed to FFTW3_DIR as that is what is now expected by the ExternalLibraries system.
+* The FFTW3_LIBS option is now set by the FFTW thorn, so there is no point in setting it in the optionlist.
+---
+ mdb/optionlists/OUTDATED/abe-mvapich2.cfg       |    3 +--
+ mdb/optionlists/OUTDATED/athena.cfg             |    2 +-
+ mdb/optionlists/OUTDATED/belladonna.cfg         |    2 +-
+ mdb/optionlists/OUTDATED/celeritas.cfg          |    3 +--
+ mdb/optionlists/OUTDATED/damiana-scali.cfg      |    2 +-
+ mdb/optionlists/OUTDATED/franklin-pathscale.cfg |    2 +-
+ mdb/optionlists/OUTDATED/hopper.cfg             |    4 ++--
+ mdb/optionlists/OUTDATED/peyote-mpich.cfg       |    2 +-
+ mdb/optionlists/OUTDATED/philip-openmpi.cfg     |    2 +-
+ mdb/optionlists/OUTDATED/queenbee-mvapich.cfg   |    2 +-
+ mdb/optionlists/OUTDATED/redshift-intel.cfg     |    3 +--
+ mdb/optionlists/OUTDATED/sicortex.cfg           |    2 +-
+ mdb/optionlists/OUTDATED/wilson.cfg             |    3 +--
+ mdb/optionlists/abe-mvapich2.cfg                |    3 +--
+ mdb/optionlists/athena-intel.cfg                |    2 +-
+ mdb/optionlists/bethe.cfg                       |    2 +-
+ mdb/optionlists/franklin.cfg                    |    2 +-
+ mdb/optionlists/frost.cfg                       |    2 +-
+ mdb/optionlists/hlrb2.cfg                       |    2 +-
+ mdb/optionlists/hopper-cray.cfg                 |    2 +-
+ mdb/optionlists/hopper-gcc.cfg                  |    2 +-
+ mdb/optionlists/hopper-intel.cfg                |    2 +-
+ mdb/optionlists/hopper-pathscale.cfg            |    2 +-
+ mdb/optionlists/hopper-pgi.cfg                  |    2 +-
+ mdb/optionlists/hopper2-gcc.cfg                 |    2 +-
+ mdb/optionlists/hopper2-pgi10.cfg               |    2 +-
+ mdb/optionlists/hopper2-pgi11.cfg               |    2 +-
+ mdb/optionlists/hopper2.cfg                     |    2 +-
+ mdb/optionlists/kraken-gcc.cfg                  |    2 +-
+ mdb/optionlists/kraken-intel.cfg                |    2 +-
+ mdb/optionlists/kraken-pgi10.cfg                |    2 +-
+ mdb/optionlists/kraken.cfg                      |    2 +-
+ mdb/optionlists/lincoln-mvapich2.cfg            |    3 +--
+ mdb/optionlists/macos-intel.cfg                 |    3 +--
+ mdb/optionlists/macos-macports-gcc.cfg          |    3 +--
+ mdb/optionlists/numrel-intel.cfg                |    3 +--
+ mdb/optionlists/philip-mpich.cfg                |    2 +-
+ mdb/optionlists/queenbee-mvapich.cfg            |    2 +-
+ mdb/optionlists/queenbee-mvapich2.cfg           |    2 +-
+ mdb/optionlists/sl6.cfg                         |    3 +--
+ mdb/optionlists/supermuc.cfg                    |    2 +-
+ mdb/optionlists/tezpur-mvapich2.cfg             |    2 +-
+ mdb/optionlists/varia-gcc.cfg                   |    3 +--
+ 43 files changed, 44 insertions(+), 55 deletions(-)
+
+diff --git a/mdb/optionlists/OUTDATED/abe-mvapich2.cfg b/mdb/optionlists/OUTDATED/abe-mvapich2.cfg
+index e8b734c..b6722db 100644
+--- a/mdb/optionlists/OUTDATED/abe-mvapich2.cfg
++++ b/mdb/optionlists/OUTDATED/abe-mvapich2.cfg
+@@ -71,8 +71,7 @@ F90_WARN_FLAGS =
+ BLAS_DIR  = /usr/local/intel/mkl/10.2.1.017/lib/em64t
+ BLAS_LIBS =  -Wl,--start-group mkl_intel_lp64 mkl_intel_thread mkl_core -Wl,--end-group   iomp5   pthread
+ 
+-FFTW_DIR  = /usr/apps/math/fftw/fftw-3.1.2/intel10
+-FFTW_LIBS = fftw3
++FFTW3_DIR  = /usr/apps/math/fftw/fftw-3.1.2/intel10
+ 
+ LAPACK_DIR  = /usr/local/intel/mkl/10.2.1.017/lib/em64t
+ LAPACK_LIBS = -Wl,--start-group mkl_lapack mkl_intel_lp64 mkl_intel_thread mkl_core -Wl,--end-group
+diff --git a/mdb/optionlists/OUTDATED/athena.cfg b/mdb/optionlists/OUTDATED/athena.cfg
+index 6c52c81..184d7bd 100644
+--- a/mdb/optionlists/OUTDATED/athena.cfg
++++ b/mdb/optionlists/OUTDATED/athena.cfg
+@@ -72,7 +72,7 @@ F77_WARN_FLAGS = -Minfo -Minfo=mp -Mneginfo
+ BLAS_DIR  = /sw/xt5/blas/ref/cnl2.1_pgi7.2.3/lib
+ BLAS_LIBS = blas
+ 
+-FFTW_DIR = /sw/xt5/fftw/3.2.1/cnl2.1_pgi7.2.5
++FFTW3_DIR = /sw/xt5/fftw/3.2.1/cnl2.1_pgi7.2.5
+ 
+ GSL_DIR = /sw/xt5/gsl/1.11/cnl2.1_pgi7.2.3
+ 
+diff --git a/mdb/optionlists/OUTDATED/belladonna.cfg b/mdb/optionlists/OUTDATED/belladonna.cfg
+index 6b413c2..309b45e 100644
+--- a/mdb/optionlists/OUTDATED/belladonna.cfg
++++ b/mdb/optionlists/OUTDATED/belladonna.cfg
+@@ -55,7 +55,7 @@ F90_WARN_FLAGS = -Minfo -Mneginfo
+ 
+ BLAS_DIR = /usr/local/Cluster-Apps/acml/pgi64
+ 
+-#FFTW_DIR = /home/eschnett
++#FFTW3_DIR = /home/eschnett
+ 
+ GSL_DIR = /usr/local/custom/gsl
+ 
+diff --git a/mdb/optionlists/OUTDATED/celeritas.cfg b/mdb/optionlists/OUTDATED/celeritas.cfg
+index a0321ca..e3cc523 100644
+--- a/mdb/optionlists/OUTDATED/celeritas.cfg
++++ b/mdb/optionlists/OUTDATED/celeritas.cfg
+@@ -73,8 +73,7 @@ F90_WARN_FLAGS = -warn all
+ BLAS_DIR  = /usr/local/packages/numrel/opt/intel/mkl721/lib/em64t
+ BLAS_LIBS = mkl_lapack guide pthread mkl_em64t
+ 
+-#FFTW_DIR  = /opt/local
+-#FFTW_LIBS = drfftw dfftw m
++#FFTW3_DIR  = /opt/local
+ 
+ GSL_DIR = /usr/local/packages/numrel/gsl-1.8
+ 
+diff --git a/mdb/optionlists/OUTDATED/damiana-scali.cfg b/mdb/optionlists/OUTDATED/damiana-scali.cfg
+index 16c674f..5c466bb 100644
+--- a/mdb/optionlists/OUTDATED/damiana-scali.cfg
++++ b/mdb/optionlists/OUTDATED/damiana-scali.cfg
+@@ -70,7 +70,7 @@ F90_WARN_FLAGS =
+ BLAS_DIR  = /cluster/intel/mkl/10.2.2.025/lib/em64t
+ BLAS_LIBS =  -Wl,--start-group mkl_intel_lp64 mkl_intel_thread mkl_core -Wl,--end-group   iomp5   pthread
+ 
+-#FFTW_DIR = /home/eschnett
++#FFTW3_DIR = /home/eschnett
+ 
+ GSL_DIR = /cluster/gsl/1.10
+ 
+diff --git a/mdb/optionlists/OUTDATED/franklin-pathscale.cfg b/mdb/optionlists/OUTDATED/franklin-pathscale.cfg
+index 40787f3..f328034 100644
+--- a/mdb/optionlists/OUTDATED/franklin-pathscale.cfg
++++ b/mdb/optionlists/OUTDATED/franklin-pathscale.cfg
+@@ -71,7 +71,7 @@ F77_WARN_FLAGS = -Wall
+ BLAS_DIR  = /opt/acml/4.0.1a/pathscale64_mp/lib
+ BLAS_LIBS = acml_mp acml_mv
+ 
+-FFTW_DIR = /opt/fftw/3.1.1/cnos
++FFTW3_DIR = /opt/fftw/3.1.1/cnos
+ 
+ GSL_DIR = /usr/common/usg/gsl/gsl-1.10
+ 
+diff --git a/mdb/optionlists/OUTDATED/hopper.cfg b/mdb/optionlists/OUTDATED/hopper.cfg
+index 119ff52..f291bba 100644
+--- a/mdb/optionlists/OUTDATED/hopper.cfg
++++ b/mdb/optionlists/OUTDATED/hopper.cfg
+@@ -84,8 +84,8 @@ F77_WARN_FLAGS =
+ BLAS_DIR  = /opt/acml/4.3.0/pgi64_mp/lib
+ BLAS_LIBS = acml_mp acml_mv
+ 
+-#FFTW_DIR = /opt/fftw/3.1.1/cnos
+-FFTW_DIR = /opt/fftw/2.1.5.1/cnos
++#FFTW3_DIR = /opt/fftw/3.1.1/cnos
++FFTW3_DIR = /opt/fftw/2.1.5.1/cnos
+ 
+ HDF5_DIR  = /opt/cray/hdf5/1.8.4.1/hdf5-pgi
+ LIBSZ_DIR =/usr/common/usg/szip/2.1/pgi/lib
+diff --git a/mdb/optionlists/OUTDATED/peyote-mpich.cfg b/mdb/optionlists/OUTDATED/peyote-mpich.cfg
+index 5bb60a3..1c42f4b 100644
+--- a/mdb/optionlists/OUTDATED/peyote-mpich.cfg
++++ b/mdb/optionlists/OUTDATED/peyote-mpich.cfg
+@@ -59,7 +59,7 @@ F90_WARN_FLAGS =
+ BLAS_DIR  = /opt/intel/mkl70/lib/32
+ BLAS_LIBS = mkl_ia32 guide
+ 
+-FFTW_DIR = /home/eschnett
++FFTW3_DIR = /home/eschnett
+ 
+ HDF5      = yes
+ HDF5_DIR = /home/eschnett/hdf5-1.8.0
+diff --git a/mdb/optionlists/OUTDATED/philip-openmpi.cfg b/mdb/optionlists/OUTDATED/philip-openmpi.cfg
+index 9ed57ce..846349a 100644
+--- a/mdb/optionlists/OUTDATED/philip-openmpi.cfg
++++ b/mdb/optionlists/OUTDATED/philip-openmpi.cfg
+@@ -67,7 +67,7 @@ F90_WARN_FLAGS =
+ BLAS_DIR  = /usr/local/compilers/Intel/mkl-10.0/lib/em64t
+ BLAS_LIBS = -Bstatic mkl_em64t guide -Bdynamic   pthread
+ 
+-FFTW_DIR = /usr/local/packages/fftw-3.1.2-intel10.1
++FFTW3_DIR = /usr/local/packages/fftw-3.1.2-intel10.1
+ 
+ GSL_DIR = /usr/local/packages/gsl-1.9-intel9.1
+ 
+diff --git a/mdb/optionlists/OUTDATED/queenbee-mvapich.cfg b/mdb/optionlists/OUTDATED/queenbee-mvapich.cfg
+index ee8cb5f..950a69c 100644
+--- a/mdb/optionlists/OUTDATED/queenbee-mvapich.cfg
++++ b/mdb/optionlists/OUTDATED/queenbee-mvapich.cfg
+@@ -75,7 +75,7 @@ F90_WARN_FLAGS =
+ BLAS_DIR  = /usr/local/compilers/Intel/mkl-10.0/lib/em64t
+ BLAS_LIBS = mkl_em64t guide   pthread
+ 
+-FFTW_DIR = /usr/local/packages/fftw-3.1.2-intel10.1
++FFTW3_DIR = /usr/local/packages/fftw-3.1.2-intel10.1
+ 
+ GSL_DIR = /usr/local/packages/gsl-1.9-intel9.1
+ 
+diff --git a/mdb/optionlists/OUTDATED/redshift-intel.cfg b/mdb/optionlists/OUTDATED/redshift-intel.cfg
+index ab07c2a..5fa005e 100644
+--- a/mdb/optionlists/OUTDATED/redshift-intel.cfg
++++ b/mdb/optionlists/OUTDATED/redshift-intel.cfg
+@@ -73,8 +73,7 @@ F90_WARN_FLAGS = -warn all
+ BLAS_DIR  = /System/Library/Frameworks/vecLib.framework
+ BLAS_LIBS =
+ 
+-FFTW_DIR  = /opt/local
+-FFTW_LIBS = drfftw dfftw m
++FFTW3_DIR  = /opt/local
+ 
+ GSL_DIR = /opt/local
+ 
+diff --git a/mdb/optionlists/OUTDATED/sicortex.cfg b/mdb/optionlists/OUTDATED/sicortex.cfg
+index 0529173..cad8b46 100644
+--- a/mdb/optionlists/OUTDATED/sicortex.cfg
++++ b/mdb/optionlists/OUTDATED/sicortex.cfg
+@@ -64,7 +64,7 @@ BLAS_DIR  =
+ BLAS_LIBS = gotoblas
+ 
+ #FFTW     = yes
+-#FFTW_DIR =
++#FFTW3_DIR =
+ 
+ GSL_DIR =
+ 
+diff --git a/mdb/optionlists/OUTDATED/wilson.cfg b/mdb/optionlists/OUTDATED/wilson.cfg
+index 8cf9fd9..4cfa632 100644
+--- a/mdb/optionlists/OUTDATED/wilson.cfg
++++ b/mdb/optionlists/OUTDATED/wilson.cfg
+@@ -67,8 +67,7 @@ F90_WARN_FLAGS = -Wall -Wshadow -Wsurprising
+ BLAS_DIR  = /home/cott/opt/lapack-3.1.1/lib
+ BLAS_LIBS = blas g2c
+ 
+-#FFTW_DIR  = /opt/local
+-#FFTW_LIBS = drfftw dfftw m
++#FFTW3_DIR  = /opt/local
+ 
+ GSL_DIR = /home/cott/opt/gsl-1.9-gcc4.3.2
+ 
+diff --git a/mdb/optionlists/abe-mvapich2.cfg b/mdb/optionlists/abe-mvapich2.cfg
+index d1e6efc..b17c96f 100644
+--- a/mdb/optionlists/abe-mvapich2.cfg
++++ b/mdb/optionlists/abe-mvapich2.cfg
+@@ -83,8 +83,7 @@ F90_WARN_FLAGS =
+ BLAS_DIR  = /usr/local/intel/mkl/10.2.1.017/lib/em64t
+ BLAS_LIBS =  -Wl,--start-group mkl_intel_lp64 mkl_intel_thread mkl_core -Wl,--end-group   iomp5   pthread
+ 
+-FFTW_DIR  = /usr/apps/math/fftw/fftw-3.1.2/intel10
+-FFTW_LIBS = fftw3
++FFTW3_DIR  = /usr/apps/math/fftw/fftw-3.1.2/intel10
+ 
+ LAPACK_DIR  = /usr/local/intel/mkl/10.2.1.017/lib/em64t
+ LAPACK_LIBS = -Wl,--start-group mkl_lapack mkl_intel_lp64 mkl_intel_thread mkl_core -Wl,--end-group
+diff --git a/mdb/optionlists/athena-intel.cfg b/mdb/optionlists/athena-intel.cfg
+index 987bc1c..3ebc25d 100644
+--- a/mdb/optionlists/athena-intel.cfg
++++ b/mdb/optionlists/athena-intel.cfg
+@@ -85,7 +85,7 @@ F77_WARN_FLAGS =
+ BLAS_DIR  = /opt/intel/Compiler/11.1/038/mkl/lib/em64t
+ BLAS_LIBS = -Wl,--start-group mkl_intel_lp64 mkl_intel_thread mkl_core -Wl,--end-group   iomp5   pthread
+ 
+-FFTW_DIR = /opt/fftw/3.2.2.1
++FFTW3_DIR = /opt/fftw/3.2.2.1
+ 
+ GSL_DIR = /sw/xt/gsl/1.14/cnl2.2_intel11.1.038
+ 
+diff --git a/mdb/optionlists/bethe.cfg b/mdb/optionlists/bethe.cfg
+index 03c4492..4169ca6 100644
+--- a/mdb/optionlists/bethe.cfg
++++ b/mdb/optionlists/bethe.cfg
+@@ -86,7 +86,7 @@ F90_WARN_FLAGS =
+ BLAS_DIR  = /usr/local/apps/intel/intel_cc_11_1/mkl/lib/em64t
+ BLAS_LIBS = mkl_intel_lp64 mkl_blas95_lp64 mkl_core guide mkl_sequential pthread ifport
+ 
+-#FFTW_DIR = /usr/local/packages/fftw-3.1.2-intel10.1
++#FFTW3_DIR = /usr/local/packages/fftw-3.1.2-intel10.1
+ 
+ GSL_DIR = /usr/local/apps/gsl-1.13-intel-intel_11.1
+ 
+diff --git a/mdb/optionlists/franklin.cfg b/mdb/optionlists/franklin.cfg
+index fe7983c..ef705cf 100644
+--- a/mdb/optionlists/franklin.cfg
++++ b/mdb/optionlists/franklin.cfg
+@@ -78,7 +78,7 @@ F77_WARN_FLAGS =
+ BLAS_DIR  = /opt/acml/4.3.0/pgi64_mp/lib
+ BLAS_LIBS = acml_mp acml_mv
+ 
+-FFTW_DIR = /opt/fftw/2.1.5.1/cnos
++FFTW3_DIR = /opt/fftw/2.1.5.1/cnos
+ 
+ IPM_DIR = /u0/s/schnette/ipm_0.982
+ 
+diff --git a/mdb/optionlists/frost.cfg b/mdb/optionlists/frost.cfg
+index 218d7bf..e0b4514 100644
+--- a/mdb/optionlists/frost.cfg
++++ b/mdb/optionlists/frost.cfg
+@@ -79,7 +79,7 @@ F77_WARN_FLAGS =
+ BLAS_DIR  = /contrib/bgl/lib
+ BLAS_LIBS = blas440
+ 
+-FFTW_DIR = /contrib/bgl/fftw-3.2-double
++FFTW3_DIR = /contrib/bgl/fftw-3.2-double
+ 
+ GSL_DIR = /home/diener/gsl-1.14
+ 
+diff --git a/mdb/optionlists/hlrb2.cfg b/mdb/optionlists/hlrb2.cfg
+index fa054b6..2488925 100644
+--- a/mdb/optionlists/hlrb2.cfg
++++ b/mdb/optionlists/hlrb2.cfg
+@@ -83,7 +83,7 @@ F90_WARN_FLAGS = -warn all
+ BLAS_DIR  = /lrz/sys/intel/mkl91_06/lib/64
+ BLAS_LIBS = mkl_lapack mkl_ipf guide pthread
+ 
+-FFTW_DIR = /lrz/sys/fftw/3.1.1
++FFTW3_DIR = /lrz/sys/fftw/3.1.1
+ 
+ GSL_DIR = /lrz/sys/libraries/gsl/1.12
+ 
+diff --git a/mdb/optionlists/hopper-cray.cfg b/mdb/optionlists/hopper-cray.cfg
+index a3c4b81..9b96cbf 100644
+--- a/mdb/optionlists/hopper-cray.cfg
++++ b/mdb/optionlists/hopper-cray.cfg
+@@ -69,7 +69,7 @@ F77_WARN_FLAGS =
+ BLAS_DIR  = NOBUILD
+ BLAS_LIBS =
+ 
+-FFTW_DIR = /opt/fftw/2.1.5.2
++FFTW3_DIR = /opt/fftw/2.1.5.2
+ 
+ GSL_DIR = /usr/common/usg/gsl/1.14
+ 
+diff --git a/mdb/optionlists/hopper-gcc.cfg b/mdb/optionlists/hopper-gcc.cfg
+index 15794de..6838f05 100644
+--- a/mdb/optionlists/hopper-gcc.cfg
++++ b/mdb/optionlists/hopper-gcc.cfg
+@@ -70,7 +70,7 @@ F90_WARN_FLAGS  = -Wall
+ BLAS_DIR  = NOBUILD
+ BLAS_LIBS =
+ 
+-FFTW_DIR = /opt/fftw/2.1.5.2
++FFTW3_DIR = /opt/fftw/2.1.5.2
+ 
+ GSL_DIR = /usr/common/usg/gsl/1.14
+ 
+diff --git a/mdb/optionlists/hopper-intel.cfg b/mdb/optionlists/hopper-intel.cfg
+index 5b02f3d..6efbf05 100644
+--- a/mdb/optionlists/hopper-intel.cfg
++++ b/mdb/optionlists/hopper-intel.cfg
+@@ -72,7 +72,7 @@ F77_WARN_FLAGS =
+ BLAS_DIR  = NO_BUILD
+ BLAS_LIBS = -mkl
+ 
+-FFTW_DIR = /opt/fftw/3.2.2.1
++FFTW3_DIR = /opt/fftw/3.2.2.1
+ 
+ GSL_DIR = /usr/common/usg/gsl/1.14
+ 
+diff --git a/mdb/optionlists/hopper-pathscale.cfg b/mdb/optionlists/hopper-pathscale.cfg
+index 0f8e873..1eddf00 100644
+--- a/mdb/optionlists/hopper-pathscale.cfg
++++ b/mdb/optionlists/hopper-pathscale.cfg
+@@ -68,7 +68,7 @@ F77_WARN_FLAGS = -Wall -LNO:simd_verbose=ON
+ BLAS_DIR  = NOBUILD
+ BLAS_LIBS =
+ 
+-FFTW_DIR = /opt/fftw/2.1.5.2
++FFTW3_DIR = /opt/fftw/2.1.5.2
+ 
+ GSL_DIR = /usr/common/usg/gsl/1.14
+ 
+diff --git a/mdb/optionlists/hopper-pgi.cfg b/mdb/optionlists/hopper-pgi.cfg
+index f4b08fc..e34dcc1 100644
+--- a/mdb/optionlists/hopper-pgi.cfg
++++ b/mdb/optionlists/hopper-pgi.cfg
+@@ -72,7 +72,7 @@ F77_WARN_FLAGS = -Minfo -Minfo=mp -Mneginfo
+ BLAS_DIR  = NOBUILD
+ BLAS_LIBS =
+ 
+-FFTW_DIR = /opt/fftw/2.1.5.2
++FFTW3_DIR = /opt/fftw/2.1.5.2
+ 
+ GSL_DIR = /usr/common/usg/gsl/1.14
+ 
+diff --git a/mdb/optionlists/hopper2-gcc.cfg b/mdb/optionlists/hopper2-gcc.cfg
+index 7c9933b..6a5269c 100644
+--- a/mdb/optionlists/hopper2-gcc.cfg
++++ b/mdb/optionlists/hopper2-gcc.cfg
+@@ -72,7 +72,7 @@ F90_WARN_FLAGS  = -Wall
+ BLAS_DIR  = NOBUILD
+ BLAS_LIBS =
+ 
+-FFTW_DIR = /opt/fftw/2.1.5.2
++FFTW3_DIR = /opt/fftw/2.1.5.2
+ 
+ GSL_DIR = /usr/common/usg/gsl/1.14
+ 
+diff --git a/mdb/optionlists/hopper2-pgi10.cfg b/mdb/optionlists/hopper2-pgi10.cfg
+index c5e8b87..1843eaa 100644
+--- a/mdb/optionlists/hopper2-pgi10.cfg
++++ b/mdb/optionlists/hopper2-pgi10.cfg
+@@ -89,7 +89,7 @@ F77_WARN_FLAGS = -Minfo -Minfo=mp -Mneginfo
+ BLAS_DIR  = /opt/acml/4.4.0/pgi64_mp/lib
+ BLAS_LIBS = acml_mp acml_mv
+ 
+-FFTW_DIR = /opt/fftw/2.1.5.1/cnos
++FFTW3_DIR = /opt/fftw/2.1.5.1/cnos
+ 
+ GSL_DIR = /usr/common/usg/gsl/1.14
+ 
+diff --git a/mdb/optionlists/hopper2-pgi11.cfg b/mdb/optionlists/hopper2-pgi11.cfg
+index 2701f94..f3f24f3 100644
+--- a/mdb/optionlists/hopper2-pgi11.cfg
++++ b/mdb/optionlists/hopper2-pgi11.cfg
+@@ -78,7 +78,7 @@ F77_WARN_FLAGS = -Minfo -Minfo=mp -Mneginfo
+ BLAS_DIR  = /opt/acml/4.4.0/pgi64_mp/lib
+ BLAS_LIBS = acml_mp acml_mv
+ 
+-FFTW_DIR = /opt/fftw/2.1.5.2
++FFTW3_DIR = /opt/fftw/2.1.5.2
+ 
+ GSL_DIR = /usr/common/usg/gsl/1.14
+ 
+diff --git a/mdb/optionlists/hopper2.cfg b/mdb/optionlists/hopper2.cfg
+index 303ed7c..43e7774 100644
+--- a/mdb/optionlists/hopper2.cfg
++++ b/mdb/optionlists/hopper2.cfg
+@@ -75,7 +75,7 @@ F77_WARN_FLAGS = -Minfo -Minfo=mp -Mneginfo
+ BLAS_DIR  = /opt/acml/4.4.0/pgi64_mp/lib
+ BLAS_LIBS = acml_mp acml_mv
+ 
+-FFTW_DIR = /opt/fftw/2.1.5.1/cnos
++FFTW3_DIR = /opt/fftw/2.1.5.1/cnos
+ 
+ GSL_DIR = /usr/common/usg/gsl/1.14
+ 
+diff --git a/mdb/optionlists/kraken-gcc.cfg b/mdb/optionlists/kraken-gcc.cfg
+index fa63559..c060b7f 100644
+--- a/mdb/optionlists/kraken-gcc.cfg
++++ b/mdb/optionlists/kraken-gcc.cfg
+@@ -88,7 +88,7 @@ F90_WARN_FLAGS = -Wall -Wshadow -Wsurprising
+ #BLAS_LIBS = blas
+ BLAS_DIR = BUILD
+ 
+-FFTW_DIR = /sw/xt/fftw/3.1.2/cnl2.2_gnu4.4.3
++FFTW3_DIR = /sw/xt/fftw/3.1.2/cnl2.2_gnu4.4.3
+ 
+ # libgsl.a seems incompatible; it was probably built with an older
+ # version of gcc
+diff --git a/mdb/optionlists/kraken-intel.cfg b/mdb/optionlists/kraken-intel.cfg
+index 3615ea1..424f0d8 100644
+--- a/mdb/optionlists/kraken-intel.cfg
++++ b/mdb/optionlists/kraken-intel.cfg
+@@ -85,7 +85,7 @@ F77_WARN_FLAGS =
+ BLAS_DIR  = /opt/intel/Compiler/11.1/038/mkl/lib/em64t
+ BLAS_LIBS = -Wl,--start-group mkl_intel_lp64 mkl_intel_thread mkl_core -Wl,--end-group   iomp5   pthread
+ 
+-FFTW_DIR = /opt/fftw/3.2.2.1
++FFTW3_DIR = /opt/fftw/3.2.2.1
+ 
+ GSL_DIR = /sw/xt/gsl/1.14/cnl2.2_intel11.1.038
+ 
+diff --git a/mdb/optionlists/kraken-pgi10.cfg b/mdb/optionlists/kraken-pgi10.cfg
+index 2848378..52bbf97 100644
+--- a/mdb/optionlists/kraken-pgi10.cfg
++++ b/mdb/optionlists/kraken-pgi10.cfg
+@@ -83,7 +83,7 @@ F77_WARN_FLAGS =
+ BLAS_DIR  = /sw/xt5/blas/ref/cnl2.1_pgi7.2.3/lib
+ BLAS_LIBS = blas
+ 
+-FFTW_DIR = /sw/xt5/fftw/3.2.1/cnl2.1_pgi7.2.5
++FFTW3_DIR = /sw/xt5/fftw/3.2.1/cnl2.1_pgi7.2.5
+ 
+ GSL_DIR = /sw/xt5/gsl/1.11/cnl2.1_pgi7.2.3
+ 
+diff --git a/mdb/optionlists/kraken.cfg b/mdb/optionlists/kraken.cfg
+index 9441cf1..0574fae 100644
+--- a/mdb/optionlists/kraken.cfg
++++ b/mdb/optionlists/kraken.cfg
+@@ -79,7 +79,7 @@ BLAS_DIR  = /sw/xt/blas/ref/cnl2.2_pgi9.0.1/lib
+ 
+ BLAS_LIBS = blas
+ 
+-FFTW_DIR = /sw/xt/fftw/3.1.2/cnl2.2_pgi9.0.1
++FFTW3_DIR = /sw/xt/fftw/3.1.2/cnl2.2_pgi9.0.1
+ 
+ GSL_DIR = /sw/xt/gsl/1.14/cnl2.2_pgi10.4.0
+ 
+diff --git a/mdb/optionlists/lincoln-mvapich2.cfg b/mdb/optionlists/lincoln-mvapich2.cfg
+index c713098..3b1f410 100644
+--- a/mdb/optionlists/lincoln-mvapich2.cfg
++++ b/mdb/optionlists/lincoln-mvapich2.cfg
+@@ -80,8 +80,7 @@ F90_WARN_FLAGS =
+ BLAS_DIR  = /usr/local/intel/mkl/10.2.1.017/lib/em64t
+ BLAS_LIBS =  -Wl,--start-group mkl_intel_lp64 mkl_intel_thread mkl_core -Wl,--end-group   iomp5   pthread
+ 
+-FFTW_DIR  = /usr/apps/math/fftw/fftw-3.1.2/intel10
+-FFTW_LIBS = fftw3
++FFTW3_DIR  = /usr/apps/math/fftw/fftw-3.1.2/intel10
+ 
+ LAPACK_DIR  = /usr/local/intel/mkl/10.2.1.017/lib/em64t
+ LAPACK_LIBS = -Wl,--start-group mkl_lapack mkl_intel_lp64 mkl_intel_thread mkl_core -Wl,--end-group
+diff --git a/mdb/optionlists/macos-intel.cfg b/mdb/optionlists/macos-intel.cfg
+index fb5066b..6790b0a 100644
+--- a/mdb/optionlists/macos-intel.cfg
++++ b/mdb/optionlists/macos-intel.cfg
+@@ -85,8 +85,7 @@ WARN           = no
+ BLAS_DIR  = /System/Library/Frameworks/vecLib.framework
+ BLAS_LIBS =
+ 
+-FFTW_DIR  = /opt/local
+-FFTW_LIBS = drfftw dfftw m
++FFTW3_DIR  = /opt/local
+ 
+ GSL_DIR = /sw
+ 
+diff --git a/mdb/optionlists/macos-macports-gcc.cfg b/mdb/optionlists/macos-macports-gcc.cfg
+index 4df2da2..f7f322a 100644
+--- a/mdb/optionlists/macos-macports-gcc.cfg
++++ b/mdb/optionlists/macos-macports-gcc.cfg
+@@ -64,8 +64,7 @@ F90_WARN_FLAGS = -warn all
+ BLAS_DIR  = /System/Library/Frameworks/vecLib.framework
+ BLAS_LIBS =
+ 
+-FFTW_DIR  = /opt/local
+-FFTW_LIBS = drfftw dfftw m
++FFTW3_DIR  = /opt/local
+ 
+ GSL_DIR = /opt/local
+ 
+diff --git a/mdb/optionlists/numrel-intel.cfg b/mdb/optionlists/numrel-intel.cfg
+index 3db605d..25cd04d 100644
+--- a/mdb/optionlists/numrel-intel.cfg
++++ b/mdb/optionlists/numrel-intel.cfg
+@@ -102,8 +102,7 @@ F90_WARN_FLAGS = -warn all -warn nounused
+ BLAS_DIR  = /usr/local/compilers/intel_fce_11.1.064.x86_64/mkl/lib/em64t
+ BLAS_LIBS = mkl_lapack mkl_gf_lp64 mkl_intel_thread mkl_core iomp5 guide pthread
+ 
+-#FFTW_DIR  = /opt/local
+-#FFTW_LIBS = drfftw dfftw m
++#FFTW3_DIR  = /opt/local
+ 
+ GSL_DIR = BUILD
+ 
+diff --git a/mdb/optionlists/philip-mpich.cfg b/mdb/optionlists/philip-mpich.cfg
+index 2966832..5c78ae9 100644
+--- a/mdb/optionlists/philip-mpich.cfg
++++ b/mdb/optionlists/philip-mpich.cfg
+@@ -82,7 +82,7 @@ F90_WARN_FLAGS =
+ BLAS_DIR  = /usr/local/compilers/Intel/mkl-10.1.0.015/lib/em64t
+ BLAS_LIBS = -Bstatic mkl_em64t guide -Bdynamic pthread
+ 
+-FFTW_DIR = /usr/local/packages/fftw/3.2/intel-11.1-mpich-1.2.7p1
++FFTW3_DIR = /usr/local/packages/fftw/3.2/intel-11.1-mpich-1.2.7p1
+ 
+ GSL_DIR = /usr/local/packages/gsl/1.9/intel-11.1-mpich-1.2.7p1
+ 
+diff --git a/mdb/optionlists/queenbee-mvapich.cfg b/mdb/optionlists/queenbee-mvapich.cfg
+index dd9107a..e976a99 100644
+--- a/mdb/optionlists/queenbee-mvapich.cfg
++++ b/mdb/optionlists/queenbee-mvapich.cfg
+@@ -84,7 +84,7 @@ F90_WARN_FLAGS =
+ BLAS_DIR  = /usr/local/compilers/Intel/mkl-10.2/lib/em64t
+ BLAS_LIBS = mkl_solver_lp64 mkl_intel_lp64 mkl_intel_thread mkl_core   iomp5 guide   pthread
+ 
+-FFTW_DIR = /usr/local/packages/fftw/3.2/intel-11.1-mvapich-1.1
++FFTW3_DIR = /usr/local/packages/fftw/3.2/intel-11.1-mvapich-1.1
+ 
+ GSL_DIR = /usr/local/packages/gsl/1.9/intel-11.1-mvapich-1.1
+ 
+diff --git a/mdb/optionlists/queenbee-mvapich2.cfg b/mdb/optionlists/queenbee-mvapich2.cfg
+index 3687dc6..9204db9 100644
+--- a/mdb/optionlists/queenbee-mvapich2.cfg
++++ b/mdb/optionlists/queenbee-mvapich2.cfg
+@@ -92,7 +92,7 @@ F90_WARN_FLAGS =
+ BLAS_DIR  = /usr/local/compilers/Intel/mkl-10.2/lib/em64t
+ BLAS_LIBS = mkl_solver_lp64 mkl_intel_lp64 mkl_intel_thread mkl_core   iomp5 guide   pthread
+ 
+-FFTW_DIR = /usr/local/packages/fftw/3.2/intel-11.1-mvapich2-1.4
++FFTW3_DIR = /usr/local/packages/fftw/3.2/intel-11.1-mvapich2-1.4
+ 
+ GIT_DIR = /usr/local/packages/git/1.6.1.3/intel-11.1
+ 
+diff --git a/mdb/optionlists/sl6.cfg b/mdb/optionlists/sl6.cfg
+index 816144a..dc495fd 100644
+--- a/mdb/optionlists/sl6.cfg
++++ b/mdb/optionlists/sl6.cfg
+@@ -64,8 +64,7 @@ F90_WARN_FLAGS = -warn all
+ BLAS_DIR  = /usr/lib64
+ BLAS_LIBS =
+ 
+-FFTW_DIR  = /usr
+-FFTW_LIBS = drfftw dfftw m
++FFTW3_DIR  = /usr
+ 
+ GSL_DIR = /usr
+ 
+diff --git a/mdb/optionlists/supermuc.cfg b/mdb/optionlists/supermuc.cfg
+index d8bbb3d..96be327 100644
+--- a/mdb/optionlists/supermuc.cfg
++++ b/mdb/optionlists/supermuc.cfg
+@@ -96,7 +96,7 @@ BLAS_DIR  = /lrz/sys/intel/mkl91/lib/em64t
+ #BLAS_LIBS = mkl_lapack mkl_ipf guide pthread
+ BLAS_LIBS = mkl_lapack guide pthread
+ 
+-FFTW_DIR = /lrz/sys/libraries/fftw/3.3
++FFTW3_DIR = /lrz/sys/libraries/fftw/3.3
+ 
+ GSL_DIR = /lrz/sys/libraries/gsl/1.15
+ 
+diff --git a/mdb/optionlists/tezpur-mvapich2.cfg b/mdb/optionlists/tezpur-mvapich2.cfg
+index f0ae9ba..8432ce5 100644
+--- a/mdb/optionlists/tezpur-mvapich2.cfg
++++ b/mdb/optionlists/tezpur-mvapich2.cfg
+@@ -84,7 +84,7 @@ F90_WARN_FLAGS =
+ BLAS_DIR  = /usr/local/compilers/Intel/mkl-10.0/lib/em64t
+ BLAS_LIBS = -Bstatic mkl_em64t guide -Bdynamic   pthread
+ 
+-FFTW_DIR = /usr/local/packages/fftw-3.1.2-intel10.1
++FFTW3_DIR = /usr/local/packages/fftw-3.1.2-intel10.1
+ 
+ GSL_DIR = /usr/local/packages/gsl-1.9-intel9.1
+ 
+diff --git a/mdb/optionlists/varia-gcc.cfg b/mdb/optionlists/varia-gcc.cfg
+index 2e49879..616a23b 100644
+--- a/mdb/optionlists/varia-gcc.cfg
++++ b/mdb/optionlists/varia-gcc.cfg
+@@ -80,8 +80,7 @@ F90_WARN_FLAGS = -Wall -Wshadow -Wsurprising
+ BLAS_DIR  = /System/Library/Frameworks/vecLib.framework
+ BLAS_LIBS = gfortran
+ 
+-FFTW_DIR  = /opt/local
+-FFTW_LIBS = drfftw dfftw m
++FFTW3_DIR  = /opt/local
+ 
+ #CURL_DIR = /opt/local
+ 
+-- 
+1.7.7.4
+

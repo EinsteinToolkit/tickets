@@ -1,0 +1,55 @@
+From 00271aa7eed188505a88d7301ee33d5f04feeece Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Tue, 14 Feb 2012 21:19:14 -0800
+Subject: [PATCH 05/12] Hydro_Analysis: fiddle with when to warn about
+ multiple identical maxima
+
+---
+ src/Hydro_Analysis.c |    9 +++++----
+ 1 file changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/src/Hydro_Analysis.c b/src/Hydro_Analysis.c
+index bb99dac..493bec8 100644
+--- a/src/Hydro_Analysis.c
++++ b/src/Hydro_Analysis.c
+@@ -90,6 +90,8 @@ void Hydro_Analysis_LocationSearch(CCTK_ARGUMENTS)
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+ 
++  static int have_warned_about_multiple_maxima = 0;
++
+   int set_maximum_location, warned_about_multiple_local_maxima = 0;
+ 
+   /* Initialized MPI-local quantities */
+@@ -118,7 +120,8 @@ void Hydro_Analysis_LocationSearch(CCTK_ARGUMENTS)
+           // have to already warn here when we still have the actual coordinates around
+           if (verbosity_level >= 1 && round(local_rho_max_loc[3]) >= 1.)
+           { 
+-            CCTK_WARN(1, "Found more than one identical maximum in single patch.");
++            if(!have_warned_about_multiple_maxima && !warned_about_multiple_local_maxima)
++              CCTK_WARN(1, "Found more than one identical maximum in single patch.");
+             if (verbosity_level >= 2)
+             {
+               if (round(local_rho_max_loc[3]) == 1.) { // once we detect the second maximum, output the first as well
+@@ -131,8 +134,8 @@ void Hydro_Analysis_LocationSearch(CCTK_ARGUMENTS)
+                         "my candidate: (%g,%g,%g) with value %g.",
+                          x[i3D], y[i3D], z[i3D],
+                          *Hydro_Analysis_rho_max);
+-              warned_about_multiple_local_maxima = 1;
+             }
++            warned_about_multiple_local_maxima = 1;
+           }
+           local_rho_max_loc[0] += x[i3D];
+           local_rho_max_loc[1] += y[i3D];
+@@ -162,8 +165,6 @@ void Hydro_Analysis_LocationSearch(CCTK_ARGUMENTS)
+     } else {
+       if (Hydro_Analysis_average_multiple_maxima_locations)
+       {
+-        static int have_warned_about_multiple_maxima = 0;
+-
+         level_rho_max_loc[0] /= level_rho_max_loc[3];
+         level_rho_max_loc[1] /= level_rho_max_loc[3];
+         level_rho_max_loc[2] /= level_rho_max_loc[3];
+-- 
+1.7.10.4
+

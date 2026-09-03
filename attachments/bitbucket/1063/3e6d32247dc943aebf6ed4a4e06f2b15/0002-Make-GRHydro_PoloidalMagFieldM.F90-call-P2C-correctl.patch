@@ -1,0 +1,57 @@
+From f6207ae3a12311bfa761010adb4a833c05c89c13 Mon Sep 17 00:00:00 2001
+From: Philipp Moesta <pmoesta@tapir.caltech.edu>
+Date: Tue, 3 Jul 2012 18:41:15 -0700
+Subject: [PATCH 2/4] Make GRHydro_PoloidalMagFieldM.F90 call P2C correctly
+ for temperature evolved or not evolved.
+
+---
+ src/GRHydro_PoloidalMagFieldM.F90 |   33 ++++++++++++++++++---------------
+ 1 file changed, 18 insertions(+), 15 deletions(-)
+
+diff --git a/src/GRHydro_PoloidalMagFieldM.F90 b/src/GRHydro_PoloidalMagFieldM.F90
+index 16c6eef..e4ac43f 100644
+--- a/src/GRHydro_PoloidalMagFieldM.F90
++++ b/src/GRHydro_PoloidalMagFieldM.F90
+@@ -136,21 +136,24 @@ subroutine GRHydro_PoloidalMagFieldM(CCTK_ARGUMENTS)
+                    eps(i,j,k),press(i,j,k),Bvecx(i,j,k),Bvecy(i,j,k),Bvecz(i,j,k),&
+                    w_lorentz(i,j,k))
+            else
+-              call Prim2ConGenM_hot(GRHydro_eos_handle,GRHydro_reflevel,&
+-                   i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),gxx(i,j,k),gxy(i,j,k),&
+-                   gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k),&
+-                   det, dens(i,j,k),sx(i,j,k),sy(i,j,k),sz(i,j,k),&
+-                   tau(i,j,k),Bconsx(i,j,k),Bconsy(i,j,k),Bconsz(i,j,k),rho(i,j,k),&
+-                   velx(i,j,k),vely(i,j,k),velz(i,j,k),&
+-                   eps(i,j,k),press(i,j,k),Bvecx(i,j,k),Bvecy(i,j,k),Bvecz(i,j,k),&
+-                   w_lorentz(i,j,k),temperature(i,j,k),y_e(i,j,k))
+-!              call Prim2ConGenM(GRHydro_eos_handle,gxx(i,j,k),gxy(i,j,k),&
+-!                   gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k),&
+-!                   det, dens(i,j,k),sx(i,j,k),sy(i,j,k),sz(i,j,k),&
+-!                   tau(i,j,k),Bconsx(i,j,k),Bconsy(i,j,k),Bconsz(i,j,k),rho(i,j,k),&
+-!                   velx(i,j,k),vely(i,j,k),velz(i,j,k),&
+-!                   eps(i,j,k),press(i,j,k),Bvecx(i,j,k),Bvecy(i,j,k),Bvecz(i,j,k),&
+-!                   w_lorentz(i,j,k))
++             if (evolve_temper .ne. 0) then
++               call Prim2ConGenM_hot(GRHydro_eos_handle,GRHydro_reflevel,&
++                    i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),gxx(i,j,k),gxy(i,j,k),&
++                    gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k),&
++                    det, dens(i,j,k),sx(i,j,k),sy(i,j,k),sz(i,j,k),&
++                    tau(i,j,k),Bconsx(i,j,k),Bconsy(i,j,k),Bconsz(i,j,k),rho(i,j,k),&
++                    velx(i,j,k),vely(i,j,k),velz(i,j,k),&
++                    eps(i,j,k),press(i,j,k),Bvecx(i,j,k),Bvecy(i,j,k),Bvecz(i,j,k),&
++                    w_lorentz(i,j,k),temperature(i,j,k),y_e(i,j,k))
++             else
++               call Prim2ConGenM(GRHydro_eos_handle,gxx(i,j,k),gxy(i,j,k),&
++                    gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k),&
++                    det, dens(i,j,k),sx(i,j,k),sy(i,j,k),sz(i,j,k),&
++                    tau(i,j,k),Bconsx(i,j,k),Bconsy(i,j,k),Bconsz(i,j,k),rho(i,j,k),&
++                    velx(i,j,k),vely(i,j,k),velz(i,j,k),&
++                    eps(i,j,k),press(i,j,k),Bvecx(i,j,k),Bvecy(i,j,k),Bvecz(i,j,k),&
++                    w_lorentz(i,j,k))
++             end if
+            end if
+            
+         enddo
+-- 
+1.7.10.4
+

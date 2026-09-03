@@ -1,0 +1,50 @@
+Index: interface.ccl
+===================================================================
+--- interface.ccl	(revision 113)
++++ interface.ccl	(working copy)
+@@ -5,3 +5,8 @@
+ inherits: HydroBase SphericalSurface
+ 
+ USES INCLUDE: HydroBase.h
++
++# translate SphericalSurface name into ID
++CCTK_INT \
++FUNCTION sf_IdFromName (CCTK_INT IN id, CCTK_POINTER_TO_CONST IN name)
++USES FUNCTION sf_IdFromName
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 113)
++++ param.ccl	(working copy)
+@@ -14,6 +14,11 @@
+   -1:* :: "-1 to disable (default), >=0 for index"
+ } -1
+ 
++CCTK_String SetMask_SurfaceName[10] "Name of spherical surface to use to set mask" STEERABLE=always
++{
++  ".*":: "emtpy to use SetMask_SurfaceIndex, any other string to use"
++} ""
++
+ CCTK_REAL SetMask_RadiusFactor[10] "Factor to modify radius of surface for mask" STEERABLE=always
+ {
+   0:* :: "Some positive factor, default: 1"
+Index: src/SetMask.c
+===================================================================
+--- src/SetMask.c	(revision 113)
++++ src/SetMask.c	(working copy)
+@@ -1,6 +1,7 @@
+ #include "cctk.h"
+ #include "cctk_Arguments.h"
+ #include "cctk_Parameters.h"
++#include "cctk_Functions.h"
+ 
+ #include "loopcontrol.h"
+ #include "HydroBase.h"
+@@ -16,7 +17,7 @@
+ 
+   for (int smi = 0; smi < 10; smi++)
+   {
+-    CCTK_INT sfi = SetMask_SurfaceIndex[smi];
++    CCTK_INT sfi = sf_IdFromName(SetMask_SurfaceIndex[smi], SetMask_SurfaceName[smi]);
+     if (sfi >= 0 && sf_active[sfi] && sf_valid[sfi] >= 0)
+     {
+       #pragma omp parallel

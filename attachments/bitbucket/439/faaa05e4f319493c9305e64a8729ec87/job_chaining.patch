@@ -1,0 +1,41 @@
+Index: lib/simrestart.py
+===================================================================
+--- lib/simrestart.py	(revision 1334)
++++ lib/simrestart.py	(working copy)
+@@ -328,7 +328,7 @@
+         if restartlib.CheckActive(simulationName):
+             
+             # we presubmit
+-            chainedJobId = restartlib.GetActiveJobId(simulationName)
++            chainedJobId = restartlib.GetMaxJobId(simulationName)
+             self.ActiveRestartID = restartlib.GetActiveRestartId(self)
+             warning("Simulation %s already has an active submission. Chaining this submission onto job id %s" % (simulationName, chainedJobId))
+             self.submit(submitScript, chainedJobId, self.ActiveRestartID)
+Index: lib/restartlib.py
+===================================================================
+--- lib/restartlib.py	(revision 1334)
++++ lib/restartlib.py	(working copy)
+@@ -300,6 +300,23 @@
+     
+     return job_id
+ 
++def GetMaxJobId(simulationName):
++    
++    restart = simrestart.SimRestart()
++    restart.load(simulationName)
++
++    max_id = GetMaxRestartID(simulationName)-1
++
++    if max_id == -1:
++        return None
++    
++    restart.load(simulationName, max_id)
++    job_id = restart.GetJobId()
++    
++    restart.done()
++    
++    return job_id
++
+ def GetJobStatus(job_id):
+     # TODO: there needs to be documentation stating what the possible
+     # return values are

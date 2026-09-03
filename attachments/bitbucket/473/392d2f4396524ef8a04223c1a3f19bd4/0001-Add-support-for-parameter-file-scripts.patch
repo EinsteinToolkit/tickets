@@ -1,0 +1,72 @@
+From 43afa5e316c057a0d5772c71cd48df075b6df8f7 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Sun, 17 Jul 2011 00:04:29 +0100
+Subject: [PATCH] Add support for parameter file scripts
+
+A parameter file script is a file with a ".rpar" extension which, when executed, generates a file in the same place but with a ".par" extension.  The resulting file should be a valid simfactory parameter file.  This patch adds support in SimFactory for these scripts.  Use a script in place of a parameter file when invoking SimFactory.  When a simulation is run, the script will be executed and the resulting parameter file will be used by Cactus.
+---
+ lib/simlib.py     |    6 +++---
+ lib/simrestart.py |   16 +++++++++++++++-
+ 2 files changed, 18 insertions(+), 4 deletions(-)
+
+diff --git a/lib/simlib.py b/lib/simlib.py
+index 81ac3de..8ca6872 100644
+--- a/lib/simlib.py
++++ b/lib/simlib.py
+@@ -190,7 +190,7 @@ def ParseSimulationCommandLine():
+     if numArgs < 3:
+         if numArgs == 1:
+             argument = simenv.OptionsManager.args.pop(0)
+-            if argument.count(".par") > 0:
++            if argument.count(".par") > 0 or argument.count(".rpar") > 0:
+                 parfile = argument
+                 info("Parfile: %s" % parfile)
+                 simenv.OptionsManager.UpdateOption('parfile', parfile)
+@@ -208,7 +208,7 @@ def ParseSimulationCommandLine():
+         simulationName = argument
+         argument = simenv.OptionsManager.args.pop(0)
+ 
+-    if argument.count(".par") > 0:
++    if argument.count(".par") > 0 or argument.count(".rpar") > 0:
+         parfile = argument
+         info("Parfile: %s" % parfile)
+         simenv.OptionsManager.UpdateOption('parfile', parfile)
+@@ -216,7 +216,7 @@ def ParseSimulationCommandLine():
+         if simulationName == None:
+             simulationName = FileBaseName(parfile)
+     else:
+-        fatal("Error: argument stream in incorrect format.\nExpecting: %s %s [simulationName] parfile.par procs walltime" % (sys.argv[0], simenv.COMMAND))
++        fatal("Error: argument stream in incorrect format.\nExpecting: %s %s [simulationName] parfile.[r]par procs walltime" % (sys.argv[0], simenv.COMMAND))
+ 
+     display("Simulation Name: %s" % simulationName)
+     
+diff --git a/lib/simrestart.py b/lib/simrestart.py
+index 2c37568..bdce662 100644
+--- a/lib/simrestart.py
++++ b/lib/simrestart.py
+@@ -1064,7 +1064,21 @@ class SimRestart:
+             DefineDatabase.Set(key, new_properties[key])
+         
+         if parfile != "":
+-            contents = DefineDatabase.SubAll(simlib.GetFileContents(parfile))
++            if parfile.endswith(".rpar"):
++                shutil.copy(parfile, self.RestartDir)
++                restart_rpar = simlib.BuildPath(self.RestartDir, simlib.BaseName(parfile))
++                os.chmod(restart_rpar,os.stat(restart_rpar).st_mode | stat.S_IXUSR)
++                ret = os.system(restart_rpar)
++                if ret != 0:
++                    fatal("Error while executing parameter file script %s" % restart_rpar)
++                restart_par = re.sub(r'(.*)\.rpar$', r'\1.par', restart_rpar)
++                if not os.path.exists(restart_par):
++                    fatal("Parameter file script '%s' did not generate a parameter file called '%s'" %(restart_rpar,restart_par))
++                par_contents = simlib.GetFileContents(restart_par)
++            else:
++                par_contents = simlib.GetFileContents(parfile)
++
++            contents = DefineDatabase.SubAll(par_contents)
+             simlib.WriteContents(newparpath, contents)
+ 
+         self.Properties.Save()
+-- 
+1.7.5.4
+

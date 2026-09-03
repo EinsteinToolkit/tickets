@@ -1,0 +1,34 @@
+From c088094b5eb9b5924ef8303f2892be07d45ce425 Mon Sep 17 00:00:00 2001
+From: Tanja Bode <tanja.bode@physics.gatech.edu>
+Date: Wed, 21 Nov 2012 10:43:50 -0500
+Subject: [PATCH 6/8] GRHydro_InitData: Make few evolve_entropy checks logical
+
+---
+ src/GRHydro_BondiM_new.F90 |    4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/GRHydro_BondiM_new.F90 b/src/GRHydro_BondiM_new.F90
+index d9fe6b3..deff973 100644
+--- a/src/GRHydro_BondiM_new.F90
++++ b/src/GRHydro_BondiM_new.F90
+@@ -310,7 +310,7 @@ subroutine GRHydro_BondiM_Iso(CCTK_ARGUMENTS)
+                           eps(i,j,k),press(i,j,k), &
+                   Bvecx(i,j,k),Bvecy(i,j,k),Bvecz(i,j,k),w_lorentz(i,j,k))
+ 
+-           if(evolve_entropy) then
++           if(evolve_entropy.ne.0) then
+              entropy(i,j,k) = press(i,j,k) * rho(i,j,k)**(-gmo)
+              entropycons(i,j,k) = sdet * entropy(i,j,k) * w_lorentz(i,j,k)
+            end if
+@@ -325,7 +325,7 @@ subroutine GRHydro_BondiM_Iso(CCTK_ARGUMENTS)
+   srhs = 0.d0
+   taurhs = 0.d0
+   Bconsrhs = 0.d0
+-  if(evolve_entropy) then
++  if(evolve_entropy.ne.0) then
+     entropyrhs = 0.d0
+   end if
+ 
+-- 
+1.7.10.4
+

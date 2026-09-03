@@ -1,0 +1,188 @@
+Index: test/expressions/ParamEval.asc
+===================================================================
+--- test/expressions/ParamEval.asc	(revision 0)
++++ test/expressions/ParamEval.asc	(revision 0)
+@@ -0,0 +1,10 @@
++1 -10 1 -1 1 0
++3 -1 0.5 0 1 0
++12 12 42 84 0 1
++0 -216 -314.159 -1764 1 0
++99 2 2 213 1 1
++12 1 42 23 1 0
++12 1 42 23 1 0
++12 1 42 23 1 0
++12 1 42 23 1 0
++12 1 42 23 1 0
+
+Property changes on: test/expressions/ParamEval.asc
+___________________________________________________________________
+Added: svn:mime-type
+   + text/plain
+
+Index: test/expressions.par
+===================================================================
+--- test/expressions.par	(revision 0)
++++ test/expressions.par	(revision 0)
+@@ -0,0 +1,43 @@
++ActiveThorns = "TestPar"
++
++TestPar::out_dir = $parfile
++
++# values: 1 -10 1. -1 1 0
++TestPar::int1[0] = 1
++TestPar::int2[0] = -10
++TestPar::real1[0] = 1.
++TestPar::real2[0] = -1
++TestPar::bool1[0] = 1
++TestPar::bool2[0] = no
++
++# values 3 -1 0.5 0 1 0 
++TestPar::int1[1] = "1./3.*10 - 1./3."
++TestPar::int2[1] = trunc(atan(-inf))
++TestPar::real1[1] = 1./2
++TestPar::real2[1] = 1/2
++TestPar::bool1[1] = "!(1 && 0)"
++TestPar::bool2[1] = "(1-(-3.14))=0"
++
++# 12 12 42 84 0 1
++TestPar::int1[2] = "floor(sin(TestPar::real2[2])) + 13" # uses default values! You don't want that in actual parameter files
++TestPar::int2[2] = "TestPar::int1[2] % TestPar::real1[2]"
++TestPar::real1[2] = 42.
++TestPar::real2[2] = "TestPar::real1[2] * 2"
++TestPar::bool1[2] = "!TestPar::bool1[2]"
++TestPar::bool2[2] = true
++
++# 1 -216 -314.159 1764 1 0
++TestPar::int1[3] = "10*cos(2**3)"
++TestPar::int2[3] = "-12*(23%11 + 17)"
++TestPar::real1[3] = -3.14159e2
++TestPar::real2[3] = "TestPar::real1[2] * (-floor(TestPar::real1[2]))"
++TestPar::bool1[3] = "TestPar::int2[3] || -1 >= 10"
++TestPar::bool2[3] = "TestPar::real1[3] < TestPar::real2[3]"
++
++# 99 2 2 213 1 1
++TestPar::int1[4] = 99
++TestPar::int2[4] = "floor(0.3*sqrt(80))"
++TestPar::real1[4] = "exp(1)"
++TestPar::real2[4] = "((1=0)<3 >= -1. && !exp(-1000)) * +3 - (-3/4) + (5%6) * ceil(13.2) * sqrt(13)"
++TestPar::bool1[4] = true
++TestPar::bool2[4] = "!false"
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 5)
++++ param.ccl	(working copy)
+@@ -44,3 +44,36 @@
+ {
+   ".*" :: "Any string"
+ } ""
++
++STRING out_dir "Where to write output"
++{
++  ".*" :: "Any valid path"
++} ""
++
++INT int1[10] ""
++{
++  *:* :: "Any integer"
++} 12
++
++INT int2[10] ""
++{
++  *:* :: "Any integer"
++} 1
++
++REAL real1[10] ""
++{
++  *:* :: "Any number"
++} 42.d0
++
++REAL real2[10] ""
++{
++  *:* :: "Any number"
++} 23
++
++BOOLEAN bool1[10] ""
++{
++} yes
++
++BOOLEAN bool2[10] ""
++{
++} 0
+Index: src/make.code.defn
+===================================================================
+--- src/make.code.defn	(revision 5)
++++ src/make.code.defn	(working copy)
+@@ -1,7 +1,7 @@
+ # Main make.code.defn file for thorn TestPar
+ 
+ # Source files in this directory
+-SRCS = PrintStrings.c
++SRCS = PrintStrings.c SetValues.c
+ 
+ # Subdirectories containing source files
+ SUBDIRS = 
+Index: src/SetValues.c
+===================================================================
+--- src/SetValues.c	(revision 0)
++++ src/SetValues.c	(revision 0)
+@@ -0,0 +1,41 @@
++#include <cctk.h>
++#include <cctk_Arguments.h>
++#include <cctk_Parameters.h>
++#include <cctk_File.h>
++
++#include <util_String.h>
++
++#include <stdio.h>
++#include <stdlib.h>
++
++void TestPar_SetValues (CCTK_ARGUMENTS)
++{
++  DECLARE_CCTK_ARGUMENTS;
++  DECLARE_CCTK_PARAMETERS;
++  
++  int i;
++  FILE *fh = NULL;
++  char *buf = NULL;
++  
++  if(CCTK_MyProc(cctkGH) != 0)
++    return;
++
++  if(Util_asprintf(&buf, "%s/ParamEval.asc", out_dir) == 0  || 
++     CCTK_CreateDirectory(0777, out_dir) < 0 ||
++     (fh = fopen(buf, "w+")) == NULL)
++  {
++    CCTK_VWarn(CCTK_WARN_ABORT, __LINE__, __FILE__, CCTK_THORNSTRING,
++               "Could not open file '%s' for output", buf);
++  }
++
++  for(i = 0 ; i < 10 ; i++)
++  {
++    fprintf(fh, "%d %d %g %g %d %d\n", (int)int1[i], (int)int2[i],
++            (double)real1[i], (double)real2[i], (int)bool1[i], (int)bool2[i]);
++  }
++
++  if(fh)
++    fclose(fh);
++  if(buf)
++    free(buf);
++}
+
+Property changes on: src/SetValues.c
+___________________________________________________________________
+Added: svn:mime-type
+   + text/plain
+
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 5)
++++ schedule.ccl	(working copy)
+@@ -4,3 +4,8 @@
+ {
+   LANG: C
+ } "Output string parameters"
++
++SCHEDULE TestPar_SetValues AT initial
++{
++  LANG: C
++} "Set values based on parameters"

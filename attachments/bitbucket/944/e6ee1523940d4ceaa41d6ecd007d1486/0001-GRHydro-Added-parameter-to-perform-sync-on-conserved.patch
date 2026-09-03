@@ -1,0 +1,1982 @@
+From 924b389c9e7ac23c2917af53d0728cd969378aee Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Sun, 3 Jun 2012 16:43:55 -0700
+Subject: [PATCH 01/13] GRHydro: Added parameter to perform sync on conserved
+ quantities only.
+
+Primitives are only sync'ed after regridding to get initial guesses.
+Schedule Primitive boundary call in PostRegridInitial if sync_only_coserved == yes.
+
+Fixed issue with the sync call in CCTK_EVOL after MoL_Evolution when sync_conserved_only==yes:
+Conserved vars must be synced here as well, otherwise conserved vars are reset to atmospshere whereas
+primitives are not! This is wrong.
+
+Patches by Christian Reisswig.
+---
+ param.ccl                                     |    9 +
+ schedule.ccl                                  |   59 +++-
+ src/GRHydro_Boundaries.F90                    |  328 ++++++++++++++-----
+ src/GRHydro_Con2Prim.F90                      |    2 +
+ test/test_tov_carpet_refined_nosync.par       |  113 +++++++
+ test/test_tov_carpet_refined_nosync/rho.x.asc |  415 ++++++++++++++++++++++++
+ test/test_tov_carpet_refined_nosync/rho.y.asc |  424 +++++++++++++++++++++++++
+ test/test_tov_carpet_refined_nosync/rho.z.asc |  424 +++++++++++++++++++++++++
+ 8 files changed, 1692 insertions(+), 82 deletions(-)
+ create mode 100644 test/test_tov_carpet_refined_nosync.par
+ create mode 100644 test/test_tov_carpet_refined_nosync/rho.x.asc
+ create mode 100644 test/test_tov_carpet_refined_nosync/rho.y.asc
+ create mode 100644 test/test_tov_carpet_refined_nosync/rho.z.asc
+
+diff --git a/param.ccl b/param.ccl
+index c22b6c1..51ee2c3 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -598,3 +598,12 @@ int GRHydro_c2p_warn_from_reflevel "Start warning on given refinement level and
+ boolean disable_sync_and_tmunu_after_MoL "Do not sync/prolongate and reset Tmunu after MoL integration is done" STEERABLE=ALWAYS
+ {
+ } "no"
++
++
++# This can improve the performance on many cores, but may be dangerous 
++# (it seems to work in simple testcases, but morde complicated settings may fail)
++# If you encounter strange behavior, switch this OFF
++BOOLEAN sync_conserved_only "Only sync evolved conserved quantities during evolution."
++{
++} no
++
+diff --git a/schedule.ccl b/schedule.ccl
+index 7e9b765..180b441 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -998,6 +998,8 @@ schedule group Do_GRHydro_Boundaries IN HydroBase_Boundaries
+ {
+ } "GRHydro Boundary conditions group"
+ 
++if (!sync_conserved_only)
++{
+ schedule GRHydro_Boundaries IN HydroBase_Select_Boundaries AS GRHydro_Bound
+ {
+   LANG: Fortran
+@@ -1022,7 +1024,62 @@ schedule GRHydro_Boundaries IN HydroBase_Select_Boundaries AS GRHydro_Bound
+   SYNC: lvel
+   SYNC: lBvec
+ } "Select GRHydro boundary conditions"
+-  
++}
++else
++{
++schedule GRHydro_Boundaries IN HydroBase_Select_Boundaries AS GRHydro_Bound
++{
++  LANG: Fortran
++  OPTIONS: LEVEL
++  SYNC: dens
++  SYNC: tau
++  SYNC: scon
++  SYNC: Bcons
++  SYNC: psidc
++  SYNC: GRHydro_cons_tracers
++  SYNC: Y_e_con
++} "Select GRHydro boundary conditions"
++
++    # after a regrid Cactus relies on the boundary thorns to fill in the outer
++    # and symmetry boundaries (we need valid data for the initial guess in Con2Prim)
++    schedule group GRHydro_PrimitiveBoundaries IN CCTK_POSTREGRID BEFORE MoL_PostStep
++    {
++    } "Apply boundary conditions to primitives"
++    schedule group GRHydro_PrimitiveBoundaries IN CCTK_POSTREGRIDINITIAL BEFORE MoL_PostStep
++    {
++    } "Apply boundary conditions to primitives"
++    
++    # This is necessary, otherwise we are inconsistent in atmosphere treatment of conserved and primitive variables
++    if(!disable_sync_and_tmunu_after_MoL) {
++       schedule group GRHydro_PrimitiveBoundaries IN CCTK_EVOL AFTER (MoL_Evolution,GRHydro_AtmosphereReset,sync_GRHydro_C2P_failed) BEFORE HydroBase_Boundaries
++       {
++       } "Apply boundary conditions to primitives"
++    }
++    
++    schedule GRHydro_SelectPrimitiveBoundaries IN GRHydro_PrimitiveBoundaries
++    {
++      LANG: Fortran
++      OPTIONS: LEVEL
++      # do a sync to be very sure we have proper initial guesses everywhere
++      SYNC: HydroBase::w_lorentz
++      SYNC: HydroBase::rho
++      SYNC: HydroBase::press
++      SYNC: HydroBase::eps
++      SYNC: HydroBase::vel
++      SYNC: HydroBase::Bvec
++      SYNC: hydrobase::temperature
++      SYNC: hydrobase::entropy
++      SYNC: hydrobase::Y_e
++      SYNC: lvel
++      SYNC: lBvec
++      SYNC: GRHydro_tracers
++    } "Select primitive variables for boudary conditions"
++    schedule group ApplyBCs AS GRHydro_ApplyPrimitiveBCs in GRHydro_PrimitiveBoundaries AFTER GRHydro_SelectPrimitiveBoundaries
++    {
++    } "Apply boundary conditions to primitive variables"
++
++}
++
+ ############################################################
+ ### Compute first differences of rho for mesh refinement ###
+ ############################################################
+diff --git a/src/GRHydro_Boundaries.F90 b/src/GRHydro_Boundaries.F90
+index eca3adc..2c6b9ce 100644
+--- a/src/GRHydro_Boundaries.F90
++++ b/src/GRHydro_Boundaries.F90
+@@ -66,12 +66,14 @@ subroutine GRHydro_InitSymBound(CCTK_ARGUMENTS)
+ 
+   general_coordinates = GRHydro_UseGeneralCoordinates(cctkGH)
+   
+-  call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::rho")
+-  call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::press")
++  !if (sync_conserved_only .eq. 0) then
++   call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::rho")
++   call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::press")
++   call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::w_lorentz")
++   call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::eps")
++  !endif
+   call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::dens")
+   call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::tau")
+-  call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::w_lorentz")
+-  call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::eps")
+   call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::GRHydro_C2P_failed")
+   if(evolve_mhd.ne.0.and.clean_divergence.ne.0) then
+      call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::psidc")
+@@ -84,27 +86,35 @@ subroutine GRHydro_InitSymBound(CCTK_ARGUMENTS)
+   endif 
+ 
+   if(evolve_y_e.ne.0) then
++   !if (sync_conserved_only .eq. 0) then
+      call SetCartSymGN(ierr, cctkGH, sym, "HydroBase::Y_e")
++   !endif
+      call SetCartSymGN(ierr, cctkGH, sym, "GRHydro::Y_e_con")
+   endif
+ 
+   if(evolve_temper.ne.0) then
+-     call SetCartSymGN(ierr, cctkGH, sym, "HydroBase::temperature")
+-     call SetCartSymGN(ierr, cctkGH, sym, "HydroBase::entropy")
++    !if (sync_conserved_only .eq. 0) then
++      call SetCartSymGN(ierr, cctkGH, sym, "HydroBase::temperature")
++      call SetCartSymGN(ierr, cctkGH, sym, "HydroBase::entropy")
++    !endif
+   endif
+   
+   sym(1) = -1
+   sym(2) = 1
+   sym(3) = 1
+   
+-  if (general_coordinates .ne. 0) then
+-     call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::lvel[0]")
+-  else
+-     call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::vel[0]")
+-  endif
++  !if (sync_conserved_only .eq. 0) then
++      if (general_coordinates .ne. 0) then
++	 call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::lvel[0]")
++      else
++	 call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::vel[0]")
++      endif
++  !endif
+   call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::scon[0]")
+   if(evolve_mhd.ne.0) then
+-     call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::Bvec[0]")
++     !if (sync_conserved_only .eq. 0) then
++      call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::Bvec[0]")
++     !endif
+      call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::Bcons[0]")
+   endif
+   
+@@ -112,14 +122,18 @@ subroutine GRHydro_InitSymBound(CCTK_ARGUMENTS)
+   sym(2) = -1
+   sym(3) = 1
+   
+-  if (general_coordinates .ne. 0) then
+-     call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::lvel[1]")
+-  else
+-     call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::vel[1]")
+-  endif
++  !if (sync_conserved_only .eq. 0) then
++      if (general_coordinates .ne. 0) then
++	 call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::lvel[1]")
++      else
++	 call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::vel[1]")
++      endif
++  !endif
+   call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::scon[1]")
+   if(evolve_mhd.ne.0) then
+-     call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::Bvec[1]")
++     !if (sync_conserved_only .eq. 0) then
++	 call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::Bvec[1]")
++     !endif
+      call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::Bcons[1]")
+   endif
+ 
+@@ -127,15 +141,19 @@ subroutine GRHydro_InitSymBound(CCTK_ARGUMENTS)
+   sym(2) = 1
+   sym(3) = -1
+   
+-  if (general_coordinates .ne. 0) then
+-     call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::lvel[2]")
+-  else
+-     call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::vel[2]")
+-  endif
++  !if (sync_conserved_only .eq. 0) then
++      if (general_coordinates .ne. 0) then
++	 call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::lvel[2]")
++      else
++	 call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::vel[2]")
++      endif
++  !endif
+   call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::scon[2]")
+   if(evolve_mhd.ne.0) then
+-     call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::Bvec[2]")
+-     call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::Bcons[2]")
++    !if (sync_conserved_only .eq. 0) then
++      call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::Bvec[2]")
++    !endif 
++    call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::Bcons[2]")
+   endif
+ 
+ ! check that storage for shift is active
+@@ -190,28 +208,32 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+          "GRHydro::tau", "Flat")
+     ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+          "GRHydro::scon", "Flat")
+-    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-         "HydroBase::w_lorentz", "Flat")
+-    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-         "HydroBase::rho", "Flat")
+-    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-         "HydroBase::press", "Flat")
+-    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-         "HydroBase::eps", "Flat")
+-    if (general_coordinates .ne. 0) then
+-       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-            "GRHydro::lvel", "Flat")
+-    else
+-       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-            "HydroBase::vel", "Flat")
++    if (sync_conserved_only .eq. 0) then
++      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	    "HydroBase::w_lorentz", "Flat")
++      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	    "HydroBase::rho", "Flat")
++      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	    "HydroBase::press", "Flat")
++      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	    "HydroBase::eps", "Flat")
++      if (general_coordinates .ne. 0) then
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "GRHydro::lvel", "Flat")
++      else
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "HydroBase::vel", "Flat")
++      endif
+     endif
+     if(evolve_mhd.ne.0) then
+-       if (general_coordinates .ne. 0) then
+-          ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-               "GRHydro::lBvec", "Flat")
+-       else
+-          ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-               "HydroBase::Bvec", "Flat")
++       if (sync_conserved_only .eq. 0) then
++	 if (general_coordinates .ne. 0) then
++	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++		  "GRHydro::lBvec", "Flat")
++	 else
++	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++		  "HydroBase::Bvec", "Flat")
++	 endif
+        endif
+        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+             "GRHydro::Bcons", "Flat")
+@@ -222,24 +244,30 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+     endif
+ 
+     if(evolve_tracer.ne.0) then 
+-      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-            "GRHydro::GRHydro_tracers", "Flat")
++      if (sync_conserved_only .eq. 0) then
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "GRHydro::GRHydro_tracers", "Flat")
++      endif
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+             "GRHydro::GRHydro_cons_tracers", "Flat")
+     endif
+ 
+     if(evolve_y_e.ne.0) then
+-      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-            "HydroBase::Y_e", "Flat")
++      if (sync_conserved_only .eq. 0) then
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "HydroBase::Y_e", "Flat")
++      endif
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+             "GRHydro::Y_e_con", "Flat")
+     endif
+ 
+     if(evolve_temper.ne.0) then
+-      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-            "HydroBase::temperature", "Flat")
+-      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-            "HydroBase::entropy", "Flat")
++      if (sync_conserved_only .eq. 0) then
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "HydroBase::temperature", "Flat")
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "HydroBase::entropy", "Flat")
++      endif
+     endif
+ 
+ 
+@@ -252,29 +280,34 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+          "GRHydro::tau", "None")
+     ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+          "GRHydro::scon", "None")
+-    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-         "HydroBase::w_lorentz", "None")
+-    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-         "HydroBase::rho", "None")
+-    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-         "HydroBase::press", "None")
+-    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-         "HydroBase::eps", "None")
+-    if (general_coordinates .ne. 0) then
+-       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "GRHydro::lvel", "None")
+-    else
+-       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "HydroBase::vel", "None")
++    
++    if (sync_conserved_only .eq. 0) then
++      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	    "HydroBase::w_lorentz", "None")
++      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	    "HydroBase::rho", "None")
++      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	    "HydroBase::press", "None")
++      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	    "HydroBase::eps", "None")
++      if (general_coordinates .ne. 0) then
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "GRHydro::lvel", "None")
++      else
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "HydroBase::vel", "None")
++      endif
+     endif
+     
+     if(evolve_mhd.ne.0) then
+-       if (general_coordinates .ne. 0) then
+-          ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-               "GRHydro::lBvec", "None")
+-       else
+-          ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-               "HydroBase::Bvec", "None")
++       if (sync_conserved_only .eq. 0) then
++	 if (general_coordinates .ne. 0) then
++	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++		  "GRHydro::lBvec", "None")
++	 else
++	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++		  "HydroBase::Bvec", "None")
++	 endif
+        endif
+        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+             "GRHydro::Bcons", "None")
+@@ -285,24 +318,30 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+     endif
+ 
+     if(evolve_tracer.ne.0) then 
+-      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-            "GRHydro::GRHydro_tracers", "None")
++      if (sync_conserved_only .eq. 0) then 
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "GRHydro::GRHydro_tracers", "None")
++      endif
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+             "GRHydro::GRHydro_cons_tracers", "None")
+     endif
+ 
+     if(evolve_y_e.ne.0) then
+-      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-            "HydroBase::Y_e", "None")
++      if (sync_conserved_only .eq. 0) then
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "HydroBase::Y_e", "None")
++      endif
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+             "GRHydro::Y_e_con", "None")
+     endif
+ 
+     if(evolve_temper.ne.0) then
+-      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-            "HydroBase::temperature", "None")
+-      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-            "HydroBase::entropy", "None")
++      if (sync_conserved_only .eq. 0) then
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "HydroBase::temperature", "None")
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "HydroBase::entropy", "None")
++      endif
+     endif
+ 
+   endif
+@@ -316,3 +355,130 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+ end subroutine GRHydro_Boundaries
+ 
+ 
++
++subroutine GRHydro_SelectPrimitiveBoundaries(CCTK_ARGUMENTS)
++  
++  implicit none
++  
++  DECLARE_CCTK_ARGUMENTS
++  DECLARE_CCTK_PARAMETERS
++  DECLARE_CCTK_FUNCTIONS
++  
++  integer, dimension(3) :: sw
++  integer :: ierr = 0
++  integer :: i,j,k
++  CCTK_INT :: GRHydro_UseGeneralCoordinates, general_coordinates
++
++  CCTK_INT, parameter :: faces=CCTK_ALL_FACES
++  CCTK_INT, parameter :: ione=1
++  
++  sw = GRHydro_stencil
++
++  general_coordinates = GRHydro_UseGeneralCoordinates(cctkGH)
++
++!!$Flat boundaries if required  
++
++  if (CCTK_EQUALS(bound,"flat")) then
++    
++    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++          "HydroBase::w_lorentz", "Flat")
++    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++          "HydroBase::rho", "Flat")
++    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++          "HydroBase::press", "Flat")
++    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++          "HydroBase::eps", "Flat")
++    if (general_coordinates .ne. 0) then
++       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "GRHydro::lvel", "Flat")
++    else
++       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::vel", "Flat")
++    endif
++    if(evolve_mhd.ne.0) then
++      if (general_coordinates .ne. 0) then
++         ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++               "GRHydro::lBvec", "Flat")
++      else
++         ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++               "HydroBase::Bvec", "Flat")
++      endif
++    endif
++
++    if(evolve_tracer.ne.0) then 
++      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "GRHydro::GRHydro_tracers", "Flat")
++    endif
++
++    if(evolve_y_e.ne.0) then
++      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::Y_e", "Flat")
++    endif
++
++    if(evolve_temper.ne.0) then
++       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::temperature", "Flat")
++       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::entropy", "Flat")
++    endif
++
++
++  endif
++
++  if (CCTK_EQUALS(bound,"none")) then      
++    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++          "HydroBase::w_lorentz", "None")
++    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++          "HydroBase::rho", "None")
++    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++          "HydroBase::press", "None")
++    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++          "HydroBase::eps", "None")
++    if (general_coordinates .ne. 0) then
++       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "GRHydro::lvel", "None")
++    else
++       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::vel", "None")
++    endif
++    
++    if(evolve_mhd.ne.0) then
++      if (general_coordinates .ne. 0) then
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "GRHydro::lBvec", "None")
++      else
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++               "HydroBase::Bvec", "None")
++      endif
++       
++    endif
++
++    if(evolve_tracer.ne.0) then 
++       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "GRHydro::GRHydro_tracers", "None")
++      
++    endif
++
++    if(evolve_y_e.ne.0) then
++       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::Y_e", "None")
++      
++    endif
++
++    if(evolve_temper.ne.0) then
++       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::temperature", "None")
++       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::entropy", "None")
++    endif
++
++  end if
++
++  if (CCTK_EQUALS(bound,"scalar")) then
++    call CCTK_WARN(0, "Until somebody uses this I see no reason to support it")
++  end if
++
++  if (ierr < 0) call CCTK_WARN(0, "problems with applying the chosen boundary condition")
++
++end subroutine GRHydro_SelectPrimitiveBoundaries
++
+diff --git a/src/GRHydro_Con2Prim.F90 b/src/GRHydro_Con2Prim.F90
+index 85ffaf8..fc62587 100644
+--- a/src/GRHydro_Con2Prim.F90
++++ b/src/GRHydro_Con2Prim.F90
+@@ -475,6 +475,7 @@ subroutine Con2Prim_pt(handle, dens, sx, sy, sz, tau, rho, velx, vely, &
+     df = 1.0d0 - dpressbydrho*drhobydpress - &
+          dpressbydeps*depsbydpress
+ 
++
+     pold = pnew
+     pnew = max(pold - f/df, pmin)
+     
+@@ -555,6 +556,7 @@ subroutine Con2Prim_pt(handle, dens, sx, sy, sz, tau, rho, velx, vely, &
+   vely = uxy * vlowx + uyy * vlowy + uyz * vlowz
+   velz = uxz * vlowx + uyz * vlowy + uzz * vlowz
+   
++    
+ !!$If all else fails, use the polytropic EoS
+ 
+   if(epsilon .lt. 0.0d0) then
+diff --git a/test/test_tov_carpet_refined_nosync.par b/test/test_tov_carpet_refined_nosync.par
+new file mode 100644
+index 0000000..5766b45
+--- /dev/null
++++ b/test/test_tov_carpet_refined_nosync.par
+@@ -0,0 +1,113 @@
++!DESC "Carpet unigrid, one TOV" 
++ActiveThorns = "time MoL coordbase symbase cartgrid3d ioutil boundary admbase staticconformal spacemask admcoupling coordgauge admmacros hydrobase grhydro grhydro_initdata tovsolver eos_omni Constants LocalReduce Carpet CarpetLib CarpetInterp CarpetReduce CarpetIOScalar CarpetIOBasic LoopControl TmunuBase InitBase CarpetRegrid2 ReflectionSymmetry CarpetIOASCII"
++
++TmunuBase::stress_energy_storage	=	yes
++TmunuBase::stress_energy_at_RHS		=	yes
++
++time::dtfac = 0.375
++
++boundary::radpower        = 2
++
++SpaceMask::use_mask = "yes"
++
++CartGrid3D::type         = "coordbase"
++CartGrid3D::domain       = "full"
++CartGrid3D::avoid_origin = "no"
++CoordBase::domainsize = minmax
++
++Carpet::domain_from_coordbase = "yes"
++CoordBase::spacing = "numcells"
++CoordBase::xmin =  -15.0
++CoordBase::ymin =    0.0
++CoordBase::zmin =    0.0
++CoordBase::xmax =   15.001
++CoordBase::ymax =   15.001
++CoordBase::zmax =   15.001
++CoordBase::ncells_x = 16
++CoordBase::ncells_y = 8
++CoordBase::ncells_z = 8
++
++CoordBase::boundary_size_x_lower        = 3
++CoordBase::boundary_size_y_lower        = 3
++CoordBase::boundary_size_z_lower        = 3
++CoordBase::boundary_shiftout_x_lower    = 0
++CoordBase::boundary_shiftout_y_lower    = 1
++CoordBase::boundary_shiftout_z_lower    = 1
++CoordBase::boundary_size_x_upper        = 3
++CoordBase::boundary_size_y_upper        = 3
++CoordBase::boundary_size_z_upper        = 3
++CoordBase::boundary_shiftout_x_upper    = 0
++CoordBase::boundary_shiftout_y_upper    = 0
++CoordBase::boundary_shiftout_z_upper    = 0
++
++Carpet::max_refinement_levels = 2
++Carpet::use_buffer_zones      = "yes"
++CarpetRegrid2::num_centres  = 1
++CarpetRegrid2::num_levels_1 = 1
++CarpetRegrid2::radius_1[1]  = 7.5
++
++CarpetRegrid2::add_levels_automatically = yes
++CarpetRegrid2::regrid_every = 4
++
++Carpet::poison_new_timelevels           = "yes"
++Carpet::init_fill_timelevels            = "yes"
++#Carpet::periodic = "no"
++#Carpet::periodic_x = "no"
++#Carpet::periodic_y = "no"
++#Carpet::periodic_z = "no"
++CarpetLib::poison_new_memory            = "yes"
++
++ReflectionSymmetry::reflection_x        = "no"
++ReflectionSymmetry::reflection_y        = "yes"
++ReflectionSymmetry::reflection_z        = "yes"
++ReflectionSymmetry::avoid_origin_x      = "no"
++ReflectionSymmetry::avoid_origin_y      = "no"
++ReflectionSymmetry::avoid_origin_z      = "no"
++ReflectionSymmetry::verbose = "no"
++
++driver::ghost_size   = 3
++
++cactus::cctk_itlast   =       8
++
++methodoflines::ode_method        = "icn"
++
++hydrobase::timelevels             = 3
++hydrobase::evolution_method       = "GRHydro"
++
++GRHydro::riemann_solver            = "Marquina"
++GRHydro::GRHydro_eos_type           = "Polytype"
++GRHydro::GRHydro_eos_table          = "2D_Polytrope"
++GRHydro::recon_method              = "tvd"
++GRHydro::GRHydro_stencil            = 3
++GRHydro::bound                     = "flat"
++GRHydro::tvd_limiter               = "VanLeerMC2"
++GRHydro::rho_abs_min               = 1.e-7
++GRHydro::initial_atmosphere_factor = 0.999
++# these do not match TOVSolver to make the star actually move
++EOS_Omni::poly_gamma = 1.3
++EOS_Omni::gl_gamma = 1.3
++EOS_Omni::poly_k = 50
++EOS_Omni::gl_k = 50
++GRHydro::GRHydro_perc_ptol = 1e-5
++GRHydro::GRHydro_del_ptol = 1e-5
++GRHydro::sync_conserved_only = "yes"
++
++ADMBase::initial_data  = "tov"
++ADMBase::initial_lapse = "tov"
++ADMBase::initial_shift = "tov"
++
++tovsolver::TOV_Rho_Central[0] = 1.28e-3
++tovsolver::TOV_Gamma[0]       = 2.0
++tovsolver::TOV_K[0]           = 100.0
++tovsolver::TOV_Combine_Method = "maximum"
++
++Carpet::prolongation_order_space  = 3
++Carpet::prolongation_order_time   = 2
++
++IO::out_dir			= $parfile
++
++IOBasic::outInfo_every = -1
++
++IOASCII::out1D_every = 1
++IOASCII::out1D_d     = "no"
++IOASCII::out1D_vars  = "hydrobase::rho"
+diff --git a/test/test_tov_carpet_refined_nosync/rho.x.asc b/test/test_tov_carpet_refined_nosync/rho.x.asc
+new file mode 100644
+index 0000000..99d05a1
+--- /dev/null
++++ b/test/test_tov_carpet_refined_nosync/rho.x.asc
+@@ -0,0 +1,415 @@
++# 1D ASCII output created by CarpetIOASCII
++# created on horizon.tapir.caltech.edu by rhaas on Mar 09 2012 at 13:13:37-0800
++# parameter filename: "test_tov_carpet_refined_nosync.par"
++# Build ID: build-bns_all-horizon.tapir.caltech.edu-rhaas-2012.03.09-21.08.06-21979
++# Simulation ID: run-test_tov_carpet_refined_nosync-horizon.tapir.caltech.edu-rhaas-2012.03.09-21.13.37-24326
++# Run ID: run-test_tov_carpet_refined_nosync-horizon.tapir.caltech.edu-rhaas-2012.03.09-21.13.37-24326
++#
++# rho x (rho)
++#
++# iteration 0   time 0
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++0	0	0 0 0	0 6 6	0	-18.7501249958338 0 0	1e-07
++0	0	0 0 0	2 6 6	0	-16.8750624958337 0 0	1e-07
++0	0	0 0 0	4 6 6	0	-14.9999999958338 0 0	1e-07
++0	0	0 0 0	6 6 6	0	-13.1249374958338 0 0	1e-07
++0	0	0 0 0	8 6 6	0	-11.2498749958337 0 0	1e-07
++0	0	0 0 0	10 6 6	0	-9.37481249583375 0 0	1e-07
++0	0	0 0 0	12 6 6	0	-7.49974999583375 0 0	7.25294282589366e-05
++0	0	0 0 0	14 6 6	0	-5.62468749583375 0 0	0.000360498914773245
++0	0	0 0 0	16 6 6	0	-3.74962499583375 0 0	0.000738939204948611
++0	0	0 0 0	18 6 6	0	-1.87456249583375 0 0	0.00111262611933609
++0	0	0 0 0	20 6 6	0	0.00050000416625 0 0	0.00127999998429442
++0	0	0 0 0	22 6 6	0	1.87556250416625 0 0	0.00111246163670276
++0	0	0 0 0	24 6 6	0	3.75062500416625 0 0	0.000738724727010862
++0	0	0 0 0	26 6 6	0	5.62568750416625 0 0	0.000360317653602087
++
++# iteration 0   time 0
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++0	0	0 1 0	16 6 6	0	-3.74962499583375 0 0	0.000738939204948611
++0	0	0 1 0	18 6 6	0	-1.87456249583375 0 0	0.00111262611933609
++0	0	0 1 0	20 6 6	0	0.00050000416625 0 0	0.00127999998429442
++0	0	0 1 0	22 6 6	0	1.87556250416625 0 0	0.00111246163670276
++0	0	0 1 0	24 6 6	0	3.75062500416625 0 0	0.000738724727010862
++0	0	0 1 0	26 6 6	0	5.62568750416625 0 0	0.000360317653602087
++0	0	0 1 0	28 6 6	0	7.50075000416625 0 0	7.24042055368129e-05
++0	0	0 1 0	30 6 6	0	9.37581250416625 0 0	1e-07
++0	0	0 1 0	32 6 6	0	11.2508750041663 0 0	1e-07
++0	0	0 1 0	34 6 6	0	13.1259375041663 0 0	1e-07
++0	0	0 1 0	36 6 6	0	15.0010000041662 0 0	1e-07
++0	0	0 1 0	38 6 6	0	16.8760625041662 0 0	1e-07
++0	0	0 1 0	40 6 6	0	18.7511250041663 0 0	1e-07
++
++
++# iteration 2   time 0.7031484375
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++2	0	0 0 0	0 6 6	0.7031484375	-18.7501249958338 0 0	1e-07
++2	0	0 0 0	2 6 6	0.7031484375	-16.8750624958337 0 0	1e-07
++2	0	0 0 0	4 6 6	0.7031484375	-14.9999999958338 0 0	1e-07
++2	0	0 0 0	6 6 6	0.7031484375	-13.1249374958338 0 0	1e-07
++2	0	0 0 0	8 6 6	0.7031484375	-11.2498749958337 0 0	1e-07
++2	0	0 0 0	10 6 6	0.7031484375	-9.37481249583375 0 0	1e-07
++2	0	0 0 0	12 6 6	0.7031484375	-7.49974999583375 0 0	7.22990076565946e-05
++2	0	0 0 0	14 6 6	0.7031484375	-5.62468749583375 0 0	0.000360139162987107
++2	0	0 0 0	16 6 6	0.7031484375	-3.74962499583375 0 0	0.000739480368654797
++2	0	0 0 0	18 6 6	0.7031484375	-1.87456249583375 0 0	0.00111475877110784
++2	0	0 0 0	20 6 6	0.7031484375	0.00050000416625 0 0	0.00128302508390328
++2	0	0 0 0	22 6 6	0.7031484375	1.87556250416625 0 0	0.00111459351370033
++2	0	0 0 0	24 6 6	0.7031484375	3.75062500416625 0 0	0.000739265073332593
++2	0	0 0 0	26 6 6	0.7031484375	5.62568750416625 0 0	0.000359957614119129
++
++# iteration 2   time 0.7031484375
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++2	0	0 1 0	16 6 6	0.7031484375	-3.74962499583375 0 0	0.000739480368654797
++2	0	0 1 0	18 6 6	0.7031484375	-1.87456249583375 0 0	0.00111475877110784
++2	0	0 1 0	20 6 6	0.7031484375	0.00050000416625 0 0	0.00128302508390328
++2	0	0 1 0	22 6 6	0.7031484375	1.87556250416625 0 0	0.00111459351370033
++2	0	0 1 0	24 6 6	0.7031484375	3.75062500416625 0 0	0.000739265073332593
++2	0	0 1 0	26 6 6	0.7031484375	5.62568750416625 0 0	0.000359957614119129
++2	0	0 1 0	28 6 6	0.7031484375	7.50075000416625 0 0	7.21741417355491e-05
++2	0	0 1 0	30 6 6	0.7031484375	9.37581250416625 0 0	1e-07
++2	0	0 1 0	32 6 6	0.7031484375	11.2508750041663 0 0	1e-07
++2	0	0 1 0	34 6 6	0.7031484375	13.1259375041663 0 0	1e-07
++2	0	0 1 0	36 6 6	0.7031484375	15.0010000041662 0 0	1e-07
++2	0	0 1 0	38 6 6	0.7031484375	16.8760625041662 0 0	1e-07
++2	0	0 1 0	40 6 6	0.7031484375	18.7511250041663 0 0	1e-07
++
++
++# iteration 4   time 1.406296875
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++4	0	0 0 0	0 6 6	1.406296875	-18.7501249958338 0 0	1e-07
++4	0	0 0 0	2 6 6	1.406296875	-16.8750624958337 0 0	1e-07
++4	0	0 0 0	4 6 6	1.406296875	-14.9999999958338 0 0	1e-07
++4	0	0 0 0	6 6 6	1.406296875	-13.1249374958338 0 0	1e-07
++4	0	0 0 0	8 6 6	1.406296875	-11.2498749958337 0 0	1e-07
++4	0	0 0 0	10 6 6	1.406296875	-9.37481249583375 0 0	1e-07
++4	0	0 0 0	12 6 6	1.406296875	-7.49974999583375 0 0	7.16121991777676e-05
++4	0	0 0 0	14 6 6	1.406296875	-5.62468749583375 0 0	0.000359055545002363
++4	0	0 0 0	16 6 6	1.406296875	-3.74962499583375 0 0	0.000741091961124738
++4	0	0 0 0	18 6 6	1.406296875	-1.87456249583375 0 0	0.00112118328980597
++4	0	0 0 0	20 6 6	1.406296875	0.00050000416625 0 0	0.00129215595554125
++4	0	0 0 0	22 6 6	1.406296875	1.87556250416625 0 0	0.0011210156816411
++4	0	0 0 0	24 6 6	1.406296875	3.75062500416625 0 0	0.000740874206975098
++4	0	0 0 0	26 6 6	1.406296875	5.62568750416625 0 0	0.000358873144851989
++
++# iteration 4   time 1.406296875
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++4	0	0 1 0	16 6 6	1.406296875	-3.74962499583375 0 0	0.000741091961124738
++4	0	0 1 0	18 6 6	1.406296875	-1.87456249583375 0 0	0.00112118328980597
++4	0	0 1 0	20 6 6	1.406296875	0.00050000416625 0 0	0.00129215595554125
++4	0	0 1 0	22 6 6	1.406296875	1.87556250416625 0 0	0.0011210156816411
++4	0	0 1 0	24 6 6	1.406296875	3.75062500416625 0 0	0.000740874206975098
++4	0	0 1 0	26 6 6	1.406296875	5.62568750416625 0 0	0.000358873144851989
++4	0	0 1 0	28 6 6	1.406296875	7.50075000416625 0 0	7.14883977246512e-05
++4	0	0 1 0	30 6 6	1.406296875	9.37581250416625 0 0	1e-07
++4	0	0 1 0	32 6 6	1.406296875	11.2508750041663 0 0	1e-07
++4	0	0 1 0	34 6 6	1.406296875	13.1259375041663 0 0	1e-07
++4	0	0 1 0	36 6 6	1.406296875	15.0010000041662 0 0	1e-07
++4	0	0 1 0	38 6 6	1.406296875	16.8760625041662 0 0	1e-07
++4	0	0 1 0	40 6 6	1.406296875	18.7511250041663 0 0	1e-07
++
++
++# iteration 5   time 1.75787109375
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++5	0	1 0 0	2 6 6	1.75787109375	-16.8750624958337 0 0	1.00327543239717e-07
++5	0	1 0 0	3 6 6	1.75787109375	-15.9375312458337 0 0	1.00327543239717e-07
++5	0	1 0 0	4 6 6	1.75787109375	-14.9999999958338 0 0	1.00327543239717e-07
++5	0	1 0 0	5 6 6	1.75787109375	-14.0624687458337 0 0	1.00327543239717e-07
++5	0	1 0 0	6 6 6	1.75787109375	-13.1249374958338 0 0	1e-07
++5	0	1 0 0	7 6 6	1.75787109375	-12.1874062458337 0 0	1.00173350710751e-07
++5	0	1 0 0	8 6 6	1.75787109375	-11.2498749958337 0 0	1e-07
++5	0	1 0 0	9 6 6	1.75787109375	-10.3123437458338 0 0	1.00128107599498e-07
++5	0	1 0 0	10 6 6	1.75787109375	-9.37481249583375 0 0	1e-07
++5	0	1 0 0	11 6 6	1.75787109375	-8.43728124583375 0 0	2.81595533018602e-05
++5	0	1 0 0	12 6 6	1.75787109375	-7.49974999583375 0 0	7.11084529892437e-05
++5	0	1 0 0	13 6 6	1.75787109375	-6.56221874583375 0 0	0.000196175970947042
++5	0	1 0 0	14 6 6	1.75787109375	-5.62468749583375 0 0	0.000358182760060004
++5	0	1 0 0	15 6 6	1.75787109375	-4.68715624583375 0 0	0.000551328962649965
++5	0	1 0 0	16 6 6	1.75787109375	-3.74962499583375 0 0	0.000742063228687139
++5	0	1 0 0	17 6 6	1.75787109375	-2.81209374583375 0 0	0.000943261584178091
++5	0	1 0 0	18 6 6	1.75787109375	-1.87456249583375 0 0	0.001125239158108
++5	0	1 0 0	19 6 6	1.75787109375	-0.93703124583375 0 0	0.00122750509296292
++5	0	1 0 0	20 6 6	1.75787109375	0.00050000416625 0 0	0.00129751569490171
++5	0	1 0 0	21 6 6	1.75787109375	0.93803125416625 0 0	0.00122740305981352
++5	0	1 0 0	22 6 6	1.75787109375	1.87556250416625 0 0	0.00112506986138197
++5	0	1 0 0	23 6 6	1.75787109375	2.81309375416625 0 0	0.000943077172270871
++
++# iteration 5   time 1.75787109375
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++5	0	1 1 0	18 6 6	1.75787109375	-1.87456249583375 0 0	0.001125239158108
++5	0	1 1 0	19 6 6	1.75787109375	-0.93703124583375 0 0	0.00122750509296292
++5	0	1 1 0	20 6 6	1.75787109375	0.00050000416625 0 0	0.00129751569490171
++5	0	1 1 0	21 6 6	1.75787109375	0.93803125416625 0 0	0.00122740305981352
++5	0	1 1 0	22 6 6	1.75787109375	1.87556250416625 0 0	0.00112506986138197
++5	0	1 1 0	23 6 6	1.75787109375	2.81309375416625 0 0	0.000943077172270871
++5	0	1 1 0	24 6 6	1.75787109375	3.75062500416625 0 0	0.000741844489696539
++5	0	1 1 0	25 6 6	1.75787109375	4.68815625416625 0 0	0.000551109680368662
++5	0	1 1 0	26 6 6	1.75787109375	5.62568750416625 0 0	0.000357999930657117
++5	0	1 1 0	27 6 6	1.75787109375	6.56321875416625 0 0	0.000196018967995589
++5	0	1 1 0	28 6 6	1.75787109375	7.50075000416625 0 0	7.09851457829242e-05
++5	0	1 1 0	29 6 6	1.75787109375	8.43828125416625 0 0	2.8110655849224e-05
++5	0	1 1 0	30 6 6	1.75787109375	9.37581250416625 0 0	1e-07
++5	0	1 1 0	31 6 6	1.75787109375	10.3133437541663 0 0	1.00128063069152e-07
++5	0	1 1 0	32 6 6	1.75787109375	11.2508750041663 0 0	1e-07
++5	0	1 1 0	33 6 6	1.75787109375	12.1884062541663 0 0	1.00173341277935e-07
++5	0	1 1 0	34 6 6	1.75787109375	13.1259375041663 0 0	1e-07
++5	0	1 1 0	35 6 6	1.75787109375	14.0634687541663 0 0	1.00327489519066e-07
++5	0	1 1 0	36 6 6	1.75787109375	15.0010000041663 0 0	1.00327489519066e-07
++5	0	1 1 0	37 6 6	1.75787109375	15.9385312541663 0 0	1.00327489519066e-07
++5	0	1 1 0	38 6 6	1.75787109375	16.8760625041663 0 0	1.00327489519066e-07
++
++
++# iteration 6   time 2.1094453125
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++6	0	0 0 0	0 6 6	2.1094453125	-18.7501249958338 0 0	1e-07
++6	0	0 0 0	2 6 6	2.1094453125	-16.8750624958337 0 0	1e-07
++6	0	0 0 0	4 6 6	2.1094453125	-14.9999999958338 0 0	1e-07
++6	0	0 0 0	6 6 6	2.1094453125	-13.1249374958338 0 0	1e-07
++6	0	0 0 0	8 6 6	2.1094453125	-11.2498749958337 0 0	1e-07
++6	0	0 0 0	10 6 6	2.1094453125	-9.37481249583375 0 0	1e-07
++6	0	0 0 0	12 6 6	2.1094453125	-7.49974999583375 0 0	7.04996478311112e-05
++6	0	0 0 0	14 6 6	2.1094453125	-5.62468749583375 0 0	0.000357115150240695
++6	0	0 0 0	16 6 6	2.1094453125	-3.74962499583375 0 0	0.000743328801637871
++6	0	0 0 0	18 6 6	2.1094453125	-1.87456249583375 0 0	0.00113048453132285
++6	0	0 0 0	20 6 6	2.1094453125	0.00050000416625 0 0	0.00130461198716755
++6	0	0 0 0	22 6 6	2.1094453125	1.87556250416625 0 0	0.00113031306861358
++6	0	0 0 0	24 6 6	2.1094453125	3.75062500416625 0 0	0.00074310866227198
++6	0	0 0 0	26 6 6	2.1094453125	5.62568750416625 0 0	0.000356931731696295
++
++# iteration 6   time 2.1094453125
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++6	0	0 1 0	16 6 6	2.1094453125	-3.74962499583375 0 0	0.000743328801637871
++6	0	0 1 0	18 6 6	2.1094453125	-1.87456249583375 0 0	0.00113048453132285
++6	0	0 1 0	20 6 6	2.1094453125	0.00050000416625 0 0	0.00130461198716755
++6	0	0 1 0	22 6 6	2.1094453125	1.87556250416625 0 0	0.00113031306861358
++6	0	0 1 0	24 6 6	2.1094453125	3.75062500416625 0 0	0.00074310866227198
++6	0	0 1 0	26 6 6	2.1094453125	5.62568750416625 0 0	0.000356931731696295
++6	0	0 1 0	28 6 6	2.1094453125	7.50075000416625 0 0	7.03769343585311e-05
++6	0	0 1 0	30 6 6	2.1094453125	9.37581250416625 0 0	1e-07
++6	0	0 1 0	32 6 6	2.1094453125	11.2508750041663 0 0	1e-07
++6	0	0 1 0	34 6 6	2.1094453125	13.1259375041663 0 0	1e-07
++6	0	0 1 0	36 6 6	2.1094453125	15.0010000041662 0 0	1e-07
++6	0	0 1 0	38 6 6	2.1094453125	16.8760625041662 0 0	1e-07
++6	0	0 1 0	40 6 6	2.1094453125	18.7511250041663 0 0	1e-07
++
++
++# iteration 6   time 2.1094453125
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++6	0	1 0 0	2 6 6	2.1094453125	-16.8750624958337 0 0	1.00345995018374e-07
++6	0	1 0 0	3 6 6	2.1094453125	-15.9375312458337 0 0	1.00345995018374e-07
++6	0	1 0 0	4 6 6	2.1094453125	-14.9999999958338 0 0	1.00345995018374e-07
++6	0	1 0 0	5 6 6	2.1094453125	-14.0624687458337 0 0	1.00345995018374e-07
++6	0	1 0 0	6 6 6	2.1094453125	-13.1249374958338 0 0	1e-07
++6	0	1 0 0	7 6 6	2.1094453125	-12.1874062458337 0 0	1.00188982055016e-07
++6	0	1 0 0	8 6 6	2.1094453125	-11.2498749958337 0 0	1e-07
++6	0	1 0 0	9 6 6	2.1094453125	-10.3123437458338 0 0	1.00151763398264e-07
++6	0	1 0 0	10 6 6	2.1094453125	-9.37481249583375 0 0	1e-07
++6	0	1 0 0	11 6 6	2.1094453125	-8.43728124583375 0 0	2.77850881280568e-05
++6	0	1 0 0	12 6 6	2.1094453125	-7.49974999583375 0 0	7.04996478311112e-05
++6	0	1 0 0	13 6 6	2.1094453125	-6.56221874583375 0 0	0.000194905267061869
++6	0	1 0 0	14 6 6	2.1094453125	-5.62468749583375 0 0	0.000357115150240695
++6	0	1 0 0	15 6 6	2.1094453125	-4.68715624583375 0 0	0.000550894705498842
++6	0	1 0 0	16 6 6	2.1094453125	-3.74962499583375 0 0	0.000743328801637871
++6	0	1 0 0	17 6 6	2.1094453125	-2.81209374583375 0 0	0.000946285709113929
++6	0	1 0 0	18 6 6	2.1094453125	-1.87456249583375 0 0	0.00113048453132285
++6	0	1 0 0	19 6 6	2.1094453125	-0.93703124583375 0 0	0.00123446917279224
++6	0	1 0 0	20 6 6	2.1094453125	0.00050000416625 0 0	0.00130461198716755
++6	0	1 0 0	21 6 6	2.1094453125	0.93803125416625 0 0	0.00123436575402017
++6	0	1 0 0	22 6 6	2.1094453125	1.87556250416625 0 0	0.00113031306861358
++6	0	1 0 0	23 6 6	2.1094453125	2.81309375416625 0 0	0.000946099007778301
++
++# iteration 6   time 2.1094453125
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++6	0	1 1 0	18 6 6	2.1094453125	-1.87456249583375 0 0	0.00113048453132285
++6	0	1 1 0	19 6 6	2.1094453125	-0.93703124583375 0 0	0.00123446917279224
++6	0	1 1 0	20 6 6	2.1094453125	0.00050000416625 0 0	0.00130461198716755
++6	0	1 1 0	21 6 6	2.1094453125	0.93803125416625 0 0	0.00123436575402017
++6	0	1 1 0	22 6 6	2.1094453125	1.87556250416625 0 0	0.00113031306861358
++6	0	1 1 0	23 6 6	2.1094453125	2.81309375416625 0 0	0.000946099007778301
++6	0	1 1 0	24 6 6	2.1094453125	3.75062500416625 0 0	0.00074310866227198
++6	0	1 1 0	25 6 6	2.1094453125	4.68815625416625 0 0	0.00055067395322386
++6	0	1 1 0	26 6 6	2.1094453125	5.62568750416625 0 0	0.000356931731696295
++6	0	1 1 0	27 6 6	2.1094453125	6.56321875416625 0 0	0.000194748372477233
++6	0	1 1 0	28 6 6	2.1094453125	7.50075000416625 0 0	7.03769343585311e-05
++6	0	1 1 0	29 6 6	2.1094453125	8.43828125416625 0 0	2.77368539948199e-05
++6	0	1 1 0	30 6 6	2.1094453125	9.37581250416625 0 0	1e-07
++6	0	1 1 0	31 6 6	2.1094453125	10.3133437541663 0 0	1.00151713466914e-07
++6	0	1 1 0	32 6 6	2.1094453125	11.2508750041663 0 0	1e-07
++6	0	1 1 0	33 6 6	2.1094453125	12.1884062541663 0 0	1.00188969546243e-07
++6	0	1 1 0	34 6 6	2.1094453125	13.1259375041663 0 0	1e-07
++6	0	1 1 0	35 6 6	2.1094453125	14.0634687541663 0 0	1.00345937949555e-07
++6	0	1 1 0	36 6 6	2.1094453125	15.0010000041663 0 0	1.00345937949555e-07
++6	0	1 1 0	37 6 6	2.1094453125	15.9385312541663 0 0	1.00345937949555e-07
++6	0	1 1 0	38 6 6	2.1094453125	16.8760625041663 0 0	1.00345937949555e-07
++
++
++# iteration 7   time 2.46101953125
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++7	0	1 0 0	2 6 6	2.46101953125	-16.8750624958337 0 0	1.00376754599897e-07
++7	0	1 0 0	3 6 6	2.46101953125	-15.9375312458337 0 0	1.00376754599897e-07
++7	0	1 0 0	4 6 6	2.46101953125	-14.9999999958338 0 0	1.00376754599897e-07
++7	0	1 0 0	5 6 6	2.46101953125	-14.0624687458337 0 0	1.00376754599897e-07
++7	0	1 0 0	6 6 6	2.46101953125	-13.1249374958338 0 0	1e-07
++7	0	1 0 0	7 6 6	2.46101953125	-12.1874062458337 0 0	1.00214975363178e-07
++7	0	1 0 0	8 6 6	2.46101953125	-11.2498749958337 0 0	1e-07
++7	0	1 0 0	9 6 6	2.46101953125	-10.3123437458338 0 0	1.0019107917818e-07
++7	0	1 0 0	10 6 6	2.46101953125	-9.37481249583375 0 0	1e-07
++7	0	1 0 0	11 6 6	2.46101953125	-8.43728124583375 0 0	2.73528196719468e-05
++7	0	1 0 0	12 6 6	2.46101953125	-7.49974999583375 0 0	6.97876400081482e-05
++7	0	1 0 0	13 6 6	2.46101953125	-6.56221874583375 0 0	0.000193423057629822
++7	0	1 0 0	14 6 6	2.46101953125	-5.62468749583375 0 0	0.000355874875870563
++7	0	1 0 0	15 6 6	2.46101953125	-4.68715624583375 0 0	0.000550425224505952
++7	0	1 0 0	16 6 6	2.46101953125	-3.74962499583375 0 0	0.000744882372757824
++7	0	1 0 0	17 6 6	2.46101953125	-2.81209374583375 0 0	0.000950016384309494
++7	0	1 0 0	18 6 6	2.46101953125	-1.87456249583375 0 0	0.00113693637262223
++7	0	1 0 0	19 6 6	2.46101953125	-0.93703124583375 0 0	0.00124302144746338
++7	0	1 0 0	20 6 6	2.46101953125	0.00050000416625 0 0	0.00131348243492604
++7	0	1 0 0	21 6 6	2.46101953125	0.93803125416625 0 0	0.00124291631704513
++7	0	1 0 0	22 6 6	2.46101953125	1.87556250416625 0 0	0.00113676224855888
++7	0	1 0 0	23 6 6	2.46101953125	2.81309375416625 0 0	0.000949826897622229
++
++# iteration 7   time 2.46101953125
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++7	0	1 1 0	18 6 6	2.46101953125	-1.87456249583375 0 0	0.00113693637262223
++7	0	1 1 0	19 6 6	2.46101953125	-0.93703124583375 0 0	0.00124302144746338
++7	0	1 1 0	20 6 6	2.46101953125	0.00050000416625 0 0	0.00131348243492604
++7	0	1 1 0	21 6 6	2.46101953125	0.93803125416625 0 0	0.00124291631704513
++7	0	1 1 0	22 6 6	2.46101953125	1.87556250416625 0 0	0.00113676224855888
++7	0	1 1 0	23 6 6	2.46101953125	2.81309375416625 0 0	0.000949826897622229
++7	0	1 1 0	24 6 6	2.46101953125	3.75062500416625 0 0	0.000744660403855002
++7	0	1 1 0	25 6 6	2.46101953125	4.68815625416625 0 0	0.000550202599959572
++7	0	1 1 0	26 6 6	2.46101953125	5.62568750416625 0 0	0.000355691171084527
++7	0	1 1 0	27 6 6	2.46101953125	6.56321875416625 0 0	0.000193265994288497
++7	0	1 1 0	28 6 6	2.46101953125	7.50075000416625 0 0	6.9665680846145e-05
++7	0	1 1 0	29 6 6	2.46101953125	8.43828125416625 0 0	2.73053503426497e-05
++7	0	1 1 0	30 6 6	2.46101953125	9.37581250416625 0 0	1e-07
++7	0	1 1 0	31 6 6	2.46101953125	10.3133437541663 0 0	1.00191020284058e-07
++7	0	1 1 0	32 6 6	2.46101953125	11.2508750041663 0 0	1e-07
++7	0	1 1 0	33 6 6	2.46101953125	12.1884062541663 0 0	1.00214957746238e-07
++7	0	1 1 0	34 6 6	2.46101953125	13.1259375041663 0 0	1e-07
++7	0	1 1 0	35 6 6	2.46101953125	14.0634687541663 0 0	1.00376691948241e-07
++7	0	1 1 0	36 6 6	2.46101953125	15.0010000041663 0 0	1.00376691948241e-07
++7	0	1 1 0	37 6 6	2.46101953125	15.9385312541663 0 0	1.00376691948241e-07
++7	0	1 1 0	38 6 6	2.46101953125	16.8760625041663 0 0	1.00376691948241e-07
++
++
++# iteration 8   time 2.81259375
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++8	0	0 0 0	0 6 6	2.81259375	-18.7501249958338 0 0	1e-07
++8	0	0 0 0	2 6 6	2.81259375	-16.8750624958337 0 0	1e-07
++8	0	0 0 0	4 6 6	2.81259375	-14.9999999958338 0 0	1e-07
++8	0	0 0 0	6 6 6	2.81259375	-13.1249374958338 0 0	1e-07
++8	0	0 0 0	8 6 6	2.81259375	-11.2498749958337 0 0	1e-07
++8	0	0 0 0	10 6 6	2.81259375	-9.37481249583375 0 0	1e-07
++8	0	0 0 0	12 6 6	2.81259375	-7.49974999583375 0 0	6.89755368671505e-05
++8	0	0 0 0	14 6 6	2.81259375	-5.62468749583375 0 0	0.000354464670309593
++8	0	0 0 0	16 6 6	2.81259375	-3.74962499583375 0 0	0.000746715697093764
++8	0	0 0 0	18 6 6	2.81259375	-1.87456249583375 0 0	0.00114461521040158
++8	0	0 0 0	20 6 6	2.81259375	0.00050000416625 0 0	0.00132417347424949
++8	0	0 0 0	22 6 6	2.81259375	1.87556250416625 0 0	0.00114443790781897
++8	0	0 0 0	24 6 6	2.81259375	3.75062500416625 0 0	0.000746491452746751
++8	0	0 0 0	26 6 6	2.81259375	5.62568750416625 0 0	0.000354280617430277
++
++# iteration 8   time 2.81259375
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++8	0	0 1 0	16 6 6	2.81259375	-3.74962499583375 0 0	0.000746715697093764
++8	0	0 1 0	18 6 6	2.81259375	-1.87456249583375 0 0	0.00114461521040158
++8	0	0 1 0	20 6 6	2.81259375	0.00050000416625 0 0	0.00132417347424949
++8	0	0 1 0	22 6 6	2.81259375	1.87556250416625 0 0	0.00114443790781897
++8	0	0 1 0	24 6 6	2.81259375	3.75062500416625 0 0	0.000746491452746751
++8	0	0 1 0	26 6 6	2.81259375	5.62568750416625 0 0	0.000354280617430277
++8	0	0 1 0	28 6 6	2.81259375	7.50075000416625 0 0	6.885445051968e-05
++8	0	0 1 0	30 6 6	2.81259375	9.37581250416625 0 0	1e-07
++8	0	0 1 0	32 6 6	2.81259375	11.2508750041663 0 0	1e-07
++8	0	0 1 0	34 6 6	2.81259375	13.1259375041663 0 0	1e-07
++8	0	0 1 0	36 6 6	2.81259375	15.0010000041662 0 0	1e-07
++8	0	0 1 0	38 6 6	2.81259375	16.8760625041662 0 0	1e-07
++8	0	0 1 0	40 6 6	2.81259375	18.7511250041663 0 0	1e-07
++
++
++# iteration 8   time 2.81259375
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++8	0	1 0 0	2 6 6	2.81259375	-16.8750624958337 0 0	1.00419831726777e-07
++8	0	1 0 0	3 6 6	2.81259375	-15.9375312458337 0 0	1.00419831726777e-07
++8	0	1 0 0	4 6 6	2.81259375	-14.9999999958338 0 0	1.00419831726777e-07
++8	0	1 0 0	5 6 6	2.81259375	-14.0624687458337 0 0	1.00419831726777e-07
++8	0	1 0 0	6 6 6	2.81259375	-13.1249374958338 0 0	1e-07
++8	0	1 0 0	7 6 6	2.81259375	-12.1874062458337 0 0	1.00251242648738e-07
++8	0	1 0 0	8 6 6	2.81259375	-11.2498749958337 0 0	1e-07
++8	0	1 0 0	9 6 6	2.81259375	-10.3123437458338 0 0	1.00245890068038e-07
++8	0	1 0 0	10 6 6	2.81259375	-9.37481249583375 0 0	1e-07
++8	0	1 0 0	11 6 6	2.81259375	-8.43728124583375 0 0	2.68654239437448e-05
++8	0	1 0 0	12 6 6	2.81259375	-7.49974999583375 0 0	6.89755368671505e-05
++8	0	1 0 0	13 6 6	2.81259375	-6.56221874583375 0 0	0.000191726347779112
++8	0	1 0 0	14 6 6	2.81259375	-5.62468749583375 0 0	0.000354464670309593
++8	0	1 0 0	15 6 6	2.81259375	-4.68715624583375 0 0	0.000549909885936432
++8	0	1 0 0	16 6 6	2.81259375	-3.74962499583375 0 0	0.000746715697093764
++8	0	1 0 0	17 6 6	2.81259375	-2.81209374583375 0 0	0.000954457452883066
++8	0	1 0 0	18 6 6	2.81259375	-1.87456249583375 0 0	0.00114461521040158
++8	0	1 0 0	19 6 6	2.81259375	-0.93703124583375 0 0	0.0012532009055036
++8	0	1 0 0	20 6 6	2.81259375	0.00050000416625 0 0	0.00132417347424949
++8	0	1 0 0	21 6 6	2.81259375	0.93803125416625 0 0	0.0012530937212059
++8	0	1 0 0	22 6 6	2.81259375	1.87556250416625 0 0	0.00114443790781897
++8	0	1 0 0	23 6 6	2.81259375	2.81309375416625 0 0	0.000954264673051196
++
++# iteration 8   time 2.81259375
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++8	0	1 1 0	18 6 6	2.81259375	-1.87456249583375 0 0	0.00114461521040158
++8	0	1 1 0	19 6 6	2.81259375	-0.93703124583375 0 0	0.0012532009055036
++8	0	1 1 0	20 6 6	2.81259375	0.00050000416625 0 0	0.00132417347424949
++8	0	1 1 0	21 6 6	2.81259375	0.93803125416625 0 0	0.0012530937212059
++8	0	1 1 0	22 6 6	2.81259375	1.87556250416625 0 0	0.00114443790781897
++8	0	1 1 0	23 6 6	2.81259375	2.81309375416625 0 0	0.000954264673051196
++8	0	1 1 0	24 6 6	2.81259375	3.75062500416625 0 0	0.000746491452746751
++8	0	1 1 0	25 6 6	2.81259375	4.68815625416625 0 0	0.000549685160373124
++8	0	1 1 0	26 6 6	2.81259375	5.62568750416625 0 0	0.000354280617430277
++8	0	1 1 0	27 6 6	2.81259375	6.56321875416625 0 0	0.000191569092567621
++8	0	1 1 0	28 6 6	2.81259375	7.50075000416625 0 0	6.885445051968e-05
++8	0	1 1 0	29 6 6	2.81259375	8.43828125416625 0 0	2.6818816706566e-05
++8	0	1 1 0	30 6 6	2.81259375	9.37581250416625 0 0	1e-07
++8	0	1 1 0	31 6 6	2.81259375	10.3133437541663 0 0	1.00245818707264e-07
++8	0	1 1 0	32 6 6	2.81259375	11.2508750041663 0 0	1e-07
++8	0	1 1 0	33 6 6	2.81259375	12.1884062541663 0 0	1.00251217918885e-07
++8	0	1 1 0	34 6 6	2.81259375	13.1259375041663 0 0	1e-07
++8	0	1 1 0	35 6 6	2.81259375	14.0634687541663 0 0	1.0041976125384e-07
++8	0	1 1 0	36 6 6	2.81259375	15.0010000041663 0 0	1.0041976125384e-07
++8	0	1 1 0	37 6 6	2.81259375	15.9385312541663 0 0	1.0041976125384e-07
++8	0	1 1 0	38 6 6	2.81259375	16.8760625041663 0 0	1.0041976125384e-07
++
++
+diff --git a/test/test_tov_carpet_refined_nosync/rho.y.asc b/test/test_tov_carpet_refined_nosync/rho.y.asc
+new file mode 100644
+index 0000000..64044af
+--- /dev/null
++++ b/test/test_tov_carpet_refined_nosync/rho.y.asc
+@@ -0,0 +1,424 @@
++# 1D ASCII output created by CarpetIOASCII
++# created on horizon.tapir.caltech.edu by rhaas on Mar 09 2012 at 13:13:37-0800
++# parameter filename: "test_tov_carpet_refined_nosync.par"
++# Build ID: build-bns_all-horizon.tapir.caltech.edu-rhaas-2012.03.09-21.08.06-21979
++# Simulation ID: run-test_tov_carpet_refined_nosync-horizon.tapir.caltech.edu-rhaas-2012.03.09-21.13.37-24326
++# Run ID: run-test_tov_carpet_refined_nosync-horizon.tapir.caltech.edu-rhaas-2012.03.09-21.13.37-24326
++#
++# rho y (rho)
++#
++# iteration 0   time 0
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++0	0	0 0 0	20 0 6	0	0.00050000416625 -5.625375 0	0.00036037429320521
++0	0	0 0 0	20 2 6	0	0.00050000416625 -3.75025 0	0.000738805149091886
++0	0	0 0 0	20 4 6	0	0.00050000416625 -1.875125 0	0.00111253359405608
++0	0	0 0 0	20 6 6	0	0.00050000416625 0 0	0.00127999998429442
++0	0	0 0 0	20 8 6	0	0.00050000416625 1.875125 0	0.00111253359405608
++0	0	0 0 0	20 10 6	0	0.00050000416625 3.75025 0	0.000738805149091886
++0	0	0 0 0	20 12 6	0	0.00050000416625 5.625375 0	0.00036037429320521
++0	0	0 0 0	20 14 6	0	0.00050000416625 7.5005 0	7.24355137693424e-05
++0	0	0 0 0	20 16 6	0	0.00050000416625 9.375625 0	1e-07
++0	0	0 0 0	20 18 6	0	0.00050000416625 11.25075 0	1e-07
++0	0	0 0 0	20 20 6	0	0.00050000416625 13.125875 0	1e-07
++0	0	0 0 0	20 22 6	0	0.00050000416625 15.001 0	1e-07
++0	0	0 0 0	20 24 6	0	0.00050000416625 16.876125 0	1e-07
++0	0	0 0 0	20 26 6	0	0.00050000416625 18.75125 0	1e-07
++
++# iteration 0   time 0
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++0	0	0 1 0	20 0 6	0	0.00050000416625 -5.625375 0	0.00036037429320521
++0	0	0 1 0	20 2 6	0	0.00050000416625 -3.75025 0	0.000738805149091886
++0	0	0 1 0	20 4 6	0	0.00050000416625 -1.875125 0	0.00111253359405608
++0	0	0 1 0	20 6 6	0	0.00050000416625 0 0	0.00127999998429442
++0	0	0 1 0	20 8 6	0	0.00050000416625 1.875125 0	0.00111253359405608
++0	0	0 1 0	20 10 6	0	0.00050000416625 3.75025 0	0.000738805149091886
++0	0	0 1 0	20 12 6	0	0.00050000416625 5.625375 0	0.00036037429320521
++0	0	0 1 0	20 14 6	0	0.00050000416625 7.5005 0	7.24355137693424e-05
++0	0	0 1 0	20 16 6	0	0.00050000416625 9.375625 0	1e-07
++0	0	0 1 0	20 18 6	0	0.00050000416625 11.25075 0	1e-07
++0	0	0 1 0	20 20 6	0	0.00050000416625 13.125875 0	1e-07
++0	0	0 1 0	20 22 6	0	0.00050000416625 15.001 0	1e-07
++0	0	0 1 0	20 24 6	0	0.00050000416625 16.876125 0	1e-07
++0	0	0 1 0	20 26 6	0	0.00050000416625 18.75125 0	1e-07
++
++
++# iteration 2   time 0.7031484375
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++2	0	0 0 0	20 0 6	0.7031484375	0.00050000416625 -5.625375 0	0.000360014333648198
++2	0	0 0 0	20 2 6	0.7031484375	0.00050000416625 -3.75025 0	0.000739345808378992
++2	0	0 0 0	20 4 6	0.7031484375	0.00050000416625 -1.875125 0	0.0011146658208357
++2	0	0 0 0	20 6 6	0.7031484375	0.00050000416625 0 0	0.00128302508390328
++2	0	0 0 0	20 8 6	0.7031484375	0.00050000416625 1.875125 0	0.0011146658208357
++2	0	0 0 0	20 10 6	0.7031484375	0.00050000416625 3.75025 0	0.000739345808378992
++2	0	0 0 0	20 12 6	0.7031484375	0.00050000416625 5.625375 0	0.000360014333648198
++2	0	0 0 0	20 14 6	0.7031484375	0.00050000416625 7.5005 0	7.22053704681579e-05
++2	0	0 0 0	20 16 6	0.7031484375	0.00050000416625 9.375625 0	1e-07
++2	0	0 0 0	20 18 6	0.7031484375	0.00050000416625 11.25075 0	1e-07
++2	0	0 0 0	20 20 6	0.7031484375	0.00050000416625 13.125875 0	1e-07
++2	0	0 0 0	20 22 6	0.7031484375	0.00050000416625 15.001 0	1e-07
++2	0	0 0 0	20 24 6	0.7031484375	0.00050000416625 16.876125 0	1e-07
++2	0	0 0 0	20 26 6	0.7031484375	0.00050000416625 18.75125 0	1e-07
++
++# iteration 2   time 0.7031484375
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++2	0	0 1 0	20 0 6	0.7031484375	0.00050000416625 -5.625375 0	0.000360014333648198
++2	0	0 1 0	20 2 6	0.7031484375	0.00050000416625 -3.75025 0	0.000739345808378992
++2	0	0 1 0	20 4 6	0.7031484375	0.00050000416625 -1.875125 0	0.0011146658208357
++2	0	0 1 0	20 6 6	0.7031484375	0.00050000416625 0 0	0.00128302508390328
++2	0	0 1 0	20 8 6	0.7031484375	0.00050000416625 1.875125 0	0.0011146658208357
++2	0	0 1 0	20 10 6	0.7031484375	0.00050000416625 3.75025 0	0.000739345808378992
++2	0	0 1 0	20 12 6	0.7031484375	0.00050000416625 5.625375 0	0.000360014333648198
++2	0	0 1 0	20 14 6	0.7031484375	0.00050000416625 7.5005 0	7.22053704681579e-05
++2	0	0 1 0	20 16 6	0.7031484375	0.00050000416625 9.375625 0	1e-07
++2	0	0 1 0	20 18 6	0.7031484375	0.00050000416625 11.25075 0	1e-07
++2	0	0 1 0	20 20 6	0.7031484375	0.00050000416625 13.125875 0	1e-07
++2	0	0 1 0	20 22 6	0.7031484375	0.00050000416625 15.001 0	1e-07
++2	0	0 1 0	20 24 6	0.7031484375	0.00050000416625 16.876125 0	1e-07
++2	0	0 1 0	20 26 6	0.7031484375	0.00050000416625 18.75125 0	1e-07
++
++
++# iteration 4   time 1.406296875
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++4	0	0 0 0	20 0 6	1.406296875	0.00050000416625 -5.625375 0	0.00035893010115768
++4	0	0 0 0	20 2 6	1.406296875	0.00050000416625 -3.75025 0	0.000740955883442546
++4	0	0 0 0	20 4 6	1.406296875	0.00050000416625 -1.875125 0	0.00112108904970342
++4	0	0 0 0	20 6 6	1.406296875	0.00050000416625 0 0	0.00129215595554125
++4	0	0 0 0	20 8 6	1.406296875	0.00050000416625 1.875125 0	0.00112108904970342
++4	0	0 0 0	20 10 6	1.406296875	0.00050000416625 3.75025 0	0.000740955883442546
++4	0	0 0 0	20 12 6	1.406296875	0.00050000416625 5.625375 0	0.00035893010115768
++4	0	0 0 0	20 14 6	1.406296875	0.00050000416625 7.5005 0	7.15193890559597e-05
++4	0	0 0 0	20 16 6	1.406296875	0.00050000416625 9.375625 0	1e-07
++4	0	0 0 0	20 18 6	1.406296875	0.00050000416625 11.25075 0	1e-07
++4	0	0 0 0	20 20 6	1.406296875	0.00050000416625 13.125875 0	1e-07
++4	0	0 0 0	20 22 6	1.406296875	0.00050000416625 15.001 0	1e-07
++4	0	0 0 0	20 24 6	1.406296875	0.00050000416625 16.876125 0	1e-07
++4	0	0 0 0	20 26 6	1.406296875	0.00050000416625 18.75125 0	1e-07
++
++# iteration 4   time 1.406296875
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++4	0	0 1 0	20 0 6	1.406296875	0.00050000416625 -5.625375 0	0.00035893010115768
++4	0	0 1 0	20 2 6	1.406296875	0.00050000416625 -3.75025 0	0.000740955883442546
++4	0	0 1 0	20 4 6	1.406296875	0.00050000416625 -1.875125 0	0.00112108904970342
++4	0	0 1 0	20 6 6	1.406296875	0.00050000416625 0 0	0.00129215595554125
++4	0	0 1 0	20 8 6	1.406296875	0.00050000416625 1.875125 0	0.00112108904970342
++4	0	0 1 0	20 10 6	1.406296875	0.00050000416625 3.75025 0	0.000740955883442546
++4	0	0 1 0	20 12 6	1.406296875	0.00050000416625 5.625375 0	0.00035893010115768
++4	0	0 1 0	20 14 6	1.406296875	0.00050000416625 7.5005 0	7.15193890559597e-05
++4	0	0 1 0	20 16 6	1.406296875	0.00050000416625 9.375625 0	1e-07
++4	0	0 1 0	20 18 6	1.406296875	0.00050000416625 11.25075 0	1e-07
++4	0	0 1 0	20 20 6	1.406296875	0.00050000416625 13.125875 0	1e-07
++4	0	0 1 0	20 22 6	1.406296875	0.00050000416625 15.001 0	1e-07
++4	0	0 1 0	20 24 6	1.406296875	0.00050000416625 16.876125 0	1e-07
++4	0	0 1 0	20 26 6	1.406296875	0.00050000416625 18.75125 0	1e-07
++
++
++# iteration 5   time 1.75787109375
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++5	0	1 0 0	20 3 6	1.75787109375	0.00050000416625 -2.8126875 0	0.000943151883428912
++5	0	1 0 0	20 4 6	1.75787109375	0.00050000416625 -1.875125 0	0.00112514417961808
++5	0	1 0 0	20 5 6	1.75787109375	0.00050000416625 -0.9375625 0	0.00122744881280458
++5	0	1 0 0	20 6 6	1.75787109375	0.00050000416625 0 0	0.00129751569490171
++5	0	1 0 0	20 7 6	1.75787109375	0.00050000416625 0.9375625 0	0.00122744881280458
++5	0	1 0 0	20 8 6	1.75787109375	0.00050000416625 1.875125 0	0.00112514417961808
++5	0	1 0 0	20 9 6	1.75787109375	0.00050000416625 2.8126875 0	0.000943151883428912
++5	0	1 0 0	20 10 6	1.75787109375	0.00050000416625 3.75025 0	0.000741926659320871
++5	0	1 0 0	20 11 6	1.75787109375	0.00050000416625 4.6878125 0	0.000551186474838925
++5	0	1 0 0	20 12 6	1.75787109375	0.00050000416625 5.625375 0	0.000358057065736659
++5	0	1 0 0	20 13 6	1.75787109375	0.00050000416625 6.5629375 0	0.000196062813188624
++5	0	1 0 0	20 14 6	1.75787109375	0.00050000416625 7.5005 0	7.10160266914473e-05
++5	0	1 0 0	20 15 6	1.75787109375	0.00050000416625 8.4380625 0	2.8122957851793e-05
++5	0	1 0 0	20 16 6	1.75787109375	0.00050000416625 9.375625 0	1e-07
++5	0	1 0 0	20 17 6	1.75787109375	0.00050000416625 10.3131875 0	1.00128082127574e-07
++5	0	1 0 0	20 18 6	1.75787109375	0.00050000416625 11.25075 0	1e-07
++5	0	1 0 0	20 19 6	1.75787109375	0.00050000416625 12.1883125 0	1.00173340967537e-07
++5	0	1 0 0	20 20 6	1.75787109375	0.00050000416625 13.125875 0	1e-07
++5	0	1 0 0	20 21 6	1.75787109375	0.00050000416625 14.0634375 0	1.00327505521657e-07
++5	0	1 0 0	20 22 6	1.75787109375	0.00050000416625 15.001 0	1.00327505521657e-07
++5	0	1 0 0	20 23 6	1.75787109375	0.00050000416625 15.9385625 0	1.00327505521657e-07
++5	0	1 0 0	20 24 6	1.75787109375	0.00050000416625 16.876125 0	1.00327505521657e-07
++
++# iteration 5   time 1.75787109375
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++5	0	1 1 0	20 3 6	1.75787109375	0.00050000416625 -2.8126875 0	0.000943151883428912
++5	0	1 1 0	20 4 6	1.75787109375	0.00050000416625 -1.875125 0	0.00112514417961808
++5	0	1 1 0	20 5 6	1.75787109375	0.00050000416625 -0.9375625 0	0.00122744881280458
++5	0	1 1 0	20 6 6	1.75787109375	0.00050000416625 0 0	0.00129751569490171
++5	0	1 1 0	20 7 6	1.75787109375	0.00050000416625 0.9375625 0	0.00122744881280458
++5	0	1 1 0	20 8 6	1.75787109375	0.00050000416625 1.875125 0	0.00112514417961808
++5	0	1 1 0	20 9 6	1.75787109375	0.00050000416625 2.8126875 0	0.000943151883428912
++5	0	1 1 0	20 10 6	1.75787109375	0.00050000416625 3.75025 0	0.000741926659320871
++5	0	1 1 0	20 11 6	1.75787109375	0.00050000416625 4.6878125 0	0.000551186474838925
++5	0	1 1 0	20 12 6	1.75787109375	0.00050000416625 5.625375 0	0.000358057065736659
++5	0	1 1 0	20 13 6	1.75787109375	0.00050000416625 6.5629375 0	0.000196062813188624
++5	0	1 1 0	20 14 6	1.75787109375	0.00050000416625 7.5005 0	7.10160266914473e-05
++5	0	1 1 0	20 15 6	1.75787109375	0.00050000416625 8.4380625 0	2.8122957851793e-05
++5	0	1 1 0	20 16 6	1.75787109375	0.00050000416625 9.375625 0	1e-07
++5	0	1 1 0	20 17 6	1.75787109375	0.00050000416625 10.3131875 0	1.00128082127574e-07
++5	0	1 1 0	20 18 6	1.75787109375	0.00050000416625 11.25075 0	1e-07
++5	0	1 1 0	20 19 6	1.75787109375	0.00050000416625 12.1883125 0	1.00173340967537e-07
++5	0	1 1 0	20 20 6	1.75787109375	0.00050000416625 13.125875 0	1e-07
++5	0	1 1 0	20 21 6	1.75787109375	0.00050000416625 14.0634375 0	1.00327505521657e-07
++5	0	1 1 0	20 22 6	1.75787109375	0.00050000416625 15.001 0	1.00327505521657e-07
++5	0	1 1 0	20 23 6	1.75787109375	0.00050000416625 15.9385625 0	1.00327505521657e-07
++5	0	1 1 0	20 24 6	1.75787109375	0.00050000416625 16.876125 0	1.00327505521657e-07
++
++
++# iteration 6   time 2.1094453125
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++6	0	0 0 0	20 0 6	2.1094453125	0.00050000416625 -5.625375 0	0.000356989101122876
++6	0	0 0 0	20 2 6	2.1094453125	0.00050000416625 -3.75025 0	0.000743191508703775
++6	0	0 0 0	20 4 6	2.1094453125	0.00050000416625 -1.875125 0	0.00113038851385039
++6	0	0 0 0	20 6 6	2.1094453125	0.00050000416625 0 0	0.00130461198716755
++6	0	0 0 0	20 8 6	2.1094453125	0.00050000416625 1.875125 0	0.00113038851385039
++6	0	0 0 0	20 10 6	2.1094453125	0.00050000416625 3.75025 0	0.000743191508703775
++6	0	0 0 0	20 12 6	2.1094453125	0.00050000416625 5.625375 0	0.000356989101122876
++6	0	0 0 0	20 14 6	2.1094453125	0.00050000416625 7.5005 0	7.04076817912781e-05
++6	0	0 0 0	20 16 6	2.1094453125	0.00050000416625 9.375625 0	1e-07
++6	0	0 0 0	20 18 6	2.1094453125	0.00050000416625 11.25075 0	1e-07
++6	0	0 0 0	20 20 6	2.1094453125	0.00050000416625 13.125875 0	1e-07
++6	0	0 0 0	20 22 6	2.1094453125	0.00050000416625 15.001 0	1e-07
++6	0	0 0 0	20 24 6	2.1094453125	0.00050000416625 16.876125 0	1e-07
++6	0	0 0 0	20 26 6	2.1094453125	0.00050000416625 18.75125 0	1e-07
++
++# iteration 6   time 2.1094453125
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++6	0	0 1 0	20 0 6	2.1094453125	0.00050000416625 -5.625375 0	0.000356989101122876
++6	0	0 1 0	20 2 6	2.1094453125	0.00050000416625 -3.75025 0	0.000743191508703775
++6	0	0 1 0	20 4 6	2.1094453125	0.00050000416625 -1.875125 0	0.00113038851385039
++6	0	0 1 0	20 6 6	2.1094453125	0.00050000416625 0 0	0.00130461198716755
++6	0	0 1 0	20 8 6	2.1094453125	0.00050000416625 1.875125 0	0.00113038851385039
++6	0	0 1 0	20 10 6	2.1094453125	0.00050000416625 3.75025 0	0.000743191508703775
++6	0	0 1 0	20 12 6	2.1094453125	0.00050000416625 5.625375 0	0.000356989101122876
++6	0	0 1 0	20 14 6	2.1094453125	0.00050000416625 7.5005 0	7.04076817912781e-05
++6	0	0 1 0	20 16 6	2.1094453125	0.00050000416625 9.375625 0	1e-07
++6	0	0 1 0	20 18 6	2.1094453125	0.00050000416625 11.25075 0	1e-07
++6	0	0 1 0	20 20 6	2.1094453125	0.00050000416625 13.125875 0	1e-07
++6	0	0 1 0	20 22 6	2.1094453125	0.00050000416625 15.001 0	1e-07
++6	0	0 1 0	20 24 6	2.1094453125	0.00050000416625 16.876125 0	1e-07
++6	0	0 1 0	20 26 6	2.1094453125	0.00050000416625 18.75125 0	1e-07
++
++
++# iteration 6   time 2.1094453125
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++6	0	1 0 0	20 3 6	2.1094453125	0.00050000416625 -2.8126875 0	0.000946174250155851
++6	0	1 0 0	20 4 6	2.1094453125	0.00050000416625 -1.875125 0	0.00113038851385039
++6	0	1 0 0	20 5 6	2.1094453125	0.00050000416625 -0.9375625 0	0.00123441228295171
++6	0	1 0 0	20 6 6	2.1094453125	0.00050000416625 0 0	0.00130461198716755
++6	0	1 0 0	20 7 6	2.1094453125	0.00050000416625 0.9375625 0	0.00123441228295171
++6	0	1 0 0	20 8 6	2.1094453125	0.00050000416625 1.875125 0	0.00113038851385039
++6	0	1 0 0	20 9 6	2.1094453125	0.00050000416625 2.8126875 0	0.000946174250155851
++6	0	1 0 0	20 10 6	2.1094453125	0.00050000416625 3.75025 0	0.000743191508703775
++6	0	1 0 0	20 11 6	2.1094453125	0.00050000416625 4.6878125 0	0.000550751202259437
++6	0	1 0 0	20 12 6	2.1094453125	0.00050000416625 5.625375 0	0.000356989101122876
++6	0	1 0 0	20 13 6	2.1094453125	0.00050000416625 6.5629375 0	0.000194792176120289
++6	0	1 0 0	20 14 6	2.1094453125	0.00050000416625 7.5005 0	7.04076817912781e-05
++6	0	1 0 0	20 15 6	2.1094453125	0.00050000416625 8.4380625 0	2.77490059779359e-05
++6	0	1 0 0	20 16 6	2.1094453125	0.00050000416625 9.375625 0	1e-07
++6	0	1 0 0	20 17 6	2.1094453125	0.00050000416625 10.3131875 0	1.00151733350771e-07
++6	0	1 0 0	20 18 6	2.1094453125	0.00050000416625 11.25075 0	1e-07
++6	0	1 0 0	20 19 6	2.1094453125	0.00050000416625 12.1883125 0	1.00188969518504e-07
++6	0	1 0 0	20 20 6	2.1094453125	0.00050000416625 13.125875 0	1e-07
++6	0	1 0 0	20 21 6	2.1094453125	0.00050000416625 14.0634375 0	1.00345954035807e-07
++6	0	1 0 0	20 22 6	2.1094453125	0.00050000416625 15.001 0	1.00345954035807e-07
++6	0	1 0 0	20 23 6	2.1094453125	0.00050000416625 15.9385625 0	1.00345954035807e-07
++6	0	1 0 0	20 24 6	2.1094453125	0.00050000416625 16.876125 0	1.00345954035807e-07
++
++# iteration 6   time 2.1094453125
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++6	0	1 1 0	20 3 6	2.1094453125	0.00050000416625 -2.8126875 0	0.000946174250155851
++6	0	1 1 0	20 4 6	2.1094453125	0.00050000416625 -1.875125 0	0.00113038851385039
++6	0	1 1 0	20 5 6	2.1094453125	0.00050000416625 -0.9375625 0	0.00123441228295171
++6	0	1 1 0	20 6 6	2.1094453125	0.00050000416625 0 0	0.00130461198716755
++6	0	1 1 0	20 7 6	2.1094453125	0.00050000416625 0.9375625 0	0.00123441228295171
++6	0	1 1 0	20 8 6	2.1094453125	0.00050000416625 1.875125 0	0.00113038851385039
++6	0	1 1 0	20 9 6	2.1094453125	0.00050000416625 2.8126875 0	0.000946174250155851
++6	0	1 1 0	20 10 6	2.1094453125	0.00050000416625 3.75025 0	0.000743191508703775
++6	0	1 1 0	20 11 6	2.1094453125	0.00050000416625 4.6878125 0	0.000550751202259437
++6	0	1 1 0	20 12 6	2.1094453125	0.00050000416625 5.625375 0	0.000356989101122876
++6	0	1 1 0	20 13 6	2.1094453125	0.00050000416625 6.5629375 0	0.000194792176120289
++6	0	1 1 0	20 14 6	2.1094453125	0.00050000416625 7.5005 0	7.04076817912781e-05
++6	0	1 1 0	20 15 6	2.1094453125	0.00050000416625 8.4380625 0	2.77490059779359e-05
++6	0	1 1 0	20 16 6	2.1094453125	0.00050000416625 9.375625 0	1e-07
++6	0	1 1 0	20 17 6	2.1094453125	0.00050000416625 10.3131875 0	1.00151733350771e-07
++6	0	1 1 0	20 18 6	2.1094453125	0.00050000416625 11.25075 0	1e-07
++6	0	1 1 0	20 19 6	2.1094453125	0.00050000416625 12.1883125 0	1.00188969518504e-07
++6	0	1 1 0	20 20 6	2.1094453125	0.00050000416625 13.125875 0	1e-07
++6	0	1 1 0	20 21 6	2.1094453125	0.00050000416625 14.0634375 0	1.00345954035807e-07
++6	0	1 1 0	20 22 6	2.1094453125	0.00050000416625 15.001 0	1.00345954035807e-07
++6	0	1 1 0	20 23 6	2.1094453125	0.00050000416625 15.9385625 0	1.00345954035807e-07
++6	0	1 1 0	20 24 6	2.1094453125	0.00050000416625 16.876125 0	1.00345954035807e-07
++
++
++# iteration 7   time 2.46101953125
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++7	0	1 0 0	20 3 6	2.46101953125	0.00050000416625 -2.8126875 0	0.000949902437827956
++7	0	1 0 0	20 4 6	2.46101953125	0.00050000416625 -1.875125 0	0.00113683898647479
++7	0	1 0 0	20 5 6	2.46101953125	0.00050000416625 -0.9375625 0	0.00124296372935963
++7	0	1 0 0	20 6 6	2.46101953125	0.00050000416625 0 0	0.00131348243492604
++7	0	1 0 0	20 7 6	2.46101953125	0.00050000416625 0.9375625 0	0.00124296372935963
++7	0	1 0 0	20 8 6	2.46101953125	0.00050000416625 1.875125 0	0.00113683898647479
++7	0	1 0 0	20 9 6	2.46101953125	0.00050000416625 2.8126875 0	0.000949902437827956
++7	0	1 0 0	20 10 6	2.46101953125	0.00050000416625 3.75025 0	0.0007447441216242
++7	0	1 0 0	20 11 6	2.46101953125	0.00050000416625 4.6878125 0	0.000550280347380078
++7	0	1 0 0	20 12 6	2.46101953125	0.00050000416625 5.625375 0	0.000355748658084056
++7	0	1 0 0	20 13 6	2.46101953125	0.00050000416625 6.5629375 0	0.000193309839469573
++7	0	1 0 0	20 14 6	2.46101953125	0.00050000416625 7.5005 0	6.96962509603411e-05
++7	0	1 0 0	20 15 6	2.46101953125	0.00050000416625 8.4380625 0	2.73173286052986e-05
++7	0	1 0 0	20 16 6	2.46101953125	0.00050000416625 9.375625 0	1e-07
++7	0	1 0 0	20 17 6	2.46101953125	0.00050000416625 10.3131875 0	1.00191041541842e-07
++7	0	1 0 0	20 18 6	2.46101953125	0.00050000416625 11.25075 0	1e-07
++7	0	1 0 0	20 19 6	2.46101953125	0.00050000416625 12.1883125 0	1.00214958190071e-07
++7	0	1 0 0	20 20 6	2.46101953125	0.00050000416625 13.125875 0	1e-07
++7	0	1 0 0	20 21 6	2.46101953125	0.00050000416625 14.0634375 0	1.00376708174069e-07
++7	0	1 0 0	20 22 6	2.46101953125	0.00050000416625 15.001 0	1.00376708174069e-07
++7	0	1 0 0	20 23 6	2.46101953125	0.00050000416625 15.9385625 0	1.00376708174069e-07
++7	0	1 0 0	20 24 6	2.46101953125	0.00050000416625 16.876125 0	1.00376708174069e-07
++
++# iteration 7   time 2.46101953125
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++7	0	1 1 0	20 3 6	2.46101953125	0.00050000416625 -2.8126875 0	0.000949902437827956
++7	0	1 1 0	20 4 6	2.46101953125	0.00050000416625 -1.875125 0	0.00113683898647479
++7	0	1 1 0	20 5 6	2.46101953125	0.00050000416625 -0.9375625 0	0.00124296372935963
++7	0	1 1 0	20 6 6	2.46101953125	0.00050000416625 0 0	0.00131348243492604
++7	0	1 1 0	20 7 6	2.46101953125	0.00050000416625 0.9375625 0	0.00124296372935963
++7	0	1 1 0	20 8 6	2.46101953125	0.00050000416625 1.875125 0	0.00113683898647479
++7	0	1 1 0	20 9 6	2.46101953125	0.00050000416625 2.8126875 0	0.000949902437827956
++7	0	1 1 0	20 10 6	2.46101953125	0.00050000416625 3.75025 0	0.0007447441216242
++7	0	1 1 0	20 11 6	2.46101953125	0.00050000416625 4.6878125 0	0.000550280347380078
++7	0	1 1 0	20 12 6	2.46101953125	0.00050000416625 5.625375 0	0.000355748658084056
++7	0	1 1 0	20 13 6	2.46101953125	0.00050000416625 6.5629375 0	0.000193309839469573
++7	0	1 1 0	20 14 6	2.46101953125	0.00050000416625 7.5005 0	6.96962509603411e-05
++7	0	1 1 0	20 15 6	2.46101953125	0.00050000416625 8.4380625 0	2.73173286052986e-05
++7	0	1 1 0	20 16 6	2.46101953125	0.00050000416625 9.375625 0	1e-07
++7	0	1 1 0	20 17 6	2.46101953125	0.00050000416625 10.3131875 0	1.00191041541842e-07
++7	0	1 1 0	20 18 6	2.46101953125	0.00050000416625 11.25075 0	1e-07
++7	0	1 1 0	20 19 6	2.46101953125	0.00050000416625 12.1883125 0	1.00214958190071e-07
++7	0	1 1 0	20 20 6	2.46101953125	0.00050000416625 13.125875 0	1e-07
++7	0	1 1 0	20 21 6	2.46101953125	0.00050000416625 14.0634375 0	1.00376708174069e-07
++7	0	1 1 0	20 22 6	2.46101953125	0.00050000416625 15.001 0	1.00376708174069e-07
++7	0	1 1 0	20 23 6	2.46101953125	0.00050000416625 15.9385625 0	1.00376708174069e-07
++7	0	1 1 0	20 24 6	2.46101953125	0.00050000416625 16.876125 0	1.00376708174069e-07
++
++
++# iteration 8   time 2.81259375
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++8	0	0 0 0	20 0 6	2.81259375	0.00050000416625 -5.625375 0	0.000354338239819167
++8	0	0 0 0	20 2 6	2.81259375	0.00050000416625 -3.75025 0	0.000746576247101594
++8	0	0 0 0	20 4 6	2.81259375	0.00050000416625 -1.875125 0	0.00114451609029026
++8	0	0 0 0	20 6 6	2.81259375	0.00050000416625 0 0	0.00132417347424949
++8	0	0 0 0	20 8 6	2.81259375	0.00050000416625 1.875125 0	0.00114451609029026
++8	0	0 0 0	20 10 6	2.81259375	0.00050000416625 3.75025 0	0.000746576247101594
++8	0	0 0 0	20 12 6	2.81259375	0.00050000416625 5.625375 0	0.000354338239819167
++8	0	0 0 0	20 14 6	2.81259375	0.00050000416625 7.5005 0	6.88848152108803e-05
++8	0	0 0 0	20 16 6	2.81259375	0.00050000416625 9.375625 0	1e-07
++8	0	0 0 0	20 18 6	2.81259375	0.00050000416625 11.25075 0	1e-07
++8	0	0 0 0	20 20 6	2.81259375	0.00050000416625 13.125875 0	1e-07
++8	0	0 0 0	20 22 6	2.81259375	0.00050000416625 15.001 0	1e-07
++8	0	0 0 0	20 24 6	2.81259375	0.00050000416625 16.876125 0	1e-07
++8	0	0 0 0	20 26 6	2.81259375	0.00050000416625 18.75125 0	1e-07
++
++# iteration 8   time 2.81259375
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++8	0	0 1 0	20 0 6	2.81259375	0.00050000416625 -5.625375 0	0.000354338239819167
++8	0	0 1 0	20 2 6	2.81259375	0.00050000416625 -3.75025 0	0.000746576247101594
++8	0	0 1 0	20 4 6	2.81259375	0.00050000416625 -1.875125 0	0.00114451609029026
++8	0	0 1 0	20 6 6	2.81259375	0.00050000416625 0 0	0.00132417347424949
++8	0	0 1 0	20 8 6	2.81259375	0.00050000416625 1.875125 0	0.00114451609029026
++8	0	0 1 0	20 10 6	2.81259375	0.00050000416625 3.75025 0	0.000746576247101594
++8	0	0 1 0	20 12 6	2.81259375	0.00050000416625 5.625375 0	0.000354338239819167
++8	0	0 1 0	20 14 6	2.81259375	0.00050000416625 7.5005 0	6.88848152108803e-05
++8	0	0 1 0	20 16 6	2.81259375	0.00050000416625 9.375625 0	1e-07
++8	0	0 1 0	20 18 6	2.81259375	0.00050000416625 11.25075 0	1e-07
++8	0	0 1 0	20 20 6	2.81259375	0.00050000416625 13.125875 0	1e-07
++8	0	0 1 0	20 22 6	2.81259375	0.00050000416625 15.001 0	1e-07
++8	0	0 1 0	20 24 6	2.81259375	0.00050000416625 16.876125 0	1e-07
++8	0	0 1 0	20 26 6	2.81259375	0.00050000416625 18.75125 0	1e-07
++
++
++# iteration 8   time 2.81259375
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++8	0	1 0 0	20 3 6	2.81259375	0.00050000416625 -2.8126875 0	0.000954340217693891
++8	0	1 0 0	20 4 6	2.81259375	0.00050000416625 -1.875125 0	0.00114451609029026
++8	0	1 0 0	20 5 6	2.81259375	0.00050000416625 -0.9375625 0	0.00125314212421676
++8	0	1 0 0	20 6 6	2.81259375	0.00050000416625 0 0	0.00132417347424949
++8	0	1 0 0	20 7 6	2.81259375	0.00050000416625 0.9375625 0	0.00125314212421676
++8	0	1 0 0	20 8 6	2.81259375	0.00050000416625 1.875125 0	0.00114451609029026
++8	0	1 0 0	20 9 6	2.81259375	0.00050000416625 2.8126875 0	0.000954340217693891
++8	0	1 0 0	20 10 6	2.81259375	0.00050000416625 3.75025 0	0.000746576247101594
++8	0	1 0 0	20 11 6	2.81259375	0.00050000416625 4.6878125 0	0.000549763371937525
++8	0	1 0 0	20 12 6	2.81259375	0.00050000416625 5.625375 0	0.000354338239819167
++8	0	1 0 0	20 13 6	2.81259375	0.00050000416625 6.5629375 0	0.000191612967160431
++8	0	1 0 0	20 14 6	2.81259375	0.00050000416625 7.5005 0	6.88848152108803e-05
++8	0	1 0 0	20 15 6	2.81259375	0.00050000416625 8.4380625 0	2.68305984275106e-05
++8	0	1 0 0	20 16 6	2.81259375	0.00050000416625 9.375625 0	1e-07
++8	0	1 0 0	20 17 6	2.81259375	0.00050000416625 10.3131875 0	1.00245841884744e-07
++8	0	1 0 0	20 18 6	2.81259375	0.00050000416625 11.25075 0	1e-07
++8	0	1 0 0	20 19 6	2.81259375	0.00050000416625 12.1883125 0	1.00251219023884e-07
++8	0	1 0 0	20 20 6	2.81259375	0.00050000416625 13.125875 0	1e-07
++8	0	1 0 0	20 21 6	2.81259375	0.00050000416625 14.0634375 0	1.00419777675377e-07
++8	0	1 0 0	20 22 6	2.81259375	0.00050000416625 15.001 0	1.00419777675377e-07
++8	0	1 0 0	20 23 6	2.81259375	0.00050000416625 15.9385625 0	1.00419777675377e-07
++8	0	1 0 0	20 24 6	2.81259375	0.00050000416625 16.876125 0	1.00419777675377e-07
++
++# iteration 8   time 2.81259375
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++8	0	1 1 0	20 3 6	2.81259375	0.00050000416625 -2.8126875 0	0.000954340217693891
++8	0	1 1 0	20 4 6	2.81259375	0.00050000416625 -1.875125 0	0.00114451609029026
++8	0	1 1 0	20 5 6	2.81259375	0.00050000416625 -0.9375625 0	0.00125314212421676
++8	0	1 1 0	20 6 6	2.81259375	0.00050000416625 0 0	0.00132417347424949
++8	0	1 1 0	20 7 6	2.81259375	0.00050000416625 0.9375625 0	0.00125314212421676
++8	0	1 1 0	20 8 6	2.81259375	0.00050000416625 1.875125 0	0.00114451609029026
++8	0	1 1 0	20 9 6	2.81259375	0.00050000416625 2.8126875 0	0.000954340217693891
++8	0	1 1 0	20 10 6	2.81259375	0.00050000416625 3.75025 0	0.000746576247101594
++8	0	1 1 0	20 11 6	2.81259375	0.00050000416625 4.6878125 0	0.000549763371937525
++8	0	1 1 0	20 12 6	2.81259375	0.00050000416625 5.625375 0	0.000354338239819167
++8	0	1 1 0	20 13 6	2.81259375	0.00050000416625 6.5629375 0	0.000191612967160431
++8	0	1 1 0	20 14 6	2.81259375	0.00050000416625 7.5005 0	6.88848152108803e-05
++8	0	1 1 0	20 15 6	2.81259375	0.00050000416625 8.4380625 0	2.68305984275106e-05
++8	0	1 1 0	20 16 6	2.81259375	0.00050000416625 9.375625 0	1e-07
++8	0	1 1 0	20 17 6	2.81259375	0.00050000416625 10.3131875 0	1.00245841884744e-07
++8	0	1 1 0	20 18 6	2.81259375	0.00050000416625 11.25075 0	1e-07
++8	0	1 1 0	20 19 6	2.81259375	0.00050000416625 12.1883125 0	1.00251219023884e-07
++8	0	1 1 0	20 20 6	2.81259375	0.00050000416625 13.125875 0	1e-07
++8	0	1 1 0	20 21 6	2.81259375	0.00050000416625 14.0634375 0	1.00419777675377e-07
++8	0	1 1 0	20 22 6	2.81259375	0.00050000416625 15.001 0	1.00419777675377e-07
++8	0	1 1 0	20 23 6	2.81259375	0.00050000416625 15.9385625 0	1.00419777675377e-07
++8	0	1 1 0	20 24 6	2.81259375	0.00050000416625 16.876125 0	1.00419777675377e-07
++
++
+diff --git a/test/test_tov_carpet_refined_nosync/rho.z.asc b/test/test_tov_carpet_refined_nosync/rho.z.asc
+new file mode 100644
+index 0000000..5c7450e
+--- /dev/null
++++ b/test/test_tov_carpet_refined_nosync/rho.z.asc
+@@ -0,0 +1,424 @@
++# 1D ASCII output created by CarpetIOASCII
++# created on horizon.tapir.caltech.edu by rhaas on Mar 09 2012 at 13:13:37-0800
++# parameter filename: "test_tov_carpet_refined_nosync.par"
++# Build ID: build-bns_all-horizon.tapir.caltech.edu-rhaas-2012.03.09-21.08.06-21979
++# Simulation ID: run-test_tov_carpet_refined_nosync-horizon.tapir.caltech.edu-rhaas-2012.03.09-21.13.37-24326
++# Run ID: run-test_tov_carpet_refined_nosync-horizon.tapir.caltech.edu-rhaas-2012.03.09-21.13.37-24326
++#
++# rho z (rho)
++#
++# iteration 0   time 0
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++0	0	0 0 0	20 6 0	0	0.00050000416625 0 -5.625375	0.00036037429320521
++0	0	0 0 0	20 6 2	0	0.00050000416625 0 -3.75025	0.000738805149091886
++0	0	0 0 0	20 6 4	0	0.00050000416625 0 -1.875125	0.00111253359405608
++0	0	0 0 0	20 6 6	0	0.00050000416625 0 0	0.00127999998429442
++0	0	0 0 0	20 6 8	0	0.00050000416625 0 1.875125	0.00111253359405608
++0	0	0 0 0	20 6 10	0	0.00050000416625 0 3.75025	0.000738805149091886
++0	0	0 0 0	20 6 12	0	0.00050000416625 0 5.625375	0.00036037429320521
++0	0	0 0 0	20 6 14	0	0.00050000416625 0 7.5005	7.24355137693424e-05
++0	0	0 0 0	20 6 16	0	0.00050000416625 0 9.375625	1e-07
++0	0	0 0 0	20 6 18	0	0.00050000416625 0 11.25075	1e-07
++0	0	0 0 0	20 6 20	0	0.00050000416625 0 13.125875	1e-07
++0	0	0 0 0	20 6 22	0	0.00050000416625 0 15.001	1e-07
++0	0	0 0 0	20 6 24	0	0.00050000416625 0 16.876125	1e-07
++0	0	0 0 0	20 6 26	0	0.00050000416625 0 18.75125	1e-07
++
++# iteration 0   time 0
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++0	0	0 1 0	20 6 0	0	0.00050000416625 0 -5.625375	0.00036037429320521
++0	0	0 1 0	20 6 2	0	0.00050000416625 0 -3.75025	0.000738805149091886
++0	0	0 1 0	20 6 4	0	0.00050000416625 0 -1.875125	0.00111253359405608
++0	0	0 1 0	20 6 6	0	0.00050000416625 0 0	0.00127999998429442
++0	0	0 1 0	20 6 8	0	0.00050000416625 0 1.875125	0.00111253359405608
++0	0	0 1 0	20 6 10	0	0.00050000416625 0 3.75025	0.000738805149091886
++0	0	0 1 0	20 6 12	0	0.00050000416625 0 5.625375	0.00036037429320521
++0	0	0 1 0	20 6 14	0	0.00050000416625 0 7.5005	7.24355137693424e-05
++0	0	0 1 0	20 6 16	0	0.00050000416625 0 9.375625	1e-07
++0	0	0 1 0	20 6 18	0	0.00050000416625 0 11.25075	1e-07
++0	0	0 1 0	20 6 20	0	0.00050000416625 0 13.125875	1e-07
++0	0	0 1 0	20 6 22	0	0.00050000416625 0 15.001	1e-07
++0	0	0 1 0	20 6 24	0	0.00050000416625 0 16.876125	1e-07
++0	0	0 1 0	20 6 26	0	0.00050000416625 0 18.75125	1e-07
++
++
++# iteration 2   time 0.7031484375
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++2	0	0 0 0	20 6 0	0.7031484375	0.00050000416625 0 -5.625375	0.000360014333648198
++2	0	0 0 0	20 6 2	0.7031484375	0.00050000416625 0 -3.75025	0.000739345808378992
++2	0	0 0 0	20 6 4	0.7031484375	0.00050000416625 0 -1.875125	0.0011146658208357
++2	0	0 0 0	20 6 6	0.7031484375	0.00050000416625 0 0	0.00128302508390328
++2	0	0 0 0	20 6 8	0.7031484375	0.00050000416625 0 1.875125	0.0011146658208357
++2	0	0 0 0	20 6 10	0.7031484375	0.00050000416625 0 3.75025	0.000739345808378992
++2	0	0 0 0	20 6 12	0.7031484375	0.00050000416625 0 5.625375	0.000360014333648198
++2	0	0 0 0	20 6 14	0.7031484375	0.00050000416625 0 7.5005	7.22053704681579e-05
++2	0	0 0 0	20 6 16	0.7031484375	0.00050000416625 0 9.375625	1e-07
++2	0	0 0 0	20 6 18	0.7031484375	0.00050000416625 0 11.25075	1e-07
++2	0	0 0 0	20 6 20	0.7031484375	0.00050000416625 0 13.125875	1e-07
++2	0	0 0 0	20 6 22	0.7031484375	0.00050000416625 0 15.001	1e-07
++2	0	0 0 0	20 6 24	0.7031484375	0.00050000416625 0 16.876125	1e-07
++2	0	0 0 0	20 6 26	0.7031484375	0.00050000416625 0 18.75125	1e-07
++
++# iteration 2   time 0.7031484375
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++2	0	0 1 0	20 6 0	0.7031484375	0.00050000416625 0 -5.625375	0.000360014333648198
++2	0	0 1 0	20 6 2	0.7031484375	0.00050000416625 0 -3.75025	0.000739345808378992
++2	0	0 1 0	20 6 4	0.7031484375	0.00050000416625 0 -1.875125	0.0011146658208357
++2	0	0 1 0	20 6 6	0.7031484375	0.00050000416625 0 0	0.00128302508390328
++2	0	0 1 0	20 6 8	0.7031484375	0.00050000416625 0 1.875125	0.0011146658208357
++2	0	0 1 0	20 6 10	0.7031484375	0.00050000416625 0 3.75025	0.000739345808378992
++2	0	0 1 0	20 6 12	0.7031484375	0.00050000416625 0 5.625375	0.000360014333648198
++2	0	0 1 0	20 6 14	0.7031484375	0.00050000416625 0 7.5005	7.22053704681579e-05
++2	0	0 1 0	20 6 16	0.7031484375	0.00050000416625 0 9.375625	1e-07
++2	0	0 1 0	20 6 18	0.7031484375	0.00050000416625 0 11.25075	1e-07
++2	0	0 1 0	20 6 20	0.7031484375	0.00050000416625 0 13.125875	1e-07
++2	0	0 1 0	20 6 22	0.7031484375	0.00050000416625 0 15.001	1e-07
++2	0	0 1 0	20 6 24	0.7031484375	0.00050000416625 0 16.876125	1e-07
++2	0	0 1 0	20 6 26	0.7031484375	0.00050000416625 0 18.75125	1e-07
++
++
++# iteration 4   time 1.406296875
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++4	0	0 0 0	20 6 0	1.406296875	0.00050000416625 0 -5.625375	0.00035893010115768
++4	0	0 0 0	20 6 2	1.406296875	0.00050000416625 0 -3.75025	0.000740955883442546
++4	0	0 0 0	20 6 4	1.406296875	0.00050000416625 0 -1.875125	0.00112108904970342
++4	0	0 0 0	20 6 6	1.406296875	0.00050000416625 0 0	0.00129215595554125
++4	0	0 0 0	20 6 8	1.406296875	0.00050000416625 0 1.875125	0.00112108904970342
++4	0	0 0 0	20 6 10	1.406296875	0.00050000416625 0 3.75025	0.000740955883442546
++4	0	0 0 0	20 6 12	1.406296875	0.00050000416625 0 5.625375	0.00035893010115768
++4	0	0 0 0	20 6 14	1.406296875	0.00050000416625 0 7.5005	7.15193890559597e-05
++4	0	0 0 0	20 6 16	1.406296875	0.00050000416625 0 9.375625	1e-07
++4	0	0 0 0	20 6 18	1.406296875	0.00050000416625 0 11.25075	1e-07
++4	0	0 0 0	20 6 20	1.406296875	0.00050000416625 0 13.125875	1e-07
++4	0	0 0 0	20 6 22	1.406296875	0.00050000416625 0 15.001	1e-07
++4	0	0 0 0	20 6 24	1.406296875	0.00050000416625 0 16.876125	1e-07
++4	0	0 0 0	20 6 26	1.406296875	0.00050000416625 0 18.75125	1e-07
++
++# iteration 4   time 1.406296875
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++4	0	0 1 0	20 6 0	1.406296875	0.00050000416625 0 -5.625375	0.00035893010115768
++4	0	0 1 0	20 6 2	1.406296875	0.00050000416625 0 -3.75025	0.000740955883442546
++4	0	0 1 0	20 6 4	1.406296875	0.00050000416625 0 -1.875125	0.00112108904970342
++4	0	0 1 0	20 6 6	1.406296875	0.00050000416625 0 0	0.00129215595554125
++4	0	0 1 0	20 6 8	1.406296875	0.00050000416625 0 1.875125	0.00112108904970342
++4	0	0 1 0	20 6 10	1.406296875	0.00050000416625 0 3.75025	0.000740955883442546
++4	0	0 1 0	20 6 12	1.406296875	0.00050000416625 0 5.625375	0.00035893010115768
++4	0	0 1 0	20 6 14	1.406296875	0.00050000416625 0 7.5005	7.15193890559597e-05
++4	0	0 1 0	20 6 16	1.406296875	0.00050000416625 0 9.375625	1e-07
++4	0	0 1 0	20 6 18	1.406296875	0.00050000416625 0 11.25075	1e-07
++4	0	0 1 0	20 6 20	1.406296875	0.00050000416625 0 13.125875	1e-07
++4	0	0 1 0	20 6 22	1.406296875	0.00050000416625 0 15.001	1e-07
++4	0	0 1 0	20 6 24	1.406296875	0.00050000416625 0 16.876125	1e-07
++4	0	0 1 0	20 6 26	1.406296875	0.00050000416625 0 18.75125	1e-07
++
++
++# iteration 5   time 1.75787109375
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++5	0	1 0 0	20 6 3	1.75787109375	0.00050000416625 0 -2.8126875	0.000943151720368996
++5	0	1 0 0	20 6 4	1.75787109375	0.00050000416625 0 -1.875125	0.00112514416591014
++5	0	1 0 0	20 6 5	1.75787109375	0.00050000416625 0 -0.9375625	0.0012274487965976
++5	0	1 0 0	20 6 6	1.75787109375	0.00050000416625 0 0	0.00129751569490171
++5	0	1 0 0	20 6 7	1.75787109375	0.00050000416625 0 0.9375625	0.0012274487965976
++5	0	1 0 0	20 6 8	1.75787109375	0.00050000416625 0 1.875125	0.00112514416591014
++5	0	1 0 0	20 6 9	1.75787109375	0.00050000416625 0 2.8126875	0.000943151720368996
++5	0	1 0 0	20 6 10	1.75787109375	0.00050000416625 0 3.75025	0.000741926669836052
++5	0	1 0 0	20 6 11	1.75787109375	0.00050000416625 0 4.6878125	0.000551186437465585
++5	0	1 0 0	20 6 12	1.75787109375	0.00050000416625 0 5.625375	0.0003580570657603
++5	0	1 0 0	20 6 13	1.75787109375	0.00050000416625 0 6.5629375	0.000196062806748556
++5	0	1 0 0	20 6 14	1.75787109375	0.00050000416625 0 7.5005	7.10160266965119e-05
++5	0	1 0 0	20 6 15	1.75787109375	0.00050000416625 0 8.4380625	2.81229578523525e-05
++5	0	1 0 0	20 6 16	1.75787109375	0.00050000416625 0 9.375625	1e-07
++5	0	1 0 0	20 6 17	1.75787109375	0.00050000416625 0 10.3131875	1.00128082127574e-07
++5	0	1 0 0	20 6 18	1.75787109375	0.00050000416625 0 11.25075	1e-07
++5	0	1 0 0	20 6 19	1.75787109375	0.00050000416625 0 12.1883125	1.00173340967537e-07
++5	0	1 0 0	20 6 20	1.75787109375	0.00050000416625 0 13.125875	1e-07
++5	0	1 0 0	20 6 21	1.75787109375	0.00050000416625 0 14.0634375	1.00327505521657e-07
++5	0	1 0 0	20 6 22	1.75787109375	0.00050000416625 0 15.001	1.00327505521657e-07
++5	0	1 0 0	20 6 23	1.75787109375	0.00050000416625 0 15.9385625	1.00327505521657e-07
++5	0	1 0 0	20 6 24	1.75787109375	0.00050000416625 0 16.876125	1.00327505521657e-07
++
++# iteration 5   time 1.75787109375
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++5	0	1 1 0	20 6 3	1.75787109375	0.00050000416625 0 -2.8126875	0.000943151720368996
++5	0	1 1 0	20 6 4	1.75787109375	0.00050000416625 0 -1.875125	0.00112514416591014
++5	0	1 1 0	20 6 5	1.75787109375	0.00050000416625 0 -0.9375625	0.0012274487965976
++5	0	1 1 0	20 6 6	1.75787109375	0.00050000416625 0 0	0.00129751569490171
++5	0	1 1 0	20 6 7	1.75787109375	0.00050000416625 0 0.9375625	0.0012274487965976
++5	0	1 1 0	20 6 8	1.75787109375	0.00050000416625 0 1.875125	0.00112514416591014
++5	0	1 1 0	20 6 9	1.75787109375	0.00050000416625 0 2.8126875	0.000943151720368996
++5	0	1 1 0	20 6 10	1.75787109375	0.00050000416625 0 3.75025	0.000741926669836052
++5	0	1 1 0	20 6 11	1.75787109375	0.00050000416625 0 4.6878125	0.000551186437465585
++5	0	1 1 0	20 6 12	1.75787109375	0.00050000416625 0 5.625375	0.0003580570657603
++5	0	1 1 0	20 6 13	1.75787109375	0.00050000416625 0 6.5629375	0.000196062806748556
++5	0	1 1 0	20 6 14	1.75787109375	0.00050000416625 0 7.5005	7.10160266965119e-05
++5	0	1 1 0	20 6 15	1.75787109375	0.00050000416625 0 8.4380625	2.81229578523525e-05
++5	0	1 1 0	20 6 16	1.75787109375	0.00050000416625 0 9.375625	1e-07
++5	0	1 1 0	20 6 17	1.75787109375	0.00050000416625 0 10.3131875	1.00128082127574e-07
++5	0	1 1 0	20 6 18	1.75787109375	0.00050000416625 0 11.25075	1e-07
++5	0	1 1 0	20 6 19	1.75787109375	0.00050000416625 0 12.1883125	1.00173340967537e-07
++5	0	1 1 0	20 6 20	1.75787109375	0.00050000416625 0 13.125875	1e-07
++5	0	1 1 0	20 6 21	1.75787109375	0.00050000416625 0 14.0634375	1.00327505521657e-07
++5	0	1 1 0	20 6 22	1.75787109375	0.00050000416625 0 15.001	1.00327505521657e-07
++5	0	1 1 0	20 6 23	1.75787109375	0.00050000416625 0 15.9385625	1.00327505521657e-07
++5	0	1 1 0	20 6 24	1.75787109375	0.00050000416625 0 16.876125	1.00327505521657e-07
++
++
++# iteration 6   time 2.1094453125
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++6	0	0 0 0	20 6 0	2.1094453125	0.00050000416625 0 -5.625375	0.000356989101227614
++6	0	0 0 0	20 6 2	2.1094453125	0.00050000416625 0 -3.75025	0.000743191551835249
++6	0	0 0 0	20 6 4	2.1094453125	0.00050000416625 0 -1.875125	0.00113038845258139
++6	0	0 0 0	20 6 6	2.1094453125	0.00050000416625 0 0	0.00130461198716755
++6	0	0 0 0	20 6 8	2.1094453125	0.00050000416625 0 1.875125	0.00113038845258139
++6	0	0 0 0	20 6 10	2.1094453125	0.00050000416625 0 3.75025	0.000743191551835249
++6	0	0 0 0	20 6 12	2.1094453125	0.00050000416625 0 5.625375	0.000356989101227614
++6	0	0 0 0	20 6 14	2.1094453125	0.00050000416625 0 7.5005	7.04076818348172e-05
++6	0	0 0 0	20 6 16	2.1094453125	0.00050000416625 0 9.375625	1e-07
++6	0	0 0 0	20 6 18	2.1094453125	0.00050000416625 0 11.25075	1e-07
++6	0	0 0 0	20 6 20	2.1094453125	0.00050000416625 0 13.125875	1e-07
++6	0	0 0 0	20 6 22	2.1094453125	0.00050000416625 0 15.001	1e-07
++6	0	0 0 0	20 6 24	2.1094453125	0.00050000416625 0 16.876125	1e-07
++6	0	0 0 0	20 6 26	2.1094453125	0.00050000416625 0 18.75125	1e-07
++
++# iteration 6   time 2.1094453125
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++6	0	0 1 0	20 6 0	2.1094453125	0.00050000416625 0 -5.625375	0.000356989101227614
++6	0	0 1 0	20 6 2	2.1094453125	0.00050000416625 0 -3.75025	0.000743191551835249
++6	0	0 1 0	20 6 4	2.1094453125	0.00050000416625 0 -1.875125	0.00113038845258139
++6	0	0 1 0	20 6 6	2.1094453125	0.00050000416625 0 0	0.00130461198716755
++6	0	0 1 0	20 6 8	2.1094453125	0.00050000416625 0 1.875125	0.00113038845258139
++6	0	0 1 0	20 6 10	2.1094453125	0.00050000416625 0 3.75025	0.000743191551835249
++6	0	0 1 0	20 6 12	2.1094453125	0.00050000416625 0 5.625375	0.000356989101227614
++6	0	0 1 0	20 6 14	2.1094453125	0.00050000416625 0 7.5005	7.04076818348172e-05
++6	0	0 1 0	20 6 16	2.1094453125	0.00050000416625 0 9.375625	1e-07
++6	0	0 1 0	20 6 18	2.1094453125	0.00050000416625 0 11.25075	1e-07
++6	0	0 1 0	20 6 20	2.1094453125	0.00050000416625 0 13.125875	1e-07
++6	0	0 1 0	20 6 22	2.1094453125	0.00050000416625 0 15.001	1e-07
++6	0	0 1 0	20 6 24	2.1094453125	0.00050000416625 0 16.876125	1e-07
++6	0	0 1 0	20 6 26	2.1094453125	0.00050000416625 0 18.75125	1e-07
++
++
++# iteration 6   time 2.1094453125
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++6	0	1 0 0	20 6 3	2.1094453125	0.00050000416625 0 -2.8126875	0.000946173558731024
++6	0	1 0 0	20 6 4	2.1094453125	0.00050000416625 0 -1.875125	0.00113038845258139
++6	0	1 0 0	20 6 5	2.1094453125	0.00050000416625 0 -0.9375625	0.00123441221640219
++6	0	1 0 0	20 6 6	2.1094453125	0.00050000416625 0 0	0.00130461198716755
++6	0	1 0 0	20 6 7	2.1094453125	0.00050000416625 0 0.9375625	0.00123441221640219
++6	0	1 0 0	20 6 8	2.1094453125	0.00050000416625 0 1.875125	0.00113038845258139
++6	0	1 0 0	20 6 9	2.1094453125	0.00050000416625 0 2.8126875	0.000946173558731024
++6	0	1 0 0	20 6 10	2.1094453125	0.00050000416625 0 3.75025	0.000743191551835249
++6	0	1 0 0	20 6 11	2.1094453125	0.00050000416625 0 4.6878125	0.000550751045874547
++6	0	1 0 0	20 6 12	2.1094453125	0.00050000416625 0 5.625375	0.000356989101227614
++6	0	1 0 0	20 6 13	2.1094453125	0.00050000416625 0 6.5629375	0.000194792149327185
++6	0	1 0 0	20 6 14	2.1094453125	0.00050000416625 0 7.5005	7.04076818348172e-05
++6	0	1 0 0	20 6 15	2.1094453125	0.00050000416625 0 8.4380625	2.77490059802668e-05
++6	0	1 0 0	20 6 16	2.1094453125	0.00050000416625 0 9.375625	1e-07
++6	0	1 0 0	20 6 17	2.1094453125	0.00050000416625 0 10.3131875	1.00151733350771e-07
++6	0	1 0 0	20 6 18	2.1094453125	0.00050000416625 0 11.25075	1e-07
++6	0	1 0 0	20 6 19	2.1094453125	0.00050000416625 0 12.1883125	1.00188969518504e-07
++6	0	1 0 0	20 6 20	2.1094453125	0.00050000416625 0 13.125875	1e-07
++6	0	1 0 0	20 6 21	2.1094453125	0.00050000416625 0 14.0634375	1.00345954035807e-07
++6	0	1 0 0	20 6 22	2.1094453125	0.00050000416625 0 15.001	1.00345954035807e-07
++6	0	1 0 0	20 6 23	2.1094453125	0.00050000416625 0 15.9385625	1.00345954035807e-07
++6	0	1 0 0	20 6 24	2.1094453125	0.00050000416625 0 16.876125	1.00345954035807e-07
++
++# iteration 6   time 2.1094453125
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++6	0	1 1 0	20 6 3	2.1094453125	0.00050000416625 0 -2.8126875	0.000946173558731024
++6	0	1 1 0	20 6 4	2.1094453125	0.00050000416625 0 -1.875125	0.00113038845258139
++6	0	1 1 0	20 6 5	2.1094453125	0.00050000416625 0 -0.9375625	0.00123441221640219
++6	0	1 1 0	20 6 6	2.1094453125	0.00050000416625 0 0	0.00130461198716755
++6	0	1 1 0	20 6 7	2.1094453125	0.00050000416625 0 0.9375625	0.00123441221640219
++6	0	1 1 0	20 6 8	2.1094453125	0.00050000416625 0 1.875125	0.00113038845258139
++6	0	1 1 0	20 6 9	2.1094453125	0.00050000416625 0 2.8126875	0.000946173558731024
++6	0	1 1 0	20 6 10	2.1094453125	0.00050000416625 0 3.75025	0.000743191551835249
++6	0	1 1 0	20 6 11	2.1094453125	0.00050000416625 0 4.6878125	0.000550751045874547
++6	0	1 1 0	20 6 12	2.1094453125	0.00050000416625 0 5.625375	0.000356989101227614
++6	0	1 1 0	20 6 13	2.1094453125	0.00050000416625 0 6.5629375	0.000194792149327185
++6	0	1 1 0	20 6 14	2.1094453125	0.00050000416625 0 7.5005	7.04076818348172e-05
++6	0	1 1 0	20 6 15	2.1094453125	0.00050000416625 0 8.4380625	2.77490059802668e-05
++6	0	1 1 0	20 6 16	2.1094453125	0.00050000416625 0 9.375625	1e-07
++6	0	1 1 0	20 6 17	2.1094453125	0.00050000416625 0 10.3131875	1.00151733350771e-07
++6	0	1 1 0	20 6 18	2.1094453125	0.00050000416625 0 11.25075	1e-07
++6	0	1 1 0	20 6 19	2.1094453125	0.00050000416625 0 12.1883125	1.00188969518504e-07
++6	0	1 1 0	20 6 20	2.1094453125	0.00050000416625 0 13.125875	1e-07
++6	0	1 1 0	20 6 21	2.1094453125	0.00050000416625 0 14.0634375	1.00345954035807e-07
++6	0	1 1 0	20 6 22	2.1094453125	0.00050000416625 0 15.001	1.00345954035807e-07
++6	0	1 1 0	20 6 23	2.1094453125	0.00050000416625 0 15.9385625	1.00345954035807e-07
++6	0	1 1 0	20 6 24	2.1094453125	0.00050000416625 0 16.876125	1.00345954035807e-07
++
++
++# iteration 7   time 2.46101953125
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++7	0	1 0 0	20 6 3	2.46101953125	0.00050000416625 0 -2.8126875	0.000949900778845333
++7	0	1 0 0	20 6 4	2.46101953125	0.00050000416625 0 -1.875125	0.00113683882824318
++7	0	1 0 0	20 6 5	2.46101953125	0.00050000416625 0 -0.9375625	0.0012429635746193
++7	0	1 0 0	20 6 6	2.46101953125	0.00050000416625 0 0	0.00131348243492604
++7	0	1 0 0	20 6 7	2.46101953125	0.00050000416625 0 0.9375625	0.0012429635746193
++7	0	1 0 0	20 6 8	2.46101953125	0.00050000416625 0 1.875125	0.00113683882824318
++7	0	1 0 0	20 6 9	2.46101953125	0.00050000416625 0 2.8126875	0.000949900778845333
++7	0	1 0 0	20 6 10	2.46101953125	0.00050000416625 0 3.75025	0.000744744222135624
++7	0	1 0 0	20 6 11	2.46101953125	0.00050000416625 0 4.6878125	0.0005502799746162
++7	0	1 0 0	20 6 12	2.46101953125	0.00050000416625 0 5.625375	0.000355748658135946
++7	0	1 0 0	20 6 13	2.46101953125	0.00050000416625 0 6.5629375	0.000193309776295644
++7	0	1 0 0	20 6 14	2.46101953125	0.00050000416625 0 7.5005	6.9696251127164e-05
++7	0	1 0 0	20 6 15	2.46101953125	0.00050000416625 0 8.4380625	2.73173286120477e-05
++7	0	1 0 0	20 6 16	2.46101953125	0.00050000416625 0 9.375625	1e-07
++7	0	1 0 0	20 6 17	2.46101953125	0.00050000416625 0 10.3131875	1.00191041541842e-07
++7	0	1 0 0	20 6 18	2.46101953125	0.00050000416625 0 11.25075	1e-07
++7	0	1 0 0	20 6 19	2.46101953125	0.00050000416625 0 12.1883125	1.00214958190071e-07
++7	0	1 0 0	20 6 20	2.46101953125	0.00050000416625 0 13.125875	1e-07
++7	0	1 0 0	20 6 21	2.46101953125	0.00050000416625 0 14.0634375	1.00376708174069e-07
++7	0	1 0 0	20 6 22	2.46101953125	0.00050000416625 0 15.001	1.00376708174069e-07
++7	0	1 0 0	20 6 23	2.46101953125	0.00050000416625 0 15.9385625	1.00376708174069e-07
++7	0	1 0 0	20 6 24	2.46101953125	0.00050000416625 0 16.876125	1.00376708174069e-07
++
++# iteration 7   time 2.46101953125
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++7	0	1 1 0	20 6 3	2.46101953125	0.00050000416625 0 -2.8126875	0.000949900778845333
++7	0	1 1 0	20 6 4	2.46101953125	0.00050000416625 0 -1.875125	0.00113683882824318
++7	0	1 1 0	20 6 5	2.46101953125	0.00050000416625 0 -0.9375625	0.0012429635746193
++7	0	1 1 0	20 6 6	2.46101953125	0.00050000416625 0 0	0.00131348243492604
++7	0	1 1 0	20 6 7	2.46101953125	0.00050000416625 0 0.9375625	0.0012429635746193
++7	0	1 1 0	20 6 8	2.46101953125	0.00050000416625 0 1.875125	0.00113683882824318
++7	0	1 1 0	20 6 9	2.46101953125	0.00050000416625 0 2.8126875	0.000949900778845333
++7	0	1 1 0	20 6 10	2.46101953125	0.00050000416625 0 3.75025	0.000744744222135624
++7	0	1 1 0	20 6 11	2.46101953125	0.00050000416625 0 4.6878125	0.0005502799746162
++7	0	1 1 0	20 6 12	2.46101953125	0.00050000416625 0 5.625375	0.000355748658135946
++7	0	1 1 0	20 6 13	2.46101953125	0.00050000416625 0 6.5629375	0.000193309776295644
++7	0	1 1 0	20 6 14	2.46101953125	0.00050000416625 0 7.5005	6.9696251127164e-05
++7	0	1 1 0	20 6 15	2.46101953125	0.00050000416625 0 8.4380625	2.73173286120477e-05
++7	0	1 1 0	20 6 16	2.46101953125	0.00050000416625 0 9.375625	1e-07
++7	0	1 1 0	20 6 17	2.46101953125	0.00050000416625 0 10.3131875	1.00191041541842e-07
++7	0	1 1 0	20 6 18	2.46101953125	0.00050000416625 0 11.25075	1e-07
++7	0	1 1 0	20 6 19	2.46101953125	0.00050000416625 0 12.1883125	1.00214958190071e-07
++7	0	1 1 0	20 6 20	2.46101953125	0.00050000416625 0 13.125875	1e-07
++7	0	1 1 0	20 6 21	2.46101953125	0.00050000416625 0 14.0634375	1.00376708174069e-07
++7	0	1 1 0	20 6 22	2.46101953125	0.00050000416625 0 15.001	1.00376708174069e-07
++7	0	1 1 0	20 6 23	2.46101953125	0.00050000416625 0 15.9385625	1.00376708174069e-07
++7	0	1 1 0	20 6 24	2.46101953125	0.00050000416625 0 16.876125	1.00376708174069e-07
++
++
++# iteration 8   time 2.81259375
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++8	0	0 0 0	20 6 0	2.81259375	0.00050000416625 0 -5.625375	0.000354338239539865
++8	0	0 0 0	20 6 2	2.81259375	0.00050000416625 0 -3.75025	0.000746576429126815
++8	0	0 0 0	20 6 4	2.81259375	0.00050000416625 0 -1.875125	0.00114451576838847
++8	0	0 0 0	20 6 6	2.81259375	0.00050000416625 0 0	0.00132417347424949
++8	0	0 0 0	20 6 8	2.81259375	0.00050000416625 0 1.875125	0.00114451576838847
++8	0	0 0 0	20 6 10	2.81259375	0.00050000416625 0 3.75025	0.000746576429126815
++8	0	0 0 0	20 6 12	2.81259375	0.00050000416625 0 5.625375	0.000354338239539865
++8	0	0 0 0	20 6 14	2.81259375	0.00050000416625 0 7.5005	6.88848156572927e-05
++8	0	0 0 0	20 6 16	2.81259375	0.00050000416625 0 9.375625	1e-07
++8	0	0 0 0	20 6 18	2.81259375	0.00050000416625 0 11.25075	1e-07
++8	0	0 0 0	20 6 20	2.81259375	0.00050000416625 0 13.125875	1e-07
++8	0	0 0 0	20 6 22	2.81259375	0.00050000416625 0 15.001	1e-07
++8	0	0 0 0	20 6 24	2.81259375	0.00050000416625 0 16.876125	1e-07
++8	0	0 0 0	20 6 26	2.81259375	0.00050000416625 0 18.75125	1e-07
++
++# iteration 8   time 2.81259375
++# time level 0
++# refinement level 0   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++8	0	0 1 0	20 6 0	2.81259375	0.00050000416625 0 -5.625375	0.000354338239539865
++8	0	0 1 0	20 6 2	2.81259375	0.00050000416625 0 -3.75025	0.000746576429126815
++8	0	0 1 0	20 6 4	2.81259375	0.00050000416625 0 -1.875125	0.00114451576838847
++8	0	0 1 0	20 6 6	2.81259375	0.00050000416625 0 0	0.00132417347424949
++8	0	0 1 0	20 6 8	2.81259375	0.00050000416625 0 1.875125	0.00114451576838847
++8	0	0 1 0	20 6 10	2.81259375	0.00050000416625 0 3.75025	0.000746576429126815
++8	0	0 1 0	20 6 12	2.81259375	0.00050000416625 0 5.625375	0.000354338239539865
++8	0	0 1 0	20 6 14	2.81259375	0.00050000416625 0 7.5005	6.88848156572927e-05
++8	0	0 1 0	20 6 16	2.81259375	0.00050000416625 0 9.375625	1e-07
++8	0	0 1 0	20 6 18	2.81259375	0.00050000416625 0 11.25075	1e-07
++8	0	0 1 0	20 6 20	2.81259375	0.00050000416625 0 13.125875	1e-07
++8	0	0 1 0	20 6 22	2.81259375	0.00050000416625 0 15.001	1e-07
++8	0	0 1 0	20 6 24	2.81259375	0.00050000416625 0 16.876125	1e-07
++8	0	0 1 0	20 6 26	2.81259375	0.00050000416625 0 18.75125	1e-07
++
++
++# iteration 8   time 2.81259375
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 0
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++8	0	1 0 0	20 6 3	2.81259375	0.00050000416625 0 -2.8126875	0.000954337085665371
++8	0	1 0 0	20 6 4	2.81259375	0.00050000416625 0 -1.875125	0.00114451576838847
++8	0	1 0 0	20 6 5	2.81259375	0.00050000416625 0 -0.9375625	0.00125314184233921
++8	0	1 0 0	20 6 6	2.81259375	0.00050000416625 0 0	0.00132417347424949
++8	0	1 0 0	20 6 7	2.81259375	0.00050000416625 0 0.9375625	0.00125314184233921
++8	0	1 0 0	20 6 8	2.81259375	0.00050000416625 0 1.875125	0.00114451576838847
++8	0	1 0 0	20 6 9	2.81259375	0.00050000416625 0 2.8126875	0.000954337085665371
++8	0	1 0 0	20 6 10	2.81259375	0.00050000416625 0 3.75025	0.000746576429126815
++8	0	1 0 0	20 6 11	2.81259375	0.00050000416625 0 4.6878125	0.000549762672135169
++8	0	1 0 0	20 6 12	2.81259375	0.00050000416625 0 5.625375	0.000354338239539865
++8	0	1 0 0	20 6 13	2.81259375	0.00050000416625 0 6.5629375	0.000191612849707892
++8	0	1 0 0	20 6 14	2.81259375	0.00050000416625 0 7.5005	6.88848156572927e-05
++8	0	1 0 0	20 6 15	2.81259375	0.00050000416625 0 8.4380625	2.6830598443637e-05
++8	0	1 0 0	20 6 16	2.81259375	0.00050000416625 0 9.375625	1e-07
++8	0	1 0 0	20 6 17	2.81259375	0.00050000416625 0 10.3131875	1.00245841884742e-07
++8	0	1 0 0	20 6 18	2.81259375	0.00050000416625 0 11.25075	1e-07
++8	0	1 0 0	20 6 19	2.81259375	0.00050000416625 0 12.1883125	1.00251219023884e-07
++8	0	1 0 0	20 6 20	2.81259375	0.00050000416625 0 13.125875	1e-07
++8	0	1 0 0	20 6 21	2.81259375	0.00050000416625 0 14.0634375	1.00419777675377e-07
++8	0	1 0 0	20 6 22	2.81259375	0.00050000416625 0 15.001	1.00419777675377e-07
++8	0	1 0 0	20 6 23	2.81259375	0.00050000416625 0 15.9385625	1.00419777675377e-07
++8	0	1 0 0	20 6 24	2.81259375	0.00050000416625 0 16.876125	1.00419777675377e-07
++
++# iteration 8   time 2.81259375
++# time level 0
++# refinement level 1   multigrid level 0   map 0   component 1
++# column format: 1:it	2:tl	3:rl 4:c 5:ml	6:ix 7:iy 8:iz	9:time	10:x 11:y 12:z	13:data
++8	0	1 1 0	20 6 3	2.81259375	0.00050000416625 0 -2.8126875	0.000954337085665371
++8	0	1 1 0	20 6 4	2.81259375	0.00050000416625 0 -1.875125	0.00114451576838847
++8	0	1 1 0	20 6 5	2.81259375	0.00050000416625 0 -0.9375625	0.00125314184233921
++8	0	1 1 0	20 6 6	2.81259375	0.00050000416625 0 0	0.00132417347424949
++8	0	1 1 0	20 6 7	2.81259375	0.00050000416625 0 0.9375625	0.00125314184233921
++8	0	1 1 0	20 6 8	2.81259375	0.00050000416625 0 1.875125	0.00114451576838847
++8	0	1 1 0	20 6 9	2.81259375	0.00050000416625 0 2.8126875	0.000954337085665371
++8	0	1 1 0	20 6 10	2.81259375	0.00050000416625 0 3.75025	0.000746576429126815
++8	0	1 1 0	20 6 11	2.81259375	0.00050000416625 0 4.6878125	0.000549762672135169
++8	0	1 1 0	20 6 12	2.81259375	0.00050000416625 0 5.625375	0.000354338239539865
++8	0	1 1 0	20 6 13	2.81259375	0.00050000416625 0 6.5629375	0.000191612849707892
++8	0	1 1 0	20 6 14	2.81259375	0.00050000416625 0 7.5005	6.88848156572927e-05
++8	0	1 1 0	20 6 15	2.81259375	0.00050000416625 0 8.4380625	2.6830598443637e-05
++8	0	1 1 0	20 6 16	2.81259375	0.00050000416625 0 9.375625	1e-07
++8	0	1 1 0	20 6 17	2.81259375	0.00050000416625 0 10.3131875	1.00245841884742e-07
++8	0	1 1 0	20 6 18	2.81259375	0.00050000416625 0 11.25075	1e-07
++8	0	1 1 0	20 6 19	2.81259375	0.00050000416625 0 12.1883125	1.00251219023884e-07
++8	0	1 1 0	20 6 20	2.81259375	0.00050000416625 0 13.125875	1e-07
++8	0	1 1 0	20 6 21	2.81259375	0.00050000416625 0 14.0634375	1.00419777675377e-07
++8	0	1 1 0	20 6 22	2.81259375	0.00050000416625 0 15.001	1.00419777675377e-07
++8	0	1 1 0	20 6 23	2.81259375	0.00050000416625 0 15.9385625	1.00419777675377e-07
++8	0	1 1 0	20 6 24	2.81259375	0.00050000416625 0 16.876125	1.00419777675377e-07
++
++
+-- 
+1.7.10
+

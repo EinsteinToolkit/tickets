@@ -1,0 +1,87 @@
+Index: configure.sh
+===================================================================
+--- configure.sh	(revision 8)
++++ configure.sh	(working copy)
+@@ -39,6 +39,21 @@
+     else
+         echo "pciutils: Building enclosed pciutils library"
+         
++        if [ x$TAR = x ] ; then
++          echo 'BEGIN ERROR'
++          echo 'Could not find tar command. Please make sure that (gnu) tar is present'
++          echo 'and that the TAR variable is set to its location.'
++          echo 'END ERROR'
++          exit 1
++        fi
++        if [ x$PATCH = x ] ; then
++          echo 'BEGIN ERROR'
++          echo 'Could not find patch command. Please make sure that (gnu) tar is present'
++          echo 'and that the PATCH variable is set to its location.'
++          echo 'END ERROR'
++          exit 1
++        fi
++
+         export LDFLAGS
+         unset LIBS
+         if echo '' ${ARFLAGS} | grep 64 > /dev/null 2>&1; then
+@@ -53,6 +68,22 @@
+         echo "pciutils: Unpacking archive..."
+         pushd ${BUILD_DIR}
+         ${TAR?} xzf ${SRCDIR}/dist/${NAME}.tar.gz
++        pushd ${NAME}
++        ${PATCH?} -p1 < ${SRCDIR}/dist/remove-gcc.patch
++        # Some (ancient but still used) versions of patch don't support the
++        # patch format used here but also don't report an error using the
++        # exit code. So we use this patch to test for this
++        ${PATCH?} -p1 < ${SRCDIR}/dist/patchtest.patch
++        if [ ! -e .patch_tmp ]; then
++            echo 'BEGIN ERROR'
++            echo 'The version of patch is too old to understand this patch format.'
++            echo 'Please set the PATCH environment variable to a more recent '
++            echo 'version of the patch command.'
++            echo 'END ERROR'
++            exit 1
++        fi
++        rm -f .patch_tmp
++	popd
+         
+         echo "pciutils: Configuring..."
+         cd ${NAME}
+Index: dist/patchtest.patch
+===================================================================
+--- dist/patchtest.patch	(revision 0)
++++ dist/patchtest.patch	(working copy)
+@@ -0,0 +1,5 @@
++diff --new-file -ru pcituils.orig/.patch_tmp pcituils/.patch_tmp
++--- pcituils.orig/.patch_tmp	1969-12-31 18:00:00.000000000 -0600
+++++ pcituils/.patch_tmp	2010-06-24 19:43:15.000000000 -0500
++@@ -0,0 +1 @@
+++ 
+Index: dist/remove-gcc.patch
+===================================================================
+--- dist/remove-gcc.patch	(revision 0)
++++ dist/remove-gcc.patch	(working copy)
+@@ -0,0 +1,23 @@
++diff -urw pciutils-3.2.0.orig/Makefile pciutils-3.2.0/Makefile
++--- pciutils-3.2.0.orig/Makefile	2013-04-19 05:58:49.000000000 -0700
+++++ pciutils-3.2.0/Makefile	2014-09-23 09:03:24.769289000 -0700
++@@ -1,9 +1,6 @@
++ # Makefile for The PCI Utilities
++ # (c) 1998--2013 Martin Mares <mj@ucw.cz>
++ 
++-OPT=-O2
++-CFLAGS=$(OPT) -Wall -W -Wno-parentheses -Wstrict-prototypes -Wmissing-prototypes
++-
++ VERSION=3.2.0
++ DATE=2013-04-19
++ 
++@@ -42,9 +39,6 @@
++ INSTALL=install
++ DIRINSTALL=install -d
++ STRIP=-s
++-CC=$(CROSS_COMPILE)gcc
++-AR=$(CROSS_COMPILE)ar
++-RANLIB=$(CROSS_COMPILE)ranlib
++ 
++ # Base name of the library (overriden on NetBSD, which has its own libpci)
++ LIBNAME=libpci

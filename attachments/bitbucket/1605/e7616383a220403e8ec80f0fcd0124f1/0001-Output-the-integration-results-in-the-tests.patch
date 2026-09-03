@@ -1,0 +1,119 @@
+From 261327e2185c2ae6e8b27b8f673a42a5e348e809 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Wed, 30 Apr 2014 17:02:51 +0200
+Subject: [PATCH 1/3] Output the integration results in the tests
+
+Previously only the convergence order was output, and this is very sensitive to roundoff error due to the numerical results being very close to the exact result.
+---
+ interface.ccl             |  8 ++++++++
+ schedule.ccl              |  1 +
+ src/tests.cc              | 13 +++++++++----
+ test/test_22.par          |  2 +-
+ test/test_simpson.par     |  2 +-
+ test/test_trapezoidal.par |  2 +-
+ 6 files changed, 21 insertions(+), 7 deletions(-)
+
+diff --git a/interface.ccl b/interface.ccl
+index 26d7ef7..d9f0861 100644
+--- a/interface.ccl
++++ b/interface.ccl
+@@ -21,6 +21,14 @@ CCTK_REAL test_integration_convergence_orders type=SCALAR
+   test_simpson_convergence_order
+ } "Test integration convergence orders"
+ 
++CCTK_REAL test_integration_results type=SCALAR
++{
++  test_midpoint_result_low, test_midpoint_result_high,
++  test_trapezoidal_result_low, test_trapezoidal_result_high,
++  test_simpson_result_low, test_simpson_result_high
++} "Test integration results"
++
++
+ CCTK_REAL test_integration_symmetries type=SCALAR
+ {
+   test_midpoint_pi_symmetry,
+diff --git a/schedule.ccl b/schedule.ccl
+index 3b46cae..2a19a2a 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -4,6 +4,7 @@ if (enable_test)
+ {
+   STORAGE: harmonics[1]
+   STORAGE: test_integration_convergence_orders
++  STORAGE: test_integration_results
+   STORAGE: test_integration_symmetries
+ }
+ 
+diff --git a/src/tests.cc b/src/tests.cc
+index de711eb..1b37d19 100644
+--- a/src/tests.cc
++++ b/src/tests.cc
+@@ -72,13 +72,15 @@ static CCTK_REAL test_pi_symmetric_sphere_integral(CCTK_REAL (*integration_fn) (
+   return result;
+ }
+ 
+-CCTK_REAL integration_convergence_order(CCTK_REAL (*integration_fn) (const CCTK_REAL *, int, int, CCTK_REAL, CCTK_REAL))
++CCTK_REAL integration_convergence_order(CCTK_REAL (*integration_fn) (const CCTK_REAL *, int, int, CCTK_REAL, CCTK_REAL), CCTK_REAL *store_low, CCTK_REAL *store_high)
+ {
+   const int n1 = 100;
+   const int n2 = 200;
+   const CCTK_REAL PI = acos(-1.0);
+   const CCTK_REAL result1 = test_integral(100, integration_fn);
++  *store_low = result1;
+   const CCTK_REAL result2 = test_integral(200, integration_fn);
++  *store_high = result2;
+   const CCTK_REAL exact = 1./24 + 1./(64 * pow(PI,2));
+   const CCTK_REAL error1 = fabs(result1 - exact);
+   const CCTK_REAL error2 = fabs(result2 - exact);
+@@ -88,9 +90,12 @@ CCTK_REAL integration_convergence_order(CCTK_REAL (*integration_fn) (const CCTK_
+ void Multipole_TestIntegrationConvergence(CCTK_ARGUMENTS)
+ {
+   DECLARE_CCTK_ARGUMENTS;
+-  *test_simpson_convergence_order = integration_convergence_order(&Simpson2DIntegral);
+-  *test_trapezoidal_convergence_order = integration_convergence_order(&Trapezoidal2DIntegral);
+-  *test_midpoint_convergence_order = integration_convergence_order(&Midpoint2DIntegral);
++  *test_simpson_convergence_order = integration_convergence_order(
++    &Simpson2DIntegral, test_simpson_result_low, test_simpson_result_high);
++  *test_trapezoidal_convergence_order = integration_convergence_order(
++    &Trapezoidal2DIntegral, test_trapezoidal_result_low, test_trapezoidal_result_high);
++  *test_midpoint_convergence_order = integration_convergence_order(
++    &Midpoint2DIntegral, test_midpoint_result_low, test_midpoint_result_high);
+ }
+ 
+ void Multipole_TestIntegrationSymmetry(CCTK_ARGUMENTS)
+diff --git a/test/test_22.par b/test/test_22.par
+index 87a674f..15f72d7 100644
+--- a/test/test_22.par
++++ b/test/test_22.par
+@@ -88,5 +88,5 @@ IO::out_fileinfo                     = "none"
+ # CarpetIOASCII::out1d_y = yes
+ # CarpetIOASCII::out1d_z = yes
+ 
+-CarpetIOASCII::out0d_vars = "Multipole::test_midpoint_convergence_order Multipole::test_midpoint_pi_symmetry"
++CarpetIOASCII::out0d_vars = "Multipole::test_midpoint_convergence_order Multipole::test_midpoint_pi_symmetry Multipole::test_midpoint_result_low Multipole::test_midpoint_result_high"
+ CarpetIOASCII::out0d_every = 1
+diff --git a/test/test_simpson.par b/test/test_simpson.par
+index a255e08..8bf1078 100644
+--- a/test/test_simpson.par
++++ b/test/test_simpson.par
+@@ -88,5 +88,5 @@ IO::out_fileinfo                     = "none"
+ # CarpetIOASCII::out1d_y = yes
+ # CarpetIOASCII::out1d_z = yes
+ 
+-CarpetIOASCII::out0d_vars = "Multipole::test_simpson_convergence_order Multipole::test_simpson_pi_symmetry"
++CarpetIOASCII::out0d_vars = "Multipole::test_simpson_convergence_order Multipole::test_simpson_pi_symmetry Multipole::test_simpson_result_low Multipole::test_simpson_result_high"
+ CarpetIOASCII::out0d_every = 1
+diff --git a/test/test_trapezoidal.par b/test/test_trapezoidal.par
+index 5e8da6e..3dbd5f4 100644
+--- a/test/test_trapezoidal.par
++++ b/test/test_trapezoidal.par
+@@ -88,5 +88,5 @@ IO::out_fileinfo                     = "none"
+ # CarpetIOASCII::out1d_y = yes
+ # CarpetIOASCII::out1d_z = yes
+ 
+-CarpetIOASCII::out0d_vars = "Multipole::test_trapezoidal_convergence_order Multipole::test_trapezoidal_pi_symmetry"
++CarpetIOASCII::out0d_vars = "Multipole::test_trapezoidal_convergence_order Multipole::test_trapezoidal_pi_symmetry Multipole::test_trapezoidal_result_low Multipole::test_trapezoidal_result_high"
+ CarpetIOASCII::out0d_every = 1
+-- 
+1.9.1
+

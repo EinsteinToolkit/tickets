@@ -1,0 +1,109 @@
+Index: mdb/machines/loewe.ini
+===================================================================
+--- mdb/machines/loewe.ini	(revision 2270)
++++ mdb/machines/loewe.ini	(working copy)
+@@ -13,7 +13,7 @@
+ aliaspattern    = ^login[\d]+(\.cm\.cluster)?$
+ 
+ # Source tree management
+-sourcebasedir   = /home/astro/@USER@/source/ET/oersted
++sourcebasedir   = /home/astro/@USER@
+ disabled-thorns = <<EOT
+     ExternalLibraries/git
+     ExternalLibraries/PETSc
+@@ -27,24 +27,41 @@
+ optionlist      = loewe.cfg
+ submitscript    = loewe.sub
+ runscript       = loewe.run
+-make            = make -j8
++make            = make -j12
+ 
+ # Simulation management
+ basedir         = /scratch/astro/@USER@/simulations
+ cpu             = AMD Opteron(tm) Processor 6172
+-cpufreq         = 2100
++cpufreq         = 2.05
+ ppn             = 24
+-spn             = 1
+-mpn             = 1
++spn             = 2
++mpn             = 4
+ max-num-threads = 24
+-num-threads     = 2
+-memory          = 32000
++num-threads     = 6
++memory          = 65534
++# 256-bit FPU:
++flop/cycle      = 4
++I1size          = 65536
++I1linesize      = 64
++I1assoc         = 2
++I1cores         = 1
++D1size          = 65536
++D1linesize      = 64
++D1assoc         = 8
++D1cores         = 1
++L2size          = 524288
++L2linesize      = 64
++L2assoc         = 16
++L2cores         = 1
++L3size          = 5240832
++L3cores         = 6
+ nodes           = 768
+ min-ppn         = 24
+ queue           = parallel
+ maxwalltime     = 72:00:00
+-submit          = sbatch @SCRIPTFILE@
+-getstatus       = squeue | awk '$1 == @JOB_ID@ {print $1,$5}'
++submit          = sbatch @SCRIPTFILE@; sleep 3
++#getstatus       = squeue | awk '$1 == @JOB_ID@ {print $1,$5}'
++getstatus       = squeue -j @JOB_ID@
+ stop            = scancel @JOB_ID@
+ submitpattern   = (\d+)
+ #
+Index: mdb/optionlists/loewe.cfg
+===================================================================
+--- mdb/optionlists/loewe.cfg	(revision 2270)
++++ mdb/optionlists/loewe.cfg	(working copy)
+@@ -90,11 +90,13 @@
+ HDF5_DIR    = /cm/shared/apps/hdf5/intel-12.1/1.8.9/
+ FFTW3_DIR   = /cm/shared/apps/fftw/intel/64/3.2.2
+ ZLIB_DIR    = /cm/shared/apps/szip/2.1
+-BOOST_DIR   = BUILD
+-BOOST_LIBS  = boost_system boost_filesystem
++BOOST_DIR   = /cm/shared/apps/boost/1.52.0
++#BOOST_DIR   = BUILD
++#BOOST_LIBS  = boost_system boost_filesystem
+ 
+-MPI_INC_DIRS = /cm/shared/apps/slurm/2.6.3/include /cm/shared/apps/mvapich2/intel-12.1/1.8-r5435/include
+-MPI_LIB_DIRS = /cm/shared/apps/slurm/2.6.3/lib /opt/limic2-0.5.5/lib /opt/limic2-0.5.5/lib /cm/shared/apps/mvapich2/intel-12.1/1.8-r5435/lib
++MPI_DIR      = NO_BUILD
++MPI_INC_DIRS = /cm/shared/apps/slurm/2.4.1/include /cm/shared/apps/mvapich2/intel-12.1/1.8-r5435/include
++MPI_LIB_DIRS = /cm/shared/apps/slurm/2.4.1/lib /opt/limic2-0.5.5/lib /opt/limic2-0.5.5/lib /cm/shared/apps/mvapich2/intel-12.1/1.8-r5435/lib
+ MPI_LIBS     = mpich opa mpl pmi pthread limic2 rdmacm ibverbs ibumad dl rt numa
+ 
+ 
+Index: mdb/submitscripts/loewe.sub
+===================================================================
+--- mdb/submitscripts/loewe.sub	(revision 2270)
++++ mdb/submitscripts/loewe.sub	(working copy)
+@@ -1,13 +1,13 @@
+ #!/bin/sh
++#SBATCH --partition=parallel
++#SBATCH --time=@WALLTIME@
+ #SBATCH --ntasks=@NUM_PROCS@
+ #SBATCH --cpus-per-task=@NUM_THREADS@
+-#SBATCH --error=@RUNDIR@/@SIMULATION_NAME@.err
+-#SBATCH --output=@RUNDIR@/@SIMULATION_NAME@.out
++#SBATCH @("@CHAINED_JOB_ID@" != "" ? "-d afterok:@CHAINED_JOB_ID@" : "")@
+ #SBATCH --job-name=@SHORT_SIMULATION_NAME@
+ #SBATCH --mem-per-cpu=2600
+ #SBATCH --mail-type=ALL
+-#SBATCH --partition=parallel
+-#SBATCH --time=@WALLTIME@
+-
++#SBATCH --output=@RUNDIR@/@SIMULATION_NAME@.out
++#SBATCH --error=@RUNDIR@/@SIMULATION_NAME@.err
+ cd @SOURCEDIR@
+-@SIMFACTORY@ run @SIMULATION_NAME@ --machine=loewe --restart-id=@RESTART_ID@ @FROM_RESTART_COMMAND@
++@SIMFACTORY@ run @SIMULATION_NAME@ --machine=@MACHINE@ --restart-id=@RESTART_ID@ @FROM_RESTART_COMMAND@

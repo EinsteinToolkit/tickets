@@ -1,0 +1,47 @@
+Index: lib/sim.py
+===================================================================
+--- lib/sim.py	(revision 1611)
++++ lib/sim.py	(working copy)
+@@ -104,6 +104,15 @@
+     
+     module.main()
+ 
++    # check if all options were used
++    unused_options = list()
++    for o in simenv.OptionsManager.UnusedOptions():
++        if simenv.OptionsManager.RawOptionDefined(o):
++            unused_options.append(o)
++    if unused_options:
++            fatal("Command line option(s) '%s' were not used. Most likely '%s' does not support them." % (",".join(map(lambda i: "--%s" % i, unused_options)), simenv.COMMAND))
++
++
+ def RemoteExecute(machineName):
+     simlib.RequireMachine()
+ 
+Index: lib/simopts.py
+===================================================================
+--- lib/simopts.py	(revision 1611)
++++ lib/simopts.py	(working copy)
+@@ -38,6 +38,7 @@
+         self.usageString = "usage: %prog [options] arg"
+         self.optionParser = None
+         self.options = None
++        self.usedOptions = set()
+         self.args = None
+         self.optionParser = None
+         self.OptionDictionaries = dict()
+@@ -140,10 +141,14 @@
+         return True
+     
+     def GetOption(self, option):
++        self.usedOptions.add(option)
+         return getattr(self.options, option, None)
+     
+     def UpdateOption(self, option, value):
+         setattr(self.options, option, value)
++
++    def UnusedOptions(self):
++        return set(self.options.__dict__.keys()) - self.usedOptions
+     
+     # -- BUILD METHODS --
+     

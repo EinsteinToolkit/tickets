@@ -1,0 +1,70 @@
+From 2222eba748c0a26f925d4996379927eafdf4ed43 Mon Sep 17 00:00:00 2001
+From: Bruno Coutinho Mundim <bcmsma@astro.rit.edu>
+Date: Thu, 18 Oct 2012 17:13:15 -0500
+Subject: [PATCH 8/9] GRHydro: Check if 3-metric is definite positive before
+ con2prim inversion.
+
+Only do this deep inside the horizon.
+Reset it to conformally flat if it isn't.
+---
+ src/GRHydro_Con2PrimM.F90 |   23 +++++++++++++++++++++--
+ 1 file changed, 21 insertions(+), 2 deletions(-)
+
+diff --git a/src/GRHydro_Con2PrimM.F90 b/src/GRHydro_Con2PrimM.F90
+index 244c82e..caee604 100644
+--- a/src/GRHydro_Con2PrimM.F90
++++ b/src/GRHydro_Con2PrimM.F90
+@@ -76,6 +76,11 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+   CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+   CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
+ 
++  logical :: posdef
++
++  CCTK_REAL :: g11c, g12c, g13c, g22c, g23c, g33c
++  CCTK_REAL :: tmp1
++
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+     g11 => gaa
+     g12 => gab
+@@ -139,7 +144,8 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+ 
+   !$OMP PARALLEL DO PRIVATE(i,j,k,itracer,&
+   !$OMP uxx, uxy, uxz, uyy, uyz, uzz, det, epsnegative, &
+-  !$OMP b2,xrho,xeps,xpress,xtemp,local_K,local_pgam,sc,keyerr,anyerr,keytemp,local_perc_ptol)
++  !$OMP b2,xrho,xeps,xpress,xtemp,local_K,local_pgam,sc,keyerr,anyerr,keytemp, &
++  !$OMP local_perc_ptol,posdef,g11c,g12c,g13c,g22c,g23c,g33c,tmp1)
+   do k = 1, nz 
+      do j = 1, ny 
+         do i = 1, nx
+@@ -151,6 +157,7 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+            epsnegative = 0
+            
+            det = SPATIAL_DETERMINANT(g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k))
++
+            call UpperMetric(uxx,uxy,uxz,uyy,uyz,uzz,det,&
+                 g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),&
+                 g23(i,j,k),g33(i,j,k))        
+@@ -393,7 +400,19 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+               tau(i,j,k)  = sqrt(det) * (rho(i,j,k)*(1.0+eps(i,j,k)+b2/2.0)) - dens(i,j,k)
+ 
+            end if
+-            
++
++!           ! Again, reset 3-metric only for con2prim inversion. Restoring 
++!           ! the current values for the 3-metric:
++!           if(.not.posdef)then
++!             g11(i,j,k) = g11c 
++!             g12(i,j,k) = g12c 
++!             g13(i,j,k) = g13c 
++!             g22(i,j,k) = g22c 
++!             g23(i,j,k) = g23c 
++!             g33(i,j,k) = g33c 
++!             posdef = .true.
++!           endif
++!            
+         end do
+      end do
+   end do
+-- 
+1.7.10.4
+

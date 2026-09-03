@@ -1,0 +1,89 @@
+# HG changeset patch
+# User Roland Haas <roland.haas@physics.gatech.edu>
+# Date 1302125343 14400
+# Node ID c3b1bf7b1639deeccfc65e82694cec5d5a2437ee
+# Parent  d954fc58219df1865a1330d1f1a51254ce6a7ae4
+LoopControl: check that Fortran structures match C structures at startup
+
+  this is not foolproof (nor necessarily portable). It just checks that the
+  sum of sizeof(lc_statmap_t) and sizeof(lc_control_t) is the same as seen
+  from Fortran (via INQUIRE(IOLENGTH)) and C.
+
+diff -r d954fc58219d -r c3b1bf7b1639 Carpet/LoopControl/schedule.ccl
+--- a/Carpet/LoopControl/schedule.ccl	Wed Apr 06 17:27:04 2011 -0400
++++ b/Carpet/LoopControl/schedule.ccl	Wed Apr 06 17:29:03 2011 -0400
+@@ -1,5 +1,11 @@
+ # Schedule definitions for thorn LoopControl
+ 
++SCHEDULE lc_check_type_sizes AT startup
++{
++  LANG: C
++  OPTIONS: meta
++} "Check that sizes of control structures are identical in C and Fortran"
++
+ if (printstats) {
+   SCHEDULE lc_printstats_analysis AT analysis
+   {
+diff -r d954fc58219d -r c3b1bf7b1639 Carpet/LoopControl/src/loopcontrol.F90
+--- a/Carpet/LoopControl/src/loopcontrol.F90	Wed Apr 06 17:27:04 2011 -0400
++++ b/Carpet/LoopControl/src/loopcontrol.F90	Wed Apr 06 17:29:03 2011 -0400
+@@ -29,7 +29,13 @@
+        implicit none
+        type (lc_control_t) :: lc_lc
+      end subroutine lc_control_finish
+-     
++
++     subroutine lc_get_fortran_type_sizes (sum_of_type_sizes)
++       use loopcontrol_types
++       implicit none
++       integer, intent(out) :: sum_of_type_sizes
++     end subroutine lc_get_fortran_type_sizes
++
+   end interface
+   
+ end module loopcontrol
+diff -r d954fc58219d -r c3b1bf7b1639 Carpet/LoopControl/src/loopcontrol.c
+--- a/Carpet/LoopControl/src/loopcontrol.c	Wed Apr 06 17:27:04 2011 -0400
++++ b/Carpet/LoopControl/src/loopcontrol.c	Wed Apr 06 17:29:03 2011 -0400
+@@ -1217,6 +1217,29 @@
+   lc_printstats ();
+ }
+ 
++int
++lc_check_type_sizes (void);
++int
++lc_check_type_sizes (void)
++{
++  /* check that the sizes of LoopControls control structures are the same in
++   * loopcontrol.h and loopcontrol_fortran.h */
++  CCTK_FCALL 
++  void
++  CCTK_FNAME (lc_get_fortran_type_sizes) (int * sum_of_sizes);
++
++  int Fortran_size, C_size;
++
++  CCTK_FNAME (lc_get_fortran_type_sizes) ( & Fortran_size);
++  C_size = (int) ( sizeof(lc_statmap_t) + sizeof(lc_control_t) );
++
++  if (C_size != Fortran_size) {
++    CCTK_VWarn (CCTK_WARN_ALERT, __LINE__, __FILE__, CCTK_THORNSTRING,
++                "Fortran and C control structures (lc_statmap_t and lc_control_t) differ in size. Expect trouble when using the Fortran interface.");
++  }
++
++  return 0;
++}
+ 
+ 
+ CCTK_FCALL
+diff -r d954fc58219d -r c3b1bf7b1639 Carpet/LoopControl/src/make.code.defn
+--- a/Carpet/LoopControl/src/make.code.defn	Wed Apr 06 17:27:04 2011 -0400
++++ b/Carpet/LoopControl/src/make.code.defn	Wed Apr 06 17:29:03 2011 -0400
+@@ -1,7 +1,7 @@
+ # Main make.code.defn file for thorn LoopControl
+ 
+ # Source files in this directory
+-SRCS = loopcontrol.c loopcontrol.F90 loopcontrol_types.F90 lc_auto.c lc_siman.c lc_hill.c
++SRCS = loopcontrol.c loopcontrol.F90 loopcontrol_get_type_sizes.F90 loopcontrol_types.F90 lc_auto.c lc_siman.c lc_hill.c
+ 
+ # Subdirectories containing source files
+ SUBDIRS = 

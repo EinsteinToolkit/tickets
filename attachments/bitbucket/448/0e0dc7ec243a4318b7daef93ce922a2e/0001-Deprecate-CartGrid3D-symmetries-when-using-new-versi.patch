@@ -1,0 +1,26 @@
+From 5334ec97677b1652007af77bc5874373f247a894 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Thu, 28 Jul 2011 02:02:00 +0200
+Subject: [PATCH] Deprecate CartGrid3D symmetries when using new versions of
+ Carpet
+
+---
+ src/Faces.c |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/src/Faces.c b/src/Faces.c
+index b67643d..8d6437a 100644
+--- a/src/Faces.c
++++ b/src/Faces.c
+@@ -131,7 +131,7 @@ SymBase_SymmetryRegisterFaces (CCTK_INT const sym_table,
+       symmetry_handle[face] = sym_handle;
+       if (new_symmetry_zone_width[face] > 100)
+       {
+-        CCTK_WARN (0, "Tried to register a symmetry face with a symmetry zone width >100 -- this looks like an error");
++        CCTK_WARN (0, "Tried to register a symmetry face with a symmetry zone width >100 -- this looks like an error.  This can be caused by using a symmetry thorn (or the old built-in CartGrid3D symmetries) which does not use CoordBase with new versions of the Carpet driver.  Please use a separate symmetry thorn (e.g. ReflectionSymmetry) instead.");
+       }
+       symmetry_zone_width[face] = new_symmetry_zone_width[face];
+     }
+-- 
+1.7.5.4
+

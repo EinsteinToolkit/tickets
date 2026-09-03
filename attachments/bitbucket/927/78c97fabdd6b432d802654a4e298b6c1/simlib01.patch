@@ -1,0 +1,13 @@
+Index: lib/simenv.py
+===================================================================
+--- lib/simenv.py	(revision 1681)
++++ lib/simenv.py	(working copy)
+@@ -118,6 +118,8 @@
+         print "Warning: Unable to determine CACTUS_PATH, using %s instead" % global_dict['CACTUS_PATH']
+         
+     global_dict['CONFIGS_PATH'] = simlib.BuildPath([global_dict['CACTUS_PATH'], "configs"])
++    if "CACTUS_CONFIGS_DIR" in os.environ:
++        global_dict['CONFIGS_PATH'] = os.environ["CACTUS_CONFIGS_DIR"]
+     global_dict['EXE_PATH'] = simlib.BuildPath([global_dict['CACTUS_PATH'], "exe"])
+         
+     # get our local machine, and our local machine entry.

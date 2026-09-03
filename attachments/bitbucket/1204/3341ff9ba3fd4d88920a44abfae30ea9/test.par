@@ -1,0 +1,570 @@
+#--- Base and Driver Thorns
+
+ActiveThorns = "time
+		coordbase
+		mol
+		boundary
+		spacemask
+		symbase
+		aeilocalinterp
+		localinterp
+		nanchecker
+		constants
+		ioutil
+		initbase
+		sphericalsurface
+		coordinates
+		interpolate2
+		carpet
+		carpetlib
+		carpetregrid2
+		carpetreduce
+		cartgrid3d
+		carpetslab
+		carpetinterp
+		carpetinterp2
+		triggerterminationmanual
+		LoopControl
+		CoreCollapseControl
+		Slab
+		TGRTensor
+		TimerReport
+    		carpetioascii 
+		carpetioscalar 
+		carpetiohdf5 
+		carpetiobasic
+		admbase 
+		staticconformal 
+		admcoupling 
+		coordgauge 
+		admmacros 
+		TmunuBase
+		HydroBase
+		GRHydro
+		GRHydro_InitData
+		eos_omni
+		Formaline
+		ZelmaniQuadWaveExtract
+		Whisky_RNSID
+		ccccglobalmodes
+		quasilocalmeasures
+		refluxing
+		CCCCImportCoCoNuT1D
+"
+
+# Spacetime evolution (comment out for cowling)
+ActiveThorns = "CTGBase CTGEvolution CTGGauge CTGMatter
+                CTGConstraints CTGRadiativeBC SummationByParts GlobalDerivative"
+
+#--- CCE boundary data generation
+
+ActiveThorns   =   "    ADMDerivatives
+                        SphericalSlice
+                        WorldTube
+                        WaveExtractL
+                "
+
+############################# Flesh Data ##################################
+Cactus::cctk_run_title = "A1B3G5_r2"
+Cactus::cctk_full_warnings         = yes
+Cactus::highlight_warning_messages = no
+#Cactus::cctk_timer_output          = "full"
+Cactus::cctk_itlast = 10240000000
+
+carpet::verbose = no
+carpet::veryverbose = no
+
+############################# Output Related ##################################
+IO::out_dir              = $parfile
+IO::checkpoint_dir       = $parfile
+iohdf5::out_dir          = $parfile
+IO::out_single_precision = yes
+
+#--- checkpoint recovery
+#io::recover 					= 	no
+iohdf5::checkpoint 				= 	yes
+io::checkpoint_every 				= 	25600 #102400
+io::checkpoint_keep 				= 	2
+carpetiohdf5::use_reflevels_from_checkpoint 	= 	"yes"
+
+IOBasic::outInfo_vars			=	"Carpet::physical_time_per_hour hydrobase::rho admbase::alp"
+
+carpetioscalar::outScalar_vars		=	"
+			hydrobase::rho
+                        hydrobase::press
+                        hydrobase::eps
+                        hydrobase::vel
+			admbase::lapse
+                        ctgconstraints::h
+                        ctgconstraints::momentum_constraint
+			"
+
+
+carpetioascii::out1D_vars               =       "
+			hydrobase::rho
+                        hydrobase::press
+                        hydrobase::eps
+                        hydrobase::vel
+                        GRHydro::scon
+                        GRHydro::dens
+                        GRHydro::tau
+			admbase::lapse
+			admbase::metric
+			admbase::shift
+			admbase::curv
+			ctgconstraints::h
+			"
+
+carpetioascii::out0D_vars               =       "
+			Carpet::physical_time_per_hour
+			Carpet::timing
+                        ccccglobalmodes::total_mass
+                        ccccglobalmodes::center_of_mass
+                        quasilocalmeasures::qlm_scalars
+			"
+
+iohdf5::out_vars	=	"
+#                        hydrobase::rho
+#                        hydrobase::eps
+#                        hydrobase::vel
+#			admbase::lapse
+#			admbase::metric
+#			admbase::shift
+                        grid::coordinates
+			ctgconstraints::h
+			"
+
+IOASCII::out2D_vars      = "
+                        WorldTube::extracted_vars
+                                                "
+
+#--- output frequency
+
+iohdf5::out_criterion 				= 	"divisor"
+carpetioascii::out0D_criterion 			= 	"divisor"
+carpetioascii::out1D_criterion 			=	"divisor"
+carpetioascii::out2D_criterion 			= 	"divisor"
+carpetioscalar::outScalar_criterion		=	"divisor"
+carpetioscalar::outScalar_every			=	256
+ioascii::out0D_every				=	256
+IOASCII::out1D_every	     			= 	41960
+IOASCII::out2D_every				=	256
+iohdf5::out_every				=	-1
+
+carpetiobasic::outInfo_every   			=	1
+carpetiobasic::real_min      			= 	1.0e-2
+
+IOASCII::one_file_per_group     = yes
+IOASCII::output_symmetry_points = no
+IOASCII::out1D_d                = no
+
+############################# Driver ##################################
+# Carpet Parameters
+Carpet::domain_from_multipatch = yes
+Carpet::max_refinement_levels = 9
+
+driver::ghost_size       = 3
+Carpet::use_buffer_zones = yes
+Carpet::use_overlap_zones = no
+
+CarpetLib::use_higher_order_restriction = yes
+CarpetLib::restriction_order_space = 3
+
+Carpet::prolongation_order_space = 4
+Carpet::prolongation_order_time  = 2
+
+Carpet::init_fill_timelevels = yes
+InitBase::initial_data_setup_method = init_some_levels
+
+Carpet::output_timers_every      = 10240
+CarpetLib::print_timestats_every = 20480
+CarpetLib::print_memstats_every  = 20480
+
+CarpetInterp::check_tree_search         = no
+CarpetInterp::tree_search               = yes
+
+Carpet::refinement_centering            = cell
+
+Refluxing::Refluxing_MaxNumEvolvedVars = 30
+
+GRHydro::sync_conserved_only = yes
+
+############################# Grid ##################################
+
+CartGrid3D::type                        = multipatch
+CartGrid3D::set_coordinate_ranges_on    = "all maps"
+
+Coordinates::coordinate_system          = Thornburg04
+Coordinates::h_cartesian                = 9.6
+Coordinates::h_radial                   = 9.6
+
+Coordinates::sphere_inner_radius        = 384.0
+Coordinates::sphere_outer_radius        = 16000.0
+Coordinates::radial_stretch             = yes
+Coordinates::stretch_rmin_1             = 2500.0
+Coordinates::stretch_rmax_1             = 6000.0
+Coordinates::h_radial_1                 = 153.6
+Coordinates::n_angular                  = 25
+
+Coordinates::patch_boundary_size        = 3
+Coordinates::additional_overlap_size    = 3
+Coordinates::outer_boundary_size        = 1
+Coordinates::stagger_outer_boundaries   = yes
+Coordinates::stagger_patch_boundaries   = yes
+
+Coordinates::store_jacobian             = yes
+Coordinates::store_inverse_jacobian     = yes
+Coordinates::store_volume_form          = yes
+
+Interpolate::interpolator_order         = 4
+
+CarpetRegrid2::min_distance          =  0
+CarpetRegrid2::boundary_shiftout     = 0
+#CarpetRegrid2::ensure_proper_nesting = yes
+
+CarpetRegrid2::num_centres  = 1
+CarpetRegrid2::num_levels_1 = 6 #4
+CarpetRegrid2::position_x_1 = 0
+CarpetRegrid2::position_y_1 = 0
+CarpetRegrid2::position_z_1 = 0
+#CarpetRegrid2::radius_1[1]   = 2073.6   # 
+#CarpetRegrid2::radius_1[2]   = 1651.2   # 
+#CarpetRegrid2::radius_1[3]   = 1056.0   # 
+
+CarpetRegrid2::radius_1[1]   = 192.0    # 
+CarpetRegrid2::radius_1[2]   = 144.0    # 
+CarpetRegrid2::radius_1[3]   = 98.4     # 
+CarpetRegrid2::radius_1[4]   = 40.0     # 
+CarpetRegrid2::radius_1[5]   = 12.0     # 
+CarpetRegrid2::radius_1[6]  =  6.0      # 
+CarpetRegrid2::radius_1[7]  =  3.0     # 
+CarpetRegrid2::radius_1[8]  =  2.0     # 
+
+CarpetRegrid2::snap_to_coarse = yes
+
+
+corecollapsecontrol::rho_max_list[0] = 8.0e10
+corecollapsecontrol::rho_max_list[1] = 3.2e11
+corecollapsecontrol::rho_max_list[2] = 1.28e12
+corecollapsecontrol::rho_max_list[3] = 5.12e12
+corecollapsecontrol::rho_max_list[4] = 2.048e13
+corecollapsecontrol::rho_max_list[5] = 3.0e15
+corecollapsecontrol::rho_max_list[6] = 5.0e15
+corecollapsecontrol::rho_max_list[7] = 9.0e88
+corecollapsecontrol::check_every = 256
+
+corecollapsecontrol::rho_max_every = 256
+CoreCollapseControl::handle_PMR = yes
+CoreCollapseControl::output_control = yes
+CoreCollapseControl::prebounce_rho = 1.0e13
+CoreCollapseControl::preb_out2D_every = 256
+CoreCollapseControl::preb_out1D_every = 2048
+CoreCollapseControl::preb_out0D_every = 256
+CoreCollapseControl::preb_out3Dhdf5_every = -1
+CoreCollapseControl::preb_checkpoint_every = 2048
+CoreCollapseControl::preb_outscalar_every = 256
+CoreCollapseControl::preb_waves_every = 64
+
+CoreCollapseControl::preBH_alpA = 0.4e0
+CoreCollapseControl::preBH_alpB = 0.4e0
+CoreCollapseControl::preBH_AH_every = 64
+CoreCollapseControl::preBH_out3Dhdf5_every = -1
+
+CarpetRegrid2::regrid_every = 256
+CarpetRegrid2::movement_threshold_1 = 1.0e0
+CarpetRegrid2::radius_rel_change_threshold_1 = 1.0e0
+
+############################# Time Integration ##################################
+# Time integration parameters
+MoL::ODE_Method             = "RK4"
+MoL::MoL_Intermediate_Steps = 4
+MoL::MoL_Num_Scratch_Levels = 1
+
+Time::timestep_method = given
+Time::timestep        = 3.84
+
+Carpet::time_refinement_factors         = "[1,2,4,8,16,32,64,128,256,512,1024,2048]"
+
+############################# Curvature Evolution ##################################
+
+
+ADMBase::metric_type                    = physical
+ADMBase::evolution_method               = ctgamma
+ADMBase::lapse_evolution_method         = 1+log
+ADMBase::shift_evolution_method         = gamma-driver
+ADMBase::dtlapse_evolution_method         = 1+log
+ADMBase::dtshift_evolution_method         = gamma-driver
+
+
+TmunuBase::stress_energy_storage = yes
+TmunuBase::stress_energy_at_RHS  = yes
+TmunuBase::prolongation_type = "none"
+TmunuBase::support_old_CalcTmunu_mechanism = no
+
+CTGBase::timelevels                     = 3
+CTGBase::conformal_factor_type          = phi
+CTGBase::use_matter                     = yes
+
+CTGEvolution::bc                        = radiative
+CTGGauge::eta                           = 0.5
+CTGGauge::damping_factor_method         = prescribed
+CTGGauge::damping_factor_type           = Schnetter-Simple
+CTGGauge::eta_damping_radius            = 250.0
+
+CTGConstraints::constraints_persist     = yes
+
+
+SummationByParts::order                          = 4
+SummationByParts::sbp_upwind_deriv               = no
+SummationByParts::onesided_outer_boundaries      = yes
+SummationByParts::onesided_interpatch_boundaries = no
+SummationByParts::sbp_1st_deriv                  = yes
+SummationByParts::sbp_2nd_deriv                  = no
+
+SummationByParts::use_dissipation       = no
+GlobalDerivative::use_dissipation       = yes
+SummationByParts::scale_with_h          = no
+SummationByParts::dissipation_type      = "Kreiss-Oliger"
+SummationByParts::epsdis                = 0.1 #0.1  # 0.1
+GlobalDerivative::epsdis_for_level  [0] = 0.01  # 0.03
+SummationByParts::vars                  = "
+  CTGBase::conformal_factor
+  CTGBase::conformal_metric
+  CTGBase::curvature_scalar
+  CTGBase::curvature_tensor
+  CTGBase::Gamma
+  CTGGauge::shift_aux
+  ADMBase::lapse
+  ADMBase::shift
+"
+
+
+############################# Hydrodynamics ##################################
+ADMMacros::spatial_order = 4
+
+hydrobase::timelevels				=	3
+hydrobase::evolution_method			=	"GRHydro"
+hydrobase::prolongation_type 			= 	"ENO"
+HydroBase::initial_temperature			=	"zero"
+
+GRHydro::GRHydro_rho_central			=	1.61930347e-08
+GRHydro::riemann_solver				=	"HLLE"
+GRHydro::GRHydro_eos_type			=	"General"
+GRHydro::GRHydro_eos_table			=	"Hybrid"
+GRHydro::recon_method	            		=       "ppm"
+GRHydro::use_enhanced_ppm                       =       yes
+#GRHydro::ppm_detect				=	"yes"
+GRHydro::GRHydro_stencil          		=       3
+GRHydro::ppm_flatten                            =       stencil_3
+GRHydro::bound		                	=       "none"
+
+
+GRHydro::EoS_Change				=	"yes"
+
+
+GRHydro::GRHydro_c2p_warnlevel 			= 	1
+GRHydro::GRHydro_c2p_warn_from_reflevel		=	2
+
+GRHydro::GRHydro_perc_ptol                        =      1.e-12
+
+GRHydro::c2p_resort_to_bisection		=	yes
+
+#------ Atmosphere treatment
+
+SpaceMask::use_mask 				= 	yes
+GRHydro::rho_rel_min				=	1e-8
+GRHydro::GRHydro_atmo_tolerance			=	0.001
+
+
+#------ Atmosphere only for
+GRHydro::initial_atmosphere_factor		=	1.e2
+GRHydro::initial_rho_abs_min			=	5e-17
+
+GRHydro::Tmunu_damping_radius_min = 1300
+GRHydro::Tmunu_damping_radius_max = 1400
+
+
+
+########################### Initial Data ##############################
+admbase::initial_data				=	"coconut"
+admbase::initial_lapse				=	"coconut"
+admbase::initial_shift				=	"coconut"
+admbase::initial_dtlapse                        =	zero
+admbase::initial_dtshift                        =	zero
+
+hydrobase::initial_hydro = "coconut"
+hydrobase::initial_entropy = "zero"
+#hydrobase::initial_temperature = "zero"
+hydrobase::initial_y_e = "coconut"
+
+#GRHydro::GRHydro_rho_central                            = 1.28e-3
+
+CCCCImportCoCoNuT1D::CoCo_File                  =       "/global/scratch/sd/abdik/runs/A3B3G3_r1.cc.ePPM.noOv_coco/cactus_data.dat"
+CCCCImportCoCoNuT1D::CoCo_EOS_type              = 1
+
+
+eos_omni::poly_gamma                            = 1.31
+eos_omni::poly_gamma_ini                        = 1.333333333333333333
+eos_omni::poly_k                                = 0.4640517
+eos_omni::gl_gamma                              = 1.31
+eos_omni::gl_k                                  = 0.4640517
+eos_omni::hybrid_gamma1                         = 1.31
+eos_omni::hybrid_gamma2                         = 2.5
+eos_omni::hybrid_gamma_th                       = 1.5
+eos_omni::hybrid_k1                             = 0.4640517
+eos_omni::hybrid_rho_nuc                        = 3.238607e-4
+
+########################## Horizons #####################################
+SphericalSurface::nsurfaces = 3
+SphericalSurface::maxntheta = 39
+SphericalSurface::maxnphi   = 76
+
+SphericalSurface::ntheta       [0] = 39
+SphericalSurface::nphi         [0] = 76
+SphericalSurface::nghoststheta [0] = 2
+SphericalSurface::nghostsphi   [0] = 2
+SphericalSurface::set_spherical[0] = yes
+SphericalSurface::radius       [0] = 1500.
+
+SphericalSurface::ntheta       [1] = 39
+SphericalSurface::nphi         [1] = 76
+SphericalSurface::nghoststheta [1] = 2
+SphericalSurface::nghostsphi   [1] = 2
+SphericalSurface::set_spherical[1] = yes
+SphericalSurface::radius       [1] = 2000.
+
+SphericalSurface::ntheta       [2] = 39
+SphericalSurface::nphi         [2] = 76
+SphericalSurface::nghoststheta [2] = 2
+SphericalSurface::nghostsphi   [2] = 2
+SphericalSurface::set_spherical[2] = yes
+SphericalSurface::radius       [2] = 3500.
+
+
+### QuasiLocalMeasures measurements
+
+QuasiLocalMeasures::verbose                = yes
+QuasiLocalMeasures::veryverbose            = no
+QuasiLocalMeasures::interpolator           = "Lagrange polynomial interpolation"
+QuasiLocalMeasures::interpolator_options   = "order=4"
+QuasiLocalMeasures::spatial_order          = 4
+QuasiLocalMeasures::num_surfaces           = 3
+QuasiLocalMeasures::surface_index      [0] = 0
+QuasiLocalMeasures::surface_index      [1] = 1
+QuasiLocalMeasures::surface_index      [2] = 2
+
+
+
+# wave extraction
+ZelmaniQuadWaveExtract::compute_every    = 256
+ZelmaniQuadWaveExtract::verbose          = no
+ZelmaniQuadWaveExtract::start_time       = 0.0
+ZelmaniQuadWaveExtract::integrand_type   = "legacy_radius_criterion"
+ZelmaniQuadWaveExtract::outer_radius     = 500.0e0
+
+waveextractL::switch_output_format = 20
+waveextractL::active = yes
+waveextractL::out_every = 128
+waveextractL::l_mode = 6
+waveextractL::m_mode = 6
+waveextractL::maxntheta = 100
+waveextractL::maxnphi = 200
+
+waveextractL::maximum_detector_number = 4
+
+waveextractL::detector_radius[0] = 1000.0d0
+waveextractL::ntheta[0] = 100
+waveextractL::nphi[0] = 200
+
+waveextractL::detector_radius[1] = 1500.0d0
+waveextractL::ntheta[1] = 100
+waveextractL::nphi[1] = 200
+
+waveextractL::detector_radius[2] = 2500.0d0
+waveextractL::ntheta[2] = 100
+waveextractL::nphi[2] = 200
+
+waveextractL::detector_radius[3] = 3500.0d0
+waveextractL::ntheta[3] = 100
+waveextractL::nphi[3] = 200
+
+### Spheres for characteristic extraction
+
+SphericalSlice::nslices                 = 4
+SphericalSlice::precalc_sYlms           = no
+#SphericalSlice::use_carpet_interp1      = yes
+
+SphericalSlice::set_spherical       [0] = yes
+SphericalSlice::radius              [0] = 1000.0
+SphericalSlice::type                [0] = 1patch
+SphericalSlice::use_Llama           [0] = no
+SphericalSlice::nghostzones         [0] = 0
+SphericalSlice::ntheta              [0] = 120
+SphericalSlice::nphi                [0] = 240
+
+SphericalSlice::set_spherical       [1] = yes
+SphericalSlice::radius              [1] = 1500.0
+SphericalSlice::type                [1] = 1patch
+SphericalSlice::use_Llama           [1] = no
+SphericalSlice::nghostzones         [1] = 0
+SphericalSlice::ntheta              [1] = 120
+SphericalSlice::nphi                [1] = 240
+
+SphericalSlice::set_spherical       [2] = yes
+SphericalSlice::radius              [2] = 2500.0
+SphericalSlice::type                [2] = 1patch
+SphericalSlice::use_Llama           [2] = no
+SphericalSlice::nghostzones         [2] = 0
+SphericalSlice::ntheta              [2] = 120
+SphericalSlice::nphi                [2] = 240
+
+SphericalSlice::set_spherical       [3] = yes
+SphericalSlice::radius              [3] = 3500.0
+SphericalSlice::type                [3] = 1patch
+SphericalSlice::use_Llama           [3] = no
+SphericalSlice::nghostzones         [3] = 0
+SphericalSlice::ntheta              [3] = 120
+SphericalSlice::nphi                [3] = 240
+
+### CCE data
+
+WorldTube::boundary_behavior                  = CCE
+WorldTube::lmax                               = 8
+WorldTube::ntubes                             = 4
+WorldTube::which_slice_to_take            [0] = 0
+WorldTube::which_slice_to_take            [1] = 1
+WorldTube::which_slice_to_take            [2] = 2
+WorldTube::which_slice_to_take            [3] = 3
+ADMDerivatives::store_time_derivatives        = yes
+ADMDerivatives::store_radial_derivatives      = yes
+
+
+############################# Infrastructure Related Stuff ##################
+# Timing parameters
+#TimerReport::out_every    = 40960
+#TimerReport::out_filename = "TimerReport"
+
+#--- nanchecker
+
+nanchecker::check_every 			= 	64
+nanchecker::check_vars 				= 	"admbase::alp admbase::gxx admbase::kxx GRHydro::dens"
+nanchecker::action_if_found 			= 	"abort"
+nanchecker::verbose = "all"
+
+Cactus::terminate                               =       "never"
+io::checkpoint_on_terminate                     =       "yes"
+
+TriggerTerminationManual::on_remaining_walltime =       30
+TriggerTerminationManual::max_walltime          =       24
+TriggerTerminationManual::termination_file      =       "terminate"
+TriggerTerminationManual::check_file_every      =       64
+TriggerTerminationManual::termination_from_file =       yes
+
+
+
+ccccglobalmodes::do_CoM         = yes
+ccccglobalmodes::cut_method     = radius
+#ccccglobalmodes::radius_cut     = 500
+ccccglobalmodes::CoM_radius     = 1500
+CCCCGlobalModes::compute_every = 256
+

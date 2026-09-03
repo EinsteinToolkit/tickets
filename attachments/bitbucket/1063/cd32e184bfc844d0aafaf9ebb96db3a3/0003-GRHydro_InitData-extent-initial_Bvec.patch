@@ -1,0 +1,56 @@
+From 7d57d216c7feec4ad3a894da6bce325ade98a6e4 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Mon, 27 Aug 2012 11:56:42 -0700
+Subject: [PATCH 3/4] GRHydro_InitData: extent initial_Bvec
+
+rather than defining a private parameter of the same name.
+---
+ param.ccl    |   11 +++++------
+ schedule.ccl |    2 +-
+ 2 files changed, 6 insertions(+), 7 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index 2651a7c..8413f91 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -23,6 +23,11 @@ EXTENDS KEYWORD initial_hydro ""
+   "magnetized_bondi_solution_iso" :: "Magnetized Spherical single black hole Bondi solution - TEST ISO CASE!!!!!!"
+ }
+ 
++EXTENDS KEYWORD initial_Bvec
++{
++  "shocktube"	:: "Shocktube type"
++  "poloidalmagfield" :: "Poloidal Magnetic Field"
++}
+ shares:ADMBase
+ 
+ EXTENDS KEYWORD initial_data ""
+@@ -37,12 +42,6 @@ EXTENDS KEYWORD initial_data ""
+ 
+ private:
+ 
+-KEYWORD initial_Bvec "Initial magnetic field."
+-{
+-  "none"             :: "No initial magnetic field is set."
+-  "poloidalmagfield" :: "Poloidal Magnetic Field"
+-} "none"
+-
+ KEYWORD shocktube_type "Diagonal or parallel shock?"
+ {
+   "diagshock"	:: "Diagonal across all axes"
+diff --git a/schedule.ccl b/schedule.ccl
+index 4bca6fc..19ac82d 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -34,7 +34,7 @@ if (CCTK_Equals(initial_hydro,"alfvenwave")) {
+ }
+ 
+ if (CCTK_Equals(initial_hydro,"shocktube")) {
+-  if(CCTK_Equals(Bvec_evolution_method,"GRHydro"))
++  if(CCTK_Equals(initial_Bvec,"shocktube"))
+   {
+     schedule GRHydro_shocktubeM in HydroBase_Initial
+     {
+-- 
+1.7.10.4
+

@@ -1,0 +1,245 @@
+Subject: LSUThorns/Vectors: Remove pos, add sin/cos/tan functions
+From: Erik Schnetter <eschnetter@perimeterinstitute.ca>
+Date: 2011-11-26
+
+Remove kpos, because it is not used (it is a no-op, i.e. the
+arithmetic + operator).
+
+Add sin, cos, and tan.
+
+
+Index: src/vectors-8-SSE2.h
+===================================================================
+--- src/vectors-8-SSE2.h	(revision 35)
++++ src/vectors-8-SSE2.h	(working copy)
+@@ -166,6 +194,11 @@
+ 
+ // Functions and operators
+ 
++// static const union {
++//   unsigned long long i[2];
++//   __m128d            v;
++// } k8all_mask_union = {{ 0xfffffffffffffffULL, 0xfffffffffffffffULL }};
++// #define k8all_mask (k8all_mask_union.v)
+ static const union {
+   unsigned long long i[2];
+   __m128d            v;
+@@ -173,7 +206,24 @@
+ #define k8sign_mask (k8sign_mask_union.v)
+ 
+ // Operators
+-#define k8pos(x) (x)
++
++// #define k8inot(x) (_mm_xor_si128(k8all_mask,x))
++// 
++// #define k8iand(x,y) (_mm_and_si128(x,y))
++// #define k8ior(x,y)  (_mm_or_si128(x,y))
++// #define k8ixor(x,y) (_mm_xor_si128(x,y))
++// 
++// #define k8ineg(x) (_mm_xor_pd(k8sign_mask,x))
++// 
++// #define k8iadd(x,y) (_mm_add_epi64(x,y))
++// #define k8isub(x,y) (_mm_sub_epi64(x,y))
++// 
++// #define k8not(x) (_mm_xor_pd(k8all_mask,x))
++// 
++// #define k8and(x,y) (_mm_and_pd(x,y))
++// #define k8or(x,y)  (_mm_or_pd(x,y))
++// #define k8xor(x,y) (_mm_xor_pd(x,y))
++
+ #define k8neg(x) (_mm_xor_pd(k8sign_mask,x))
+ 
+ #define k8add(x,y) (_mm_add_pd(x,y))
+@@ -212,14 +262,19 @@
+              f(vec8_elt1(x),a));                \
+   })
+ 
++#define k8cos(x)   K8REPL(cos,x)
+ #define k8exp(x)   K8REPL(exp,x)
+ #define k8log(x)   K8REPL(log,x)
+ #define k8pow(x,a) K8REPL2(pow,x,a)
++#define k8sin(x)   K8REPL(sin,x)
++#define k8tan(x)   K8REPL(tan,x)
+ 
+ // Choice   [sign(x)>0 ? y : z]
+ #ifdef __SSE4_1__
+Index: src/vectors-8-VSX.h
+===================================================================
+--- src/vectors-8-VSX.h	(revision 35)
++++ src/vectors-8-VSX.h	(working copy)
+@@ -66,7 +66,6 @@
+ // Functions and operators
+ 
+ // Operators
+-#define k8pos(x) (+(x))
+ #define k8neg(x) (-(x))
+ 
+ #define k8add(x,y) ((x)+(y))
+Index: src/vectors-4-default.h
+===================================================================
+--- src/vectors-4-default.h	(revision 35)
++++ src/vectors-4-default.h	(working copy)
+@@ -75,6 +76,7 @@
+ #define k4nmsub(x,y,z) (-(x)*(y)+(z))
+ 
+ // Functions
++#define k4cos(x)    (cosf(x))
+ #define k4exp(x)    (expf(x))
+ #define k4fabs(x)   (fabsf(x))
+ #define k4fmax(x,y) (fmaxf(x,y))
+@@ -82,7 +84,9 @@
+ #define k4fnabs(x)  (-fabsf(x))
+ #define k4log(x)    (logf(x))
+ #define k4pow(x,a)  (powf(x,a))
++#define k4sin(x)    (sinf(x))
+ #define k4sqrt(x)   (sqrtf(x))
++#define k4tan(x)    (tanf(x))
+ 
+ #ifdef __cplusplus
+ #  define k4sgn(x) ({ using namespace std; signbit(x); })
+Index: src/vectors-8-default.h
+===================================================================
+--- src/vectors-8-default.h	(revision 35)
++++ src/vectors-8-default.h	(working copy)
+@@ -60,7 +62,6 @@
+ 
+ 
+ // Operators
+-#define k8pos(x) (+(x))
+ #define k8neg(x) (-(x))
+ 
+ #define k8add(x,y) ((x)+(y))
+@@ -75,6 +76,7 @@
+ #define k8nmsub(x,y,z) (-(x)*(y)+(z))
+ 
+ // Functions
++#define k8cos(x)    (cos(x))
+ #define k8exp(x)    (exp(x))
+ #define k8fabs(x)   (fabs(x))
+ #define k8fmax(x,y) (fmax(x,y))
+@@ -82,7 +84,9 @@
+ #define k8fnabs(x)  (-fabs(x))
+ #define k8log(x)    (log(x))
+ #define k8pow(x,a)  (pow(x,a))
++#define k8sin(x)    (sin(x))
+ #define k8sqrt(x)   (sqrt(x))
++#define k8tan(x)    (tan(x))
+ 
+ #ifdef __cplusplus
+ #  define k8sgn(x) ({ using namespace std; signbit(x); })
+Index: src/test.cc
+===================================================================
+--- src/test.cc	(revision 35)
++++ src/test.cc	(working copy)
+@@ -147,7 +157,6 @@
+     }
+   }
+ 
+-  VECTEST("kpos",   kpos(av),           +a[i]               );
+   VECTEST("kneg",   kneg(av),           -a[i]               );
+ 
+   VECTEST("kadd",   kadd(av, bv),       a[i] + b[i]         );
+@@ -160,6 +169,7 @@
+   VECTEST("knmadd", knmadd(av, bv, cv), -a[i] * b[i] - c[i] );
+   VECTEST("knmsub", knmsub(av, bv, cv), -a[i] * b[i] + c[i] );
+ 
++  VECTEST("kcos",   kcos(av),           cos(a[i])           );
+   VECTEST("kexp",   kexp(av),           exp(a[i])           );
+   VECTEST("kfabs",  kfabs(av),          fabs(a[i])          );
+   VECTEST("kfmax",  kfmax(av, bv),      fmax(a[i], b[i])    );
+@@ -167,7 +177,9 @@
+   VECTEST("kfnabs", kfnabs(av),         -fabs(a[i])         );
+   VECTEST("klog",   klog(av),           log(a[i])           );
+   VECTEST("kpow",   kpow(av, 3.14159),  pow(a[i], 3.14159)  );
++  VECTEST("ksin",   ksin(av),           sin(a[i])           );
+   VECTEST("ksqrt",  ksqrt(av),          sqrt(a[i])          );
++  VECTEST("ktan",   ktan(av),           tan(a[i])           );
+ 
+   VECTEST("kifpos positive",
+           kifpos(av, bv, cv), my_signbit(a[i]) ? c[i] : b[i]);
+Index: src/vectors-8-DoubleHummer.h
+===================================================================
+--- src/vectors-8-DoubleHummer.h	(revision 35)
++++ src/vectors-8-DoubleHummer.h	(working copy)
+@@ -132,7 +132,6 @@
+ // Functions and operators
+ 
+ // Operators
+-#define k8pos(x) (x)
+ #define k8neg(x) (__fpneg(x))
+ 
+ #define k8add(x,y) (__fpadd(x,y))
+Index: src/vectors.h
+===================================================================
+--- src/vectors.h	(revision 35)
++++ src/vectors.h	(working copy)
+@@ -78,6 +80,7 @@
+ #  define knmadd k4nmadd
+ #  define knmsub k4nmsub
+ 
++#  define kcos   k4cos
+ #  define kexp   k4exp
+ #  define kfabs  k4fabs
+ #  define kfmax  k4fmax
+@@ -85,9 +88,12 @@
+ #  define kfnabs k4fnabs
+ #  define klog   k4log
+ #  define kpow   k4pow
++#  define ksin   k4sin
+ #  define ksqrt  k4sqrt
++#  define ktan   k4tan
+ 
+ #  define kifpos k4ifpos
++#  define kifneg k4ifneg
+ 
+ #elif defined(CCTK_REAL_PRECISION_8)
+ 
+@@ -107,12 +113,13 @@
+ #  define vec_store_nta_partial_hi  vec8_store_nta_partial_hi
+ #  define vec_store_nta_partial_mid vec8_store_nta_partial_mid
+ 
+-#  define kpos k8pos
+ #  define kneg k8neg
+ 
+ #  define kadd k8add
+@@ -125,6 +132,7 @@
+ #  define knmadd k8nmadd
+ #  define knmsub k8nmsub
+ 
++#  define kcos   k8cos
+ #  define kexp   k8exp
+ #  define kfabs  k8fabs
+ #  define kfmax  k8fmax
+@@ -132,17 +140,36 @@
+ #  define kfnabs k8fnabs
+ #  define klog   k8log
+ #  define kpow   k8pow
++#  define ksin   k8sin
+ #  define ksqrt  k8sqrt
++#  define ktan   k8tan
+ 
+ #  define kifpos k8ifpos
+ #  define kifneg k8ifneg
+@@ -260,10 +287,6 @@
+   {
+     return vec8_elt(x,d);
+   }
+-  static inline vector_t pos (vector_t const& x)
+-  {
+-    return k8pos(x);
+-  }
+   static inline vector_t neg (vector_t const& x)
+   {
+     return k8neg(x);
+Index: src/vectors-8-AVX.h
+===================================================================
+--- src/vectors-8-AVX.h	(revision 35)
++++ src/vectors-8-AVX.h	(working copy)
+@@ -154,7 +199,6 @@
+   {{ K8_IMAX, K8_IMAX, K8_IMAX, K8_IMAX, }};
+ 
+ // Operators
+-#define k8pos(x) (x)
+ #define k8neg(x) (_mm256_xor_pd(x,k8sign_mask_union.vd))
+ 
+ #define k8add(x,y) (_mm256_add_pd(x,y))

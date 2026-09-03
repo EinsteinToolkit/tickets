@@ -1,0 +1,224 @@
+From 04b0723dc490113ec67e4f93d2023a83dca908b1 Mon Sep 17 00:00:00 2001
+From: Bruno Coutinho Mundim <bcmsma@astro.rit.edu>
+Date: Fri, 15 Mar 2013 12:24:03 -0400
+Subject: [PATCH 08/12] Finish the implementation of con2prim using the
+ entropy equation.
+
+  * Tested successfully pointwisely. It still needs to be tested on evolution.
+---
+ interface.ccl          |   22 ++++++++++++
+ param.ccl              |    5 +++
+ src/GRHydro_C2P2CM.F90 |   89 ++++++++++++++++++++++++++++++++++++++++++++++--
+ 3 files changed, 114 insertions(+), 2 deletions(-)
+
+diff --git a/interface.ccl b/interface.ccl
+index 0fb3ffc..82dea9a 100644
+--- a/interface.ccl
++++ b/interface.ccl
+@@ -131,6 +131,27 @@ void FUNCTION Con2PrimGenM(CCTK_INT INOUT handle, CCTK_INT INOUT keytemp, CCTK_R
+                            CCTK_INT OUT epsnegative, \
+                            CCTK_REAL OUT retval)
+ 
++void FUNCTION Con2PrimGenMee(CCTK_INT INOUT handle, CCTK_INT INOUT keytemp, \
++     CCTK_REAL INOUT prec, CCTK_REAL INOUT gamma_eos, \
++     CCTK_REAL INOUT dens, \
++     CCTK_REAL INOUT sx, CCTK_REAL INOUT sy, CCTK_REAL INOUT sz, \
++     CCTK_REAL INOUT tau, \
++     CCTK_REAL INOUT Bconsx, CCTK_REAL INOUT Bconsy, CCTK_REAL INOUT Bconsz, \
++     CCTK_REAL INOUT entropycons, \
++     CCTK_REAL INOUT y_e, CCTK_REAL INOUT temp, CCTK_REAL INOUT rho, \
++     CCTK_REAL INOUT velx, CCTK_REAL INOUT vely, CCTK_REAL INOUT velz, \
++     CCTK_REAL INOUT epsilon, CCTK_REAL INOUT pressure, \
++     CCTK_REAL INOUT Bvecx, CCTK_REAL INOUT Bvecy, CCTK_REAL INOUT Bvecz, \
++     CCTK_REAL INOUT Bvecsq, \
++     CCTK_REAL INOUT w_lorentz, \
++     CCTK_REAL INOUT gxx, CCTK_REAL INOUT gxy, CCTK_REAL INOUT gxz, \
++     CCTK_REAL INOUT gyy, CCTK_REAL INOUT gyz, CCTK_REAL INOUT gzz, \
++     CCTK_REAL INOUT uxx, CCTK_REAL INOUT uxy, CCTK_REAL INOUT uxz, \
++     CCTK_REAL INOUT uyy, CCTK_REAL INOUT uyz, CCTK_REAL INOUT uzz, \
++     CCTK_REAL INOUT det, \
++     CCTK_INT OUT epsnegative, \
++     CCTK_REAL OUT retval)
++
+ void FUNCTION Con2PrimPolyM(CCTK_INT INOUT handle, CCTK_REAL INOUT gamma_eos, CCTK_REAL INOUT dens, \
+                            CCTK_REAL INOUT sx, CCTK_REAL INOUT sy, CCTK_REAL INOUT sz, \
+                            CCTK_REAL INOUT sc, CCTK_REAL INOUT Bconsx, CCTK_REAL INOUT Bconsy, CCTK_REAL INOUT Bconsz, \
+@@ -157,6 +178,7 @@ USES FUNCTION Prim2ConGenM_hot
+ USES FUNCTION Con2PrimPoly
+ USES FUNCTION Con2PrimGen
+ USES FUNCTION Con2PrimGenM
++USES FUNCTION Con2PrimGenMee
+ USES FUNCTION Con2PrimPolyM
+ 
+ CCTK_INT FUNCTION EOS_Omni_GetHandle(CCTK_STRING IN name)
+diff --git a/param.ccl b/param.ccl
+index 77f88eb..7594bc8 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -188,6 +188,11 @@ REAL press_init "Initial pressure"
+ } 6.666666666666667d-7
+ 
+ # Initial conservative values used by c2p tests:
++
++CCTK_BOOLEAN use_c2p_with_entropy_eqn "Use the con2prim routine that uses the entropy equation instead of the energy equation"
++{
++} no
++
+ REAL dens_init "Initial conserved mass density"
+ {
+  (0:*    :: "Anything positive."
+diff --git a/src/GRHydro_C2P2CM.F90 b/src/GRHydro_C2P2CM.F90
+index 9394005..9856c3b 100644
+--- a/src/GRHydro_C2P2CM.F90
++++ b/src/GRHydro_C2P2CM.F90
+@@ -44,10 +44,12 @@ subroutine c2p2cM(CCTK_ARGUMENTS)
+   CCTK_REAL :: gxx_send,gxy_send,gxz_send,gyy_send,gyz_send,gzz_send
+   CCTK_REAL :: dens_send,sx_send,sy_send,sz_send,tau_send
+   CCTK_REAL :: bconsx_send, bconsy_send, bconsz_send
++  CCTK_REAL :: entropy_send, entropycons_send;
+   CCTK_REAL :: rho_send,velx_send,vely_send,velz_send,eps_send
+   CCTK_REAL :: press_send,w_lorentz_send
+   CCTK_REAL :: bvcx_send, bvcy_send, bvcz_send, b2_send
+   CCTK_REAL :: C2P_failed
++  CCTK_REAL :: BdotB, Bdotv, b2, beta_mag
+   CCTK_INT :: epsnegative
+ 
+ ! begin EOS Omni vars
+@@ -119,6 +121,7 @@ subroutine c2p2cM(CCTK_ARGUMENTS)
+                         ) 
+   w_lorentz_send = 1.0d0/w_lorentz_send
+ 
++
+   epsnegative = 0
+   
+   xrho = 1.0d-10
+@@ -136,8 +139,46 @@ subroutine c2p2cM(CCTK_ARGUMENTS)
+        xrho,epsval,xtemp,xye,local_gam,keyerr,anyerr)
+   local_gam = local_gam + 1.0
+ 
++  if(use_c2p_with_entropy_eqn.eq.1)then
++    entropy_send = ( local_gam(1) - 1.0d0 ) * eps_send * &
++                     rho_send**(2.0d0 - local_gam(1))
++    entropycons_send = sdet * w_lorentz_send * entropy_send
++  endif
++
+   C2P_failed = 0.0d0
+ 
++  write(*,*) 'C2P2CM test: metric values.'
++  write(*,*) '    gxx: ', gxx_send
++  write(*,*) '    gxy: ', gxy_send
++  write(*,*) '    gxz: ', gxz_send
++  write(*,*) '    gyy: ', gyy_send
++  write(*,*) '    gyz: ', gyz_send
++  write(*,*) '    gzz: ', gzz_send
++  write(*,*) '    uxx: ', uxx
++  write(*,*) '    uxy: ', uxy
++  write(*,*) '    uxz: ', uxz
++  write(*,*) '    uyy: ', uyy
++  write(*,*) '    uyz: ', uyz
++  write(*,*) '    uzz: ', uzz
++  write(*,*) '    det: ', det
++
++  write(*,*) 'C2P2CM test: initial primitive guess values.'
++  write(*,*) '   primitive variables: '
++  write(*,*) '   rho   : ',rho_send
++  write(*,*) '   velx  : ',velx_send
++  write(*,*) '   vely  : ',vely_send
++  write(*,*) '   velz  : ',velz_send
++  write(*,*) '   press : ',press_send
++  write(*,*) '   eps   : ',eps_send
++  if(use_c2p_with_entropy_eqn.eq.1)then
++    write(*,*) '   entropy  : ',entropy_send
++  endif
++  write(*,*) '   W     : ',w_lorentz_send
++  write(*,*) '   Bvecx  : ',bvcx_send
++  write(*,*) '   Bvecy  : ',bvcy_send
++  write(*,*) '   Bvecz  : ',bvcz_send
++  write(*,*) '   C2P_failed : ',C2P_failed
++
+   write(*,*) 'C2P2CM test: initial values.'
+   write(*,*) '   conservative variables: '
+   write(*,*) '   dens: ',dens_send
+@@ -148,19 +189,57 @@ subroutine c2p2cM(CCTK_ARGUMENTS)
+   write(*,*) '   Bconsx  : ',bconsx_send
+   write(*,*) '   Bconsy  : ',bconsy_send
+   write(*,*) '   Bconsz  : ',bconsz_send
++  if(use_c2p_with_entropy_eqn.eq.1)then
++    write(*,*) '   entropycons  : ',entropycons_send
++  endif
+   write(*,*) '   eps : ',eps_send
+   write(*,*) '   W   : ',w_lorentz_send
+   write(*,*) '   Bvecx  : ',bvcx_send
+   write(*,*) '   Bvecy  : ',bvcy_send
+   write(*,*) '   Bvecz  : ',bvcz_send
++
++! Is this point magnetically dominated?
++   BdotB = gxx_send*bvcx_send**2+gyy_send*bvcy_send**2+gzz_send*bvcz_send**2&
++     +2.0*(gxy_send*bvcx_send*bvcy_send+gxz_send*bvcx_send*bvcy_send+ &
++           gyz_send*bvcy_send*bvcz_send) 
++   Bdotv = gxx_send*bvcx_send*velx_send+gyy_send*bvcy_send*vely_send  &
++          +gzz_send*bvcz_send*velz_send  &
++          +gxy_send*(bvcx_send*vely_send+bvcy_send*velx_send)  &
++          +gxz_send*(bvcx_send*velz_send+bvcz_send*velx_send)  &
++          +gyz_send*(bvcy_send*velz_send+bvcz_send*vely_send)
++
++   b2 = BdotB/w_lorentz_send**2 + Bdotv**2
++
++   beta_mag = 2.0*press_send/b2;
++
++  write(*,*) '   BdotB   : ',BdotB
++  write(*,*) '   Bdotv   : ',Bdotv
++  write(*,*) '      b2   : ',b2
++  write(*,*) 'beta_mag   : ',beta_mag
+   
+-  write(*,*) 'C2P2CM test: getting the associated primitive variables.'
+-  call Con2PrimGenM(GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,local_gam(1),dens_send,sx_send,sy_send,sz_send, &
++  if(use_c2p_with_entropy_eqn.eq.0)then
++     write(*,*) 'C2P2CM test: getting the associated primitive variables.'
++     call Con2PrimGenM(GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,local_gam(1),dens_send,sx_send,sy_send,sz_send, &
+        tau_send,bconsx_send,bconsy_send,bconsz_send,xtemp(1),xye(1),rho_send,velx_send,vely_send,velz_send, &
+        eps_send,press_send,bvcx_send,bvcy_send,bvcz_send,b2_send,w_lorentz_send, &
+        gxx_send,gxy_send,gxz_send,gyy_send,gyz_send,gzz_send,&
+        uxx,uxy,uxz,uyy,uyz,uzz,det,&
+        epsnegative,C2P_failed)
++  else
++     write(*,*) 'C2P2CMee test: getting the associated primitive variables.'
++     call Con2PrimGenMee(GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,local_gam(1),dens_send,sx_send,sy_send,sz_send, &
++       tau_send,bconsx_send,bconsy_send,bconsz_send,entropycons_send,xtemp(1),xye(1),rho_send,velx_send,vely_send,velz_send, &
++       eps_send,press_send,bvcx_send,bvcy_send,bvcz_send,b2_send,w_lorentz_send, &
++       gxx_send,gxy_send,gxz_send,gyy_send,gyz_send,gzz_send,&
++       uxx,uxy,uxz,uyy,uyz,uzz,det,&
++       epsnegative,C2P_failed)
++  endif
++
++  if(use_c2p_with_entropy_eqn.eq.1)then
++    entropy_send = ( local_gam(1) - 1.0d0 ) * eps_send * &
++                     rho_send**(2.0d0 - local_gam(1))
++    entropycons_send = sdet * w_lorentz_send * entropy_send
++  endif
+   
+   write(*,*) 'C2P2CM test: the primitive variables are'
+   write(*,*) '   primitive variables: '
+@@ -170,6 +249,9 @@ subroutine c2p2cM(CCTK_ARGUMENTS)
+   write(*,*) '   velz  : ',velz_send
+   write(*,*) '   press : ',press_send
+   write(*,*) '   eps   : ',eps_send
++  if(use_c2p_with_entropy_eqn.eq.1)then
++    write(*,*) '   entropy  : ',entropy_send
++  endif
+   write(*,*) '   W     : ',w_lorentz_send
+   write(*,*) '   Bvecx  : ',bvcx_send
+   write(*,*) '   Bvecy  : ',bvcy_send
+@@ -191,6 +273,9 @@ subroutine c2p2cM(CCTK_ARGUMENTS)
+   write(*,*) '   Bconsx  : ',bconsx_send
+   write(*,*) '   Bconsy  : ',bconsy_send
+   write(*,*) '   Bconsz  : ',bconsz_send
++  if(use_c2p_with_entropy_eqn.eq.1)then
++    write(*,*) '   entropycons  : ',entropycons_send
++  endif
+   write(*,*) '   eps : ',eps_send
+   write(*,*) '   W   : ',w_lorentz_send
+   write(*,*) '   Bvecx  : ',bvcx_send
+-- 
+1.7.10.4
+

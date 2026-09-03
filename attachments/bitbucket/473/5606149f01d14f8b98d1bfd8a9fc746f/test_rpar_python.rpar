@@ -1,0 +1,42 @@
+#!/usr/bin/env python
+
+import sys
+import re
+from string import Template
+
+################################################################################
+
+dtfac = 0.5
+
+################################################################################
+
+lines = """
+
+ActiveThorns = "
+Carpet
+CarpetIOBasic
+CarpetIOHDF5
+CarpetLib
+CartGrid3D
+CoordBase
+IOUtil
+SymBase
+Time
+"
+
+Cactus::cctk_itlast           = 10000000000000
+Cactus::max_runtime           = 0.1 # 6 seconds
+Cactus::terminate             = "runtime"
+
+Time::dtfac                   = $dtfac
+
+CarpetIOHDF5::checkpoint      = yes
+
+IO::checkpoint_on_terminate   = yes
+IO::recover                   = autoprobe
+
+IOBasic::outinfo_every        = 2000
+
+"""
+
+open(re.sub(r'(.*)\.rpar$', r'\1.par', sys.argv[0]), 'w').write(Template(lines).substitute(locals()))

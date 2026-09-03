@@ -1,0 +1,30 @@
+From c565993efc04006b5b310c1c269878c1efd7ef2e Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Thu, 13 Dec 2012 19:31:28 -0800
+Subject: [PATCH 21/25] GRHydro: correct tau when resetting to atmosphere
+
+before a term rho*b2 was present when the correct one is only b2
+---
+ src/GRHydro_Con2PrimM.F90 |    6 +-----
+ 1 file changed, 1 insertion(+), 5 deletions(-)
+
+diff --git a/src/GRHydro_Con2PrimM.F90 b/src/GRHydro_Con2PrimM.F90
+index c332aff..99260c0 100644
+--- a/src/GRHydro_Con2PrimM.F90
++++ b/src/GRHydro_Con2PrimM.F90
+@@ -656,11 +656,7 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+ 
+               !!$ tau does need to take into account the existing B-field
+               !!$ with w_lorentz=1, we find tau = sqrtdet*(rho (1+eps+b^2/2)) - dens  [Press drops out]
+-              tau(i,j,k)  = sdet * (rho(i,j,k)*(1.0+eps(i,j,k)+b2/2.0)) - dens(i,j,k)
+-
+-              if(tau(i,j,k).le.sdet*b2*0.5d0)then
+-                tau(i,j,k) = GRHydro_tau_min + sdet*b2*0.5d0
+-              endif
++              tau(i,j,k)  = sdet * (rho(i,j,k)*eps(i,j,k)+b2/2.0)
+ 
+            end if
+ 
+-- 
+1.7.10.4
+

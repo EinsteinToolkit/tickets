@@ -1,0 +1,34 @@
+Index: arrangements/CactusIO/IOJpeg/src/Write.c
+===================================================================
+--- arrangements/CactusIO/IOJpeg/src/Write.c	(revision 138)
++++ arrangements/CactusIO/IOJpeg/src/Write.c	(working copy)
+@@ -83,7 +83,7 @@
+   CCTK_INT origin[3], direction[6], hsize[2];
+   const CCTK_INT extent[2] = {-1, -1};
+   void *hdata, *outdata;
+-  CCTK_REAL min, max;
++  CCTK_REAL min,max;
+   const CCTK_INT htype = CCTK_VARIABLE_REAL;
+   DECLARE_CCTK_PARAMETERS
+     
+@@ -154,14 +154,20 @@
+       if (dir == 0)
+       {
+         dir_i = 0; dir_j = 1;   /* xy */
++        if(GH->cctk_gsh[0]==1 || GH->cctk_gsh[1]==1)
++        	continue;
+       }
+       else if (dir == 1)
+       {
+         dir_i = 0; dir_j = 2;   /* xz */
++        if(GH->cctk_gsh[0]==1 || GH->cctk_gsh[2]==1)
++        	continue;
+       }
+       else
+       {
+         dir_i = 1; dir_j = 2;   /* yz */
++        if(GH->cctk_gsh[1]==1 || GH->cctk_gsh[2]==1)
++        	continue;
+       }
+   
+       /* set the origin using the slice center from IOUtil */

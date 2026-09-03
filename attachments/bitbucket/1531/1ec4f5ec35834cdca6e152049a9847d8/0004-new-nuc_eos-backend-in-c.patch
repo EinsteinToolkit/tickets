@@ -1,0 +1,5281 @@
+From 75b95b4daba9c8a18f77793dade9394700736d38 Mon Sep 17 00:00:00 2001
+From: Christian Ott <cott@tapir.caltech.edu>
+Date: Sun, 10 Nov 2013 07:35:25 -0800
+Subject: [PATCH 04/18] * new nuc_eos backend (in c++)
+
+---
+ interface.ccl                               |  29 ++
+ schedule.ccl                                |  13 +-
+ src/EOS_Omni_Module.F90                     |   5 +
+ src/EOS_Omni_MultiVarCalls.F90              | 149 +++---
+ src/EOS_Omni_SingleVarCalls.F90             | 212 +++-----
+ src/EOS_Omni_Startup.F90                    |  13 +
+ src/make.code.defn                          |   2 +-
+ src/make.code.deps                          |   1 +
+ src/nuc_eos/bisection.F90                   | 163 ------
+ src/nuc_eos/dumpASCIItable.F90              | 102 ----
+ src/nuc_eos/eosmodule.F90                   | 111 ----
+ src/nuc_eos/findrho.F90                     | 112 ----
+ src/nuc_eos/findtemp.F90                    | 343 -------------
+ src/nuc_eos/linterp.F                       | 134 -----
+ src/nuc_eos/linterp_many.F90                | 375 --------------
+ src/nuc_eos/make.code.defn                  |   5 -
+ src/nuc_eos/make.code.deps                  |   6 -
+ src/nuc_eos/nuc_eos.F90                     | 730 --------------------------
+ src/nuc_eos/readtable.c                     | 146 ------
+ src/nuc_eos_cxx/helpers.hh                  | 764 ++++++++++++++++++++++++++++
+ src/nuc_eos_cxx/make.code.defn              |   4 +
+ src/nuc_eos_cxx/make.code.deps              |  18 +
+ src/nuc_eos_cxx/nuc_eos.hh                  |  75 +++
+ src/nuc_eos_cxx/nuc_eos_dpdrhoe_dpderho.cc  | 114 +++++
+ src/nuc_eos_cxx/nuc_eos_full.cc             | 321 ++++++++++++
+ src/nuc_eos_cxx/nuc_eos_press.cc            | 158 ++++++
+ src/nuc_eos_cxx/nuc_eos_press_cs2.cc        | 179 +++++++
+ src/nuc_eos_cxx/nuc_eos_short.cc            | 309 +++++++++++
+ src/nuc_eos_cxx/readtable.cc                | 300 +++++++++++
+ src/nuc_eos_cxx/readtable_cactus_wrapper.cc |  19 +
+ 30 files changed, 2489 insertions(+), 2423 deletions(-)
+ create mode 100644 src/make.code.deps
+ delete mode 100644 src/nuc_eos/bisection.F90
+ delete mode 100644 src/nuc_eos/dumpASCIItable.F90
+ delete mode 100644 src/nuc_eos/eosmodule.F90
+ delete mode 100644 src/nuc_eos/findrho.F90
+ delete mode 100644 src/nuc_eos/findtemp.F90
+ delete mode 100644 src/nuc_eos/linterp.F
+ delete mode 100644 src/nuc_eos/linterp_many.F90
+ delete mode 100644 src/nuc_eos/make.code.defn
+ delete mode 100644 src/nuc_eos/make.code.deps
+ delete mode 100644 src/nuc_eos/nuc_eos.F90
+ delete mode 100644 src/nuc_eos/readtable.c
+ create mode 100644 src/nuc_eos_cxx/helpers.hh
+ create mode 100644 src/nuc_eos_cxx/make.code.defn
+ create mode 100644 src/nuc_eos_cxx/make.code.deps
+ create mode 100644 src/nuc_eos_cxx/nuc_eos.hh
+ create mode 100644 src/nuc_eos_cxx/nuc_eos_dpdrhoe_dpderho.cc
+ create mode 100644 src/nuc_eos_cxx/nuc_eos_full.cc
+ create mode 100644 src/nuc_eos_cxx/nuc_eos_press.cc
+ create mode 100644 src/nuc_eos_cxx/nuc_eos_press_cs2.cc
+ create mode 100644 src/nuc_eos_cxx/nuc_eos_short.cc
+ create mode 100644 src/nuc_eos_cxx/readtable.cc
+ create mode 100644 src/nuc_eos_cxx/readtable_cactus_wrapper.cc
+
+diff --git a/interface.ccl b/interface.ccl
+index e5f5e86..44a2f11 100644
+--- a/interface.ccl
++++ b/interface.ccl
+@@ -167,6 +167,35 @@ void FUNCTION EOS_Omni_short(CCTK_INT IN eoskey,                \
+ 
+ PROVIDES FUNCTION EOS_Omni_short WITH EOS_Omni_EOS_short LANGUAGE Fortran
+ 
++void FUNCTION EOS_Omni_full(CCTK_INT IN eoskey,                \
++			     CCTK_INT IN havetemp,              \
++			     CCTK_REAL IN rf_precision,         \
++                             CCTK_INT IN npoints,               \
++			     CCTK_REAL IN ARRAY rho,     	\
++			     CCTK_REAL INOUT ARRAY eps,  	\
++			     CCTK_REAL INOUT ARRAY temp, 	\
++			     CCTK_REAL IN ARRAY ye,      	\
++			     CCTK_REAL OUT ARRAY press,		\
++			     CCTK_REAL INOUT ARRAY entropy,	\
++			     CCTK_REAL OUT ARRAY cs2,  		\
++			     CCTK_REAL OUT ARRAY dedt, 		\
++			     CCTK_REAL OUT ARRAY dpderho,	\
++			     CCTK_REAL OUT ARRAY dpdrhoe,	\
++			     CCTK_REAL OUT ARRAY xa,	  	\
++			     CCTK_REAL OUT ARRAY xh,	  	\
++			     CCTK_REAL OUT ARRAY xn,	  	\
++			     CCTK_REAL OUT ARRAY xp,	  	\
++			     CCTK_REAL OUT ARRAY abar,	  	\
++			     CCTK_REAL OUT ARRAY zbar,	  	\
++			     CCTK_REAL OUT ARRAY mue,	  	\
++			     CCTK_REAL OUT ARRAY mun,  		\
++			     CCTK_REAL OUT ARRAY mup,  		\
++			     CCTK_REAL OUT ARRAY muhat,  	\
++			     CCTK_INT OUT ARRAY keyerr,   	\
++                             CCTK_INT OUT anyerr)
++
++PROVIDES FUNCTION EOS_Omni_full WITH EOS_Omni_EOS_full LANGUAGE Fortran
++
+ ################################################################################
+ # the following routines are needed for MHD con2prim using the 2D Z-P scheme
+ 
+diff --git a/schedule.ccl b/schedule.ccl
+index 0317eab..9e1723e 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -9,20 +9,17 @@ schedule EOS_Omni_Startup AT WRAGH
+ 
+ if (nuceos_read_table)
+ {
+-  SCHEDULE EOS_OMNI_ReadTable AT CCTK_BASEGRID
++  SCHEDULE nuc_eos_readtable_cactus_wrapper AT CCTK_BASEGRID
+   {
+     LANG: C
+     OPTIONS: global
+   } "Read EOS HDF5 table"
+ 
+-  if (dump_nuceos_table)
++  SCHEDULE EOS_OMNI_get_energy_shift AT CCTK_BASEGRID AFTER nuc_eos_readtable_cactus_wrapper
+   {
+-    SCHEDULE EOS_OMNI_dumptable after EOS_OMNI_ReadTable AT CCTK_BASEGRID
+-    {
+-      LANG: FORTRAN
+-      OPTIONS: global
+-    } "Dump EOS HDF5 table in ASCII"	
+-  }
++    LANG: Fortran
++    OPTIONS: global
++  } "setup energy_shift in EOS_Omni_Module"
+ 
+ }
+ 
+diff --git a/src/EOS_Omni_Module.F90 b/src/EOS_Omni_Module.F90
+index ef7472b..fab3f0d 100644
+--- a/src/EOS_Omni_Module.F90
++++ b/src/EOS_Omni_Module.F90
+@@ -72,4 +72,9 @@ module EOS_Omni_Module
+   ! actual poly_gamma_ini used when using different EOS for initial data and run
+   real*8 :: poly_gamma_ini
+ 
++  ! energy shift and other vars if using nuc_eos
++  real*8 :: energy_shift
++  real*8 :: eos_tempmin,eos_tempmax
++  real*8 :: eos_yemin,eos_yemax
++
+ end module EOS_Omni_Module
+diff --git a/src/EOS_Omni_MultiVarCalls.F90 b/src/EOS_Omni_MultiVarCalls.F90
+index 6c18831..a0042b7 100644
+--- a/src/EOS_Omni_MultiVarCalls.F90
++++ b/src/EOS_Omni_MultiVarCalls.F90
+@@ -41,48 +41,98 @@ subroutine EOS_Omni_EOS_short(eoskey,keytemp,rf_precision,npoints,&
+   real*8           :: xdedt,xdpderho,xdpdrhoe
+ 
+   if(eoskey.ne.4) then
++     write(warnstring,"(A8,i5)") "eoskey: ", eoskey
++     !$OMP CRITICAL
++     call CCTK_WARN(1,warnstring)
+      call CCTK_WARN(0,"EOS_Omni_EOS_short currently does not work for this eoskey")
++     !$OMP END CRITICAL
+   endif
+ 
+   anyerr    = 0
+   keyerr(:) = 0
+ 
+-  do i=1,npoints
+-
+-     xrho = rho(i) * inv_rho_gf
+-     xtemp = temp(i)
+-     xye = ye(i)
+-     xenr = eps(i) * inv_eps_gf
+-     xent = entropy(i)
+-     call nuc_eos_short(xrho,xtemp,xye,xenr,xprs,& 
+-          xent,xcs2,xdedt,xdpderho,xdpdrhoe,xmunu,&
+-          keytemp,keyerr(i),rf_precision)
+-     
+-     if(keyerr(i).ne.0) then
+-        anyerr = 1
+-     endif
+-     
+-     if(keytemp.eq.1) then
+-        eps(i) = xenr * eps_gf
+-     else if(keytemp.eq.2) then
+-        eps(i) = xenr * eps_gf
+-        temp(i) = xtemp
+-     else
+-        temp(i) = xtemp
+-     endif
+-     
+-     press(i)     = xprs * press_gf
+-     entropy(i)   = xent
+-     cs2(i)       = xcs2
+-     dedt(i)      = xdedt * eps_gf
+-     dpderho(i)   = xdpderho * press_gf * inv_eps_gf
+-     dpdrhoe(i)   = xdpdrhoe * press_gf * inv_rho_gf
+-     munu(i)      = xmunu
+-     
+-  enddo
++  if(keytemp.eq.1) then
++     call nuc_eos_m_kt1_short(npoints,rho,temp,ye,eps,press,&
++          entropy,cs2,dedt,dpderho,dpdrhoe,munu,keyerr,anyerr)
++  else if(keytemp.eq.0) then
++     call nuc_eos_m_kt0_short(npoints,rho,temp,ye,eps,press,&
++          entropy,cs2,dedt,dpderho,dpdrhoe,munu,rf_precision,&
++          keyerr,anyerr)
++  else if (keytemp.eq.2) then
++     call nuc_eos_m_kt2_short(npoints,rho,temp,ye,eps,press,&
++          entropy,cs2,dedt,dpderho,dpdrhoe,munu,rf_precision,&
++          keyerr,anyerr)
++  else
++     !$OMP CRITICAL
++     call CCTK_WARN(0,"This keytemp is not supported")
++     !$OMP END CRITICAL
++  endif
+ 
+ end subroutine EOS_Omni_EOS_short
+ 
++subroutine EOS_Omni_EOS_full(eoskey,keytemp,rf_precision,npoints,&
++     rho,eps,temp,ye,press,entropy,cs2,dedt,dpderho,dpdrhoe,&
++     xa,xh,xn,xp,abar,zbar,mue,mun,mup,muhat,keyerr,anyerr)
++
++  use EOS_Omni_Module
++  implicit none
++  DECLARE_CCTK_PARAMETERS
++
++  CCTK_INT, intent(in)     :: eoskey,keytemp,npoints
++  CCTK_INT, intent(out)    :: keyerr(npoints)
++  CCTK_INT, intent(out)    :: anyerr
++  CCTK_REAL, intent(in)    :: rf_precision
++  CCTK_REAL, intent(in)    :: rho(npoints),ye(npoints)
++  CCTK_REAL, intent(inout) :: eps(npoints), temp(npoints)
++  CCTK_REAL, intent(out)   :: press(npoints)
++  CCTK_REAL, intent(inout) :: entropy(npoints)
++  CCTK_REAL, intent(out)   :: cs2(npoints)
++  CCTK_REAL, intent(out)   :: dedt(npoints)
++  CCTK_REAL, intent(out)   :: dpderho(npoints)
++  CCTK_REAL, intent(out)   :: dpdrhoe(npoints)
++  CCTK_REAL, intent(out)   :: xa(npoints)
++  CCTK_REAL, intent(out)   :: xh(npoints)
++  CCTK_REAL, intent(out)   :: xn(npoints)
++  CCTK_REAL, intent(out)   :: xp(npoints)
++  CCTK_REAL, intent(out)   :: abar(npoints)
++  CCTK_REAL, intent(out)   :: zbar(npoints)
++  CCTK_REAL, intent(out)   :: mue(npoints)
++  CCTK_REAL, intent(out)   :: mun(npoints)
++  CCTK_REAL, intent(out)   :: mup(npoints)
++  CCTK_REAL, intent(out)   :: muhat(npoints)
++
++  ! local vars
++  integer          :: i
++  character(256)   :: warnstring
++
++  if(eoskey.ne.4) then
++     write(warnstring,"(A8,i5)") "eoskey: ", eoskey
++     !$OMP CRITICAL
++     call CCTK_WARN(1,warnstring)
++     call CCTK_WARN(0,"EOS_Omni_EOS_full currently does not work for this eoskey")
++     !$OMP END CRITICAL
++  endif
++
++  anyerr    = 0
++  keyerr(:) = 0
++
++  if(keytemp.eq.1) then
++     call nuc_eos_m_kt1_full(npoints,rho,temp,ye,eps,press,&
++          entropy,cs2,dedt,dpderho,dpdrhoe,xa,xh,xn,xp,abar,zbar,&
++          mue,mun,mup,muhat,keyerr,anyerr)
++  else if(keytemp.eq.0) then
++     call nuc_eos_m_kt0_full(npoints,rho,temp,ye,eps,press,&
++          entropy,cs2,dedt,dpderho,dpdrhoe,xa,xh,xn,xp,abar,zbar,&
++          mue,mun,mup,muhat,rf_precision,&
++          keyerr,anyerr)
++  else
++     !$OMP CRITICAL
++     call CCTK_WARN(0,"This keytemp is not supported")
++     !$OMP END CRITICAL
++  endif
++
++end subroutine EOS_Omni_EOS_full
++
+ 
+ subroutine EOS_Omni_EOS_dpderho_dpdrhoe(eoskey,keytemp,rf_precision,npoints,&
+      rho,eps,temp,ye,dpderho,dpdrhoe,keyerr,anyerr)
+@@ -173,28 +223,13 @@ subroutine EOS_Omni_EOS_dpderho_dpdrhoe(eoskey,keytemp,rf_precision,npoints,&
+            dpderho(i) = (hybrid_gamma_th - 1.0d0) * rho(i)
+         enddo
+     case (4)
+-        do i=1,npoints
+-           xrho = rho(i) * inv_rho_gf
+-           xtemp = temp(i)
+-           xye = ye(i)
+-           xenr = eps(i) * inv_eps_gf
+-           call nuc_eos_dpdr_dpde(xrho,xtemp,xye,xenr, &
+-                xdpderho, xdpdrhoe,&
+-                keytemp,keyerr(i),rf_precision)
+-
+-           if(keyerr(i).ne.0) then
+-              anyerr = 1
+-           endif
+-
+-           if(keytemp.eq.1) then
+-              eps(i) = xenr * eps_gf
+-           else
+-              temp(i) = xtemp
+-           endif
+-
+-           dpdrhoe(i) = xdpdrhoe * press_gf * inv_rho_gf
+-           dpderho(i) = xdpderho * press_gf * inv_eps_gf
+-        enddo
++       if(keytemp.eq.1) then
++          call CCTK_WARN(0,"keytemp=1 not supported for dpdrhoe, dpderho")
++       else
++          call nuc_eos_m_kt0_dpdrhoe_dpderho(npoints,&
++               rho,temp,ye,eps,dpdrhoe,dpderho,rf_precision,&
++               keyerr,anyerr)
++       endif
+    case DEFAULT
+       write(warnstring,*) "eoskey ",eoskey," not implemented!"
+       call CCTK_WARN(0,warnstring)
+@@ -203,8 +238,8 @@ subroutine EOS_Omni_EOS_dpderho_dpdrhoe(eoskey,keytemp,rf_precision,npoints,&
+  end subroutine EOS_Omni_EOS_dpderho_dpdrhoe
+ 
+ 
+- subroutine EOS_Omni_EOS_DEpsByDRho_DEpsByDPress(eoskey,keytemp,rf_precision,npoints,&
+-     rho,eps,temp,ye,depsdrho,depsdpress,keyerr,anyerr)
++ subroutine EOS_Omni_EOS_DEpsByDRho_DEpsByDPress(eoskey,keytemp,rf_precision,&
++      npoints,rho,eps,temp,ye,depsdrho,depsdpress,keyerr,anyerr)
+ 
+   use EOS_Omni_Module
+   implicit none
+diff --git a/src/EOS_Omni_SingleVarCalls.F90 b/src/EOS_Omni_SingleVarCalls.F90
+index 82e3782..c1dfb42 100644
+--- a/src/EOS_Omni_SingleVarCalls.F90
++++ b/src/EOS_Omni_SingleVarCalls.F90
+@@ -95,27 +95,13 @@ subroutine EOS_Omni_EOS_Press(eoskey,keytemp,rf_precision,npoints,&
+ 
+      case (4)
+         ! nuc eos
+-        do i=1,npoints
+-           xrho = rho(i) * inv_rho_gf
+-           xtemp = temp(i)
+-           xye = ye(i)
+-           xenr = eps(i) * inv_eps_gf
+-           call nuc_eos_press_eps(xrho,xtemp,xye,xenr,xprs,& 
+-                keytemp,keyerr(i),rf_precision)
+-           
+-           if(keyerr(i).ne.0) then
+-              anyerr = 1
+-           endif
+-
+-           if(keytemp.eq.1) then
+-              eps(i) = xenr * eps_gf
+-           else
+-              temp(i) = xtemp
+-           endif
+-
+-           press(i) = xprs * press_gf
+-        enddo
+-
++        if(keytemp.eq.1) then
++           call nuc_eos_m_kt1_press_eps(npoints,rho,temp,ye,&
++                eps,press,keyerr,anyerr)
++        else
++           call nuc_eos_m_kt0_press(npoints,rho,temp,ye,eps,press,&
++                rf_precision,keyerr,anyerr)
++        endif
+      case (5)
+         ! cold tabular EOS with gamma law
+         do i=1,npoints
+@@ -211,6 +197,10 @@ subroutine EOS_Omni_EOS_PressOMP(eoskey,keytemp,rf_precision,npoints,&
+                               rho,eps,temp,ye,press,keyerr,anyerr)
+ 
+   use EOS_Omni_Module
++#ifdef _OPENMP
++  use OMP_LIB
++#endif
++
+   implicit none
+   DECLARE_CCTK_PARAMETERS
+ 
+@@ -237,6 +227,8 @@ subroutine EOS_Omni_EOS_PressOMP(eoskey,keytemp,rf_precision,npoints,&
+   real*8 :: press_cold, press_th
+   real*8 :: eps_cold, eps_th
+   real*8 :: gamma
++  integer :: num_threads, my_thread_num, slice_len, slice_min, slice_max
++  CCTK_INT :: my_anyerr
+ 
+   anyerr    = 0
+   keyerr(:) = 0
+@@ -304,31 +296,37 @@ subroutine EOS_Omni_EOS_PressOMP(eoskey,keytemp,rf_precision,npoints,&
+ 
+      case (4)
+         ! nuc eos
+-        !$OMP PARALLEL DO PRIVATE(xrho,xtemp,xye,xenr,xprs)
+-        do i=1,npoints
+-           xrho = rho(i) * inv_rho_gf
+-           xtemp = temp(i)
+-           xye = ye(i)
+-           xenr = eps(i) * inv_eps_gf
+-           call nuc_eos_press_eps(xrho,xtemp,xye,xenr,xprs,& 
+-                keytemp,keyerr(i),rf_precision)
+-           
+-           if(keyerr(i).ne.0) then
+-              !$OMP CRITICAL
+-              anyerr = 1
+-              !$OMP END CRITICAL
+-           endif
+-
+-           if(keytemp.eq.1) then
+-              eps(i) = xenr * eps_gf
+-           else
+-              temp(i) = xtemp
+-           endif
+-
+-           press(i) = xprs * press_gf
+-        enddo
+-        !$OMP END PARALLEL DO
+-
++        my_anyerr = 0
++        !$OMP PARALLEL REDUCTION(+: my_anyerr)
++#ifdef _OPENMP
++        num_threads = omp_get_num_threads()
++        my_thread_num = omp_get_thread_num()
++#else
++        num_threads = 1
++        my_thread_num = 0
++#endif
++        slice_len = (npoints + num_threads-1)/num_threads
++        slice_min = 1 + my_thread_num * slice_len
++        slice_max = min(slice_min + slice_len - 1, npoints)
++        if(keytemp.eq.1) then
++           call nuc_eos_m_kt1_press_eps(slice_max-slice_min+1,&
++                rho(slice_min:slice_max),temp(slice_min:slice_max),&
++                ye(slice_min:slice_max),eps(slice_min:slice_max),&
++                press(slice_min:slice_max),keyerr(slice_min:slice_max),&
++                my_anyerr)
++        else
++           call nuc_eos_m_kt0_press(slice_max-slice_min+1,&
++                rho(slice_min:slice_max),temp(slice_min:slice_max),&
++                ye(slice_min:slice_max),eps(slice_min:slice_max),&
++                press(slice_min:slice_max),&
++                rf_precision,keyerr(slice_min:slice_max),anyerr)
++        endif
++        !$OMP END PARALLEL
++        ! return 0/1 for false/true rather than zero/nonzero just in case a
++        ! caller relied on this
++        if(my_anyerr.ne.0) then
++           anyerr = 1
++        end if
+      case (5)
+         ! cold tabular EOS with gamma law
+         !$OMP PARALLEL DO PRIVATE(xrho,ir,gamma,eps_cold,eps_th, &
+@@ -521,27 +519,15 @@ subroutine EOS_Omni_EOS_DPressByDRho(eoskey,keytemp,rf_precision,npoints,&
+         enddo
+ 
+      case (4)
+-        do i=1,npoints
+-           xrho = rho(i) * inv_rho_gf
+-           xtemp = temp(i)
+-           xye = ye(i)
+-           xenr = eps(i) * inv_eps_gf
+-           call nuc_eos_short(xrho,xtemp,xye,xenr,xprs,& 
+-                xent,xcs2,xdedt,xdpderho,xdpdrhoe,xmunu,&
+-                keytemp,keyerr(i),rf_precision)
+-           
+-           if(keyerr(i).ne.0) then
+-              anyerr = 1
+-           endif
+-
+-           if(keytemp.eq.1) then
+-              eps(i) = xenr * eps_gf
+-           else
+-              temp(i) = xtemp
+-           endif
+-
+-           dpdrhoe(i) = xdpdrhoe * press_gf * inv_rho_gf
+-        enddo
++        if(keytemp.eq.1) then
++           call nuc_eos_m_kt1_short(npoints,rho,temp,ye,&
++                eps,xprs,xent,xcs2,xdedt,xdpderho,dpdrhoe,xmunu,&
++                keyerr,anyerr)
++        else
++           call nuc_eos_m_kt0_short(npoints,rho,temp,ye,&
++                eps,xprs,xent,xcs2,xdedt,xdpderho,dpdrhoe,xmunu,rf_precision,&
++                keyerr,anyerr)
++        endif
+         
+      case (5)
+         ! with the cold eos we have to assume P = P(rho), so
+@@ -658,33 +644,16 @@ subroutine EOS_Omni_EOS_DPressByDEps(eoskey,keytemp,rf_precision,npoints,&
+         do i=1,npoints
+            dpdepsrho(i) = (hybrid_gamma_th - 1.0d0) * rho(i)
+         enddo
+-
+      case (4)
+-        ! nuc_eos
+-        do i=1,npoints
+-
+-           xrho = rho(i) * inv_rho_gf
+-           xtemp = temp(i)
+-           xye = ye(i)
+-           xenr = eps(i) * inv_eps_gf
+-           call nuc_eos_short(xrho,xtemp,xye,xenr,xprs,& 
+-                xent,xcs2,xdedt,xdpderho,xdpdrhoe,xmunu,&
+-                keytemp,keyerr(i),rf_precision)
+-           
+-           if(keyerr(i).ne.0) then
+-              anyerr = 1
+-           endif
+-
+-           if(keytemp.eq.1) then
+-              eps(i) = xenr * eps_gf
+-           else
+-              temp(i) = xtemp
+-           endif
+-
+-           dpdepsrho(i) = xdpderho * press_gf * inv_eps_gf 
+-
+-        enddo
+-
++        if(keytemp.eq.1) then
++           call nuc_eos_m_kt1_short(npoints,rho,temp,ye,&
++                eps,xprs,xent,xcs2,xdedt,dpdepsrho,xdpdrhoe,xmunu,&
++                keyerr,anyerr)
++        else
++           call nuc_eos_m_kt0_short(npoints,rho,temp,ye,&
++                eps,xprs,xent,xcs2,xdedt,dpdepsrho,xdpdrhoe,xmunu,rf_precision,&
++                keyerr,anyerr)
++        endif
+      case (5)
+         ! with the cold eos we have to assume P = P(rho), so
+         ! only the gamma law has non-zero dPdeps
+@@ -816,31 +785,13 @@ subroutine EOS_Omni_EOS_cs2(eoskey,keytemp,rf_precision,npoints,&
+         enddo
+      case(4)
+         ! nuc_eos
+-
+-        do i=1,npoints
+-           
+-           xrho = rho(i) * inv_rho_gf
+-           xtemp = temp(i)
+-           xye = ye(i)
+-           xenr = eps(i) * inv_eps_gf
+-           call nuc_eos_short(xrho,xtemp,xye,xenr,xprs,& 
+-                xent,xcs2,xdedt,xdpderho,xdpdrhoe,xmunu,&
+-                keytemp,keyerr(i),rf_precision)
+-           
+-           if(keyerr(i).ne.0) then
+-              anyerr = 1
+-           endif
+-
+-           if(keytemp.eq.1) then
+-              eps(i) = xenr * eps_gf
+-           else
+-              temp(i) = xtemp
+-           endif
+-
+-           cs2(i) = xcs2 * cliteinv2 / &
+-                (1.0d0 + eps(i) + xprs * press_gf / rho(i))
+-
+-        enddo
++        if(keytemp.eq.1) then
++           call nuc_eos_m_kt1_press_eps_cs2(npoints,rho,temp,ye,&
++                eps,xprs,cs2,keyerr,anyerr)
++        else
++           call nuc_eos_m_kt0_press_cs2(npoints,rho,temp,ye,&
++                eps,xprs,cs2,rf_precision,keyerr,anyerr)
++        endif
+      case (5)
+         ! with the cold eos we have to assume P = P(rho), so
+         ! by definition dPdrho is at constant internal energy
+@@ -1031,28 +982,29 @@ subroutine EOS_Omni_EOS_RhoFromPressEpsTempEnt(eoskey,&
+         else
+            call CCTK_WARN(0,"This function does not work yet when coming in with this keytemp")
+         endif
++        
++        call CCTK_WARN(0,"This routine does not work with the new nuc_eos_cxx [yet]")
+ 
+         keytemp = 1
+         do i=1,npoints
+            fac = 1.0d0
+            counter = 0
+            cont = .true.
+-           xprs = press(i) * inv_press_gf
++           xprs = press(i) 
+            press_guess = xprs
+-           rho_guess = rho(i) * inv_rho_gf
+-           xprs = press(i) * inv_press_gf
++           rho_guess = rho(i) 
++           xprs = press(i) 
+            xtemp = temp(i)
+            xye = ye(i)
+            do while(cont)
+               counter = counter + 1
+               rho_guess2 = rho_guess * 1.0001d0
+-              call nuc_eos_short(rho_guess2,xtemp,xye,xenr,press_guess2,& 
+-                   xent,xcs2,xdedt,xdpderho,xdpdrhoe,xmunu,&
+-                   keytemp,keyerr(i),rf_precision)
+-              call nuc_eos_short(rho_guess,xtemp,xye,xenr,press_guess,& 
+-                   xent,xcs2,xdedt,xdpderho,xdpdrhoe,xmunu,&
+-                   keytemp,keyerr(i),rf_precision)
+-
++              call nuc_eos_m_kt1_short(1,rho_guess2,xtemp,xye,xenr,&
++                   press_guess2,xent,xcs2,xdedt,xdpderho,xdpdrhoe,xmunu,&
++                   rf_precision,keyerr(i),anyerr)
++              call nuc_eos_m_kt1_short(1,rho_guess2,xtemp,xye,xenr,&
++                   press_guess2,xent,xcs2,xdedt,xdpderho,xdpdrhoe,xmunu,&
++                   rf_precision,keyerr(i),anyerr)
+               mydpdrho = (press_guess2-press_guess)/(rho_guess2-rho_guess)
+               if (mydpdrho.lt.0.0d0) then
+                  !$OMP CRITICAL
+@@ -1064,8 +1016,8 @@ subroutine EOS_Omni_EOS_RhoFromPressEpsTempEnt(eoskey,&
+               
+               if (abs(1.0d0-press_guess/xprs).lt.rf_precision) then
+                  cont = .false.
+-                 rho(i) = rho_guess*rho_gf
+-                 eps(i) = xenr*eps_gf
++                 rho(i) = rho_guess
++                 eps(i) = xenr
+               else
+                  if (fac*(xprs-press_guess)/mydpdrho/rho_guess.gt.0.1d0) then
+                     rho_guess = 0.99d0*rho_guess
+diff --git a/src/EOS_Omni_Startup.F90 b/src/EOS_Omni_Startup.F90
+index 1c11d75..672b22e 100644
+--- a/src/EOS_Omni_Startup.F90
++++ b/src/EOS_Omni_Startup.F90
+@@ -27,3 +27,16 @@ subroutine EOS_Omni_Startup(CCTK_ARGUMENTS)
+        (hybrid_rho_nuc * inv_rho_gf)**(hybrid_gamma1-hybrid_gamma2)
+ 
+ end subroutine EOS_Omni_Startup
++
++subroutine EOS_Omni_Get_Energy_Shift(CCTK_ARGUMENTS)
++
++  use EOS_Omni_Module
++  implicit none
++
++  DECLARE_CCTK_PARAMETERS
++  DECLARE_CCTK_ARGUMENTS
++
++  call nuc_eos_c_get_energy_shift(energy_shift,eos_tempmin,eos_tempmax,&
++       eos_yemin,eos_yemax)
++
++end subroutine EOS_Omni_Get_Energy_Shift
+diff --git a/src/make.code.defn b/src/make.code.defn
+index 02799bc..e03f1d4 100644
+--- a/src/make.code.defn
++++ b/src/make.code.defn
+@@ -7,4 +7,4 @@ SRCS = EOS_Omni_Module.F90 EOS_Omni_Startup.F90 EOS_Omni_SingleVarCalls.F90 \
+        EOS_Omni_BarotropicReadTable.F90	
+ 
+ # Subdirectories containing source files
+-SUBDIRS = nuc_eos
++SUBDIRS = nuc_eos_cxx
+diff --git a/src/make.code.deps b/src/make.code.deps
+new file mode 100644
+index 0000000..cd5bfde
+--- /dev/null
++++ b/src/make.code.deps
+@@ -0,0 +1 @@
++EOS_Omni_Startup.F90:	EOS_Omni_Module.o
+diff --git a/src/nuc_eos/bisection.F90 b/src/nuc_eos/bisection.F90
+deleted file mode 100644
+index 2ba35f1..0000000
+--- a/src/nuc_eos/bisection.F90
++++ /dev/null
+@@ -1,163 +0,0 @@
+-subroutine bisection(lr,lt0,y,eps0,lt,bivar,keyerrt,keybisect)
+-
+-  use eosmodule
+-
+-  implicit none
+-
+-  real*8 lr,lt0,y,eps0,lt
+-  integer keyerrt
+-
+-  integer keybisect !this doesn't do anything...
+-  ! 1 -> operate on energy
+-  ! 2 -> operate on entropy
+-
+-  !temporary vars
+-  real*8 lt1,lt2,ltmin,ltmax
+-  real*8 f1,f2,fmid,dlt,ltmid
+-  real*8 d1,d2,d3,tol
+-  real*8 f1a,f2a
+-
+-  integer bcount,i,itmax,maxbcount
+-
+-  real*8 bivar(*)
+-
+-  bcount = 0
+-  maxbcount = 80
+-
+-  tol=1.d-9 ! need to find energy to less than 1 in 10^-9
+-  itmax=50
+-
+-  ltmax=logtemp(ntemp)
+-  ltmin=logtemp(1)
+-
+-  lt = lt0
+-  lt1 = dlog10(min(10.0d0**ltmax,1.10d0*(10.0d0**lt0)))
+-  lt2 = dlog10(max(10.0d0**ltmin,0.90d0*(10.0d0**lt0)))
+-
+-  call findthis(lr,lt1,y,f1a,bivar,d1,d2,d3)
+-  call findthis(lr,lt2,y,f2a,bivar,d1,d2,d3)
+-
+-  f1=f1a-eps0
+-  f2=f2a-eps0
+-
+-  keyerrt=0
+-  
+-
+-  do while(f1*f2.ge.0.0d0)
+-     bcount=bcount+1
+-     lt1=dlog10(min(10.0d0**ltmax,1.2d0*(10.0d0**lt1)))
+-     lt2=dlog10(max(10.0d0**ltmin,0.8d0*(10.0d0**lt2)))
+-     call findthis(lr,lt1,y,f1a,bivar,d1,d2,d3)
+-     call findthis(lr,lt2,y,f2a,bivar,d1,d2,d3)
+-     f1=f1a-eps0
+-     f2=f2a-eps0
+-     if(bcount.ge.maxbcount) then
+-        keyerrt=667
+-        return
+-     endif
+-  enddo
+-
+-  if(f1.lt.0.0d0) then
+-     lt=lt1
+-     dlt=dlog10((10.0D0**lt2)-(10.0d0**lt1))
+-  else
+-     lt=lt2
+-     dlt=dlog10((10.0D0**lt1)-(10.0d0**lt2))
+-  endif
+-
+-  do i=1,itmax
+-     dlt=dlog10((10.0d0**dlt)*0.5d0)
+-     ltmid=dlog10(10.0d0**lt+10.0d0**dlt)
+-     call findthis(lr,ltmid,y,f2a,bivar,d1,d2,d3)
+-     fmid=f2a-eps0
+-     if(fmid.le.0.0d0) lt=ltmid
+-     if(abs(1.0d0-f2a/eps0).lt.tol) then
+-        lt=ltmid
+-        return
+-     endif
+-  enddo
+-
+-
+-
+-end subroutine bisection
+-
+-subroutine bisection_rho(lr0,lt,y,lpressin,lr,bivar,keyerrr,keybisect)
+-
+-  use eosmodule
+-
+-  implicit none
+-
+-  real*8 lr,lr0,y,lpressin,lt
+-  integer keyerrr
+-
+-  integer keybisect !this doesn't do anything
+-  ! 3 -> operate on pressure
+-
+-  !temporary vars
+-  real*8 lr1,lr2,lrmin,lrmax
+-  real*8 f1,f2,fmid,dlr,lrmid
+-  real*8 d1,d2,d3,tol
+-  real*8 f1a,f2a
+-
+-  integer bcount,i,itmax,maxbcount
+-
+-  real*8 bivar(*)
+-
+-  bcount = 0
+-  maxbcount = 80
+-
+-  tol=1.d-9 ! need to find energy to less than 1 in 10^-9
+-  itmax=50
+-
+-  lrmax=logrho(nrho)
+-  lrmin=logrho(1)
+-
+-  lr = lr0
+-  lr1 = dlog10(min(10.0d0**lrmax,1.10d0*(10.0d0**lr0)))
+-  lr2 = dlog10(max(10.0d0**lrmin,0.90d0*(10.0d0**lr0)))
+-
+-  call findthis(lr1,lt,y,f1a,bivar,d1,d2,d3)
+-  call findthis(lr2,lt,y,f2a,bivar,d1,d2,d3)
+-
+-  f1=f1a-lpressin
+-  f2=f2a-lpressin
+-
+-  keyerrr=0
+-  
+-  do while(f1*f2.ge.0.0d0)
+-     bcount=bcount+1
+-     lr1=dlog10(min(10.0d0**lrmax,1.2d0*(10.0d0**lr1)))
+-     lr2=dlog10(max(10.0d0**lrmin,0.8d0*(10.0d0**lr2)))
+-     call findthis(lr1,lt,y,f1a,bivar,d1,d2,d3)
+-     call findthis(lr2,lt,y,f2a,bivar,d1,d2,d3)
+-     f1=f1a-lpressin
+-     f2=f2a-lpressin
+-     if(bcount.ge.maxbcount) then
+-        keyerrr=667
+-        return
+-     endif
+-  enddo
+-
+-  if(f1.lt.0.0d0) then
+-     lr=lr1
+-     dlr=dlog10((10.0D0**lr2)-(10.0d0**lr1))
+-  else
+-     lr=lr2
+-     dlr=dlog10((10.0D0**lr1)-(10.0d0**lr2))
+-  endif
+-
+-  do i=1,itmax
+-     dlr=dlog10((10.0d0**dlr)*0.5d0)
+-     lrmid=dlog10(10.0d0**lr+10.0d0**dlr)
+-     call findthis(lrmid,lt,y,f2a,bivar,d1,d2,d3)
+-     fmid=f2a-lpressin
+-     if(fmid.le.0.0d0) lr=lrmid
+-     if(abs(1.0d0-f2a/lpressin).lt.tol) then
+-        lr=lrmid
+-        return
+-     endif
+-  enddo
+-
+-
+-
+-end subroutine bisection_rho
+diff --git a/src/nuc_eos/dumpASCIItable.F90 b/src/nuc_eos/dumpASCIItable.F90
+deleted file mode 100644
+index ee89acf..0000000
+--- a/src/nuc_eos/dumpASCIItable.F90
++++ /dev/null
+@@ -1,102 +0,0 @@
+-#include "cctk.h"
+-#include "cctk_Parameters.h"
+-#include "cctk_Arguments.h"
+-#include "cctk_Functions.h"
+-
+-subroutine EOS_OMNI_dumptable(CCTK_ARGUMENTS)
+-
+-  use eosmodule
+-  implicit none
+-
+-  DECLARE_CCTK_PARAMETERS
+-  DECLARE_CCTK_ARGUMENTS
+-  DECLARE_CCTK_FUNCTIONS
+-
+-  integer :: irho,itemp,iye,n
+-  integer :: strlength1,strlength2
+-  integer, parameter :: maxstrlength=200
+-  character(len=200) :: fname, dirname, fullpath
+-
+-  if (CCTK_MyProc(cctkGH) .ne. 0) then
+-     return
+-  end if
+-
+-  call CCTK_FortranString(strlength1,out_dir,dirname)
+-  if (strlength1 .gt. maxstrlength) then
+-     call CCTK_WARN(0,"The output directory string is too long")
+-  end if
+-
+-  call CCTK_FortranString(strlength2,dump_nuceos_table_name,fname)
+-  if (strlength2 .gt. maxstrlength) then
+-     call CCTK_WARN(0,"The output filename string is too long")
+-  end if
+-
+-  if (strlength1+strlength2+1 .gt. maxstrlength) then
+-     call CCTK_WARN(0,"The full output path string is too long")
+-  end if
+-
+-  fullpath = trim(dirname)//'/'//trim(fname)
+-
+-  call CCTK_Info(CCTK_THORNSTRING,"*******************************");
+-  call CCTK_Info(CCTK_THORNSTRING,"Dumping nuc_eos table file in ASCII:");
+-  call CCTK_Info(CCTK_THORNSTRING,trim(fullpath));
+-  call CCTK_Info(CCTK_THORNSTRING,"*******************************");
+-
+-  open(unit=473,file=trim(fullpath),status='unknown',form='formatted',position='rewind')
+-
+-  write(473,"('# ',a20,/,i4)") "nrho:",nrho
+-  write(473,"('# ',a20,/,i4)") "ntemp:",ntemp
+-  write(473,"('# ',a20,/,i4)") "nye:",nye
+-
+-  write(473,"('# ',a20,/,1P1E18.9)") "energy shift:",energy_shift
+-
+-  write(473,"('# ',a20,/,1P2E18.9)") "rho min and max:",eos_rhomin,eos_rhomax
+-  write(473,"('# ',a20,/,1P2E18.9)") "ye min and max:",eos_yemin,eos_yemax
+-  write(473,"('# ',a20,/,1P2E18.9)") "temp min and max:",eos_tempmin,eos_tempmax
+-
+-  write(473,"('# ',a20,/)") "log rho points:"
+-  do irho=1,nrho
+-     write(473,"(E18.9)") logrho(irho)
+-  enddo
+-  write(473,"('# ',a20)") "log temp points:"
+-  do itemp=1,ntemp
+-     write(473,"(E18.9)") logtemp(itemp)
+-  enddo
+-  write(473,"('#',a20)") "ye points:"
+-  do iye=1,nye
+-     write(473,"(E18.9)") ye(iye)
+-  enddo
+-
+-  write(473,"('# ',a20,/,i4)") "nvars:",nvars
+-  write(473,"('# ',a20)") "table mappings:"
+-  write(473,"('# ',a20)") " 1 -> logpress"
+-  write(473,"('# ',a20)") " 2 -> logenergy"
+-  write(473,"('# ',a20)") " 3 -> entropy"
+-  write(473,"('# ',a20)") " 4 -> munu"
+-  write(473,"('# ',a20)") " 5 -> cs2"
+-  write(473,"('# ',a20)") " 6 -> dedT"
+-  write(473,"('# ',a20)") " 7 -> dpdrhoe"
+-  write(473,"('# ',a20)") " 8 -> dpderho"
+-  write(473,"('# ',a20)") " 9 -> muhat"
+-  write(473,"('# ',a20)") "10 -> mu_e"
+-  write(473,"('# ',a20)") "11 -> mu_p"
+-  write(473,"('# ',a20)") "12 -> mu_n"
+-  write(473,"('# ',a20)") "13 -> xa"
+-  write(473,"('# ',a20)") "14 -> xh"
+-  write(473,"('# ',a20)") "15 -> xn"
+-  write(473,"('# ',a20)") "16 -> xp"
+-  write(473,"('# ',a20)") "17 -> abar"
+-  write(473,"('# ',a20)") "18 -> zbar"
+-  write(473,"('# ',a20)") "19 -> gamma"
+-  
+-  do irho=1,nrho
+-     do itemp=1,ntemp
+-        do iye=1,nye
+-           do n=1,nvars
+-              write(473,"(i4,i4,i4,i4,E18.9)") irho,itemp,iye,n,alltables(irho,itemp,iye,n)
+-           enddo
+-        enddo
+-     enddo
+-  enddo
+-  
+-end subroutine EOS_OMNI_dumptable
+diff --git a/src/nuc_eos/eosmodule.F90 b/src/nuc_eos/eosmodule.F90
+deleted file mode 100644
+index 174d817..0000000
+--- a/src/nuc_eos/eosmodule.F90
++++ /dev/null
+@@ -1,111 +0,0 @@
+-#include "cctk.h"
+-#include "cctk_Parameters.h"
+-#include "cctk_Arguments.h"
+-#include "cctk_Functions.h"
+-
+- module eosmodule
+-
+-   implicit none
+-   
+-   integer,save :: nrho,ntemp,nye
+-
+-   integer,save :: warn_from !warn from given reflevel
+-
+-   real*8 :: energy_shift = 0.0d0
+-   
+-   real*8 :: precision = 1.0d-9
+-
+-! min-max values:
+-   real*8 :: eos_rhomin,eos_rhomax
+-   real*8 :: eos_yemin,eos_yemax
+-   real*8 :: eos_tempmin,eos_tempmax
+-
+-   real*8 :: t_max_hack = 240.0d0
+-
+-! basics
+-   integer, parameter :: nvars = 19
+-   real*8,pointer :: alltables(:,:,:,:)
+-   real*8,allocatable :: epstable(:,:,:)
+-  ! index variable mapping:
+-  !  1 -> logpress
+-  !  2 -> logenergy
+-  !  3 -> entropy
+-  !  4 -> munu
+-  !  5 -> cs2
+-  !  6 -> dedT
+-  !  7 -> dpdrhoe
+-  !  8 -> dpderho
+-  !  9 -> muhat
+-  ! 10 -> mu_e
+-  ! 11 -> mu_p
+-  ! 12 -> mu_n
+-  ! 13 -> xa
+-  ! 14 -> xh
+-  ! 15 -> xn
+-  ! 16 -> xp
+-  ! 17 -> abar
+-  ! 18 -> zbar
+-  ! 19 -> gamma
+-
+-   real*8,pointer :: logrho(:)
+-   real*8,pointer :: logtemp(:)
+-   real*8,pointer :: ye(:)
+-
+-! constants
+-   real*8,save :: mev_to_erg = 1.60217733d-6
+-   real*8,save :: amu_cgs = 1.66053873d-24
+-   real*8,save :: amu_mev = 931.49432d0
+-   real*8,save :: pi = 3.14159265358979d0
+-   real*8,save :: ggrav = 6.672d-8
+-   real*8,save :: temp_mev_to_kelvin = 1.1604447522806d10
+-   real*8,save :: clight = 2.99792458d10
+-   real*8,save :: kb_erg = 1.380658d-16
+-   real*8,save :: kb_mev = 8.61738568d-11   
+-
+-
+- end module eosmodule
+-
+-! This function is called from within readtable.c
+-! It creates pointers to the arrays given as parameters into arrays
+-! of the eos module.
+-subroutine setup_eosmodule(nrho_, ntemp_, nye_, alltables_, logrho_, logtemp_, ye_, energy_shift_)
+- use eosmodule
+- DECLARE_CCTK_PARAMETERS
+-
+- CCTK_INT  :: nrho_, ntemp_, nye_
+- CCTK_REAL, TARGET :: alltables_(nrho_, ntemp_, nye_, 19)
+- CCTK_REAL, TARGET :: logrho_(nrho_)
+- CCTK_REAL, TARGET :: logtemp_(ntemp_)
+- CCTK_REAL, TARGET :: ye_(nye_)
+- CCTK_REAL :: energy_shift_
+-
+- nrho  = nrho_
+- ntemp = ntemp_
+- nye   = nye_
+-
+- alltables => alltables_
+- logrho    => logrho_
+- logtemp   => logtemp_
+- ye        => ye_
+-
+- allocate(epstable(nrho,ntemp,nye))
+- epstable(1:nrho,1:ntemp,1:nye) = 10.0d0**alltables(1:nrho,1:ntemp,1:nye,2)
+-
+- energy_shift = energy_shift_
+- if(do_energy_shift.ne.1) then
+-     energy_shift = 0.0d0
+-  endif
+-
+- ! set min-max values:
+- eos_rhomin = 10.0d0**logrho(1)
+- eos_rhomax = 10.0d0**logrho(nrho)
+-
+- eos_yemin = ye(1)
+- eos_yemax = ye(nye)
+-
+- eos_tempmin = 10.0d0**logtemp(1)
+- eos_tempmax = 10.0d0**logtemp(ntemp)
+-
+-
+-end subroutine setup_eosmodule
+-
+diff --git a/src/nuc_eos/findrho.F90 b/src/nuc_eos/findrho.F90
+deleted file mode 100644
+index bf575dc..0000000
+--- a/src/nuc_eos/findrho.F90
++++ /dev/null
+@@ -1,112 +0,0 @@
+-!-*-f90-*-
+-subroutine findrho_press(lr0,lt,y,lpressin,keyerrr,tol)
+-
+-  use eosmodule
+-
+-  implicit none
+-
+-  !given initial guess of density
+-  real*8 :: lr0
+-  !working density
+-  real*8 :: lr, lr_lastguess
+-  !given T and Ye
+-  real*8 :: lt,y
+-  !pressure corresponding to lr1,lt,y
+-  real*8 :: lpressin
+-  
+-  !accuracy we need rho to, ~1 part in tol^{-1}
+-  real*8 :: tol
+-  !will be derivatives of pressure wrt rho,T,ye
+-  real*8 :: d1,d2,d3
+-  !helpers along the way
+-  real*8 :: lpress_of_guess,lpress_of_lastguess,first_lpress,ldr,lr_new
+-  !bounds of density
+-  real*8 :: lrmax,lrmin
+-  !counters & flags
+-  integer :: rl = 0
+-  integer :: itmax,i,keyerrr
+-  
+-  keyerrr=0
+-
+-  itmax=20 ! use at most 20 iterations, then bisection
+-
+-  lr=lr0
+-
+-  lrmax=logrho(nrho)
+-  lrmin=logrho(1)
+-
+-  !Note: We are using Ewald's Lagrangian interpolator here!
+-
+-  !first use initial guess to estimate derivatives
+-  call findthis(lr,lt,y,lpress_of_guess,alltables(:,:,:,1),d1,d2,d3)
+-  
+-  first_lpress = lpress_of_guess
+-
+-  !preconditioning 1: do we already have the right rho?
+-  if (abs(lpressin-lpress_of_guess).lt.tol*abs(lpressin)) then
+-     lr0 = lr
+-     return
+-  endif
+-
+-
+-  !otherwise we must newton-raphson to get the real rho
+-  do i=1,itmax
+-
+-     !d1 is the derivative dlpress/dlogrho, use to guess hopefully better rho
+-!     write(*,*) i,lr,d1,lpressin-lpress_of_guess
+-     ldr= (lpressin-lpress_of_guess)/d1 
+-     if (abs(ldr).gt.5.0d0) then
+-        write(*,*) i,ldr,d1,lr,lr_new
+-        keyerrr = 473
+-        write(*,*) "dpdrho very small"
+-        return
+-     endif
+-     lr_new = lr+ldr
+-
+-     !make sure we do not go out of bounds
+-     lr_new = min(lr_new,lrmax)
+-     lr_new = max(lr_new,lrmin)
+-
+-     !keep old variables incase we want to make our own derivatives
+-     lpress_of_lastguess = lpress_of_guess
+-     lr_lastguess = lr
+-     
+-     !use to get next iteration of NR
+-     lr = lr_new     
+-     call findthis(lr,lt,y,lpress_of_guess,alltables(:,:,:,1),d1,d2,d3)
+-     if (abs(lpressin - lpress_of_guess).lt.tol*abs(lpressin)) then
+-        !yes, we got it!
+-        lr0 = lr
+-        return
+-     endif
+-
+-     ! if we are closer than 10^-3  to the 
+-     ! root (lpressin-lpress_of_guess)=0, we are switching to 
+-     ! the secant method, since the table is rather coarse and the
+-     ! derivatives may be garbage.
+-     if(abs(lpressin-lpress_of_guess).lt.1.0d-3*abs(lpressin)) then
+-        d1 = (lpress_of_guess-lpress_of_lastguess)/(lr-lr_lastguess)
+-     endif
+-
+-  enddo
+-
+-  !we may fail in the NR, after itmax reached.  Then we revert to the bisection method.
+-  if(i.ge.itmax) then
+-     keyerrr=667
+-     call bisection_rho(lr0,lt,y,lpressin,lr,alltables(:,:,:,1),keyerrr,3)
+-     if(keyerrr.eq.667) then
+-        ! total failure
+-        call findthis(lr,lt,y,lpress_of_guess,alltables(:,:,:,1),d1,d2,d3)
+-        write(*,*) "EOS: Did not converge in findrho_press!"
+-        write(*,*) "iteration,logrho0,logtemp,ye,lpressin,lpress_first,rhoreturn,press_of_rhoreturn"
+-        write(*,"(i4,1P10E19.10)") i,lr0,lt,y,lpressin,first_lpress,lr,lpress_of_guess
+-        write(*,*) "Tried calling bisection... didn't help... :-/"
+-        write(*,*) "Bisection error: ",keyerrr
+-     endif
+-  endif
+-    
+-  lr0 = lr
+-  return
+-
+-
+-end subroutine findrho_press
+diff --git a/src/nuc_eos/findtemp.F90 b/src/nuc_eos/findtemp.F90
+deleted file mode 100644
+index 4c42a21..0000000
+--- a/src/nuc_eos/findtemp.F90
++++ /dev/null
+@@ -1,343 +0,0 @@
+-subroutine findtemp_deb(lr,lt0,y,epsin,keyerrt,rfeps)
+-
+-  use eosmodule
+-
+-  implicit none
+-
+-  real*8 lr,lt0,y,epsin
+-  real*8 eps,lt,ldt
+-  real*8 tol
+-  real*8 d1,d2,d3
+-  real*8 eps0,eps1,lt1
+-
+-  real*8 ltn,ltmax,ltmin
+-  real*8 tinput,rfeps
+-
+-  integer :: rl = 0
+-  integer itmax,i,keyerrt
+-  integer ii,jj,kk
+-  
+-  keyerrt=0
+-
+-  tol=rfeps ! precision to which we need to find temp
+-  itmax=20 ! use at most 20 iterations, then bomb
+-
+-  lt=lt0
+-  lt1=lt 
+-
+-  eps0=epsin
+-  eps1=eps0
+-  
+-  ltmax=logtemp(ntemp)
+-  ltmin=logtemp(1)
+-
+-  ! Note: We are using Ewald's Lagrangian interpolator here!
+-
+-  !preconditioning 1: do we already have the right temperature?
+-  call findthis(lr,lt,y,eps,alltables(:,:,:,2),d1,d2,d3)
+-  if (abs(eps-eps0).lt.tol*abs(eps0)) then
+-     return
+-  endif
+-  lt1=lt
+-  eps1=eps
+- 
+-  do i=1,itmax
+-     !d2 is the derivative deps/dlogtemp;
+-     ldt = -(eps - eps0)/d2 
+-     ltn = lt+ldt
+-     ltn = min(ltn,ltmax)
+-     ltn = max(ltn,ltmin)
+-     lt1=lt
+-     lt=ltn
+-     eps1=eps
+-     call findthis(lr,lt,y,eps,alltables(:,:,:,2),d1,d2,d3)
+-     if (abs(eps - eps0).lt.tol*abs(eps0)) then
+-        exit
+-     endif
+-     !setup new d2
+-
+-     ! if we are closer than 10^-2  to the 
+-     ! root (eps-eps0)=0, we are switching to 
+-     ! the secant method, since the table is rather coarse and the
+-     ! derivatives may be garbage.
+-     if(abs(eps-eps0).lt.1.0d-3*abs(eps0)) then
+-        d2 = (eps-eps1)/(lt-lt1)
+-     endif
+-  enddo
+-
+-
+- if(i.ge.itmax) then
+-    keyerrt=667
+-    call bisection(lr,lt0,y,eps0,lt,alltables(:,:,:,2),keyerrt,1)
+-    if(keyerrt.eq.667) then
+-       if(lt.ge.log10(t_max_hack)) then
+-          ! handling for too high temperatures
+-          lt = log10(t_max_hack)
+-          keyerrt=0
+-          goto 12
+-       else if(abs(lt-log10(t_max_hack))/log10(t_max_hack).lt.0.025d0) then
+-          lt0 = min(lt,log10(t_max_hack))
+-          keyerrt=0
+-          goto 12
+-       else
+-#if 0
+-          ! total failure
+-          write(*,*) "EOS: Did not converge in findtemp!"
+-          write(*,*) "rl,logrho,logtemp0,ye,lt,eps,eps0,abs(eps-eps0)/eps0"
+-          write(*,"(i4,i4,1P10E19.10)") i,rl,lr,lt0,y,lt,eps,eps0,abs(eps-eps0)/eps0
+-          write(*,*) "Tried calling bisection... didn't help... :-/"
+-          write(*,*) "Bisection error: ",keyerrt
+-#endif
+-       endif
+-    endif
+-    
+-    lt0=min(lt,log10(t_max_hack))
+-    return
+- endif
+-
+-12 continue
+-
+-  lt0=min(lt,log10(t_max_hack))
+-
+-
+-end subroutine findtemp_deb
+-
+-subroutine findtemp(lr,lt0,y,epsin,keyerrt,rfeps)
+-
+-  use eosmodule
+-
+-  implicit none
+-
+-  real*8 lr,lt0,y,epsin
+-  real*8 eps,lt,ldt
+-  real*8 tol
+-  real*8 d1,d2,d3
+-  real*8 eps0,eps1,lt1
+-
+-  real*8 ltn,ltmax,ltmin
+-  real*8 tinput,rfeps
+-
+-  integer :: rl = 0
+-  integer itmax,i,keyerrt
+-  integer ii,jj,kk
+-  
+-  keyerrt=0
+-
+-  tol=rfeps ! precision to which we need to find temp
+-  itmax=20 ! use at most 20 iterations, then bomb
+-
+-  lt=lt0
+-  lt1=lt 
+-
+-  eps0=epsin
+-  eps1=eps0
+-  
+-  ltmax=logtemp(ntemp)
+-  ltmin=logtemp(1)
+-
+-  ! Note: We are using Ewald's Lagrangian interpolator here!
+-
+-  !preconditioning 1: do we already have the right temperature?
+-  call findthis(lr,lt,y,eps,alltables(:,:,:,2),d1,d2,d3)
+-  if (abs(eps-eps0).lt.tol*abs(eps0)) then
+-     return
+-  endif
+-  lt1=lt
+-  eps1=eps
+- 
+-  do i=1,itmax
+-     !d2 is the derivative deps/dlogtemp;
+-     ldt = -(eps - eps0)/d2 
+-     ltn = lt+ldt
+-     ltn = min(ltn,ltmax)
+-     ltn = max(ltn,ltmin)
+-     lt1=lt
+-     lt=ltn
+-     eps1=eps
+-     call findthis(lr,lt,y,eps,alltables(:,:,:,2),d1,d2,d3)
+-     if (abs(eps - eps0).lt.tol*abs(eps0)) then
+-        exit
+-     endif
+-     !setup new d2
+-
+-     ! if we are closer than 10^-2  to the 
+-     ! root (eps-eps0)=0, we are switching to 
+-     ! the secant method, since the table is rather coarse and the
+-     ! derivatives may be garbage.
+-     if(abs(eps-eps0).lt.1.0d-3*abs(eps0)) then
+-        d2 = (eps-eps1)/(lt-lt1)
+-     endif
+-  enddo
+-
+-
+- if(i.ge.itmax) then
+-    keyerrt=667
+-    call bisection(lr,lt0,y,eps0,lt,alltables(:,:,:,2),keyerrt,1)
+-    if(keyerrt.eq.667) then
+-       if(lt.ge.log10(t_max_hack)) then
+-          ! handling for too high temperatures
+-          lt = log10(t_max_hack)
+-          keyerrt=0
+-          goto 12
+-       else if(abs(lt-log10(t_max_hack))/log10(t_max_hack).lt.0.025d0) then
+-          lt0 = min(lt,log10(t_max_hack))
+-          keyerrt=0
+-          goto 12
+-       else
+-#if 0
+-          ! total failure
+-          write(*,*) "EOS: Did not converge in findtemp!"
+-          write(*,*) "rl,logrho,logtemp0,ye,lt,eps,eps0,abs(eps-eps0)/eps0"
+-          write(*,"(i4,i4,1P10E19.10)") i,rl,lr,lt0,y,lt,eps,eps0,abs(eps-eps0)/eps0
+-          write(*,*) "Tried calling bisection... didn't help... :-/"
+-          write(*,*) "Bisection error: ",keyerrt
+-#endif
+-       endif
+-    endif
+-    
+-    lt0=min(lt,log10(t_max_hack))
+-    return
+- endif
+-
+-12 continue
+-
+-  lt0=min(lt,log10(t_max_hack))
+-
+-
+-end subroutine findtemp
+-
+-subroutine findtemp_entropy(lr,lt0,y,sin,keyerrt,rfeps)
+-
+-! This routine finds the new temperature based
+-! on rho, Y_e, entropy
+-
+-  use eosmodule
+-
+-  implicit none
+-
+-  real*8 lr,lt0,y,sin
+-  real*8 s,lt,ldt
+-  real*8 tol
+-  real*8 d1,d2,d3
+-  real*8 s0,s1,lt1
+-
+-  real*8 ltn,ltmax,ltmin
+-  real*8 tinput,rfeps
+-
+-  integer :: rl = 0
+-  integer itmax,i,keyerrt
+-  integer ii,jj,kk
+-
+-  keyerrt=0
+-
+-  tol=rfeps ! need to find energy to less than 1 in 10^-10
+-  itmax=20 ! use at most 20 iterations, then bomb
+-
+-  lt=lt0
+-  lt1=lt 
+-
+-  s0=sin
+-  s1=s0
+-
+-  ltmax=logtemp(ntemp)
+-  ltmin=logtemp(1)
+-
+-  !preconditioning 1: do we already have the right temperature?
+-  call findthis(lr,lt,y,s,alltables(:,:,:,3),d1,d2,d3)
+-  if (abs(s-s0).lt.tol*abs(s0)) then
+-     return
+-  endif
+-  lt1=lt
+-  s1=s
+- 
+-
+-  do i=1,itmax
+-     !d2 is the derivative ds/dlogtemp;
+-     ldt = -(s - s0)/d2 
+-     ltn = lt+ldt
+-     ltn = min(ltn,ltmax)
+-     ltn = max(ltn,ltmin)
+-     lt1=lt
+-     lt=ltn
+-     s1=s
+-     call findthis(lr,lt,y,s,alltables(:,:,:,3),d1,d2,d3)
+-     if (abs(s - s0).lt.tol*abs(s0)) then
+-       exit
+-     endif
+-     !setup new d2
+-
+-     ! if we are closer than 10^-2  to the 
+-     ! root (eps-eps0)=0, we are switching to 
+-     ! the secant method, since the table is rather coarse and the
+-     ! derivatives may be garbage.
+-     if(abs(s-s0).lt.1.0d-3*abs(s0)) then
+-        d2 = (s-s1)/(lt-lt1)
+-     endif
+-  enddo
+-
+-
+- if(i.ge.itmax) then
+-    keyerrt=667
+-   call bisection(lr,lt0,y,s0,lt,alltables(:,:,:,3),keyerrt,2)
+-#if 0
+-    if(keyerrt.eq.667) then
+-          write(*,*) "EOS: Did not converge in findtemp_entropy!"
+-          write(*,*) "rl,logrho,logtemp0,ye,lt,s,s0,abs(s-s0)/s0"
+-          write(*,"(i4,i4,1P10E19.10)") i,rl,lr,lt0,y,lt,s,s0,abs(s-s0)/s0
+-          write(*,*) "Tried calling bisection... didn't help... :-/"
+-          write(*,*) "Bisection error: ",keyerrt
+-    endif
+-#endif
+-    
+-    lt0=lt
+-    return
+- endif
+-
+-
+-  lt0=lt
+-
+-
+-end subroutine findtemp_entropy
+-
+-
+-subroutine findtemp_low(lr,t0,y,epsin,keyerrt,rfeps)
+-
+-  ! this routine is for finding fake temperatures
+-  ! outside of the table range; we use linear 
+-  ! extrapolation in temperature
+-
+-  use eosmodule
+-
+-  implicit none
+-
+-  real*8 lr,t0,y,epsin,rfeps,dlepsdt
+-  integer :: keyerrt
+-
+-
+-  real*8 :: eps2, eps1
+-  real*8 :: t2, t1
+-  real*8 :: m
+-
+-  keyerrt = 0
+-  t2 = 10.0d0**logtemp(2)
+-  t1 = 10.0d0**logtemp(1)
+-
+-  call intp3d_linearTlow(lr,t2,y,eps2,1,epstable,nrho,&
+-         ntemp,nye,logrho,logtemp,ye,dlepsdt)
+-
+-  call intp3d_linearTlow(lr,t1,y,eps1,1,epstable,nrho,&
+-         ntemp,nye,logrho,logtemp,ye,dlepsdt)
+-
+-  m = (t2-t1)/(eps2-eps1)
+-  t0 = (epsin-eps1) * m + t1
+-
+-#if 0
+-  !$OMP CRITICAL
+-  write(6,*) t0,epsin,eps2,eps1
+-  call intp3d_linearTlow(lr,t0,y,eps2,1,epstable,nrho,&
+-         ntemp,nye,logrho,logtemp,ye,dlepsdt)
+-  write(6,"(1P10E15.6)") abs(epsin-eps2)/epsin
+-  !$OMP END CRITICAL
+-#endif
+-
+-end subroutine findtemp_low
+diff --git a/src/nuc_eos/linterp.F b/src/nuc_eos/linterp.F
+deleted file mode 100644
+index 0a9d48a..0000000
+--- a/src/nuc_eos/linterp.F
++++ /dev/null
+@@ -1,134 +0,0 @@
+-#include "cctk.h"
+-
+-      SUBROUTINE intp3d ( x, y, z, f, kt, ft, nx, ny, nz, xt, yt, zt,
+-     .                   d1, d2, d3 )     
+-c
+-      implicit none
+-c                                                          
+-c---------------------------------------------------------------------
+-c
+-c     purpose: interpolation of a function of three variables in an
+-c              equidistant(!!!) table.
+-c
+-c     method:  8-point Lagrange linear interpolation formula          
+-c
+-c     x        input vector of first  variable
+-c     y        input vector of second variable
+-c     z        input vector of third  variable
+-c
+-c     f        output vector of interpolated function values
+-c
+-c     kt       vector length of input and output vectors
+-c
+-c     ft       3d array of tabulated function values
+-c     nx       x-dimension of table
+-c     ny       y-dimension of table
+-c     nz       z-dimension of table
+-c     xt       vector of x-coordinates of table
+-c     yt       vector of y-coordinates of table
+-c     zt       vector of z-coordinates of table
+-c
+-c     d1       centered derivative of ft with respect to x
+-c     d2       centered derivative of ft with respect to y
+-c     d3       centered derivative of ft with respect to z
+-c     Note that d? only make sense when intp3d is called with kt=1
+-c---------------------------------------------------------------------
+-c
+-c 
+-
+-c
+-      integer kt,nx,ny,nz,ktx
+-      double precision x(kt),y(kt),z(kt),f(kt)
+-      double precision xt(nx),yt(ny),zt(nz)
+-      double precision ft(nx,ny,nz)
+-      double precision d1,d2,d3
+-c
+-c
+-      PARAMETER   (ktx = 400)
+-      double precision  fh(ktx,8), delx(ktx), dely(ktx), delz(ktx),
+-     &            a1(ktx), a2(ktx), a3(ktx), a4(ktx),
+-     &            a5(ktx), a6(ktx), a7(ktx), a8(ktx)
+-
+-      double precision dx,dy,dz,dxi,dyi,dzi,dxyi,dxzi,dyzi,dxyzi
+-      integer n,ix,iy,iz
+-
+-      IF (kt .GT. ktx) call CCTK_WARN (0, '***KTX**')
+-c
+-c
+-c------  determine spacing parameters of (equidistant!!!) table
+-c
+-      dx    = (xt(nx) - xt(1)) / FLOAT(nx-1)
+-      dy    = (yt(ny) - yt(1)) / FLOAT(ny-1)
+-      dz    = (zt(nz) - zt(1)) / FLOAT(nz-1)
+-c
+-      dxi   = 1.0d0 / dx
+-      dyi   = 1.0d0 / dy
+-      dzi   = 1.0d0 / dz
+-c
+-      dxyi  = dxi * dyi
+-      dxzi  = dxi * dzi
+-      dyzi  = dyi * dzi
+-c
+-      dxyzi = dxi * dyi * dzi
+-c
+-c
+-c------- loop over all points to be interpolated
+-c
+-      DO  n = 1, kt                                            
+-c
+-c------- determine location in (equidistant!!!) table 
+-c                                                                  
+-         ix = 2 + INT( (x(n) - xt(1) - 1.e-10) * dxi )
+-         iy = 2 + INT( (y(n) - yt(1) - 1.e-10) * dyi )
+-         iz = 2 + INT( (z(n) - zt(1) - 1.e-10) * dzi )
+-c                                                     
+-         ix = MAX( 2, MIN( ix, nx ) )
+-         iy = MAX( 2, MIN( iy, ny ) )
+-         iz = MAX( 2, MIN( iz, nz ) )
+-c
+-c         write(*,*) iy-1,iy,iy+1
+-c
+-c------- set-up auxiliary arrays for Lagrange interpolation
+-c                                                                 
+-         delx(n) = xt(ix) - x(n)
+-         dely(n) = yt(iy) - y(n)
+-         delz(n) = zt(iz) - z(n)
+-c                                                                   
+-         fh(n,1) = ft(ix  , iy  , iz  )                             
+-         fh(n,2) = ft(ix-1, iy  , iz  )                             
+-         fh(n,3) = ft(ix  , iy-1, iz  )                             
+-         fh(n,4) = ft(ix  , iy  , iz-1)                             
+-         fh(n,5) = ft(ix-1, iy-1, iz  )                             
+-         fh(n,6) = ft(ix-1, iy  , iz-1)                             
+-         fh(n,7) = ft(ix  , iy-1, iz-1)                             
+-         fh(n,8) = ft(ix-1, iy-1, iz-1)                             
+-c              
+-c------ set up coefficients of the interpolation polynomial and 
+-c       evaluate function values 
+-c                                                    
+-         a1(n) = fh(n,1)                             
+-         a2(n) = dxi   * ( fh(n,2) - fh(n,1) )       
+-         a3(n) = dyi   * ( fh(n,3) - fh(n,1) )       
+-         a4(n) = dzi   * ( fh(n,4) - fh(n,1) )       
+-         a5(n) = dxyi  * ( fh(n,5) - fh(n,2) - fh(n,3) + fh(n,1) )
+-         a6(n) = dxzi  * ( fh(n,6) - fh(n,2) - fh(n,4) + fh(n,1) )
+-         a7(n) = dyzi  * ( fh(n,7) - fh(n,3) - fh(n,4) + fh(n,1) )
+-         a8(n) = dxyzi * ( fh(n,8) - fh(n,1) + fh(n,2) + fh(n,3) +
+-     &                     fh(n,4) - fh(n,5) - fh(n,6) - fh(n,7) )
+-c
+-         d1 = -a2(n)
+-         d2 = -a3(n)
+-         d3 = -a4(n)
+-         f(n)  = a1(n) +  a2(n) * delx(n)                         
+-     &                 +  a3(n) * dely(n)                         
+-     &                 +  a4(n) * delz(n)                         
+-     &                 +  a5(n) * delx(n) * dely(n)               
+-     &                 +  a6(n) * delx(n) * delz(n)               
+-     &                 +  a7(n) * dely(n) * delz(n)               
+-     &                 +  a8(n) * delx(n) * dely(n) * delz(n)     
+-c
+-      ENDDO
+-c                                                                    
+-      RETURN                                                         
+-      END                                                            
+-
+diff --git a/src/nuc_eos/linterp_many.F90 b/src/nuc_eos/linterp_many.F90
+deleted file mode 100644
+index 3d6f437..0000000
+--- a/src/nuc_eos/linterp_many.F90
++++ /dev/null
+@@ -1,375 +0,0 @@
+-#define CCTK_ERROR(msg) CCTK_Error(__LINE__,__FORTRANFILE__,"EOS_Omni",msg)
+-
+-      SUBROUTINE intp3d_many ( x, y, z, f, kt, ft, nx, ny, nz, nvars, xt, yt, zt)
+-!
+-      implicit none
+-!                                                          
+-!---------------------------------------------------------------------
+-!
+-!     purpose: interpolation of a function of three variables in an
+-!              equidistant(!!!) table.
+-!
+-!     method:  8-point Lagrange linear interpolation formula          
+-!
+-!     x        input vector of first  variable
+-!     y        input vector of second variable
+-!     z        input vector of third  variable
+-!
+-!     f        output vector of interpolated function values
+-!
+-!     kt       vector length of input and output vectors
+-!
+-!     ft       3d array of tabulated function values
+-!     nx       x-dimension of table
+-!     ny       y-dimension of table
+-!     nz       z-dimension of table
+-!     xt       vector of x-coordinates of table
+-!     yt       vector of y-coordinates of table
+-!     zt       vector of z-coordinates of table
+-!
+-!---------------------------------------------------------------------
+-
+-      integer kt,nx,ny,nz,iv,nvars
+-      real*8 :: ft(nx,ny,nz,nvars)
+-
+-      real*8 x(kt),y(kt),z(kt),f(kt,nvars)
+-      real*8 xt(nx),yt(ny),zt(nz)
+-      real*8 d1,d2,d3
+-!
+-!
+-      integer,parameter :: ktx = 1
+-      real*8  fh(ktx,8,nvars), delx(ktx), dely(ktx), delz(ktx), &
+-           a1(ktx,nvars), a2(ktx,nvars), a3(ktx,nvars), a4(ktx,nvars), &
+-           a5(ktx,nvars), a6(ktx,nvars), a7(ktx,nvars), a8(ktx,nvars)
+-
+-      real*8 dx,dy,dz,dxi,dyi,dzi,dxyi,dxzi,dyzi,dxyzi
+-      integer n,ix,iy,iz
+-
+-      IF (kt .GT. ktx) call CCTK_ERROR('***KTX**')
+-!
+-!
+-!------  determine spacing parameters of (equidistant!!!) table
+-!
+-      dx    = (xt(nx) - xt(1)) / FLOAT(nx-1)
+-      dy    = (yt(ny) - yt(1)) / FLOAT(ny-1)
+-      dz    = (zt(nz) - zt(1)) / FLOAT(nz-1)
+-!
+-      dxi   = 1.0d0 / dx
+-      dyi   = 1.0d0 / dy
+-      dzi   = 1.0d0 / dz
+-!
+-      dxyi  = dxi * dyi
+-      dxzi  = dxi * dzi
+-      dyzi  = dyi * dzi
+-!
+-      dxyzi = dxi * dyi * dzi
+-!
+-!
+-!------- loop over all points to be interpolated
+-!
+-      do  n = 1, kt                                            
+-!
+-!------- determine location in (equidistant!!!) table 
+-!                                                                  
+-         ix = 2 + INT( (x(n) - xt(1) - 1.e-10) * dxi )
+-         iy = 2 + INT( (y(n) - yt(1) - 1.e-10) * dyi )
+-         iz = 2 + INT( (z(n) - zt(1) - 1.e-10) * dzi )
+-!                                                     
+-         ix = MAX( 2, MIN( ix, nx ) )
+-         iy = MAX( 2, MIN( iy, ny ) )
+-         iz = MAX( 2, MIN( iz, nz ) )
+-!
+-!         write(*,*) iy-1,iy,iy+1
+-!
+-!------- set-up auxiliary arrays for Lagrange interpolation
+-!                                                                 
+-         delx(n) = xt(ix) - x(n)
+-         dely(n) = yt(iy) - y(n)
+-         delz(n) = zt(iz) - z(n)
+-!      
+-         do iv = 1, nvars
+-            fh(n,1,iv) = ft(ix  , iy  , iz, iv  )                             
+-            fh(n,2,iv) = ft(ix-1, iy  , iz, iv  )                             
+-            fh(n,3,iv) = ft(ix  , iy-1, iz, iv  )                             
+-            fh(n,4,iv) = ft(ix  , iy  , iz-1, iv)                             
+-            fh(n,5,iv) = ft(ix-1, iy-1, iz, iv  )                             
+-            fh(n,6,iv) = ft(ix-1, iy  , iz-1, iv)                             
+-            fh(n,7,iv) = ft(ix  , iy-1, iz-1, iv)                             
+-            fh(n,8,iv) = ft(ix-1, iy-1, iz-1, iv)                             
+-!              
+-!------ set up coefficients of the interpolation polynomial and 
+-!       evaluate function values 
+-            !                                                    
+-            a1(n,iv) = fh(n,1,iv)                             
+-            a2(n,iv) = dxi   * ( fh(n,2,iv) - fh(n,1,iv) )       
+-            a3(n,iv) = dyi   * ( fh(n,3,iv) - fh(n,1,iv) )       
+-            a4(n,iv) = dzi   * ( fh(n,4,iv) - fh(n,1,iv) )       
+-            a5(n,iv) = dxyi  * ( fh(n,5,iv) - fh(n,2,iv) - fh(n,3,iv) + fh(n,1,iv) )
+-            a6(n,iv) = dxzi  * ( fh(n,6,iv) - fh(n,2,iv) - fh(n,4,iv) + fh(n,1,iv) )
+-            a7(n,iv) = dyzi  * ( fh(n,7,iv) - fh(n,3,iv) - fh(n,4,iv) + fh(n,1,iv) )
+-            a8(n,iv) = dxyzi * ( fh(n,8,iv) - fh(n,1,iv) + fh(n,2,iv) + fh(n,3,iv) + &
+-                 fh(n,4,iv) - fh(n,5,iv) - fh(n,6,iv) - fh(n,7,iv) )
+-!
+-            f(n,iv)  = a1(n,iv) +  a2(n,iv) * delx(n)                         &
+-                 +  a3(n,iv) * dely(n)                         &
+-                 +  a4(n,iv) * delz(n)                         &
+-                 +  a5(n,iv) * delx(n) * dely(n)               &
+-                 +  a6(n,iv) * delx(n) * delz(n)               &
+-                 +  a7(n,iv) * dely(n) * delz(n)               &
+-                 +  a8(n,iv) * delx(n) * dely(n) * delz(n)     
+-!
+-         enddo
+-
+-      enddo
+-!                                                                    
+-      
+-    end SUBROUTINE intp3d_many
+- 
+-
+-    SUBROUTINE intp3d_linearTlow ( x, y, z, f, kt, ft, nx, ny, nz, xt, yt, zt, &
+-         d2)
+-!
+-      implicit none
+-!                                                          
+-!---------------------------------------------------------------------
+-!
+-!     purpose: interpolation of a function of three variables in an
+-!              equidistant(!!!) table.
+-!
+-!     method:  8-point Lagrange linear interpolation formula          
+-!
+-!     x        input vector of first  variable
+-!     y        temperature
+-!     z        input vector of third  variable
+-!
+-!     f        output vector of interpolated function values
+-!
+-!     kt       vector length of input and output vectors
+-!
+-!     ft       3d array of tabulated function values
+-!     nx       x-dimension of table
+-!     ny       y-dimension of table
+-!     nz       z-dimension of table
+-!     xt       vector of x-coordinates of table
+-!     yt       vector of y-coordinates of table
+-!     zt       vector of z-coordinates of table
+-!
+-!---------------------------------------------------------------------
+-
+-      integer kt,nx,ny,nz
+-      real*8 :: ft(nx,ny,nz)
+-
+-      real*8 x(kt),y(kt),z(kt),f(kt)
+-      real*8 xt(nx),yt(ny),zt(nz)
+-      real*8 d1,d2,d3
+-!
+-!
+-      integer,parameter :: ktx = 1
+-      real*8  fh(ktx,8), delx(ktx), dely(ktx), delz(ktx), &
+-           a1(ktx), a2(ktx), a3(ktx), a4(ktx), &
+-           a5(ktx), a6(ktx), a7(ktx), a8(ktx)
+-
+-      real*8 dx,dy,dz,dxi,dyi,dzi,dxyi,dxzi,dyzi,dxyzi
+-      integer n,ix,iy,iz
+-
+-      IF (kt .GT. ktx) call CCTK_ERROR('***KTX**')
+-!
+-!
+-!------  determine spacing parameters of (equidistant!!!) table
+-!
+-      dx    = (xt(nx) - xt(1)) / FLOAT(nx-1)
+-      dy    = 10.0d0**yt(2) - 10.0d0**yt(1)
+-      dz    = (zt(nz) - zt(1)) / FLOAT(nz-1)
+-!
+-      dxi   = 1.0d0 / dx
+-      dyi   = 1.0d0 / dy
+-      dzi   = 1.0d0 / dz
+-!
+-      dxyi  = dxi * dyi
+-      dxzi  = dxi * dzi
+-      dyzi  = dyi * dzi
+-!
+-      dxyzi = dxi * dyi * dzi
+-!
+-!
+-!------- loop over all points to be interpolated
+-!
+-      do  n = 1, kt                                            
+-!
+-!------- determine location in (equidistant!!!) table 
+-!                                                                  
+-         ix = 2 + INT( (x(n) - xt(1) - 1.e-10) * dxi )
+-         iy = 2 
+-         iz = 2 + INT( (z(n) - zt(1) - 1.e-10) * dzi )
+-!                                                     
+-         ix = MAX( 2, MIN( ix, nx ) )
+-         iz = MAX( 2, MIN( iz, nz ) )
+-!
+-!         write(*,*) iy-1,iy,iy+1
+-!
+-!------- set-up auxiliary arrays for Lagrange interpolation
+-!                                                                 
+-         delx(n) = xt(ix) - x(n)
+-         dely(n) = 10.0d0**yt(iy) - y(n)
+-         delz(n) = zt(iz) - z(n)
+-!      
+-         fh(n,1) = ft(ix  , iy  , iz)                             
+-         fh(n,2) = ft(ix-1, iy  , iz)
+-         fh(n,3) = ft(ix  , iy-1, iz)
+-         fh(n,4) = ft(ix  , iy  , iz-1)
+-         fh(n,5) = ft(ix-1, iy-1, iz)
+-         fh(n,6) = ft(ix-1, iy  , iz-1)
+-         fh(n,7) = ft(ix  , iy-1, iz-1)
+-         fh(n,8) = ft(ix-1, iy-1, iz-1)
+-!              
+-!------ set up coefficients of the interpolation polynomial and 
+-!       evaluate function values 
+-            !                                                    
+-         a1(n) = fh(n,1)                             
+-         a2(n) = dxi   * ( fh(n,2) - fh(n,1) )       
+-         a3(n) = dyi   * ( fh(n,3) - fh(n,1) )       
+-         a4(n) = dzi   * ( fh(n,4) - fh(n,1) )       
+-         a5(n) = dxyi  * ( fh(n,5) - fh(n,2) - fh(n,3) + fh(n,1) )
+-         a6(n) = dxzi  * ( fh(n,6) - fh(n,2) - fh(n,4) + fh(n,1) )
+-         a7(n) = dyzi  * ( fh(n,7) - fh(n,3) - fh(n,4) + fh(n,1) )
+-         a8(n) = dxyzi * ( fh(n,8) - fh(n,1) + fh(n,2) + fh(n,3) + &
+-              fh(n,4) - fh(n,5) - fh(n,6) - fh(n,7) )
+-!
+-         d2 = -a3(n)
+-         f(n)  = a1(n) +  a2(n) * delx(n)                         &
+-              +  a3(n) * dely(n)                         &
+-              +  a4(n) * delz(n)                         &
+-              +  a5(n) * delx(n) * dely(n)               &
+-              +  a6(n) * delx(n) * delz(n)               &
+-              +  a7(n) * dely(n) * delz(n)               &
+-              +  a8(n) * delx(n) * dely(n) * delz(n)     
+-!
+-
+-      enddo
+-!                                                                    
+-      
+-    end SUBROUTINE intp3d_linearTlow 
+-
+-      SUBROUTINE intp3d_many_linearTLow ( x, y, z, f, kt, ft, nx, ny, nz, nvars, xt, yt, zt)
+-!
+-      implicit none
+-!                                                          
+-!---------------------------------------------------------------------
+-!
+-!     purpose: interpolation of a function of three variables in an
+-!              equidistant(!!!) table.
+-!
+-!     method:  8-point Lagrange linear interpolation formula          
+-!
+-!     x        input vector of first  variable
+-!     y        input vector of second variable
+-!     z        input vector of third  variable
+-!
+-!     f        output vector of interpolated function values
+-!
+-!     kt       vector length of input and output vectors
+-!
+-!     ft       3d array of tabulated function values
+-!     nx       x-dimension of table
+-!     ny       y-dimension of table
+-!     nz       z-dimension of table
+-!     xt       vector of x-coordinates of table
+-!     yt       vector of y-coordinates of table
+-!     zt       vector of z-coordinates of table
+-!
+-!---------------------------------------------------------------------
+-
+-      integer kt,nx,ny,nz,iv,nvars
+-      real*8 :: ft(nx,ny,nz,nvars)
+-
+-      real*8 x(kt),y(kt),z(kt),f(kt,nvars)
+-      real*8 xt(nx),yt(ny),zt(nz)
+-      real*8 d1,d2,d3
+-!
+-!
+-      integer,parameter :: ktx = 1
+-      real*8  fh(ktx,8,nvars), delx(ktx), dely(ktx), delz(ktx), &
+-           a1(ktx,nvars), a2(ktx,nvars), a3(ktx,nvars), a4(ktx,nvars), &
+-           a5(ktx,nvars), a6(ktx,nvars), a7(ktx,nvars), a8(ktx,nvars)
+-
+-      real*8 dx,dy,dz,dxi,dyi,dzi,dxyi,dxzi,dyzi,dxyzi
+-      integer n,ix,iy,iz
+-
+-      IF (kt .GT. ktx) call CCTK_ERROR('***KTX**')
+-!
+-!
+-!------  determine spacing parameters of (equidistant!!!) table
+-!
+-      dx    = (xt(nx) - xt(1)) / FLOAT(nx-1)
+-      dy    = 10.0d0**yt(2) - 10.0d0**yt(1)
+-      dz    = (zt(nz) - zt(1)) / FLOAT(nz-1)
+-!
+-      dxi   = 1.0d0 / dx
+-      dyi   = 1.0d0 / dy
+-      dzi   = 1.0d0 / dz
+-!
+-      dxyi  = dxi * dyi
+-      dxzi  = dxi * dzi
+-      dyzi  = dyi * dzi
+-!
+-      dxyzi = dxi * dyi * dzi
+-!
+-!
+-!------- loop over all points to be interpolated
+-!
+-      do  n = 1, kt                                            
+-!
+-!------- determine location in (equidistant!!!) table 
+-!                                                                  
+-         ix = 2 + INT( (x(n) - xt(1) - 1.e-10) * dxi )
+-         iy = 2 
+-         iz = 2 + INT( (z(n) - zt(1) - 1.e-10) * dzi )
+-!                                                     
+-         ix = MAX( 2, MIN( ix, nx ) )
+-         iz = MAX( 2, MIN( iz, nz ) )
+-!
+-!         write(*,*) iy-1,iy,iy+1
+-!
+-!------- set-up auxiliary arrays for Lagrange interpolation
+-!                                                                 
+-         delx(n) = xt(ix) - x(n)
+-         dely(n) = 10.0d0**yt(iy) - y(n)
+-         delz(n) = zt(iz) - z(n)
+-!      
+-         do iv = 1, nvars
+-            fh(n,1,iv) = ft(ix  , iy  , iz, iv  )                             
+-            fh(n,2,iv) = ft(ix-1, iy  , iz, iv  )                             
+-            fh(n,3,iv) = ft(ix  , iy-1, iz, iv  )                             
+-            fh(n,4,iv) = ft(ix  , iy  , iz-1, iv)                             
+-            fh(n,5,iv) = ft(ix-1, iy-1, iz, iv  )                             
+-            fh(n,6,iv) = ft(ix-1, iy  , iz-1, iv)                             
+-            fh(n,7,iv) = ft(ix  , iy-1, iz-1, iv)                             
+-            fh(n,8,iv) = ft(ix-1, iy-1, iz-1, iv)                             
+-!              
+-!------ set up coefficients of the interpolation polynomial and 
+-!       evaluate function values 
+-            !                                                    
+-            a1(n,iv) = fh(n,1,iv)                             
+-            a2(n,iv) = dxi   * ( fh(n,2,iv) - fh(n,1,iv) )       
+-            a3(n,iv) = dyi   * ( fh(n,3,iv) - fh(n,1,iv) )       
+-            a4(n,iv) = dzi   * ( fh(n,4,iv) - fh(n,1,iv) )       
+-            a5(n,iv) = dxyi  * ( fh(n,5,iv) - fh(n,2,iv) - fh(n,3,iv) + fh(n,1,iv) )
+-            a6(n,iv) = dxzi  * ( fh(n,6,iv) - fh(n,2,iv) - fh(n,4,iv) + fh(n,1,iv) )
+-            a7(n,iv) = dyzi  * ( fh(n,7,iv) - fh(n,3,iv) - fh(n,4,iv) + fh(n,1,iv) )
+-            a8(n,iv) = dxyzi * ( fh(n,8,iv) - fh(n,1,iv) + fh(n,2,iv) + fh(n,3,iv) + &
+-                 fh(n,4,iv) - fh(n,5,iv) - fh(n,6,iv) - fh(n,7,iv) )
+-!
+-            f(n,iv)  = a1(n,iv) +  a2(n,iv) * delx(n)                         &
+-                 +  a3(n,iv) * dely(n)                         &
+-                 +  a4(n,iv) * delz(n)                         &
+-                 +  a5(n,iv) * delx(n) * dely(n)               &
+-                 +  a6(n,iv) * delx(n) * delz(n)               &
+-                 +  a7(n,iv) * dely(n) * delz(n)               &
+-                 +  a8(n,iv) * delx(n) * dely(n) * delz(n)     
+-!
+-         enddo
+-
+-      enddo
+-!                                                                    
+-      
+-    end SUBROUTINE intp3d_many_linearTlow
+diff --git a/src/nuc_eos/make.code.defn b/src/nuc_eos/make.code.defn
+deleted file mode 100644
+index 908e243..0000000
+--- a/src/nuc_eos/make.code.defn
++++ /dev/null
+@@ -1,5 +0,0 @@
+-SRCS = eosmodule.F90 nuc_eos.F90 bisection.F90 \
+-       findtemp.F90 findrho.F90 linterp_many.F90 readtable.c \
+-       linterp.F dumpASCIItable.F90
+-
+-SUBDIRS = 
+diff --git a/src/nuc_eos/make.code.deps b/src/nuc_eos/make.code.deps
+deleted file mode 100644
+index 2b2549d..0000000
+--- a/src/nuc_eos/make.code.deps
++++ /dev/null
+@@ -1,6 +0,0 @@
+-bisection.F90.o:       eosmodule.F90.o
+-findtemp.F90.o:        eosmodule.F90.o
+-linterp_many.F90.o:    eosmodule.F90.o
+-nuc_eos.F90.o:         eosmodule.F90.o
+-readtable.F90.o:       eosmodule.F90.o
+-
+diff --git a/src/nuc_eos/nuc_eos.F90 b/src/nuc_eos/nuc_eos.F90
+deleted file mode 100644
+index 65b0562..0000000
+--- a/src/nuc_eos/nuc_eos.F90
++++ /dev/null
+@@ -1,730 +0,0 @@
+-! #########################################################
+-!
+-! Copyright C. D. Ott and Evan O'Connor, July 2009
+-!
+-! UNITS: density              g/cm^3
+-!        temperature          MeV
+-!        ye                   number fraction per baryon
+-!        energy               erg/g
+-!        pressure             dyn/cm^2
+-!        chemical potentials  MeV
+-!        entropy              k_B / baryon
+-!        cs2                  cm^2/s^2 (not relativistic)
+-!
+-! keyerr --> error output; should be 0
+-! rfeps --> root finding relative accuracy, set around 1.0d-10
+-! keytemp: 0 -> coming in with eps
+-!          1 -> coming in with temperature
+-!          2 -> coming in with entropy
+-!
+-
+-#include "cctk.h"
+-
+-subroutine nuc_eos_full(xrho,xtemp,xye,xenr,xprs,xent,xcs2,xdedt,&
+-     xdpderho,xdpdrhoe,xxa,xxh,xxn,xxp,xabar,xzbar,xmu_e,xmu_n,xmu_p, &
+-     xmuhat,keytemp,keyerr,rfeps)
+-
+-  use eosmodule
+-  implicit none
+-
+-  real*8, intent(inout) :: xrho,xye
+-  real*8, intent(inout) :: xtemp,xenr,xent
+-  real*8, intent(out)   :: xprs,xcs2,xdedt
+-  real*8, intent(out)   :: xdpderho,xdpdrhoe,xxa,xxh,xxn,xxp
+-  real*8, intent(out)   :: xabar,xzbar,xmu_e,xmu_n,xmu_p,xmuhat
+-  real*8, intent(in)    :: rfeps
+-  integer, intent(in)   :: keytemp
+-  integer, intent(out)  :: keyerr
+-
+-
+-  ! local variables
+-  real*8 :: lr,lt,y,xx,xeps,leps,xs,xpressure
+-  real*8 :: d1,d2,d3
+-  real*8 :: ff(nvars)
+-  integer :: keyerrt 
+-  integer :: keyerrr 
+-
+-  keyerrt = 0
+-  keyerrr = 0
+-
+-  if(xrho.gt.eos_rhomax) then
+-     keyerr = 103
+-     return
+-  endif
+-
+-  if(xrho.lt.eos_rhomin) then
+-     keyerr = 104
+-     return
+-  endif
+-
+-  if(xye.gt.eos_yemax) then
+-     keyerr = 101
+-     return
+-  endif
+-
+-  if(xye.lt.eos_yemin) then
+-     keyerr = 102
+-     return
+-  endif
+-
+-  if(keytemp.eq.1) then
+-     if(xtemp.gt.eos_tempmax) then
+-        keyerr = 105
+-        return
+-     endif
+-     
+-     if(xtemp.lt.eos_tempmin) then
+-        keyerr = 106
+-        return
+-     endif
+-  endif
+-
+-  lr = log10(xrho)
+-  lt = log10(max(xtemp,eos_tempmin))
+-  y = xye
+-  xeps = xenr + energy_shift
+-
+-  keyerr = 0
+-
+-  if(keytemp.eq.0) then
+-     !need to find temperature based on xeps
+-     if(xeps .gt. 0.0d0) then
+-        leps = log10(xeps)
+-        call findtemp(lr,lt,y,leps,keyerrt,rfeps)
+-     else
+-        keyerrt = 667
+-     endif
+-     if(keyerrt.ne.0) then
+-        call CCTK_WARN (0, "Did not find temperature")
+-     endif
+-     xtemp = 10.0d0**lt
+-
+-  elseif(keytemp.eq.2) then
+-     !need to find temperature based on xent
+-     xs = xent
+-     call findtemp_entropy(lr,lt,y,xs,keyerrt,rfeps)
+-     xtemp = 10.0d0**lt
+-
+-  elseif(keytemp.eq.3) then
+-     !need to find rho based on xprs
+-     xpressure = log10(xprs)
+-     call findrho_press(lr,lt,y,xpressure,keyerrr,rfeps)
+-     if(keyerrr.ne.0) then
+-        write(*,*) "Problem in findrho_press:", keyerr
+-        keyerr = keyerrr
+-	return
+-     endif
+-     xrho = 10.0d0**lr
+-
+-  endif
+-
+-  ! have temperature, proceed:
+-  call findall(lr,lt,y,ff)
+-
+-  !unless we want xprs to be constant (keytemp==3), reset xprs
+-  if(.not.keytemp.eq.3) then
+-     xprs = 10.0d0**ff(1)
+-  endif
+-
+-  if(.not.keytemp.eq.0) then
+-     xenr = 10.0d0**ff(2) - energy_shift
+-  endif
+-
+-  if(.not.keytemp.eq.2) then
+-     xent = ff(3)
+-  endif
+-
+-  xcs2 = ff(5)
+-
+-! derivatives
+-  xdedt = ff(6)
+-
+-  xdpdrhoe = ff(7)
+-
+-  xdpderho = ff(8)
+-
+-! chemical potentials
+-  xmuhat = ff(9)
+-
+-  xmu_e = ff(10)
+-
+-  xmu_p = ff(11)
+-
+-  xmu_n = ff(12)
+-
+-! compositions
+-  xxa = ff(13)
+-
+-  xxh = ff(14)
+-
+-  xxn = ff(15)
+-
+-  xxp = ff(16)
+-
+-  xabar = ff(17)
+-
+-  xzbar = ff(18)
+-
+-
+-end subroutine nuc_eos_full
+-
+-subroutine nuc_poly_eos(xrho,xenr,xprs,xcs2,xdpderho,xdpdrhoe,keytemp)
+-
+-  implicit none
+-  real*8 xrho,xenr,xprs,xcs2,xdpderho,xdpdrhoe
+-  real*8,parameter:: polyK1 = 5.0d14
+-  real*8,parameter :: polyGamma = 1.33333333333333d0
+-  integer keytemp
+-
+-  xprs=polyK1*xrho**(polyGamma)
+-  xenr=xprs/xrho/(polyGamma-1.d0)
+-  xcs2=polyGamma*xprs/xrho
+-  xdpderho=0.0d0
+-  xdpdrhoe=0.0d0
+-
+-  xenr=max(8.0d18,xenr)
+-  xenr=min(3.0d20,xenr)
+-
+-end subroutine nuc_poly_eos
+-
+-subroutine nuc_low_eos(xrho,xenr,xprs,xcs2,xdpderho,xdpdrhoe,keytemp)
+-
+-  implicit none
+-  real*8 xrho,xenr,xprs,xcs2,xdpderho,xdpdrhoe
+-  real*8,parameter :: idealK1 =  4.93483302030614d14
+-!  real*8,parameter :: idealK1 =  1.2435d15 * (0.5d0**(4.d0/3.d0))
+-  real*8,parameter :: idealgamma = 1.41d0
+-  integer keytemp
+-
+-  if(keytemp.eq.1) then
+-!	energy wanted
+-     xprs=idealK1*xrho**(idealgamma)
+-     xenr=xprs/xrho/(idealgamma-1.d0)
+-     xcs2=idealgamma*xprs/xrho
+-  endif
+-
+-  xprs = (idealgamma - 1.0d0) * xrho * xenr
+-
+-  xdpderho = (idealgamma - 1.0d0 ) * xrho
+-  xdpdrhoe = (idealgamma - 1.0d0 ) * xenr
+-
+-  xcs2= xdpdrhoe+xdpderho*xprs/xrho**2
+-
+-end subroutine nuc_low_eos
+-
+-subroutine nuc_eos_short(xrho,xtemp,xye,xenr,xprs,xent,xcs2,xdedt,&
+-     xdpderho,xdpdrhoe,xmunu,keytemp,keyerr,rfeps)
+-
+-  use eosmodule
+-  implicit none
+-
+-  real*8, intent(inout) :: xrho,xye
+-  real*8, intent(inout) :: xtemp,xenr,xent
+-  real*8, intent(in)    :: rfeps
+-  real*8, intent(out)   :: xprs,xmunu,xcs2,xdedt
+-  real*8, intent(out)   :: xdpderho,xdpdrhoe
+-  integer, intent(in)   :: keytemp
+-  integer, intent(out)  :: keyerr
+-
+-  ! local variables
+-  real*8 :: lr,lt,y,xt,xx,xeps,leps,xs,xpressure
+-  real*8 :: d1,d2,d3,ff(8)
+-  integer :: keyerrt 
+-  integer :: keyerrr 
+-
+-  keyerrt = 0
+-  keyerrr = 0
+-
+-  if(xrho.gt.eos_rhomax) then
+-     keyerr = 103
+-     return
+-  endif
+-
+-  if(xrho.lt.eos_rhomin*1.126d0) then
+-     call nuc_poly_eos(xrho,xenr,xprs,xcs2,xdpderho,xdpdrhoe,keytemp)
+-     xent = 0.0d0
+-     return
+-  endif
+-
+-  if(xye.gt.eos_yemax) then
+-     keyerr = 101
+-     return
+-  endif
+-
+-  if(xye.lt.eos_yemin) then
+-     keyerr = 102
+-     return
+-  endif
+-
+-  if(keytemp.eq.1) then
+-     if(xtemp.gt.eos_tempmax) then
+-        call CCTK_WARN (0, "nuc_eos: temp > tempmax")
+-     endif
+-     
+-     if(xtemp.lt.eos_tempmin) then
+-        keyerr = 106
+-        return
+-     endif
+-  endif
+-
+-  lr = log10(xrho)
+-  lt = log10(max(xtemp,eos_tempmin))
+-  y = xye
+-
+-  keyerr = 0
+-
+-  if(keytemp.eq.0) then
+-     !need to find temperature based on xeps
+-     xeps = xenr + energy_shift
+-     if(xeps .gt. 0.0d0) then
+-        leps = log10(xeps)
+-        call findtemp(lr,lt,y,leps,keyerrt,rfeps)
+-     else
+-        keyerrt = 667
+-     endif
+-     if(keyerrt.eq.667) then
+-        ! turns out, we can still converge, but                                 
+-        ! too a bogus, possibly negative temperature                            
+-        xt = xtemp
+-        call findtemp_low(lr,xt,y,xeps,keyerrt,rfeps)
+-        if(keyerrt.eq.0) then
+-           keyerrt = 668
+-           xtemp = xt
+-        else
+-           keyerrt = 667
+-           keyerr  = keyerrt
+-           return
+-        endif
+-        keyerr = keyerrt
+-     else
+-        xtemp = 10.0d0**lt
+-     endif
+-  elseif(keytemp.eq.2) then
+-     !need to find temperature based on xent
+-     xs = xent
+-     call findtemp_entropy(lr,lt,y,xs,keyerrt,rfeps)
+-     if(keyerrt.ne.0) then
+-        keyerr = keyerrt
+-        return
+-     endif
+-     xtemp = 10.0d0**lt
+-
+-  elseif(keytemp.eq.3) then
+-     !need to find rho based on xprs
+-     xpressure = log10(xprs)
+-     call findrho_press(lr,lt,y,xpressure,keyerrr,rfeps)
+-     if (keyerrr.ne.0) then
+-        keyerr = keyerrr
+-        write(*,*) "Problem in findrho_press:", keyerr
+-        return
+-     endif
+-     xrho = 10.0d0**lr
+-  endif
+-
+-  ! have rho,temp,ye; proceed:
+-  if(keyerr.ne.668) then
+-     call findall_short(lr,lt,y,ff)
+-  else
+-     call findall_short_lowT(lr,xt,y,ff)
+-  endif
+-
+-  !unless we want xprs to be constant (keytemp==3), reset xprs
+-  if(.not.keytemp.eq.3) then
+-     xprs = 10.0d0**ff(1)
+-  endif
+-
+-  !unless we want xenr to be constant (keytemp==0), reset xenr
+-  if(.not.keytemp.eq.0) then
+-     xenr = 10.0d0**ff(2) - energy_shift
+-  endif
+-
+-  !unless we want xent to be constant (keytemp==2), reset xent
+-  if(.not.keytemp.eq.2) then
+-     xent = ff(3)
+-  endif
+-
+-  xmunu = ff(4)
+-
+-  xcs2 = ff(5)
+-
+-  xdedt = ff(6)
+-
+-  xdpdrhoe = ff(7)
+-
+-  xdpderho = ff(8)
+-
+-end subroutine nuc_eos_short
+-
+-
+-subroutine nuc_eos_press_eps(xrho,xtemp,xye,xenr,xprs,&
+-     keytemp,keyerr,rfeps)
+-
+-  use eosmodule
+-  implicit none
+-
+-  real*8, intent(in)    :: xrho,xye
+-  real*8, intent(inout) :: xtemp,xenr
+-  real*8, intent(in)    :: rfeps
+-  real*8, intent(out)   :: xprs
+-  integer, intent(in)   :: keytemp
+-  integer, intent(out)  :: keyerr
+-
+-  ! local variables
+-  real*8 :: xcs2,xdpderho,xdpdrhoe
+-  real*8 :: lr,lt,y,xt,xx,xeps,leps,xs
+-  real*8 :: d1,d2,d3,ff(8)
+-  integer :: keyerrt 
+-  character(len=256) :: warnline
+-
+-  keyerrt = 0
+-
+-  if(xrho.gt.eos_rhomax) then
+-     keyerr = 103
+-     return
+-  endif
+-
+-  if(xrho.lt.eos_rhomin*1.126d0) then
+-     call nuc_poly_eos(xrho,xenr,xprs,xcs2,xdpderho,xdpdrhoe,keytemp)
+-     return
+-  endif
+-
+-  if(xye.gt.eos_yemax) then
+-     keyerr = 101
+-     return
+-  endif
+-
+-  if(xye.lt.eos_yemin) then
+-     keyerr = 102
+-     return
+-  endif
+-
+-  if(keytemp.eq.1) then
+-     if(xtemp.gt.eos_tempmax) then
+-        call CCTK_WARN (0, "nuc_eos: temp > tempmax")
+-     endif
+-
+-     if(xtemp.lt.eos_tempmin) then
+-        keyerr = 106
+-        return
+-     endif
+-  endif
+-
+-  keyerr = 0
+-
+-  if(keytemp.gt.1) then
+-     call CCTK_WARN (0, "eos_nuc_press does not support keytemp other than 0 and 1")
+-  endif
+-
+-  lr = log10(xrho)
+-  lt = log10(max(xtemp,eos_tempmin))
+-  y    = xye
+-  if(keytemp.eq.0) then
+-     !need to find temperature based on xeps
+-     xeps = xenr + energy_shift
+-     if(xeps .gt. 0.0d0) then
+-        leps = log10(xeps)
+-        call findtemp(lr,lt,y,leps,keyerrt,rfeps)
+-     else
+-        keyerrt = 667
+-     endif
+-!     if(xenr .lt. -9.00725347549139d20) then
+-!     if(xenr.lt.-2.28659899d20) then
+-!        write(warnline,"(A4,i5,1P10E15.6)") "UGGx",keyerrt,lr,lt,xt,xtemp,y,xeps,xenr
+-!        call CCTK_WARN(1,warnline)
+-!     endif
+-     if(keyerrt.eq.667) then
+-        ! turns out, we can still converge, but                                 
+-        ! too a bogus, possibly negative temperature                            
+-        xt = xtemp
+-        call findtemp_low(lr,xt,y,xeps,keyerrt,rfeps)
+-        if(keyerrt.eq.0) then 
+-           keyerrt = 668
+-           if(xeps.lt.0.0d0) then
+-              keyerrt = 668 ! impossible to do anything
+-           endif
+-           xtemp = xt
+-        else
+-           keyerrt = 667
+-           keyerr = keyerrt
+-           return
+-        endif
+-!        if(xenr .lt. -9.00725347549139d20) then
+-!        if(xenr.lt.-2.28659899d20) then
+-!           write(warnline,"(A4,i5,1P10E15.6)") "UGG",keyerrt,lr,lt,xt,xtemp,y,xeps,xenr
+-!           call CCTK_WARN(0,warnline)
+-!        endif
+-        keyerr = keyerrt
+-     else
+-        xtemp = 10.0d0**lt
+-     endif
+-  endif
+-  ! have temperature, proceed:
+-  if(keyerr.ne.668) then
+-     call findall_press_eps(lr,lt,y,ff)
+-  else
+-     call findall_press_eps_lowT(lr,xt,y,ff)
+-  endif
+-  xprs = 10.0d0**ff(1)
+-  xenr = 10.0d0**ff(2) - energy_shift
+-
+-end subroutine nuc_eos_press_eps
+-
+-subroutine nuc_eos_dpdr_dpde(xrho,xtemp,xye,xenr,xdpderho,&
+-     xdpdrhoe,&
+-     keytemp,keyerr,rfeps)
+-
+-  use eosmodule
+-  implicit none
+-
+-  real*8, intent(in)    :: xrho,xye
+-  real*8, intent(inout) :: xtemp,xenr
+-  real*8, intent(in)    :: rfeps
+-  real*8, intent(out)   :: xdpdrhoe,xdpderho
+-  integer, intent(in)   :: keytemp
+-  integer, intent(out)  :: keyerr
+-
+-  ! local variables
+-  real*8 :: xcs2,xprs
+-  real*8 :: lr,lt,y,xt,xx,xeps,leps,xs
+-  real*8 :: d1,d2,d3,ff(2)
+-  integer :: keyerrt
+-
+-  keyerrt = 0
+-
+-  if(xrho.gt.eos_rhomax) then
+-     keyerr = 103
+-     return
+-  endif
+-
+-  if(xrho.lt.eos_rhomin*1.126d0) then
+-     call nuc_poly_eos(xrho,xenr,xprs,xcs2,xdpderho,xdpdrhoe,keytemp)
+-     return
+-  endif
+-
+-  if(xye.gt.eos_yemax) then
+-     keyerr = 101
+-     return
+-  endif
+-
+-  if(xye.lt.eos_yemin) then
+-     keyerr = 102
+-     return
+-  endif
+-
+-  if(keytemp.eq.1) then
+-     if(xtemp.gt.eos_tempmax) then
+-        call CCTK_WARN (0, "nuc_eos: temp > tempmax")
+-     endif
+-
+-     if(xtemp.lt.eos_tempmin) then
+-        keyerr = 106
+-        return
+-     endif
+-  endif
+-
+-  lr = log10(xrho)
+-  lt = log10(max(xtemp,eos_tempmin))
+-  y = xye
+-
+-  keyerr = 0
+-  if(keytemp.eq.0) then
+-     !need to find temperature based on xeps
+-     xeps = xenr + energy_shift
+-     if(xeps .gt. 0.0d0) then
+-        leps = log10(xeps)
+-        call findtemp(lr,lt,y,leps,keyerrt,rfeps)
+-     else
+-        keyerrt = 667
+-     endif
+-     if(keyerrt.eq.667) then
+-        ! turns out, we can still converge, but
+-        ! too a bogus, possibly negative temperature
+-        xt = xtemp
+-        call findtemp_low(lr,xt,y,xeps,keyerrt,rfeps)
+-        if(keyerrt.eq.0) then
+-           keyerrt = 668
+-           xtemp = xt
+-        else
+-           keyerrt = 667
+-           keyerr = keyerrt
+-           return
+-        endif
+-        keyerr = keyerrt
+-     else
+-        xtemp = 10.0d0**lt
+-     endif
+-  elseif(keytemp.gt.1) then
+-     call CCTK_WARN (0, "eos_nuc_press does not support keytemp > 1")
+-  endif
+-
+-  ! have temperature, proceed:
+-  if(keyerr.ne.668) then
+-     call findall_dpdr_dpde(lr,lt,y,ff)
+-  else
+-     call findall_dpdr_dpde_lowT(lr,xtemp,y,ff)
+-  endif
+-
+-  xdpdrhoe = ff(1)
+-  xdpderho = ff(2)
+-
+-  if(keytemp.eq.1.and.keyerr.ne.668) then
+-     call findthis(lr,lt,y,xeps,alltables(:,:,:,2),d1,d2,d3)
+-     xeps = 10.0d0**xeps - energy_shift
+-     xenr = xeps
+-  endif
+-
+-end subroutine nuc_eos_dpdr_dpde
+-
+-
+-subroutine findthis(lr,lt,y,value,array,d1,d2,d3)
+-
+-  use eosmodule
+-
+-  implicit none
+-
+-  integer rip,rim
+-  integer tip,tim
+-  integer yip,yim
+-
+-  real*8 lr,lt,y,value,d1,d2,d3
+-  real*8 array(*)
+-
+-! Ewald's interpolator           
+-  call intp3d(lr,lt,y,value,1,array,nrho,ntemp,nye,logrho,logtemp,ye,d1,d2,d3)
+-
+-end subroutine findthis
+-
+-
+-subroutine findall(lr,lt,y,ff)
+-
+-  use eosmodule
+-  implicit none
+-
+-  real*8 ff(nvars)
+-  real*8 ffx(nvars,1)
+-  real*8 lr,lt,y
+-  integer i
+-
+-! Ewald's interpolator           
+-  call intp3d_many(lr,lt,y,ffx,1,alltables,&
+-       nrho,ntemp,nye,nvars,logrho,logtemp,ye)
+-  ff(:) = ffx(:,1)
+-
+-
+-end subroutine findall
+-
+-
+-subroutine findall_short(lr,lt,y,ff)
+-
+-  use eosmodule
+-  implicit none
+-
+-  real*8 ffx(8,1)
+-  real*8 ff(8)
+-  real*8 lr,lt,y
+-  integer i
+-  integer :: nvarsx = 8
+-
+-
+-! Ewald's interpolator           
+-  call intp3d_many(lr,lt,y,ffx,1,alltables(:,:,:,1:8), &
+-       nrho,ntemp,nye,nvarsx,logrho,logtemp,ye)
+-  ff(:) = ffx(:,1)
+-
+-end subroutine findall_short
+-
+-subroutine findall_short_lowT(lr,t,y,ff)
+-
+-  use eosmodule
+-  implicit none
+-
+-  real*8 ffx(8,1)
+-  real*8 ff(8)
+-  real*8 lr,t,y
+-  integer i
+-  integer :: nvarsx = 8
+-
+-
+-! Ewald's interpolator           
+-  call intp3d_many_linearTlow(lr,t,y,ffx,1,alltables(:,:,:,1:8), &
+-       nrho,ntemp,nye,nvarsx,logrho,logtemp,ye)
+-  ff(:) = ffx(:,1)
+-
+-end subroutine findall_short_lowT
+-
+-
+-subroutine findall_press_eps(lr,lt,y,ff)
+-
+-  use eosmodule
+-  implicit none
+-
+-  real*8 ffx(2,1)
+-  real*8 ff(2)
+-  real*8 lr,lt,y
+-  integer i
+-  integer :: nvarsx = 2
+-
+-
+-! Ewald's interpolator           
+-  call intp3d_many(lr,lt,y,ffx,1,alltables(:,:,:,1:2), &
+-       nrho,ntemp,nye,nvarsx,logrho,logtemp,ye)
+-  ff(:) = ffx(:,1)
+-
+-end subroutine findall_press_eps
+-
+-subroutine findall_press_eps_lowT(lr,t,y,ff)
+-
+-  use eosmodule
+-  implicit none
+-
+-  real*8 ffx(2,1)
+-  real*8 ff(2)
+-  real*8 lr,t,y
+-  integer i
+-  integer :: nvarsx = 2
+-
+-! Ewald's interpolator           
+-  call intp3d_many_linearTlow(lr,t,y,ffx,1,alltables(:,:,:,1:2), &
+-       nrho,ntemp,nye,nvarsx,logrho,logtemp,ye)
+-  ff(:) = ffx(:,1)
+-
+-end subroutine findall_press_eps_lowT
+-
+-
+-subroutine findall_dpdr_dpde(lr,lt,y,ff)
+-
+-  use eosmodule
+-  implicit none
+-
+-  real*8 ffx(2,1)
+-  real*8 ff(2)
+-  real*8 lr,lt,y
+-  integer i
+-  integer :: nvarsx = 2
+-
+-
+-! Ewald's interpolator           
+-  call intp3d_many(lr,lt,y,ffx,1,alltables(:,:,:,7:8), &
+-       nrho,ntemp,nye,nvarsx,logrho,logtemp,ye)
+-  ff(:) = ffx(:,1)
+-
+-end subroutine findall_dpdr_dpde
+-
+-subroutine findall_dpdr_dpde_lowT(lr,t,y,ff)
+-
+-  use eosmodule
+-  implicit none
+-
+-  real*8 ffx(2,1)
+-  real*8 ff(2)
+-  real*8 lr,t,y
+-  integer i
+-  integer :: nvarsx = 2
+-
+-
+-! Ewald's interpolator           
+-  call intp3d_many_linearTlow(lr,t,y,ffx,1,alltables(:,:,:,7:8), &
+-       nrho,ntemp,nye,nvarsx,logrho,logtemp,ye)
+-  ff(:) = ffx(:,1)
+-
+-end subroutine findall_dpdr_dpde_lowT
+diff --git a/src/nuc_eos/readtable.c b/src/nuc_eos/readtable.c
+deleted file mode 100644
+index 37c7472..0000000
+--- a/src/nuc_eos/readtable.c
++++ /dev/null
+@@ -1,146 +0,0 @@
+-#include <stdlib.h>
+-
+-#define H5_USE_16_API 1
+-#include "hdf5.h"
+-
+-#include "cctk.h"
+-#include "cctk_Parameters.h"
+-#include "cctk_Arguments.h"
+-#include "cctk_Functions.h"
+-
+-// mini NoMPI
+-#ifdef HAVE_CAPABILITY_MPI
+-#include <mpi.h>
+-#define BCAST(buffer, size) MPI_Bcast(buffer, size, MPI_BYTE, my_reader_process, MPI_COMM_WORLD)
+-#else
+-#define BCAST(buffer, size) do { /* do nothing */ } while(0)
+-#endif
+-
+-// Interface of function for fortran module eostable
+-void CCTK_FNAME(setup_eosmodule)
+-                (CCTK_INT* , CCTK_INT* , CCTK_INT*, CCTK_REAL*,
+-                 CCTK_REAL*, CCTK_REAL*, CCTK_REAL*, CCTK_REAL*);
+-
+-// call HDF5 if we are an IO processor, handle errors from HDF5
+-#define HDF5_ERROR(fn_call)                                              \
+-  if (doIO) {                                                            \
+-    int _error_code = fn_call;                                           \
+-    if (_error_code < 0)                                                 \
+-      CCTK_VWarn (CCTK_WARN_ABORT, __LINE__, __FILE__, CCTK_THORNSTRING, \
+-                  "HDF5 call '%s' returned error code %d",               \
+-                  #fn_call, _error_code);                                \
+-  }
+-
+-// Cactus calls this function. It reads in the table and calls a fortran
+-// function to setup values for the fortran eos module
+-void EOS_OMNI_ReadTable(CCTK_ARGUMENTS)
+-{
+-  DECLARE_CCTK_PARAMETERS
+-  DECLARE_CCTK_ARGUMENTS
+-
+-  CCTK_Info(CCTK_THORNSTRING,"*******************************");
+-  CCTK_Info(CCTK_THORNSTRING,"Reading nuc_eos table file:");
+-  CCTK_Info(CCTK_THORNSTRING,nuceos_table_name);
+-  CCTK_Info(CCTK_THORNSTRING,"*******************************");
+-
+-  CCTK_INT my_reader_process = reader_process;
+-  if (my_reader_process < 0 || my_reader_process >= CCTK_nProcs(cctkGH))
+-  {
+-    CCTK_VWarn(CCTK_WARN_COMPLAIN, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "Requested IO process %d out of range. Reverting to process 0.", my_reader_process);
+-    my_reader_process = 0;
+-  }
+-  const int doIO = !read_table_on_single_process || CCTK_MyProc(cctkGH) == my_reader_process;
+-
+-  hid_t file = -1;
+-  if (doIO && ! H5Fis_hdf5(nuceos_table_name) > 0)
+-    CCTK_VWarn(CCTK_WARN_ABORT, __LINE__, __FILE__, CCTK_THORNSTRING,
+-               "Could not read nuceos_table_name'%s'",
+-               nuceos_table_name);
+-  HDF5_ERROR(file = H5Fopen(nuceos_table_name, H5F_ACC_RDONLY, H5P_DEFAULT));
+-
+-// Use these two defines to easily read in a lot of variables in the same way
+-// The first reads in one variable of a given type completely
+-#define READ_BCAST_EOS_HDF5(NAME,VAR,TYPE,NELEMS)                             \
+-  do {                                                                        \
+-    hid_t dataset;                                                            \
+-    HDF5_ERROR(dataset = H5Dopen(file, NAME));                                \
+-    HDF5_ERROR(H5Dread(dataset, TYPE, H5S_ALL, H5S_ALL, H5P_DEFAULT, VAR));   \
+-    if (read_table_on_single_process)                                         \
+-      BCAST (VAR, sizeof(*(VAR))*(NELEMS));                                   \
+-    HDF5_ERROR(H5Dclose(dataset));                                            \
+-  } while (0)
+-// The second reads a given variable into a hyperslab of the alltables array
+-#define READ_BCAST_EOSTABLE_HDF5(NAME,OFF,DIMS)                                        \
+-  do {                                                                                 \
+-    READ_BCAST_EOS_HDF5(NAME,&alltables[(OFF)*(DIMS)[1]],H5T_NATIVE_DOUBLE,(DIMS)[1]); \
+-  } while (0)
+-
+-  // Read size of tables
+-  CCTK_INT nrho, ntemp, nye;
+-
+-  READ_BCAST_EOS_HDF5("pointsrho",  &nrho,  H5T_NATIVE_INT, 1);
+-  READ_BCAST_EOS_HDF5("pointstemp", &ntemp, H5T_NATIVE_INT, 1);
+-  READ_BCAST_EOS_HDF5("pointsye",   &nye,   H5T_NATIVE_INT, 1);
+-
+-
+-  // Allocate memory for tables
+-  CCTK_REAL *alltables, *logrho, *logtemp, *ye, energy_shift;
+-
+-  // protect our use of H5T_NATIVE_DOUBLE and H5T_NATIVE_INT
+-  assert (sizeof(CCTK_REAL) == sizeof(double));
+-  assert (sizeof(CCTK_INT) == sizeof(int));
+-
+-  if (!(alltables = (CCTK_REAL*)malloc(nrho * ntemp * nye * 19 * sizeof(CCTK_REAL))))
+-    CCTK_WARN(CCTK_WARN_ABORT, "Cannot allocate memory for EOS table\n");
+-  if (!(logrho = (CCTK_REAL*)malloc(nrho * sizeof(CCTK_REAL))))
+-    CCTK_WARN(CCTK_WARN_ABORT, "Cannot allocate memory for EOS table\n");
+-  if (!(logtemp = (CCTK_REAL*)malloc(ntemp * sizeof(CCTK_REAL))))
+-    CCTK_WARN(CCTK_WARN_ABORT, "Cannot allocate memory for EOS table\n");
+-  if (!(ye = (CCTK_REAL*)malloc(nye * sizeof(CCTK_REAL))))
+-    CCTK_WARN(CCTK_WARN_ABORT, "Cannot allocate memory for EOS table\n");
+-
+-  // Prepare HDF5 to read hyperslabs into alltables
+-  hsize_t table_dims[2] = {19, nrho * ntemp * nye};
+-
+-  // Read alltables
+-  READ_BCAST_EOSTABLE_HDF5("logpress",  0, table_dims);
+-  READ_BCAST_EOSTABLE_HDF5("logenergy", 1, table_dims);
+-  READ_BCAST_EOSTABLE_HDF5("entropy",   2, table_dims);
+-  READ_BCAST_EOSTABLE_HDF5("munu",      3, table_dims);
+-  READ_BCAST_EOSTABLE_HDF5("cs2",       4, table_dims);
+-  READ_BCAST_EOSTABLE_HDF5("dedt",      5, table_dims);
+-  READ_BCAST_EOSTABLE_HDF5("dpdrhoe",   6, table_dims);
+-  READ_BCAST_EOSTABLE_HDF5("dpderho",   7, table_dims);
+-  // chemical potentials
+-  READ_BCAST_EOSTABLE_HDF5("muhat",     8, table_dims);
+-  READ_BCAST_EOSTABLE_HDF5("mu_e",      9, table_dims);
+-  READ_BCAST_EOSTABLE_HDF5("mu_p",     10, table_dims);
+-  READ_BCAST_EOSTABLE_HDF5("mu_n",     11, table_dims);
+-  // compositions
+-  READ_BCAST_EOSTABLE_HDF5("Xa",       12, table_dims);
+-  READ_BCAST_EOSTABLE_HDF5("Xh",       13, table_dims);
+-  READ_BCAST_EOSTABLE_HDF5("Xn",       14, table_dims);
+-  READ_BCAST_EOSTABLE_HDF5("Xp",       15, table_dims);
+-  // average nucleus
+-  READ_BCAST_EOSTABLE_HDF5("Abar",     16, table_dims);
+-  READ_BCAST_EOSTABLE_HDF5("Zbar",     17, table_dims);
+-  // Gamma
+-  READ_BCAST_EOSTABLE_HDF5("gamma",    18, table_dims);
+-
+-
+-  // Read additional tables and variables
+-  READ_BCAST_EOS_HDF5("logrho",       logrho,        H5T_NATIVE_DOUBLE, nrho);
+-  READ_BCAST_EOS_HDF5("logtemp",      logtemp,       H5T_NATIVE_DOUBLE, ntemp);
+-  READ_BCAST_EOS_HDF5("ye",           ye,            H5T_NATIVE_DOUBLE, nye);
+-  READ_BCAST_EOS_HDF5("energy_shift", &energy_shift, H5T_NATIVE_DOUBLE, 1);
+-
+-  HDF5_ERROR(H5Fclose(file));
+-
+-  // Give all values to fortran - which will store pointers to them, so don't
+-  // free these arrays.
+-  CCTK_FNAME(setup_eosmodule)
+-    (&nrho, &ntemp, &nye, alltables, logrho, logtemp, ye, &energy_shift);
+-
+-}
+-
+diff --git a/src/nuc_eos_cxx/helpers.hh b/src/nuc_eos_cxx/helpers.hh
+new file mode 100644
+index 0000000..c61ae80
+--- /dev/null
++++ b/src/nuc_eos_cxx/helpers.hh
+@@ -0,0 +1,764 @@
++#include "nuc_eos.hh"
++#include <cstdlib>
++
++namespace nuc_eos {
++
++static inline __attribute__((always_inline))  
++int checkbounds(const double xrho, 
++		const double xtemp, 
++		const double xye) {
++  
++  using namespace nuc_eos;
++
++  // keyerr codes:
++  // 101 -- Y_e too high
++  // 102 -- Y_e too low
++  // 103 -- temp too high (if keytemp = 1)
++  // 104 -- temp too low (if keytemp = 1)
++  // 105 -- rho too high
++  // 106 -- rho too low
++
++  if(xrho > eos_rhomax) {
++    return 105;
++  }
++  if(xrho < eos_rhomin) {
++    return 106;
++  }
++  if(xye > eos_yemax) {
++    return 101;
++  }
++  if(xye < eos_yemin) {
++    fprintf(stderr,"xye: %15.6E eos_yemin: %15.6E\n",xye,eos_yemin);
++    return 102;
++  }
++  if(xtemp > eos_tempmax) {
++    return 103;
++  }
++  if(xtemp < eos_tempmin) {
++    return 104;
++  }
++  return 0;
++}
++
++static inline __attribute__((always_inline))  
++int checkbounds_kt0_noTcheck(const double xrho, 
++		const double xye) {
++  
++  using namespace nuc_eos;
++
++  // keyerr codes:
++  // 101 -- Y_e too high
++  // 102 -- Y_e too low
++  // 105 -- rho too high
++  // 106 -- rho too low
++
++  if(xrho > eos_rhomax) {
++    return 105;
++  }
++  if(xrho < eos_rhomin) {
++    return 106;
++  }
++  if(xye > eos_yemax) {
++    return 101;
++  }
++  if(xye < eos_yemin) {
++    return 102;
++  }
++  return 0;
++}
++
++
++static inline __attribute__((always_inline))  
++void get_interp_spots(const double x,
++		      const double y,
++		      const double z,
++		      double* __restrict__ delx,
++		      double* __restrict__ dely,
++		      double* __restrict__ delz,
++		      int* __restrict__ idx) 
++{
++  using namespace nuc_eos;
++
++  int ix = 1 + (int)( (x - logrho[0] - 1.0e-10) * drhoi );
++  int iy = 1 + (int)( (y - logtemp[0] - 1.0e-10) * dtempi );
++  int iz = 1 + (int)( (z - yes[0] - 1.0e-10) * dyei );
++
++  ix = MAX( 1, MIN( ix, nrho-1 ) );
++  iy = MAX( 1, MIN( iy, ntemp-1 ) );
++  iz = MAX( 1, MIN( iz, nye-1 ) );
++
++  idx[0] = NTABLES*(ix + nrho*(iy + ntemp*iz));
++  idx[1] = NTABLES*((ix-1) + nrho*(iy + ntemp*iz));
++  idx[2] = NTABLES*(ix + nrho*((iy-1) + ntemp*iz));
++  idx[3] = NTABLES*(ix + nrho*(iy + ntemp*(iz-1)));
++  idx[4] = NTABLES*((ix-1) + nrho*((iy-1) + ntemp*iz));
++  idx[5] = NTABLES*((ix-1) + nrho*(iy + ntemp*(iz-1)));
++  idx[6] = NTABLES*(ix + nrho*((iy-1) + ntemp*(iz-1)));
++  idx[7] = NTABLES*((ix-1) + nrho*((iy-1) + ntemp*(iz-1)));
++
++   // set up aux vars for interpolation
++  *delx = logrho[ix] - x;
++  *dely = logtemp[iy] - y;
++  *delz = yes[iz] - z;
++
++  return;
++}
++
++static inline __attribute__((always_inline))  
++void get_interp_spots_linT_low(const double x,
++			       const double y,
++			       const double z,
++			       double* __restrict__ delx,
++			       double* __restrict__ dely,
++			       double* __restrict__ delz,
++			       int* __restrict__ idx) 
++{
++  using namespace nuc_eos;
++
++  int ix = 1 + (int)( (x - logrho[0] - 1.0e-10) * drhoi );
++  int iy = 1;
++  int iz = 1 + (int)( (z - yes[0] - 1.0e-10) * dyei );
++
++  ix = MAX( 1, MIN( ix, nrho-1 ) );
++  iz = MAX( 1, MIN( iz, nye-1 ) );
++
++  idx[0] = NTABLES*(ix + nrho*(iy + ntemp*iz));
++  idx[1] = NTABLES*((ix-1) + nrho*(iy + ntemp*iz));
++  idx[2] = NTABLES*(ix + nrho*((iy-1) + ntemp*iz));
++  idx[3] = NTABLES*(ix + nrho*(iy + ntemp*(iz-1)));
++  idx[4] = NTABLES*((ix-1) + nrho*((iy-1) + ntemp*iz));
++  idx[5] = NTABLES*((ix-1) + nrho*(iy + ntemp*(iz-1)));
++  idx[6] = NTABLES*(ix + nrho*((iy-1) + ntemp*(iz-1)));
++  idx[7] = NTABLES*((ix-1) + nrho*((iy-1) + ntemp*(iz-1)));
++
++   // set up aux vars for interpolation
++  *delx = logrho[ix] - x;
++  *dely = temp1 - y;
++  *delz = yes[iz] - z;
++
++  return;
++}
++
++static inline __attribute__((always_inline))  
++void get_interp_spots_linT_low_eps(const double x,
++				   const double y,
++				   const double z,
++				   double* __restrict__ delx,
++				   double* __restrict__ dely,
++				   double* __restrict__ delz,
++				   int* __restrict__ idx) 
++{
++  using namespace nuc_eos;
++
++  int ix = 1 + (int)( (x - logrho[0] - 1.0e-10) * drhoi );
++  int iy = 1;
++  int iz = 1 + (int)( (z - yes[0] - 1.0e-10) * dyei );
++
++  ix = MAX( 1, MIN( ix, nrho-1 ) );
++  iz = MAX( 1, MIN( iz, nye-1 ) );
++
++  idx[0] = (ix + nrho*(iy + ntemp*iz));
++  idx[1] = ((ix-1) + nrho*(iy + ntemp*iz));
++  idx[2] = (ix + nrho*((iy-1) + ntemp*iz));
++  idx[3] = (ix + nrho*(iy + ntemp*(iz-1)));
++  idx[4] = ((ix-1) + nrho*((iy-1) + ntemp*iz));
++  idx[5] = ((ix-1) + nrho*(iy + ntemp*(iz-1)));
++  idx[6] = (ix + nrho*((iy-1) + ntemp*(iz-1)));
++  idx[7] = ((ix-1) + nrho*((iy-1) + ntemp*(iz-1)));
++
++   // set up aux vars for interpolation
++  *delx = logrho[ix] - x;
++  *dely = temp1 - y;
++  *delz = yes[iz] - z;
++
++  return;
++}
++
++
++static inline __attribute__((always_inline))  
++void nuc_eos_C_linterp_one(const int* __restrict__ idx, 
++			   const double delx, 
++			   const double dely,
++			   const double delz,
++			   double* __restrict__ f,
++			   const int iv)
++{
++  using namespace nuc_eos;
++
++  // helper variables
++  double fh[8], a[8];
++
++  fh[0] = alltables[iv+idx[0]];
++  fh[1] = alltables[iv+idx[1]];
++  fh[2] = alltables[iv+idx[2]];
++  fh[3] = alltables[iv+idx[3]];
++  fh[4] = alltables[iv+idx[4]];
++  fh[5] = alltables[iv+idx[5]];
++  fh[6] = alltables[iv+idx[6]];
++  fh[7] = alltables[iv+idx[7]];
++
++  // set up coeffs of interpolation polynomical and
++  // evaluate function values
++  a[0] = fh[0];
++  a[1] = drhoi *   ( fh[1] - fh[0] );
++  a[2] = dtempi *   ( fh[2] - fh[0] );
++  a[3] = dyei *   ( fh[3] - fh[0] );
++  a[4] = drhotempi *  ( fh[4] - fh[1] - fh[2] + fh[0] );
++  a[5] = drhoyei *  ( fh[5] - fh[1] - fh[3] + fh[0] );
++  a[6] = dtempyei *  ( fh[6] - fh[2] - fh[3] + fh[0] );
++  a[7] = drhotempyei * ( fh[7] - fh[0] + fh[1] + fh[2] + 
++			 fh[3] - fh[4] - fh[5] - fh[6] );
++
++  *f = a[0] + a[1] * delx
++    + a[2] * dely
++    + a[3] * delz
++    + a[4] * delx * dely
++    + a[5] * delx * delz
++    + a[6] * dely * delz
++    + a[7] * delx * dely * delz;
++
++  return;
++}
++
++static inline __attribute__((always_inline))  
++void nuc_eos_C_linterp_one_linT_low(const int* __restrict__ idx, 
++				    const double delx, 
++				    const double dely,
++				    const double delz,
++				    double* __restrict__ f,
++				    const int iv)
++{
++  using namespace nuc_eos;
++
++  // helper variables
++  double fh[8], a[8];
++
++  fh[0] = alltables[iv+idx[0]];
++  fh[1] = alltables[iv+idx[1]];
++  fh[2] = alltables[iv+idx[2]];
++  fh[3] = alltables[iv+idx[3]];
++  fh[4] = alltables[iv+idx[4]];
++  fh[5] = alltables[iv+idx[5]];
++  fh[6] = alltables[iv+idx[6]];
++  fh[7] = alltables[iv+idx[7]];
++
++  // set up coeffs of interpolation polynomical and
++  // evaluate function values
++  a[0] = fh[0];
++  a[1] = drhoi *   ( fh[1] - fh[0] );
++  a[2] = dlintempi *   ( fh[2] - fh[0] );
++  a[3] = dyei *   ( fh[3] - fh[0] );
++  a[4] = drholintempi *  ( fh[4] - fh[1] - fh[2] + fh[0] );
++  a[5] = drhoyei *  ( fh[5] - fh[1] - fh[3] + fh[0] );
++  a[6] = dlintempyei *  ( fh[6] - fh[2] - fh[3] + fh[0] );
++  a[7] = drholintempyei * ( fh[7] - fh[0] + fh[1] + fh[2] + 
++			 fh[3] - fh[4] - fh[5] - fh[6] );
++
++  *f = a[0] + a[1] * delx
++    + a[2] * dely
++    + a[3] * delz
++    + a[4] * delx * dely
++    + a[5] * delx * delz
++    + a[6] * dely * delz
++    + a[7] * delx * dely * delz;
++
++  return;
++}
++
++
++static inline __attribute__((always_inline))  
++void nuc_eos_C_linterp_one_linT_low_eps(const int* __restrict__ idx, 
++					const double delx, 
++					const double dely,
++					const double delz,
++					double* __restrict__ f)
++
++{
++  using namespace nuc_eos;
++
++  // helper variables
++  double fh[8], a[8];
++
++  fh[0] = epstable[idx[0]];
++  fh[1] = epstable[idx[1]];
++  fh[2] = epstable[idx[2]];
++  fh[3] = epstable[idx[3]];
++  fh[4] = epstable[idx[4]];
++  fh[5] = epstable[idx[5]];
++  fh[6] = epstable[idx[6]];
++  fh[7] = epstable[idx[7]];
++
++  // set up coeffs of interpolation polynomical and
++  // evaluate function values
++  a[0] = fh[0];
++  a[1] = drhoi *   ( fh[1] - fh[0] );
++  a[2] = dlintempi *   ( fh[2] - fh[0] );
++  a[3] = dyei *   ( fh[3] - fh[0] );
++  a[4] = drholintempi *  ( fh[4] - fh[1] - fh[2] + fh[0] );
++  a[5] = drhoyei *  ( fh[5] - fh[1] - fh[3] + fh[0] );
++  a[6] = dlintempyei *  ( fh[6] - fh[2] - fh[3] + fh[0] );
++  a[7] = drholintempyei * ( fh[7] - fh[0] + fh[1] + fh[2] + 
++			 fh[3] - fh[4] - fh[5] - fh[6] );
++
++  *f = a[0] + a[1] * delx
++    + a[2] * dely
++    + a[3] * delz
++    + a[4] * delx * dely
++    + a[5] * delx * delz
++    + a[6] * dely * delz
++    + a[7] * delx * dely * delz;
++
++  return;
++}
++
++
++
++
++static inline __attribute__((always_inline))
++double linterp2D(const double *restrict xs, 
++		 const double *restrict ys, 
++		 const double *restrict fs, 
++		 const double x, 
++		 const double y)
++{
++
++  //  2     3 
++  //
++  //  0     1
++  //
++  // first interpolate in x between 0 and 1, 2 and 3
++  // then interpolate in y
++  // assume rectangular grid
++  
++  double t1 = (fs[1]-fs[0])/(xs[1]-xs[0]) * (x - xs[0]) + fs[0];
++  double t2 = (fs[3]-fs[2])/(xs[1]-xs[0]) * (x - xs[0]) + fs[2];
++
++  return (t2 - t1)/(ys[1]-ys[0]) * (y-ys[0]) + t1;
++}
++
++static inline __attribute__((always_inline))
++void bisection(const double lr, 
++	       const double lt0,
++	       const double ye,
++	       const double leps0,
++	       const double prec,
++	       double *restrict ltout,
++	       const int iv,
++	       int *restrict keyerrt) {
++  // iv is the index of the variable we do the bisection on
++
++  using namespace nuc_eos;
++
++  int bcount = 0; 
++  int maxbcount = 80;
++  int itmax = 50;
++
++  const double dlt0p = log(1.1);
++  const double dlt0m = log(0.9);
++  const double dltp = log(1.2);
++  const double dltm = log(0.8);
++
++  // temporary local vars
++  double lt, lt1, lt2;
++  double ltmin = logtemp[0];
++  double ltmax = logtemp[ntemp-1];
++  double f1,f2,fmid,dlt,ltmid;
++  double f1a = 0.0;
++  double f2a = 0.0;
++  double delx,dely,delz;
++  int idx[8];
++  
++
++  // prepare
++  lt = lt0;
++  lt1 = MIN(lt0 + dlt0p,ltmax);
++  lt2 = MAX(lt0 + dlt0m,ltmin);
++
++  get_interp_spots(lr,lt1,ye,&delx,&dely,&delz,idx);
++  nuc_eos_C_linterp_one(idx,delx,dely,delz,&f1a,iv);  
++
++  get_interp_spots(lr,lt2,ye,&delx,&dely,&delz,idx);
++  nuc_eos_C_linterp_one(idx,delx,dely,delz,&f2a,iv);  
++
++  f1=f1a-leps0;
++  f2=f2a-leps0;
++
++  // iterate until we bracket the right eps, but enforce
++  // dE/dt > 0, so eps(lt1) > eps(lt2)
++  while(f1*f2 >= 0.0) {
++    lt1 = MIN(lt1 + dltp,ltmax);
++    lt2 = MAX(lt2 + dltm,ltmin);
++    get_interp_spots(lr,lt1,ye,&delx,&dely,&delz,idx);
++    nuc_eos_C_linterp_one(idx,delx,dely,delz,&f1a,iv);  
++    
++    get_interp_spots(lr,lt2,ye,&delx,&dely,&delz,idx);
++    nuc_eos_C_linterp_one(idx,delx,dely,delz,&f2a,iv);  
++
++    f1=f1a-leps0;
++    f2=f2a-leps0;
++
++#if DEBUG
++    fprintf(stderr,"bisection bracketing it %d, f1: %15.6E, f2: %15.6E, lt1: %15.6E, lt2: %15.6E, f1a: %18.11E, f2a: %18.11E leps0: %18.11E\n",
++	    bcount,f1,f2,lt1,lt2,f1a,f2a,leps0);
++#endif
++
++    bcount++;
++    if(bcount >= maxbcount) {
++      *keyerrt = 667;
++      return;
++    }
++  } // while
++
++  if(f1 < 0.0) {
++    lt = lt1;
++    dlt = lt2 - lt1;
++  } else {
++    lt = lt2;
++    dlt = lt1 - lt2;
++  }
++
++#if DEBUG
++    fprintf(stderr,"bisection step 2 it -1, fmid: %15.6E ltmid: %15.6E dlt: %15.6E\n",
++	    f2,lt,dlt);
++    fprintf(stderr,"ltmax: %15.6E\n",ltmax);
++#endif
++
++  int it;
++  for(it=0;it<itmax;it++) {
++    dlt = dlt * 0.5;
++    ltmid = lt + dlt;
++    get_interp_spots(lr,ltmid,ye,&delx,&dely,&delz,idx);
++    nuc_eos_C_linterp_one(idx,delx,dely,delz,&f2a,iv); 
++    
++    fmid=f2a-leps0;
++    if(fmid <= 0.0) lt=ltmid;
++#if DEBUG
++    fprintf(stderr,"bisection step 2 it %d, fmid: %15.6E f2a: %15.6E lt: %15.6E ltmid: %15.6E dlt: %15.6E\n",
++	    it,fmid,f2a,lt,ltmid,dlt);
++#endif
++
++    if(fabs(1.0-f2a/leps0) <= prec) {
++      *ltout = ltmid;
++      return;
++    }
++  } // for it = 0
++
++  if(it >= itmax-1) {
++    *keyerrt = 667;
++    return;
++  }
++} // bisection
++
++
++
++static inline __attribute__((always_inline))
++void nuc_eos_findtemp(const double lr, 
++		      const double lt0,
++		      const double ye,
++		      const double lepsin,
++		      const double prec,
++		      double *restrict ltout,
++		      int *keyerrt) {
++
++  using namespace nuc_eos;
++
++  // local variables
++  const int itmax = 200; // use at most 10 iterations, then go to bisection
++  double dlepsdlt; // derivative dlogeps/dlogT
++  double ldt;
++  double leps,leps0; // temp vars for eps
++  double ltn, lt; // temp vars for temperature
++  double oerr;
++  const double ltmax = logtemp[ntemp-1]; // max temp
++  const double ltmin = logtemp[0]; // min temp
++  const int iv = 1;
++  int it = 0;
++
++  // setting up some vars
++  *keyerrt = 0;
++  leps0 = lepsin;
++  lt = lt0;
++
++  // step 1: do we already have the right temperature
++  int idx[8];
++  double delx,dely,delz;
++  get_interp_spots(lr,lt,ye,&delx,&dely,&delz,idx);
++  nuc_eos_C_linterp_one(idx,delx,dely,delz,&leps,iv);
++#if DEBUG
++  fprintf(stderr,"it: %d t: %15.6E leps: %15.6E eps0: %15.6E del: %15.6E\n",
++	  it,lt, leps,leps0,fabs(leps-leps0)/(fabs(leps0)));
++#endif
++  if(fabs(leps-leps0) < prec*fabs(leps0)) {
++    *ltout = lt0;
++    return;
++  }
++
++  oerr = 1.0e90;
++  double fac = 1.0;
++  const int irho = MIN(MAX(1 + (int)(( lr - logrho[0] - 1.0e-12) * drhoi),1),nrho-1); 
++  const int iye = MIN(MAX(1 + (int)(( ye - yes[0] - 1.0e-12) * dyei),1),nye-1); 
++
++  while(it < itmax) {
++    it++;
++
++    // step 2: check if the two bounding values of the temperature
++    //         give eps values that enclose the new eps.
++    const int itemp = MIN(MAX(1 + (int)(( lt - logtemp[0] - 1.0e-12) * dtempi),1),ntemp-1); 
++
++    double epst1, epst2;
++    // lower temperature
++    {
++      // get data at 4 points
++      double fs[4];
++      // point 0
++      int ifs = 1 + NTABLES*(irho-1 + nrho*((itemp-1) + ntemp*(iye-1)));
++      fs[0] = alltables[ifs];
++      // point 1 
++      ifs = 1 + NTABLES*(irho + nrho*((itemp-1) + ntemp*(iye-1)));
++      fs[1] = alltables[ifs];
++      // point 2 
++      ifs = 1 + NTABLES*(irho-1 + nrho*((itemp-1) + ntemp*(iye)));
++      fs[2] = alltables[ifs];
++      // point 3
++      ifs = 1 + NTABLES*(irho + nrho*((itemp-1) + ntemp*(iye)));
++      fs[3] = alltables[ifs];
++      
++      epst1 = linterp2D(&logrho[irho-1],&yes[iye-1], fs, lr, ye);
++    }
++    // upper temperature
++    {
++      // get data at 4 points
++      double fs[4];
++      // point 0
++      int ifs = 1 + NTABLES*(irho-1 + nrho*((itemp) + ntemp*(iye-1)));
++      fs[0] = alltables[ifs];
++      // point 1 
++      ifs = 1 + NTABLES*(irho + nrho*((itemp) + ntemp*(iye-1)));
++      fs[1] = alltables[ifs];
++      // point 2 
++      ifs = 1 + NTABLES*(irho-1 + nrho*((itemp) + ntemp*(iye)));
++      fs[2] = alltables[ifs];
++      // point 3
++      ifs = 1 + NTABLES*(irho + nrho*((itemp) + ntemp*(iye)));
++      fs[3] = alltables[ifs];
++      
++      epst2 = linterp2D(&logrho[irho-1],&yes[iye-1], fs, lr, ye);
++    }
++
++    // Check if we are already bracketing the input internal
++    // energy. If so, interpolate for new T.
++    if( (leps0 >= epst1 && leps0 <= epst2) 
++	|| (leps0 <= epst1 && leps0 >=epst2)) {
++      
++      *ltout = (logtemp[itemp]-logtemp[itemp-1]) / (epst2 - epst1) * 
++	(leps0 - epst1) + logtemp[itemp-1];
++     
++      return;
++    }
++
++    // well, then do a Newton-Raphson step
++    // first, guess the derivative
++    dlepsdlt = (epst2-epst1)/(logtemp[itemp]-logtemp[itemp-1]);
++    ldt = -(leps - leps0) / dlepsdlt * fac;
++
++    ltn = MIN(MAX(lt + ldt,ltmin),ltmax);
++    lt = ltn;
++
++    get_interp_spots(lr,lt,ye,&delx,&dely,&delz,idx);
++    nuc_eos_C_linterp_one(idx,delx,dely,delz,&leps,iv);
++
++#if DEBUG
++    fprintf(stderr,"%d %d %d\n",irho,itemp,iye);
++    fprintf(stderr,"it: %d t: %15.6E leps: %15.6E eps0: %15.6E del: %15.6E\n",
++	    it,lt, leps,leps0,fabs(leps-leps0)/(fabs(leps0)));
++#endif
++    // drive the thing into the right direction
++    double err = fabs(leps-leps0);
++    if(oerr < err) fac *= 0.9;
++    oerr = err;
++
++    if(err < prec*fabs(leps0)) {
++      *ltout = lt;
++      return;
++    }
++
++
++
++  } // while(it < itmax)
++
++  if(it >= itmax - 1) {
++    // try bisection
++    // bisection(lr, lt0, ye, leps0, ltout, 1, prec, keyerrt);
++#if DEBUG
++    fprintf(stderr, "Failed to converge. This is bad. Trying bisection!\n");
++#endif
++    bisection(lr,lt0,ye,leps0,prec,ltout,1,keyerrt);
++#if DEBUG
++    if(*keyerrt==667) {
++      fprintf(stderr,"This is worse. Bisection failed!\n");
++      abort();
++    }      
++#endif
++  }
++
++
++  return;
++}
++
++
++  static inline __attribute__((always_inline))
++    void nuc_eos_findtemp_entropy(const double lr, 
++				  const double lt0,
++				  const double ye,
++				  const double entin,
++				  const double prec,
++				  double *restrict ltout,
++				  int *keyerrt) {
++
++    using namespace nuc_eos;
++
++    // local variables
++    const int itmax = 200; // use at most 10 iterations, then go to bisection
++    double dentdlt; // derivative dentropy/dlogT
++    double ldt;
++    double ent,ent0; // temp vars for eps
++    double ltn, lt; // temp vars for temperature
++    double oerr;
++    const double ltmax = logtemp[ntemp-1]; // max temp
++    const double ltmin = logtemp[0]; // min temp
++    const int iv = 2;
++    int it = 0;
++
++    // setting up some vars
++    *keyerrt = 0;
++    ent0 = entin;
++    lt = lt0;
++
++    // step 1: do we already have the right temperature
++    int idx[8];
++    double delx,dely,delz;
++    get_interp_spots(lr,lt,ye,&delx,&dely,&delz,idx);
++    nuc_eos_C_linterp_one(idx,delx,dely,delz,&ent,iv);
++#if DEBUG
++    fprintf(stderr,"it: %d t: %15.6E leps: %15.6E eps0: %15.6E del: %15.6E\n",
++	    it,lt,ent,ent0,fabs(ent-ent0)/(fabs(ent0)));
++#endif
++    if(fabs(ent-ent0) < prec*fabs(ent0)) {
++      *ltout = lt0;
++      return;
++    }
++
++    oerr = 1.0e90;
++    double fac = 1.0;
++    const int irho = MIN(MAX(1 + (int)(( lr - logrho[0] - 1.0e-12) * drhoi),1),nrho-1); 
++    const int iye = MIN(MAX(1 + (int)(( ye - yes[0] - 1.0e-12) * dyei),1),nye-1); 
++
++    while(it < itmax) {
++      it++;
++
++      // step 2: check if the two bounding values of the temperature
++      //         give eps values that enclose the new eps.
++      const int itemp = MIN(MAX(1 + (int)(( lt - logtemp[0] - 1.0e-12) * dtempi),1),ntemp-1); 
++
++      double ent1, ent2;
++      // lower temperature
++      {
++	// get data at 4 points
++	double fs[4];
++	// point 0
++	int ifs = 2 + NTABLES*(irho-1 + nrho*((itemp-1) + ntemp*(iye-1)));
++	fs[0] = alltables[ifs];
++	// point 1 
++	ifs = 2 + NTABLES*(irho + nrho*((itemp-1) + ntemp*(iye-1)));
++	fs[1] = alltables[ifs];
++	// point 2 
++	ifs = 2 + NTABLES*(irho-1 + nrho*((itemp-1) + ntemp*(iye)));
++	fs[2] = alltables[ifs];
++	// point 3
++	ifs = 2 + NTABLES*(irho + nrho*((itemp-1) + ntemp*(iye)));
++	fs[3] = alltables[ifs];
++      
++	ent1 = linterp2D(&logrho[irho-1],&yes[iye-1], fs, lr, ye);
++      }
++      // upper temperature
++      {
++	// get data at 4 points
++	double fs[4];
++	// point 0
++	int ifs = 2 + NTABLES*(irho-1 + nrho*((itemp) + ntemp*(iye-1)));
++	fs[0] = alltables[ifs];
++	// point 1 
++	ifs = 2 + NTABLES*(irho + nrho*((itemp) + ntemp*(iye-1)));
++	fs[1] = alltables[ifs];
++	// point 2 
++	ifs = 2 + NTABLES*(irho-1 + nrho*((itemp) + ntemp*(iye)));
++	fs[2] = alltables[ifs];
++	// point 3
++	ifs = 2 + NTABLES*(irho + nrho*((itemp) + ntemp*(iye)));
++	fs[3] = alltables[ifs];
++      
++	ent2 = linterp2D(&logrho[irho-1],&yes[iye-1], fs, lr, ye);
++      }
++
++      // Check if we are already bracketing the input internal
++      // energy. If so, interpolate for new T.
++      if( (ent0 >= ent1 && ent0 <= ent2) 
++	  || (ent0 <= ent1 && ent0 >= ent2)) {
++      
++	*ltout = (logtemp[itemp]-logtemp[itemp-1]) / (ent2 - ent1) * 
++	  (ent0 - ent1) + logtemp[itemp-1];
++     
++	return;
++      }
++
++      // well, then do a Newton-Raphson step
++      // first, guess the derivative
++      dentdlt = (ent2-ent1)/(logtemp[itemp]-logtemp[itemp-1]);
++      ldt = -(ent - ent0) / dentdlt * fac;
++
++      ltn = MIN(MAX(lt + ldt,ltmin),ltmax);
++      lt = ltn;
++
++      get_interp_spots(lr,lt,ye,&delx,&dely,&delz,idx);
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&ent,iv);
++
++#if DEBUG
++      fprintf(stderr,"%d %d %d\n",irho,itemp,iye);
++      fprintf(stderr,"it: %d t: %15.6E ent: %15.6E ent0: %15.6E del: %15.6E\n",
++	      it,lt, ent,ent0,fabs(ent-ent0)/(fabs(ent0)));
++#endif
++      // drive the thing into the right direction
++      double err = fabs(ent-ent0);
++      if(oerr < err) fac *= 0.9;
++      oerr = err;
++
++      if(err < prec*fabs(ent0)) {
++	*ltout = lt;
++	return;
++      }
++
++
++
++    } // while(it < itmax)
++
++    if(it >= itmax - 1) {
++      // try bisection
++#if DEBUG
++      fprintf(stderr, "Failed to converge. This is bad. Trying bisection!\n");
++#endif
++      bisection(lr,lt0,ye,ent0,prec,ltout,2,keyerrt);
++#if DEBUG
++      if(*keyerrt==667) {
++	fprintf(stderr,"This is worse. Bisection failed!\n");
++	abort();
++      }      
++#endif
++    }
++
++
++    return;
++  }
++
++
++
++} // namespace nuc_eos
+diff --git a/src/nuc_eos_cxx/make.code.defn b/src/nuc_eos_cxx/make.code.defn
+new file mode 100644
+index 0000000..028bf49
+--- /dev/null
++++ b/src/nuc_eos_cxx/make.code.defn
+@@ -0,0 +1,4 @@
++SRCS = readtable.cc nuc_eos_short.cc nuc_eos_press_cs2.cc \
++     nuc_eos_press.cc nuc_eos_full.cc nuc_eos_dpdrhoe_dpderho.cc \
++     readtable_cactus_wrapper.cc
++SUBDIRS = 
+diff --git a/src/nuc_eos_cxx/make.code.deps b/src/nuc_eos_cxx/make.code.deps
+new file mode 100644
+index 0000000..9e26b00
+--- /dev/null
++++ b/src/nuc_eos_cxx/make.code.deps
+@@ -0,0 +1,18 @@
++nuc_eos_dpdrhoe_dpderho.cc:	nuc_eos.hh 
++nuc_eos.cc:			nuc_eos.hh 
++nuc_eos_press.cc:		nuc_eos.hh
++nuc_eos_press_cs2.cc:		nuc_eos.hh
++nuc_eos_short.cc:		nuc_eos.hh
++nuc_eos_full.cc:		nuc_eos.hh
++readtable.cc:			nuc_eos.hh
++nuc_eos_dpdrhoe_dpderho.cc:	helpers.hh 
++nuc_eos.cc:			helpers.hh 
++nuc_eos_press.cc:		helpers.hh
++nuc_eos_press_cs2.cc:		helpers.hh
++nuc_eos_short.cc:		helpers.hh
++nuc_eos_full.cc:		helpers.hh
++readtable.cc:			helpers.hh
++
++
++
++
+diff --git a/src/nuc_eos_cxx/nuc_eos.hh b/src/nuc_eos_cxx/nuc_eos.hh
+new file mode 100644
+index 0000000..8149803
+--- /dev/null
++++ b/src/nuc_eos_cxx/nuc_eos.hh
+@@ -0,0 +1,75 @@
++#ifndef NUC_EOS_HH
++#define NUC_EOS_HH
++
++#define HAVEGR 1
++#define MAX(x, y) (((x) > (y)) ? (x) : (y))
++#define MIN(x, y) (((x) < (y)) ? (x) : (y))
++#define NTABLES 19
++#define LENGTHGF 6.77269222552442e-06
++#define TIMEGF 2.03040204956746e05
++#define RHOGF 1.61887093132742e-18
++#define PRESSGF 1.80123683248503e-39
++#define EPSGF 1.11265005605362e-21
++#define INVRHOGF 6.17714470405638e17
++#define INVEPSGF 8.98755178736818e20
++#define INVPRESSGF 5.55174079257738e38
++#define restrict __restrict__
++
++namespace nuc_eos {
++
++  extern int nrho;
++  extern int ntemp;
++  extern int nye;
++
++  extern double *alltables;
++  extern double *epstable;
++  extern double *logrho; 
++  extern double *logtemp;
++  extern double temp0, temp1;
++  extern double dlintemp,dlintempi;
++  extern double drholintempi;
++  extern double dlintempyei;
++  extern double drholintempyei;
++  extern double *yes;
++  extern double energy_shift;
++  extern double dtemp, dtempi;
++  extern double drho, drhoi;
++  extern double dye, dyei;
++  extern double drhotempi;
++  extern double drhoyei;
++  extern double dtempyei;
++  extern double drhotempyei;
++
++// min and max values
++
++  extern double eos_rhomax, eos_rhomin;
++  extern double eos_tempmin, eos_tempmax;
++  extern double eos_yemin, eos_yemax;
++  
++  extern double c2p_tempmin;
++  extern double c2p_tempmax;
++
++// table key
++// 0 logpress 
++// 1 logenergy
++// 2 entropy
++// 3 munu
++// 4 cs2
++// 5 dedt
++// 6 dpdrhoe
++// 7 dpderho
++// 8 muhat
++// 9 mu_e
++// 10 mu_p
++// 11 mu_n
++// 12 Xa
++// 13 Xh
++// 14 Xn
++// 15 Xp
++// 16 Abar
++// 17 Zbar
++// 18 Gamma
++
++}
++
++#endif // NUC_EOS_HH
+diff --git a/src/nuc_eos_cxx/nuc_eos_dpdrhoe_dpderho.cc b/src/nuc_eos_cxx/nuc_eos_dpdrhoe_dpderho.cc
+new file mode 100644
+index 0000000..332638d
+--- /dev/null
++++ b/src/nuc_eos_cxx/nuc_eos_dpdrhoe_dpderho.cc
+@@ -0,0 +1,114 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <math.h>
++#include "nuc_eos.hh"
++#include "helpers.hh"
++
++namespace nuc_eos {
++
++extern "C"
++void CCTK_FNAME(nuc_eos_m_kt0_dpdrhoe_dpderho)(const int *restrict n,
++				     const double *restrict rho, 
++				     double *restrict temp,
++				     const double *restrict ye,
++				     const double *restrict eps,
++				     double *restrict dpdrhoe,
++				     double *restrict dpderho,
++				     const double *restrict prec,
++				     int *restrict keyerr,
++				     int *restrict anyerr)
++{
++
++  using namespace nuc_eos;
++
++  *anyerr = 0;
++
++  for(int i=0;i<*n;i++) {
++    
++    // check if we are fine
++    // Note that this code now requires that the
++    // temperature guess be within the table bounds
++    keyerr[i] = checkbounds_kt0_noTcheck(rho[i], ye[i]);
++    if(keyerr[i] != 0) {
++      *anyerr = 1;
++    }
++  }
++
++  // Abort if there is any error in checkbounds.
++  // This should never happen and the program should abort with
++  // a fatal error anyway. No point in doing any further EOS calculations.
++  if(*anyerr) return;
++
++  for(int i=0;i<*n;i++) {
++    const double lr = log(rho[i]);
++    const double lt = log(MIN(MAX(temp[i],eos_tempmin),eos_tempmax));
++    double ltout;
++    const double epstot = eps[i]+energy_shift;
++    if(epstot>0.0e0) {
++      // this is the standard scenario; eps is larger than zero
++      // and we can operate with logarithmic tables
++      const double lxeps = log(epstot);
++#if DEBUG
++      fprintf(stderr,"%d %15.6E %15.6E %15.6E %15.6E\n",i,lr,lt,ye[i],lxeps);
++      fprintf(stderr,"%d %15.6E %15.6E %15.6E %15.6E\n",i,
++	      exp(lr),exp(lt),ye[i],exp(lxeps));
++#endif
++      nuc_eos_findtemp(lr,lt,ye[i],lxeps,*prec,
++		       (double *restrict)(&ltout),&keyerr[i]);
++    } else {
++      keyerr[i] = 667;
++      *anyerr = 1;
++    } // epstot > 0.0
++
++    if(keyerr[i] != 0) {
++      // now try negative temperature treatment
++      double eps0, eps1;
++      int idx[8];
++      double delx,dely,delz;
++
++      get_interp_spots_linT_low_eps(lr,temp1,ye[i],&delx,&dely,&delz,idx);
++      nuc_eos_C_linterp_one_linT_low_eps(idx,delx,dely,delz,&(eps1));
++
++      get_interp_spots_linT_low_eps(lr,temp0,ye[i],&delx,&dely,&delz,idx);
++      nuc_eos_C_linterp_one_linT_low_eps(idx,delx,dely,delz,&(eps0));
++
++      temp[i] = (epstot-eps0) * (temp1-temp0)/(eps1-eps0) + temp0;
++
++      // set error codes
++      *anyerr = 1;
++      keyerr[i] = 668;
++
++      // get dpdrhoe
++      get_interp_spots_linT_low(lr,temp[i],ye[i],&delx,&dely,&delz,idx);
++      {
++	const int iv = 6;
++	nuc_eos_C_linterp_one_linT_low(idx,delx,dely,delz,&(dpdrhoe[i]),iv);
++      }
++      // get dpderho
++      {
++	const int iv = 7;
++	get_interp_spots_linT_low(lr,temp[i],ye[i],&delx,&dely,&delz,idx);
++	nuc_eos_C_linterp_one_linT_low(idx,delx,dely,delz,&(dpderho[i]),iv);
++      }
++    } else {
++      temp[i] = exp(ltout);
++      int idx[8];
++      double delx,dely,delz;
++      get_interp_spots(lr,ltout,ye[i],&delx,&dely,&delz,idx);
++      {
++	const int iv = 6;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(dpdrhoe[i]),iv);
++      }
++      {
++	const int iv = 7;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(dpderho[i]),iv);
++      }
++    }
++  }
++
++  return;
++}
++
++
++
++} // namespace nuc_eos
+diff --git a/src/nuc_eos_cxx/nuc_eos_full.cc b/src/nuc_eos_cxx/nuc_eos_full.cc
+new file mode 100644
+index 0000000..56b6ae0
+--- /dev/null
++++ b/src/nuc_eos_cxx/nuc_eos_full.cc
+@@ -0,0 +1,321 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <math.h>
++#include "nuc_eos.hh"
++#include "helpers.hh"
++
++namespace nuc_eos {
++extern "C"
++void CCTK_FNAME(nuc_eos_m_kt1_full)(const int *restrict n,
++			  const double *restrict rho, 
++			  const double *restrict temp,
++			  const double *restrict ye,
++			  double *restrict eps,
++			  double *restrict prs,
++			  double *restrict ent,
++			  double *restrict cs2,
++			  double *restrict dedt,
++			  double *restrict dpderho,
++			  double *restrict dpdrhoe,
++			  double *restrict xa,
++			  double *restrict xh,
++			  double *restrict xn,
++			  double *restrict xp,
++			  double *restrict abar,
++			  double *restrict zbar,
++			  double *restrict mue,
++			  double *restrict mun,
++			  double *restrict mup,
++			  double *restrict muhat,
++			  int *restrict keyerr,
++			  int *restrict anyerr)
++{
++
++  using namespace nuc_eos;
++
++  *anyerr = 0;
++  for(int i=0;i<*n;i++) {
++    // check if we are fine
++    keyerr[i] = checkbounds(rho[i], temp[i], ye[i]);
++    if(keyerr[i] != 0) {
++      *anyerr = 1;
++      return;
++    }
++  }
++
++  for(int i=0;i<*n;i++) {
++  
++    int idx[8];
++    double delx,dely,delz;
++    const double xrho = log(rho[i]);
++    const double xtemp = log(temp[i]);
++
++    get_interp_spots(xrho,xtemp,ye[i],&delx,&dely,&delz,idx);
++    // get prs
++    {
++      const int iv = 0;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(prs[i]),iv);
++    }
++    // get eps
++    {
++      const int iv = 1;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(eps[i]),iv);
++    }
++    // get entropy
++    {
++      const int iv = 2;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(ent[i]),iv);
++    }
++    // get cs2
++    {
++      const int iv = 4;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(cs2[i]),iv);
++    }
++    // get dedT
++    {
++      const int iv = 5;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(dedt[i]),iv);
++    }
++    // get dpdrhoe
++    {
++      const int iv = 6;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(dpdrhoe[i]),iv);
++    }
++    // get dpderho
++    {
++      const int iv = 7;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(dpderho[i]),iv);
++    }
++    // get muhat
++    {
++      const int iv = 8;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(muhat[i]),iv);
++    }
++    // get mue
++    {
++      const int iv = 9;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(mue[i]),iv);
++    }
++    // get mup
++    {
++      const int iv = 10;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(mup[i]),iv);
++    }
++    // get mun
++    {
++      const int iv = 11;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(mun[i]),iv);
++    }
++    // get xa
++    {
++      const int iv = 12;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(xa[i]),iv);
++    }
++    // get xh
++    {
++      const int iv = 13;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(xh[i]),iv);
++    }
++    // get xn
++    {
++      const int iv = 14;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(xn[i]),iv);
++    }
++    // get xp
++    {
++      const int iv = 15;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(xp[i]),iv);
++    }
++    // get abar
++    {
++      const int iv = 16;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(abar[i]),iv);
++    }
++    // get zbar
++    {
++      const int iv = 17;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(zbar[i]),iv);
++    }
++  }
++  
++  for(int i=0;i<*n;i++) {
++    prs[i] = exp(prs[i]);
++    eps[i] = exp(eps[i]) - energy_shift;
++#if HAVEGR
++    cs2[i] = cs2[i] / (1.0 + eps[i] + prs[i]/rho[i]);
++#endif
++  }
++
++  return;
++}
++
++extern "C"
++void CCTK_FNAME(nuc_eos_m_kt0_full)(const int *restrict n,
++			  const double *restrict rho, 
++			  double *restrict temp,
++			  const double *restrict ye,
++			  const double *restrict eps,
++			  double *restrict prs,
++			  double *restrict ent,
++			  double *restrict cs2,
++			  double *restrict dedt,
++			  double *restrict dpderho,
++			  double *restrict dpdrhoe,
++			  double *restrict xa,
++			  double *restrict xh,
++			  double *restrict xn,
++			  double *restrict xp,
++			  double *restrict abar,
++			  double *restrict zbar,
++			  double *restrict mue,
++			  double *restrict mun,
++			  double *restrict mup,
++			  double *restrict muhat,
++			  const double *restrict prec,
++			  int *restrict keyerr,
++			  int *restrict anyerr)
++{
++
++  using namespace nuc_eos;
++
++  *anyerr = 0;
++
++  for(int i=0;i<*n;i++) {
++    
++    // check if we are fine
++    // Note that this code now requires that the
++    // temperature guess be within the table bounds
++    keyerr[i] = checkbounds_kt0_noTcheck(rho[i], ye[i]);
++    if(keyerr[i] != 0) {
++      *anyerr = 1;
++    }
++  }
++
++  // Abort if there is any error in checkbounds.
++  // This should never happen and the program should abort with
++  // a fatal error anyway. No point in doing any further EOS calculations.
++  if(*anyerr) return;
++
++  for(int i=0;i<*n;i++) {
++    const double lr = log(rho[i]);
++    const double lt = log(MIN(MAX(temp[i],eos_tempmin),eos_tempmax));
++    double ltout;
++    const double epstot = eps[i]+energy_shift;
++    if(epstot>0.0e0) {
++      // this is the standard scenario; eps is larger than zero
++      // and we can operate with logarithmic tables
++      const double lxeps = log(epstot);
++#if DEBUG
++      fprintf(stderr,"%d %15.6E %15.6E %15.6E %15.6E\n",i,lr,lt,ye[i],lxeps);
++      fprintf(stderr,"%d %15.6E %15.6E %15.6E %15.6E\n",i,
++	      exp(lr),exp(lt),ye[i],exp(lxeps));
++#endif
++      nuc_eos_findtemp(lr,lt,ye[i],lxeps,*prec,
++		       (double *restrict)(&ltout),&keyerr[i]);
++    } else {
++      keyerr[i] = 667;
++      *anyerr=1;
++    } // epstot > 0.0
++
++
++    if(!keyerr[i]) {
++      temp[i] = exp(ltout);
++      int idx[8];
++      double delx,dely,delz;
++      get_interp_spots(lr,ltout,ye[i],&delx,&dely,&delz,idx);
++      // get prs
++      {
++	const int iv = 0;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(prs[i]),iv);
++      }
++      // get entropy
++      {
++	const int iv = 2;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(ent[i]),iv);
++      }
++      // get cs2
++      {
++	const int iv = 4;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(cs2[i]),iv);
++      }
++      // get dedT
++      {
++	const int iv = 5;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(dedt[i]),iv);
++      }
++      // get dpdrhoe
++      {
++	const int iv = 6;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(dpdrhoe[i]),iv);
++      }
++      // get dpderho
++      {
++	const int iv = 7;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(dpderho[i]),iv);
++      }
++      // get muhat
++      {
++	const int iv = 8;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(muhat[i]),iv);
++      }
++      // get mue
++      {
++	const int iv = 9;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(mue[i]),iv);
++      }
++      // get mup
++      {
++	const int iv = 10;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(mup[i]),iv);
++      }
++      // get mun
++      {
++	const int iv = 11;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(mun[i]),iv);
++      }
++      // get xa
++      {
++	const int iv = 12;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(xa[i]),iv);
++      }
++      // get xh
++      {
++	const int iv = 13;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(xh[i]),iv);
++      }
++      // get xn
++      {
++	const int iv = 14;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(xn[i]),iv);
++      }
++      // get xp
++      {
++	const int iv = 15;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(xp[i]),iv);
++      }
++      // get abar
++      {
++	const int iv = 16;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(abar[i]),iv);
++      }
++      // get zbar
++      {
++	const int iv = 17;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(zbar[i]),iv);
++      }
++    }
++  }
++
++  for(int i=0;i<*n;i++) {
++    prs[i] = exp(prs[i]);
++#if HAVEGR
++    cs2[i] = cs2[i] / (1.0 + eps[i] + prs[i]/rho[i]);
++#endif
++  }
++
++  return;
++}
++
++
++
++} // namespace nuc_eos
+diff --git a/src/nuc_eos_cxx/nuc_eos_press.cc b/src/nuc_eos_cxx/nuc_eos_press.cc
+new file mode 100644
+index 0000000..215adf8
+--- /dev/null
++++ b/src/nuc_eos_cxx/nuc_eos_press.cc
+@@ -0,0 +1,158 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <math.h>
++#include "nuc_eos.hh"
++#include "helpers.hh"
++
++namespace nuc_eos {
++
++extern "C"
++void CCTK_FNAME(nuc_eos_m_kt1_press_eps)(const int *restrict n,
++			     const double *restrict rho, 
++			     const double *restrict temp,
++			     const double *restrict ye,
++			     double *restrict eps,
++			     double *restrict prs,
++			     int *restrict keyerr,
++			     int *restrict anyerr)
++{
++
++  using namespace nuc_eos;
++
++  *anyerr = 0;
++  for(int i=0;i<*n;i++) {
++    // check if we are fine
++    keyerr[i] = checkbounds(rho[i], temp[i], ye[i]);
++    if(keyerr[i] != 0) {
++      *anyerr = 1;
++      return;
++    }
++  }
++
++  for(int i=0;i<*n;i++) {
++    int idx[8];
++    double delx,dely,delz;
++    const double xrho = log(rho[i]);
++    const double xtemp = log(temp[i]);
++
++    get_interp_spots(xrho,xtemp,ye[i],&delx,&dely,&delz,idx);
++  
++    {
++      const int iv = 0;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(prs[i]),iv);
++    }
++
++    {
++      const int iv = 1;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(eps[i]),iv);
++    }
++  } 
++
++  // now get rid of ln:
++  for(int i=0;i<*n;i++) {
++    prs[i] = exp(prs[i]);
++    eps[i] = exp(eps[i]) - energy_shift;
++  }
++
++
++  return;
++}
++
++extern "C"
++void CCTK_FNAME(nuc_eos_m_kt0_press)(const int *restrict n,
++			 const double *restrict rho, 
++			 double *restrict temp,
++			 const double *restrict ye,
++			 const double *restrict eps,
++			 double *restrict prs,
++			 const double *restrict prec,
++			 int *restrict keyerr,
++			 int *restrict anyerr)
++{
++
++  using namespace nuc_eos;
++
++  *anyerr = 0;
++
++  for(int i=0;i<*n;i++) {
++    // check if we are fine
++    // Note that this code now requires that the
++    // temperature guess be within the table bounds
++    keyerr[i] = checkbounds_kt0_noTcheck(rho[i], ye[i]);
++    if(keyerr[i] != 0) {
++      *anyerr = 1;
++    }
++  }
++
++  // Abort if there is any error in checkbounds.
++  // This should never happen and the program should abort with
++  // a fatal error anyway. No point in doing any further EOS calculations.
++  if(*anyerr) return;
++
++  // first must find the temperature
++  for(int i=0;i<*n;i++) {
++    const double lr = log(rho[i]);
++    const double lt = log(MIN(MAX(temp[i],eos_tempmin),eos_tempmax));
++    double ltout;
++    const double epstot = eps[i]+energy_shift;
++    if(epstot>0.0e0) {
++      // this is the standard scenario; eps is larger than zero
++      // and we can operate with logarithmic tables
++      const double lxeps = log(epstot);
++#if DEBUG
++      fprintf(stderr,"%d %15.6E %15.6E %15.6E %15.6E\n",i,lr,lt,ye[i],lxeps);
++      fprintf(stderr,"%d %15.6E %15.6E %15.6E %15.6E\n",i,
++	      exp(lr),exp(lt),ye[i],exp(lxeps));
++#endif
++      nuc_eos_findtemp(lr,lt,ye[i],lxeps,*prec,
++		       (double *restrict)(&ltout),&keyerr[i]);
++    } else {
++      keyerr[i] = 667;
++    } // epstot > 0.0
++
++    if(keyerr[i]) {
++      // now try negative temperature treatment
++      double eps0, eps1;
++      int idx[8];
++      double delx,dely,delz;
++
++      get_interp_spots_linT_low_eps(lr,temp1,ye[i],&delx,&dely,&delz,idx);
++      nuc_eos_C_linterp_one_linT_low_eps(idx,delx,dely,delz,&(eps1));
++
++      get_interp_spots_linT_low_eps(lr,temp0,ye[i],&delx,&dely,&delz,idx);
++      nuc_eos_C_linterp_one_linT_low_eps(idx,delx,dely,delz,&(eps0));
++
++      temp[i] = (epstot-eps0) * (temp1-temp0)/(eps1-eps0) + temp0;
++
++      // set error codes
++      *anyerr = 1;
++      keyerr[i] = 668;
++
++      // get pressure
++      {
++	const int iv = 0;
++	get_interp_spots_linT_low(lr,temp[i],ye[i],&delx,&dely,&delz,idx);
++	nuc_eos_C_linterp_one_linT_low(idx,delx,dely,delz,&(prs[i]),iv);
++      }
++
++    } else {
++      temp[i] = exp(ltout);
++      int idx[8];
++      double delx,dely,delz;
++      get_interp_spots(lr,ltout,ye[i],&delx,&dely,&delz,idx);
++      {
++	const int iv = 0;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(prs[i]),iv);
++      }
++    }
++  } // loop i<n
++
++  // now get rid of ln:
++  for(int i=0;i<*n;i++) {
++    prs[i] = exp(prs[i]);
++  }
++
++  return;
++}
++
++} // namespace nuc_eos
+diff --git a/src/nuc_eos_cxx/nuc_eos_press_cs2.cc b/src/nuc_eos_cxx/nuc_eos_press_cs2.cc
+new file mode 100644
+index 0000000..5a47ba2
+--- /dev/null
++++ b/src/nuc_eos_cxx/nuc_eos_press_cs2.cc
+@@ -0,0 +1,179 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <math.h>
++#include "nuc_eos.hh"
++#include "helpers.hh"
++
++namespace nuc_eos {
++
++extern "C"
++void CCTK_FNAME(nuc_eos_m_kt1_press_eps_cs2)(const int *restrict n,
++			     const double *restrict rho, 
++			     const double *restrict temp,
++			     const double *restrict ye,
++			     double *restrict eps,
++			     double *restrict prs,
++			     double *restrict cs2,
++			     int *restrict keyerr,
++			     int *restrict anyerr)
++{
++
++  using namespace nuc_eos;
++
++  *anyerr = 0;
++  for(int i=0;i<*n;i++) {
++    // check if we are fine
++    keyerr[i] = checkbounds(rho[i], temp[i], ye[i]);
++    if(keyerr[i] != 0) {
++      *anyerr = 1;
++      return;
++    }
++  }
++  
++  for(int i=0;i<*n;i++) {
++    int idx[8];
++    double delx,dely,delz;
++    const double xrho = log(rho[i]);
++    const double xtemp = log(temp[i]);
++
++    get_interp_spots(xrho,xtemp,ye[i],&delx,&dely,&delz,idx);
++  
++    {
++      const int iv = 0;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(prs[i]),iv);
++    }
++    {
++      const int iv = 1;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(eps[i]),iv);
++    }
++    {
++      const int iv = 4;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(cs2[i]),iv);
++    }
++  } 
++
++  // now get rid of ln:
++  for(int i=0;i<*n;i++) {
++    prs[i] = exp(prs[i]);
++    eps[i] = exp(eps[i]) - energy_shift;
++#if HAVEGR
++    cs2[i] = cs2[i] / (1.0 + eps[i] + prs[i]/rho[i]);
++#endif
++  }
++
++
++  return;
++}
++
++extern "C"
++void CCTK_FNAME(nuc_eos_m_kt0_press_cs2)(const int *restrict n,
++			 const double *restrict rho, 
++			 double *restrict temp,
++			 const double *restrict ye,
++			 const double *restrict eps,
++			 double *restrict prs,
++			 double *restrict cs2,
++			 const double *restrict prec,
++			 int *restrict keyerr,
++			 int *restrict anyerr)
++{
++
++  using namespace nuc_eos;
++
++  *anyerr = 0;
++
++  for(int i=0;i<*n;i++) {
++    
++    // check if we are fine
++    // Note that this code now requires that the
++    // temperature guess be within the table bounds
++    keyerr[i] = checkbounds_kt0_noTcheck(rho[i], ye[i]);;
++    if(keyerr[i] != 0) {
++      *anyerr = 1;
++    }
++  }
++
++  // Abort if there is any error in checkbounds.
++  // This should never happen and the program should abort with
++  // a fatal error anyway. No point in doing any further EOS calculations.
++  if(*anyerr) return;
++
++  // first must find the temperature
++  for(int i=0;i<*n;i++) {
++    const double lr = log(rho[i]);
++    const double lt = log(MIN(MAX(temp[i],eos_tempmin),eos_tempmax));
++    double ltout;
++    const double epstot = eps[i]+energy_shift;
++    if(epstot>0.0e0) {
++      // this is the standard scenario; eps is larger than zero
++      // and we can operate with logarithmic tables
++      const double lxeps = log(epstot);
++
++      nuc_eos_findtemp(lr,lt,ye[i],lxeps,*prec,
++		       (double *restrict)(&ltout),&keyerr[i]);
++    } else {
++      keyerr[i] = 667;
++      *anyerr = 1;
++    } // epstot > 0.0
++
++    if(keyerr[i] != 0) {
++      // now try negative temperature treatment
++      double eps0, eps1;
++      int idx[8];
++      double delx,dely,delz;
++
++      get_interp_spots_linT_low_eps(lr,temp1,ye[i],&delx,&dely,&delz,idx);
++      nuc_eos_C_linterp_one_linT_low_eps(idx,delx,dely,delz,&(eps1));
++
++      get_interp_spots_linT_low_eps(lr,temp0,ye[i],&delx,&dely,&delz,idx);
++      nuc_eos_C_linterp_one_linT_low_eps(idx,delx,dely,delz,&(eps0));
++
++      temp[i] = (epstot-eps0) * (temp1-temp0)/(eps1-eps0) + temp0;
++
++      // set error codes
++      *anyerr = 1;
++      keyerr[i] = 668;
++
++      // get pressure
++      {
++	const int iv = 0;
++	get_interp_spots_linT_low(lr,temp[i],ye[i],&delx,&dely,&delz,idx);
++	nuc_eos_C_linterp_one_linT_low(idx,delx,dely,delz,&(prs[i]),iv);
++      }
++      // get cs2
++      {
++	const int iv = 4;
++	get_interp_spots_linT_low(lr,temp[i],ye[i],&delx,&dely,&delz,idx);
++	nuc_eos_C_linterp_one_linT_low(idx,delx,dely,delz,&(cs2[i]),iv);
++      }
++
++    } else {
++      temp[i] = exp(ltout);
++      int idx[8];
++      double delx,dely,delz;
++      get_interp_spots(lr,ltout,ye[i],&delx,&dely,&delz,idx);
++      {
++	const int iv = 0;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(prs[i]),iv);
++      }
++      {
++	const int iv = 4;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(cs2[i]),iv);
++      }
++    }
++  }
++
++  // now get rid of ln:
++  for(int i=0;i<*n;i++) {
++    prs[i] = exp(prs[i]);
++#if HAVEGR
++    cs2[i] = cs2[i] / (1.0 + eps[i] + prs[i]/rho[i]);
++#endif
++  }
++
++  return;
++}
++
++
++
++} // namespace nuc_eos
+diff --git a/src/nuc_eos_cxx/nuc_eos_short.cc b/src/nuc_eos_cxx/nuc_eos_short.cc
+new file mode 100644
+index 0000000..fbdf5d0
+--- /dev/null
++++ b/src/nuc_eos_cxx/nuc_eos_short.cc
+@@ -0,0 +1,309 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <math.h>
++#include "nuc_eos.hh"
++#include "helpers.hh"
++
++namespace nuc_eos {
++
++extern "C"
++void CCTK_FNAME(nuc_eos_m_kt1_short)(const int *restrict n,
++			   const double *restrict rho, 
++			   const double *restrict temp,
++			   const double *restrict ye,
++			   double *restrict eps,
++			   double *restrict prs,
++			   double *restrict ent,
++			   double *restrict cs2,
++			   double *restrict dedt,
++			   double *restrict dpderho,
++			   double *restrict dpdrhoe,
++			   double *restrict munu,
++			   int *restrict keyerr,
++			   int *restrict anyerr)
++{
++
++  using namespace nuc_eos;
++
++  *anyerr = 0;
++  for(int i=0;i<*n;i++) {
++    // check if we are fine
++    keyerr[i] = checkbounds(rho[i], temp[i], ye[i]);
++    if(keyerr[i] != 0) {
++      *anyerr = 1;
++      return;
++    }
++  }
++
++  for(int i=0;i<*n;i++) {
++  
++    int idx[8];
++    double delx,dely,delz;
++    const double xrho = log(rho[i]);
++    const double xtemp = log(temp[i]);
++
++    get_interp_spots(xrho,xtemp,ye[i],&delx,&dely,&delz,idx);
++    // get prs
++    {
++      const int iv = 0;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(prs[i]),iv);
++    }
++    {
++      const int iv = 1;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(eps[i]),iv);
++    }
++    // get entropy
++    {
++      const int iv = 2;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(ent[i]),iv);
++    }
++    // get munu
++    {
++      const int iv = 3;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(munu[i]),iv);
++    }
++    // get cs2
++    {
++      const int iv = 4;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(cs2[i]),iv);
++    }
++    // get dedT
++    {
++      const int iv = 5;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(dedt[i]),iv);
++    }
++    // get dpdrhoe
++    {
++      const int iv = 6;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(dpdrhoe[i]),iv);
++    }
++    // get dpderho
++    {
++      const int iv = 7;
++      nuc_eos_C_linterp_one(idx,delx,dely,delz,&(dpderho[i]),iv);
++    }
++  }
++  
++  for(int i=0;i<*n;i++) {
++    prs[i] = exp(prs[i]);
++    eps[i] = exp(eps[i]) - energy_shift;
++#if HAVEGR
++    cs2[i] = cs2[i] / (1.0 + eps[i] + prs[i]/rho[i]);
++#endif
++  }
++
++  return;
++}
++
++extern "C"
++  void CCTK_FNAME(nuc_eos_m_kt0_short)(const int *restrict n,
++			   const double *restrict rho, 
++			   double *restrict temp,
++			   const double *restrict ye,
++			   const double *restrict eps,
++			   double *restrict prs,
++			   double *restrict ent,
++			   double *restrict cs2,
++			   double *restrict dedt,
++			   double *restrict dpderho,
++			   double *restrict dpdrhoe,
++			   double *restrict munu,
++			   const double *restrict prec,
++			   int *restrict keyerr,
++			   int *restrict anyerr)
++{
++
++  using namespace nuc_eos;
++
++  *anyerr = 0;
++
++  for(int i=0;i<*n;i++) {
++    
++    // check if we are fine
++    // Note that this code now requires that the
++    // temperature guess be within the table bounds
++    keyerr[i] = checkbounds_kt0_noTcheck(rho[i], ye[i]);
++    if(keyerr[i] != 0) {
++      *anyerr = 1;
++    }
++  }
++
++  // Abort if there is any error in checkbounds.
++  // This should never happen and the program should abort with
++  // a fatal error anyway. No point in doing any further EOS calculations.
++  if(*anyerr) return;
++
++  for(int i=0;i<*n;i++) {
++    const double lr = log(rho[i]);
++    const double lt = log(MIN(MAX(temp[i],eos_tempmin),eos_tempmax));
++    double ltout;
++    const double epstot = eps[i]+energy_shift;
++    if(epstot>0.0e0) {
++      // this is the standard scenario; eps is larger than zero
++      // and we can operate with logarithmic tables
++      const double lxeps = log(epstot);
++#if DEBUG
++      fprintf(stderr,"%d %15.6E %15.6E %15.6E %15.6E\n",i,lr,lt,ye[i],lxeps);
++      fprintf(stderr,"%d %15.6E %15.6E %15.6E %15.6E\n",i,
++	      exp(lr),exp(lt),ye[i],exp(lxeps));
++#endif
++      nuc_eos_findtemp(lr,lt,ye[i],lxeps,*prec,
++		       (double *restrict)(&ltout),&keyerr[i]);
++    } else {
++      keyerr[i] = 667;
++      *anyerr=1;
++    } // epstot > 0.0
++
++
++    if(!keyerr[i]) {
++      temp[i] = exp(ltout);
++      int idx[8];
++      double delx,dely,delz;
++      get_interp_spots(lr,ltout,ye[i],&delx,&dely,&delz,idx);
++      // get prs
++      {
++	const int iv = 0;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(prs[i]),iv);
++      }
++      // get entropy
++      {
++	const int iv = 2;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(ent[i]),iv);
++      }
++      // get munu
++      {
++	const int iv = 3;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(munu[i]),iv);
++      }
++      // get cs2
++      {
++	const int iv = 4;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(cs2[i]),iv);
++      }
++      // get dedT
++      {
++	const int iv = 5;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(dedt[i]),iv);
++      }
++      // get dpdrhoe
++      {
++	const int iv = 6;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(dpdrhoe[i]),iv);
++      }
++      // get dpderho
++      {
++	const int iv = 7;
++	nuc_eos_C_linterp_one(idx,delx,dely,delz,&(dpderho[i]),iv);
++      }
++    }
++  }
++
++  for(int i=0;i<*n;i++) {
++    prs[i] = exp(prs[i]);
++#if HAVEGR
++    cs2[i] = cs2[i] / (1.0 + eps[i] + prs[i]/rho[i]);
++#endif
++  }
++
++  return;
++}
++
++extern "C"
++  void CCTK_FNAME(nuc_eos_m_kt2_short)(const int *restrict n,
++			   const double *restrict rho, 
++			   double *restrict temp,
++			   const double *restrict ye,
++			   double *restrict eps,
++			   double *restrict prs,
++			   const double *restrict ent,
++			   double *restrict cs2,
++			   double *restrict dedt,
++			   double *restrict dpderho,
++			   double *restrict dpdrhoe,
++			   double *restrict munu,
++			   const double *restrict prec,
++			   int *restrict keyerr,
++			   int *restrict anyerr)
++  {
++
++    using namespace nuc_eos;
++
++    *anyerr = 0;
++
++    for(int i=0;i<*n;i++) {
++      // check if we are fine
++      // Note that this code now requires that the
++      // temperature guess be within the table bounds
++      keyerr[i] = checkbounds_kt0_noTcheck(rho[i], ye[i]);
++      if(keyerr[i] != 0) {
++	*anyerr = 1;
++      }
++    }
++
++    // Abort if there is any error in checkbounds.
++    // This should never happen and the program should abort with
++    // a fatal error anyway. No point in doing any further EOS calculations.
++    if(*anyerr) return;
++
++    for(int i=0;i<*n;i++) {
++      const double lr = log(rho[i]);
++      const double lt = log(MIN(MAX(temp[i],eos_tempmin),eos_tempmax));
++      double ltout;
++      nuc_eos_findtemp_entropy(lr,lt,ye[i],ent[i],*prec,
++			       (double *restrict)(&ltout),&keyerr[i]);
++
++      if(!keyerr[i]) {
++	temp[i] = exp(ltout);
++	int idx[8];
++	double delx,dely,delz;
++	get_interp_spots(lr,ltout,ye[i],&delx,&dely,&delz,idx);
++	// get prs
++	{
++	  const int iv = 0;
++	  nuc_eos_C_linterp_one(idx,delx,dely,delz,&(prs[i]),iv);
++	}
++	// get eps
++	{
++	  const int iv = 1;
++	  nuc_eos_C_linterp_one(idx,delx,dely,delz,&(eps[i]),iv);
++	}
++	// get munu
++	{
++	  const int iv = 3;
++	  nuc_eos_C_linterp_one(idx,delx,dely,delz,&(munu[i]),iv);
++	}
++	// get cs2
++	{
++	  const int iv = 4;
++	  nuc_eos_C_linterp_one(idx,delx,dely,delz,&(cs2[i]),iv);
++	}
++	// get dedT
++	{
++	  const int iv = 5;
++	  nuc_eos_C_linterp_one(idx,delx,dely,delz,&(dedt[i]),iv);
++	}
++	// get dpdrhoe
++	{
++	  const int iv = 6;
++	  nuc_eos_C_linterp_one(idx,delx,dely,delz,&(dpdrhoe[i]),iv);
++	}
++	// get dpderho
++	{
++	  const int iv = 7;
++	  nuc_eos_C_linterp_one(idx,delx,dely,delz,&(dpderho[i]),iv);
++	}
++      }
++    }
++
++    for(int i=0;i<*n;i++) {
++      prs[i] = exp(prs[i]);
++      eps[i] = exp(eps[i]) - energy_shift;
++#if HAVEGR
++      cs2[i] = cs2[i] / (1.0 + eps[i] + prs[i]/rho[i]);
++#endif
++    }
++
++    return;
++  }
++
++} // namespace nuc_eos
+diff --git a/src/nuc_eos_cxx/readtable.cc b/src/nuc_eos_cxx/readtable.cc
+new file mode 100644
+index 0000000..1ef1715
+--- /dev/null
++++ b/src/nuc_eos_cxx/readtable.cc
+@@ -0,0 +1,300 @@
++#include <stdlib.h>
++#include <stdio.h>
++#include <math.h>
++#define H5_USE_16_API 1
++#include "hdf5.h"
++#include "nuc_eos.hh"
++
++// Catch HDF5 errors
++#define HDF5_ERROR(fn_call)                                              \
++  do {                                                                   \
++    int _error_code = fn_call;                                           \
++    if (_error_code < 0) {	       				\
++      fprintf(stderr, \
++                  "HDF5 call '%s' returned error code %d",               \
++                  #fn_call, _error_code);                                \
++      abort(); }							\
++  } while (0)
++
++static int file_is_readable(const char* filename);
++static int file_is_readable(const char* filename)
++{
++    FILE* fp = NULL;
++    fp = fopen(filename, "r");
++    if(fp != NULL)
++    {
++        fclose(fp);
++        return 1;
++    }
++    return 0;
++}
++
++
++// define the variables
++namespace nuc_eos {
++  int nrho;
++  int ntemp;
++  int nye;
++
++  double *alltables;
++  double *epstable;
++  double *logrho; 
++  double *logtemp;
++  double temp0, temp1;
++  double dlintemp, dlintempi;
++  double drholintempi;
++  double dlintempyei;
++  double drholintempyei;
++  double *yes;
++  double energy_shift;
++  double dtemp, dtempi;
++  double drho, drhoi;
++  double dye, dyei;
++  double drhotempi;
++  double drhoyei;
++  double dtempyei;
++  double drhotempyei;
++  
++  double eos_rhomax, eos_rhomin;
++  double eos_tempmin, eos_tempmax;
++  double eos_yemin, eos_yemax;
++  
++  double c2p_tempmin;
++  double c2p_tempmax;
++
++}
++
++
++
++namespace nuc_eos {
++
++// Cactus calls this function. It reads in the table and calls a fortran
++// function to setup values for the fortran eos module
++extern "C"
++void nuc_eos_C_ReadTable(char* nuceos_table_name)
++{
++  using namespace nuc_eos;
++
++  fprintf(stdout,"*******************************\n");
++  fprintf(stdout,"Reading nuc_eos table file:\n");
++  fprintf(stdout,"%s\n",nuceos_table_name);
++  fprintf(stdout,"*******************************\n");
++
++  hid_t file;
++  if (!file_is_readable(nuceos_table_name)) {
++    fprintf(stderr,
++               "Could not read nuceos_table_name %s \n",
++               nuceos_table_name);
++    abort();
++  }
++  HDF5_ERROR(file = H5Fopen(nuceos_table_name, H5F_ACC_RDONLY, H5P_DEFAULT));
++
++// Use these two defines to easily read in a lot of variables in the same way
++// The first reads in one variable of a given type completely
++#define READ_EOS_HDF5(NAME,VAR,TYPE,MEM)                                      \
++  do {                                                                        \
++    hid_t dataset;                                                            \
++    HDF5_ERROR(dataset = H5Dopen(file, NAME));                                \
++    HDF5_ERROR(H5Dread(dataset, TYPE, MEM, H5S_ALL, H5P_DEFAULT, VAR));       \
++    HDF5_ERROR(H5Dclose(dataset));                                            \
++  } while (0)
++// The second reads a given variable into a hyperslab of the alltables_temp array
++#define READ_EOSTABLE_HDF5(NAME,OFF)                                     \
++  do {                                                                   \
++    hsize_t offset[2]     = {OFF,0};                                     \
++    H5Sselect_hyperslab(mem3, H5S_SELECT_SET, offset, NULL, var3, NULL); \
++    READ_EOS_HDF5(NAME,alltables_temp,H5T_NATIVE_DOUBLE,mem3);                \
++  } while (0)
++
++  // Read size of tables
++  READ_EOS_HDF5("pointsrho",  &nrho,  H5T_NATIVE_INT, H5S_ALL);
++  READ_EOS_HDF5("pointstemp", &ntemp, H5T_NATIVE_INT, H5S_ALL);
++  READ_EOS_HDF5("pointsye",   &nye,   H5T_NATIVE_INT, H5S_ALL);
++
++
++  // Allocate memory for tables
++  double* alltables_temp;
++  if (!(alltables_temp = (double*)malloc(nrho * ntemp * nye * NTABLES * sizeof(double)))) {
++    fprintf(stderr, "Cannot allocate memory for EOS table\n");
++    abort();
++  }
++  if (!(logrho = (double*)malloc(nrho * sizeof(double)))) {
++    fprintf(stderr, "Cannot allocate memory for EOS table\n");
++    abort();
++  }
++  if (!(logtemp = (double*)malloc(ntemp * sizeof(double)))) {
++    fprintf(stderr, "Cannot allocate memory for EOS table\n");
++    abort();
++  }
++  if (!(yes = (double*)malloc(nye * sizeof(double)))) {
++    fprintf(stderr, "Cannot allocate memory for EOS table\n");
++    abort();
++  }
++
++  // Prepare HDF5 to read hyperslabs into alltables_temp
++  hsize_t table_dims[2] = {NTABLES, nrho * ntemp * nye};
++  hsize_t var3[2]       = { 1, nrho * ntemp * nye};
++  hid_t mem3 =  H5Screate_simple(2, table_dims, NULL);
++
++  // Read alltables_temp
++  READ_EOSTABLE_HDF5("logpress",  0);
++  READ_EOSTABLE_HDF5("logenergy", 1);
++  READ_EOSTABLE_HDF5("entropy",   2);
++  READ_EOSTABLE_HDF5("munu",      3);
++  READ_EOSTABLE_HDF5("cs2",       4);
++  READ_EOSTABLE_HDF5("dedt",      5);
++  READ_EOSTABLE_HDF5("dpdrhoe",   6);
++  READ_EOSTABLE_HDF5("dpderho",   7);
++  // chemical potentials
++  READ_EOSTABLE_HDF5("muhat",     8);
++  READ_EOSTABLE_HDF5("mu_e",      9);
++  READ_EOSTABLE_HDF5("mu_p",     10);
++  READ_EOSTABLE_HDF5("mu_n",     11);
++  // compositions
++  READ_EOSTABLE_HDF5("Xa",       12);
++  READ_EOSTABLE_HDF5("Xh",       13);
++  READ_EOSTABLE_HDF5("Xn",       14);
++  READ_EOSTABLE_HDF5("Xp",       15);
++  // average nucleus
++  READ_EOSTABLE_HDF5("Abar",     16);
++  READ_EOSTABLE_HDF5("Zbar",     17);
++  // Gamma
++  READ_EOSTABLE_HDF5("gamma",    18);
++
++  // Read additional tables and variables
++  READ_EOS_HDF5("logrho",       logrho,        H5T_NATIVE_DOUBLE, H5S_ALL);
++  READ_EOS_HDF5("logtemp",      logtemp,       H5T_NATIVE_DOUBLE, H5S_ALL);
++  READ_EOS_HDF5("ye",           yes,            H5T_NATIVE_DOUBLE, H5S_ALL);
++  READ_EOS_HDF5("energy_shift", &energy_shift, H5T_NATIVE_DOUBLE, H5S_ALL);
++
++  HDF5_ERROR(H5Sclose(mem3));
++  HDF5_ERROR(H5Fclose(file));
++
++  // change ordering of alltables array so that
++  // the table kind is the fastest changing index
++  if (!(alltables = (double*)malloc(nrho * ntemp * nye * NTABLES 
++				    * sizeof(double)))) {
++    fprintf(stderr, "Cannot allocate memory for EOS table\n");
++    abort();
++  }
++  for(int iv = 0;iv<NTABLES;iv++) 
++    for(int k = 0; k<nye;k++) 
++      for(int j = 0; j<ntemp; j++) 
++	for(int i = 0; i<nrho; i++) {
++	  int indold = i + nrho*(j + ntemp*(k + nye*iv));
++	  int indnew = iv + NTABLES*(i + nrho*(j + ntemp*k));
++	  alltables[indnew] = alltables_temp[indold];
++	}
++
++  // free memory of temporary array
++  free(alltables_temp);
++
++  // convert units, convert logs to natural log
++  // The latter is great, because exp() is way faster than pow()
++  // pressure
++  energy_shift = energy_shift * EPSGF;
++  for(int i=0;i<nrho;i++) {
++    logrho[i] = log(pow(10.0,logrho[i]) * RHOGF);
++  }
++
++  for(int i=0;i<ntemp;i++) {
++    logtemp[i] = log(pow(10.0,logtemp[i]));
++  }
++
++  // allocate epstable; a linear-scale eps table
++  // that allows us to extrapolate to negative eps
++  if (!(epstable = (double*)malloc(nrho * ntemp * nye  
++				    * sizeof(double)))) {
++    fprintf(stderr, "Cannot allocate memory for eps table\n");
++    abort();
++  }
++
++  // convert units
++  for(int i=0;i<nrho*ntemp*nye;i++) {
++
++    { // pressure
++      int idx = 0 + NTABLES*i;
++      alltables[idx] = log(pow(10.0,alltables[idx])*PRESSGF);
++    }
++
++    { // eps
++      int idx = 1 + NTABLES*i;
++      alltables[idx] = log(pow(10.0,alltables[idx])*EPSGF);
++      epstable[i] = exp(alltables[idx]);
++    }
++
++    { // cs2
++      int idx = 4 + NTABLES*i;
++      alltables[idx] *= LENGTHGF*LENGTHGF/TIMEGF/TIMEGF;
++    }
++
++    { // dedT
++      int idx = 5 + NTABLES*i;
++      alltables[idx] *= EPSGF;
++    }
++
++    { // dpdrhoe
++      int idx = 6 + NTABLES*i;
++      alltables[idx] *= PRESSGF/RHOGF;
++    }
++
++    { // dpderho
++      int idx = 7 + NTABLES*i;
++      alltables[idx] *= PRESSGF/EPSGF;
++    }
++
++  }
++
++  temp0 = exp(logtemp[0]);
++  temp1 = exp(logtemp[1]);
++
++  // set up some vars
++  dtemp  = (logtemp[ntemp-1] - logtemp[0]) / (1.0*(ntemp-1));
++  dtempi = 1.0/dtemp;
++
++  dlintemp = temp1-temp0;
++  dlintempi = 1.0/dlintemp;
++
++  drho  = (logrho[nrho-1] - logrho[0]) / (1.0*(nrho-1));
++  drhoi = 1.0/drho;
++
++  dye  = (yes[nye-1] - yes[0]) / (1.0*(nye-1));
++  dyei = 1.0/dye;
++
++  drhotempi   = drhoi * dtempi;
++  drholintempi = drhoi * dlintempi;
++  drhoyei     = drhoi * dyei;
++  dtempyei    = dtempi * dyei;
++  dlintempyei = dlintempi * dyei;
++  drhotempyei = drhoi * dtempi * dyei;
++  drholintempyei = drhoi * dlintempi * dyei;
++
++  eos_rhomax = exp(logrho[nrho-1]);
++  eos_rhomin = exp(logrho[0]);
++  
++  eos_tempmax = exp(logtemp[ntemp-1]);
++  eos_tempmin = exp(logtemp[0]);
++
++  eos_yemax = yes[nye-1];
++  eos_yemin = yes[0];
++
++}
++
++extern "C"
++void CCTK_FNAME(nuc_eos_c_get_energy_shift)(double *energy_shift_fortran,
++					    double *eos_tempmin_fortran,
++					    double *eos_tempmax_fortran,
++					    double *eos_yemin_fortran,
++					    double * eos_yemax_fortran) {
++
++  *energy_shift_fortran = energy_shift;
++  *eos_tempmin_fortran = eos_tempmin;
++  *eos_tempmax_fortran = eos_tempmax;
++  *eos_yemin_fortran = eos_yemin;
++  *eos_yemax_fortran = eos_yemax;
++
++}
++
++} // namespace nuc_eos
++
++
+diff --git a/src/nuc_eos_cxx/readtable_cactus_wrapper.cc b/src/nuc_eos_cxx/readtable_cactus_wrapper.cc
+new file mode 100644
+index 0000000..6c63c7b
+--- /dev/null
++++ b/src/nuc_eos_cxx/readtable_cactus_wrapper.cc
+@@ -0,0 +1,19 @@
++#include <stdlib.h>
++#include "cctk.h"
++#include "cctk_Parameters.h"
++#include "cctk_Arguments.h"
++//#include "cctk_Functions.h"
++//#include "nuc_eos.hh"
++
++extern "C"
++void nuc_eos_C_ReadTable(const char *nuceos_table_name);
++
++extern "C"
++void nuc_eos_readtable_cactus_wrapper(CCTK_ARGUMENTS) {
++
++  DECLARE_CCTK_ARGUMENTS;
++  DECLARE_CCTK_PARAMETERS;
++
++  nuc_eos_C_ReadTable(nuceos_table_name);
++
++}
+-- 
+1.8.5.3
+

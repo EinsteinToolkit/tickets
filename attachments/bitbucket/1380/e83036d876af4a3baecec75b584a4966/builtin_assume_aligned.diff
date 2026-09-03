@@ -1,0 +1,85 @@
+Index: aclocal.m4
+===================================================================
+--- aclocal.m4	(revision 5021)
++++ aclocal.m4	(working copy)
+@@ -1111,6 +1111,37 @@
+ 
+ 
+ 
++AC_DEFUN(CCTK_C_BUILTIN_ASSUME_ALIGNED,
++[AC_CACHE_CHECK([for C __builtin_assume_aligned], cctk_cv_have_c_builtin_assume_aligned,
++[cctk_cv_have_c_builtin_assume_aligned=no
++AC_TRY_LINK(,
++__builtin_assume_aligned((void*)1000, 10);
++__builtin_assume_aligned((void*)1001, 10, 1);
++, cctk_cv_have_c_builtin_assume_aligned=yes, cctk_cv_have_c_builtin_assume_aligned=no)
++])
++if test "$cctk_cv_have_c_builtin_assume_aligned" = "yes" ; then
++   AC_DEFINE(HAVE_CCTK_C_BUILTIN_ASSUME_ALIGNED)
++fi
++])
++
++AC_DEFUN(CCTK_CXX_BUILTIN_ASSUME_ALIGNED,
++[AC_CACHE_CHECK([for CXX __builtin_assume_aligned], cctk_cv_have_cxx_builtin_assume_aligned,
++[cctk_cv_have_cxx_builtin_assume_aligned=no
++AC_LANG_SAVE
++AC_LANG_CPLUSPLUS
++AC_TRY_LINK(,
++__builtin_assume_aligned((void*)1000, 10);
++__builtin_assume_aligned((void*)1001, 10, 1);
++, cctk_cv_have_cxx_builtin_assume_aligned=yes, cctk_cv_have_cxx_builtin_assume_aligned=no)
++AC_LANG_RESTORE
++])
++if test "$cctk_cv_have_cxx_builtin_assume_aligned" = "yes" ; then
++   AC_DEFINE(HAVE_CCTK_CXX_BUILTIN_ASSUME_ALIGNED)
++fi
++])
++
++
++
+ AC_DEFUN(CCTK_CXX_STATIC_ASSERT,
+ [AC_CACHE_CHECK([for CXX static_assert], cctk_cv_have_cxx_static_assert,
+ [cctk_cv_have_cxx_static_assert=no
+Index: cctk_Config.h.in
+===================================================================
+--- cctk_Config.h.in	(revision 5021)
++++ cctk_Config.h.in	(working copy)
+@@ -384,5 +385,11 @@
+ #endif
+ 
++/* Whether __builtin_assume_aligned exists. */
++#undef HAVE_CCTK_C_BUILTIN_ASSUME_ALIGNED
++#ifndef HAVE_CCTK_C_BUILTIN_ASSUME_ALIGNED
++#  define __builtin_assume_aligned(exp, ...) (exp)
++#endif
++
+ /* OpenMP collapse clause */
+ #if (defined CCTK_DISABLE_OMP_COLLAPSE ||                               \
+      (defined __IBMC__ && defined _ARCH_450D) ||                        \
+@@ -593,5 +602,11 @@
+ #endif
+ 
++/* Whether __builtin_assume_aligned exists. */
++#undef HAVE_CCTK_CXX_BUILTIN_ASSUME_ALIGNED
++#ifndef HAVE_CCTK_CXX_BUILTIN_ASSUME_ALIGNED
++#  define __builtin_assume_aligned(exp, ...) (exp)
++#endif
++
+ /* Whether static_assert exists. */
+ #undef HAVE_CCTK_CXX_STATIC_ASSERT
+ #ifdef HAVE_CCTK_CXX_STATIC_ASSERT
+Index: configure.in
+===================================================================
+--- configure.in	(revision 5021)
++++ configure.in	(working copy)
+@@ -928,6 +928,10 @@
+ CCTK_C_BUILTIN_UNREACHABLE
+ CCTK_CXX_BUILTIN_UNREACHABLE
+ 
++# Find out whether the compiler supports __builtin_assume_aligned
++CCTK_C_BUILTIN_ASSUME_ALIGNED
++CCTK_CXX_BUILTIN_ASSUME_ALIGNED
++
+ # Find out whether the compiler supports static_assert
+ CCTK_CXX_STATIC_ASSERT
+ 

@@ -1,0 +1,14 @@
+diff -r 6f837f886185 Carpet/CarpetIOHDF5/src/OutputSlice.cc
+--- a/Carpet/CarpetIOHDF5/src/OutputSlice.cc	Thu Jun 02 11:13:18 2011 +0200
++++ b/Carpet/CarpetIOHDF5/src/OutputSlice.cc	Tue Jun 21 09:34:55 2011 -0400
+@@ -561,7 +561,9 @@
+       
+       // re-compute the active (non-buffered) region
+       ibset allactive;
+-      GetAllActive (dd, hh, m, rl, allactive);
++      if (output_buffer_points) {
++        GetAllActive (dd, hh, m, rl, allactive);
++      }
+ 
+       // Traverse all components on this multigrid level, refinement
+       // level, and map

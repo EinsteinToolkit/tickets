@@ -1,0 +1,23 @@
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 49)
++++ param.ccl	(working copy)
+@@ -48,14 +48,16 @@
+ # Therefore the default values here must be large enough for the default
+ # surface shape.
+ 
++# These parameters change the size of a checkpointed grid array. When changing them you will have to skip recovering sf_radius.
++
+ #CCTK_INT maxntheta "do not set this parameter directly" ACCUMULATOR=((x>y)*x+!(x>y)*y)
+-CCTK_INT maxntheta "Maximum number of grid points in the theta direction"
++CCTK_INT maxntheta "Maximum number of grid points in the theta direction" STEERABLE=RECOVER
+ {
+   0:* :: ""
+ } 19
+ 
+ #CCTK_INT maxnphi "do not set this parameter directly" ACCUMULATOR=((x>y)*x+!(x>y)*y)
+-CCTK_INT maxnphi "Maximum number of grid points in the phi direction"
++CCTK_INT maxnphi "Maximum number of grid points in the phi direction" STEERABLE=RECOVER
+ {
+   0:* :: ""
+ } 38

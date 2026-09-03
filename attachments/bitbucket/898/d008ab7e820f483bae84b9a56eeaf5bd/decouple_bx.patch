@@ -1,0 +1,41 @@
+commit 0c11b1b4be23fc28625342d881ee810e9ba129ef
+Author: Roland Haas <roland.haas@physics.gatech.edu>
+Date:   Tue May 1 13:25:36 2012 -0700
+
+    GRHydro: decouple Bvec(flux_direction) from other two for divclean
+    
+    since it and psidc form a 2d subsystem of the characteristic system. See
+    eg. Mignonoe et al. arXiv:1001.2832v2 section 3.1.
+
+diff --git a/param.ccl b/GRHydro/param.ccl
+index ecc5a21..d8642e1 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -561,6 +561,10 @@ CCTK_REAL setcharmin "Minimum characteristic speed for psidc if psidcspeed is se
+   -1:0 :: "Any value smaller than speed of light - sign should be negative"
+ } -1.0
+ 
++BOOLEAN decouple_normal_Bfield "when using divergence cleaning properly decouple Bx,psidc subsystem"
++{
++} yes
++
+ boolean track_divB "Track the magnetic field constraint violations"
+ {
+ } "no"
+diff --git a/src/GRHydro_HLLEM.F90 b/GRHydro/src/GRHydro_HLLEM.F90
+index 42f602a..cc26c88 100644
+--- a/src/GRHydro_HLLEM.F90
++++ b/src/GRHydro_HLLEM.F90
+@@ -454,6 +454,12 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+              !!$ Wavespeeds for psidc are +/-c, not Fast Magnetosonic?
+              psidcf = 0.5d0 * (1.d0 * psidcfp - (-1.d0) * psidcfm + &
+                   1.d0 * (-1.d0) * psidcdiff) 
++             if(decouple_normal_Bfield .ne. 0) then ! same expression for HLLE and LLF
++               !!$ B^i field decouples from the others and has same propagation
++               !!$ speed as divergence
++               f1(5+flux_direction) = 0.5d0 * (1.d0 * fplus(5+flux_direction) - (-1.d0) * fminus(5+flux_direction) + &
++                    1.d0 * (-1.d0) * qdiff(5+flux_direction)) 
++             end if
+              case(2)
+              charmax = setcharmax
+              charmin = setcharmin

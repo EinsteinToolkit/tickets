@@ -1,0 +1,625 @@
+From 26581ab07239e556edb7c81479196e76add1a0f3 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Fri, 7 Jun 2013 16:18:20 -0700
+Subject: [PATCH 21/24] GRHydro: provide wrapper routines that take detg as
+ arguments
+
+then call internal routines taking sqrt(detg) as argument
+
+clean up and correct function prototypes in interface.ccl
+---
+ interface.ccl            |  154 ++++++++-----------
+ src/GRHydro_Wrappers.F90 |  366 ++++++++++++++++++++++++++++++++++++++++++++++
+ src/make.code.defn       |    7 +-
+ 3 files changed, 426 insertions(+), 101 deletions(-)
+ create mode 100644 src/GRHydro_Wrappers.F90
+
+diff --git a/interface.ccl b/interface.ccl
+index 4659e4b..da64a20 100644
+--- a/interface.ccl
++++ b/interface.ccl
+@@ -34,130 +34,92 @@ void FUNCTION UpperMet(CCTK_REAL OUT uxx, CCTK_REAL OUT uxy, \
+                        CCTK_REAL IN gxz, CCTK_REAL IN gyy, CCTK_REAL IN gyz, \
+                        CCTK_REAL IN gzz)
+ 
+-#void FUNCTION Con2Prim(CCTK_INT IN handle, \
+-#                       CCTK_REAL OUT dens, \
+-#		       CCTK_REAL OUT sx, CCTK_REAL OUT sy, CCTK_REAL OUT sz, \
+-#		       CCTK_REAL OUT tau, \
+-#		       CCTK_REAL OUT rho, \
+-#		       CCTK_REAL OUT velx, CCTK_REAL OUT vely, CCTK_REAL OUT velz, \
+-#		       CCTK_REAL OUT epsilon, CCTK_REAL OUT press, \
+-#		       CCTK_REAL OUT w_lorentz, \
+-#		       CCTK_REAL IN uxx, CCTK_REAL IN uxy, CCTK_REAL IN uxz, \
+-#		       CCTK_REAL IN uyy, CCTK_REAL IN uyz, CCTK_REAL IN uzz, \
+-#		       CCTK_REAL IN det, \
+-#		       CCTK_REAL IN x, CCTK_REAL IN y, CCTK_REAL IN z, CCTK_REAL IN r, \
+-#		       CCTK_INT OUT epsnegative, \
+-#		       CCTK_REAL IN GRHydro_rho_min, CCTK_REAL IN pmin, \
+-#		       CCTK_INT IN GRHydro_reflevel, CCTK_REAL IN GRHydro_C2P_failed)
+-
+-void FUNCTION Con2PrimGen(CCTK_INT INOUT handle, CCTK_REAL INOUT dens, \
++void FUNCTION Con2PrimGen(CCTK_INT IN handle, CCTK_REAL INOUT dens, \
+                            CCTK_REAL INOUT sx, CCTK_REAL INOUT sy, CCTK_REAL INOUT sz, \
+                            CCTK_REAL INOUT tau, CCTK_REAL INOUT rho, \
+                            CCTK_REAL INOUT velx, CCTK_REAL INOUT vely, CCTK_REAL INOUT velz, \
+                            CCTK_REAL INOUT epsilon, CCTK_REAL INOUT pressure, \
+                            CCTK_REAL INOUT w_lorentz, \
+-                           CCTK_REAL INOUT uxx, CCTK_REAL INOUT uxy, CCTK_REAL INOUT uxz, \
+-                           CCTK_REAL INOUT uyy, CCTK_REAL INOUT uyz, CCTK_REAL INOUT uzz, \
+-                           CCTK_REAL INOUT det, \
+-                           CCTK_REAL INOUT x, CCTK_REAL INOUT y, CCTK_REAL INOUT z, \
+-                           CCTK_REAL INOUT r, \
+-                           CCTK_INT OUT epsnegative, \
+-		                     CCTK_REAL INOUT GRHydro_rho_min, CCTK_REAL INOUT pmin, \
+-		                     CCTK_REAL INOUT epsmin, \
+-                           CCTK_INT INOUT GRHydro_reflevel, \
+-                           CCTK_REAL OUT retval)
+-
+-void FUNCTION Con2PrimGenM2(CCTK_INT IN handle, CCTK_INT IN rl, CCTK_INT IN ii, CCTK_INT IN jj, \
+-                           CCTK_INT IN kk, CCTK_REAL IN x, CCTK_REAL IN y, CCTK_REAL IN z, \
+-                           CCTK_INT IN keytemp, CCTK_REAL IN eos_prec, CCTK_REAL IN prec, \
+-                           CCTK_REAL INOUT gamma_eos, CCTK_REAL INOUT dens, \
+-                           CCTK_REAL INOUT sx, CCTK_REAL INOUT sy, CCTK_REAL INOUT sz, \
+-                           CCTK_REAL INOUT tau, CCTK_REAL INOUT Bconsx, CCTK_REAL INOUT Bconsy, CCTK_REAL INOUT Bconsz, \
+-			   CCTK_REAL INOUT y_e, CCTK_REAL INOUT temp, CCTK_REAL INOUT rho, \
+-                           CCTK_REAL INOUT velx, CCTK_REAL INOUT vely, CCTK_REAL INOUT velz, \
+-                           CCTK_REAL INOUT epsilon, CCTK_REAL INOUT pressure, \
+-                           CCTK_REAL INOUT Bvecx, CCTK_REAL INOUT Bvecy, CCTK_REAL INOUT Bvecz, \
+-                           CCTK_REAL INOUT Bvecsq, \
+-                           CCTK_REAL INOUT w_lorentz, \
+-                           CCTK_REAL INOUT gxx, CCTK_REAL INOUT gxy, CCTK_REAL INOUT gxz, \
+-                           CCTK_REAL INOUT gyy, CCTK_REAL INOUT gyz, CCTK_REAL INOUT gzz, \
+-                           CCTK_REAL INOUT uxx, CCTK_REAL INOUT uxy, CCTK_REAL INOUT uxz, \
+-                           CCTK_REAL INOUT uyy, CCTK_REAL INOUT uyz, CCTK_REAL INOUT uzz, \
+-                           CCTK_REAL INOUT det, \
++                           CCTK_REAL IN uxx, CCTK_REAL IN uxy, CCTK_REAL IN uxz, \
++                           CCTK_REAL IN uyy, CCTK_REAL IN uyz, CCTK_REAL IN uzz, \
++                           CCTK_REAL IN det, \
++                           CCTK_REAL IN x, CCTK_REAL IN y, CCTK_REAL IN z, \
++                           CCTK_REAL IN r, \
+                            CCTK_INT OUT epsnegative, \
++		           CCTK_REAL IN GRHydro_rho_min, CCTK_REAL IN pmin, \
++		           CCTK_REAL IN epsmin, \
++                           CCTK_INT IN GRHydro_reflevel, \
+                            CCTK_REAL OUT retval)
+ 
+-void FUNCTION Con2PrimGenMee(CCTK_INT INOUT handle, CCTK_INT INOUT keytemp, \
+-     CCTK_REAL INOUT prec, CCTK_REAL INOUT gamma_eos, \
++void FUNCTION Con2PrimGenMee(CCTK_INT IN handle, CCTK_INT IN keytemp, \
++     CCTK_REAL IN prec, CCTK_REAL IN gamma_eos, \
+      CCTK_REAL INOUT dens, \
+      CCTK_REAL INOUT sx, CCTK_REAL INOUT sy, CCTK_REAL INOUT sz, \
+      CCTK_REAL INOUT tau, \
+-     CCTK_REAL INOUT Bconsx, CCTK_REAL INOUT Bconsy, CCTK_REAL INOUT Bconsz, \
++     CCTK_REAL IN Bconsx, CCTK_REAL IN Bconsy, CCTK_REAL IN Bconsz, \
+      CCTK_REAL INOUT entropycons, \
+      CCTK_REAL INOUT y_e, CCTK_REAL INOUT temp, CCTK_REAL INOUT rho, \
+      CCTK_REAL INOUT velx, CCTK_REAL INOUT vely, CCTK_REAL INOUT velz, \
+      CCTK_REAL INOUT epsilon, CCTK_REAL INOUT pressure, \
+-     CCTK_REAL INOUT Bvecx, CCTK_REAL INOUT Bvecy, CCTK_REAL INOUT Bvecz, \
+-     CCTK_REAL INOUT Bvecsq, \
++     CCTK_REAL OUT Bvecx, CCTK_REAL OUT Bvecy, CCTK_REAL OUT Bvecz, \
++     CCTK_REAL OUT Bvecsq, \
+      CCTK_REAL INOUT w_lorentz, \
+-     CCTK_REAL INOUT gxx, CCTK_REAL INOUT gxy, CCTK_REAL INOUT gxz, \
+-     CCTK_REAL INOUT gyy, CCTK_REAL INOUT gyz, CCTK_REAL INOUT gzz, \
+-     CCTK_REAL INOUT uxx, CCTK_REAL INOUT uxy, CCTK_REAL INOUT uxz, \
+-     CCTK_REAL INOUT uyy, CCTK_REAL INOUT uyz, CCTK_REAL INOUT uzz, \
+-     CCTK_REAL INOUT det, \
++     CCTK_REAL IN gxx, CCTK_REAL IN gxy, CCTK_REAL IN gxz, \
++     CCTK_REAL IN gyy, CCTK_REAL IN gyz, CCTK_REAL IN gzz, \
++     CCTK_REAL IN uxx, CCTK_REAL IN uxy, CCTK_REAL IN uxz, \
++     CCTK_REAL IN uyy, CCTK_REAL IN uyz, CCTK_REAL IN uzz, \
++     CCTK_REAL IN det, \
+      CCTK_INT OUT epsnegative, \
+      CCTK_REAL OUT retval)
+ 
+-void FUNCTION Con2PrimGenM(CCTK_INT INOUT handle, CCTK_INT INOUT keytemp, CCTK_REAL INOUT prec,CCTK_REAL INOUT gamma_eos, CCTK_REAL INOUT dens, \
++void FUNCTION Con2PrimGenM(CCTK_INT IN handle, CCTK_INT IN keytemp, CCTK_REAL IN prec,CCTK_REAL IN gamma_eos, CCTK_REAL INOUT dens, \
+                            CCTK_REAL INOUT sx, CCTK_REAL INOUT sy, CCTK_REAL INOUT sz, \
+-                           CCTK_REAL INOUT tau, CCTK_REAL INOUT Bconsx, CCTK_REAL INOUT Bconsy, CCTK_REAL INOUT Bconsz, \
++                           CCTK_REAL INOUT tau, CCTK_REAL IN Bconsx, CCTK_REAL IN Bconsy, CCTK_REAL IN Bconsz, \
+ 			   CCTK_REAL INOUT y_e,  CCTK_REAL INOUT temp,  CCTK_REAL INOUT rho, \
+-                          CCTK_REAL INOUT velx, CCTK_REAL INOUT vely, CCTK_REAL INOUT velz, \
+-                          CCTK_REAL INOUT epsilon, CCTK_REAL INOUT pressure, \
+-                          CCTK_REAL INOUT Bvecx, CCTK_REAL INOUT Bvecy, CCTK_REAL INOUT Bvecz, \
+-                          CCTK_REAL INOUT Bvecsq, \
++                           CCTK_REAL INOUT velx, CCTK_REAL INOUT vely, CCTK_REAL INOUT velz, \
++                           CCTK_REAL INOUT epsilon, CCTK_REAL INOUT pressure, \
++                           CCTK_REAL OUT Bvecx, CCTK_REAL OUT Bvecy, CCTK_REAL OUT Bvecz, \
++                           CCTK_REAL OUT bvecsq, \
+                            CCTK_REAL INOUT w_lorentz, \
+-                           CCTK_REAL INOUT gxx, CCTK_REAL INOUT gxy, CCTK_REAL INOUT gxz, \
+-                           CCTK_REAL INOUT gyy, CCTK_REAL INOUT gyz, CCTK_REAL INOUT gzz, \
+-                           CCTK_REAL INOUT uxx, CCTK_REAL INOUT uxy, CCTK_REAL INOUT uxz, \
+-                           CCTK_REAL INOUT uyy, CCTK_REAL INOUT uyz, CCTK_REAL INOUT uzz, \
+-                           CCTK_REAL INOUT det, \
++                           CCTK_REAL IN gxx, CCTK_REAL IN gxy, CCTK_REAL IN gxz, \
++                           CCTK_REAL IN gyy, CCTK_REAL IN gyz, CCTK_REAL IN gzz, \
++                           CCTK_REAL IN uxx, CCTK_REAL IN uxy, CCTK_REAL IN uxz, \
++                           CCTK_REAL IN uyy, CCTK_REAL IN uyz, CCTK_REAL IN uzz, \
++                           CCTK_REAL IN det, \
+                            CCTK_INT OUT epsnegative, \
+                            CCTK_REAL OUT retval)
+ 
+-void FUNCTION Con2PrimPoly(CCTK_INT IN handle, CCTK_REAL OUT dens, \
+-                           CCTK_REAL OUT sx, CCTK_REAL OUT sy, \
+-                           CCTK_REAL OUT sz, CCTK_REAL OUT tau, \
+-                           CCTK_REAL OUT rho, CCTK_REAL OUT velx, \
+-                           CCTK_REAL OUT vely, CCTK_REAL OUT velz, \
+-                           CCTK_REAL OUT epsilon, CCTK_REAL OUT press, \
+-                           CCTK_REAL OUT w_lorentz, CCTK_REAL IN uxx, \
++void FUNCTION Con2PrimPoly(CCTK_INT IN handle, CCTK_REAL INOUT dens, \
++                           CCTK_REAL INOUT sx, CCTK_REAL INOUT sy, \
++                           CCTK_REAL INOUT sz, CCTK_REAL OUT tau, \
++                           CCTK_REAL INOUT rho, CCTK_REAL INOUT velx, \
++                           CCTK_REAL INOUT vely, CCTK_REAL INOUT velz, \
++                           CCTK_REAL INOUT epsilon, CCTK_REAL INOUT press, \
++                           CCTK_REAL INOUT w_lorentz, CCTK_REAL IN uxx, \
+                            CCTK_REAL IN uxy, CCTK_REAL IN uxz, \
+                            CCTK_REAL IN uyy, CCTK_REAL IN uyz, \
+                            CCTK_REAL IN uzz, CCTK_REAL IN det, \
+                            CCTK_REAL IN x, CCTK_REAL IN y, CCTK_REAL IN z, \
+                            CCTK_REAL IN r, CCTK_REAL IN rho_min, \
+-			   CCTK_INT IN GRHydro_reflevel, CCTK_REAL IN GRHydro_C2P_failed)
++			   CCTK_INT IN GRHydro_reflevel, CCTK_REAL OUT GRHydro_C2P_failed)
+ 
+-void FUNCTION Con2PrimPolyM(CCTK_INT INOUT handle, CCTK_REAL INOUT gamma_eos, CCTK_REAL INOUT dens, \
++void FUNCTION Con2PrimPolyM(CCTK_INT IN handle, CCTK_REAL IN gamma_eos, CCTK_REAL INOUT dens, \
+                            CCTK_REAL INOUT sx, CCTK_REAL INOUT sy, CCTK_REAL INOUT sz, \
+-                           CCTK_REAL INOUT sc, CCTK_REAL INOUT Bconsx, CCTK_REAL INOUT Bconsy, CCTK_REAL INOUT Bconsz, \
++                           CCTK_REAL INOUT sc, CCTK_REAL IN Bconsx, CCTK_REAL IN Bconsy, CCTK_REAL IN Bconsz, \
+ 			   CCTK_REAL INOUT rho, \
+                            CCTK_REAL INOUT velx, CCTK_REAL INOUT vely, CCTK_REAL INOUT velz, \
+                            CCTK_REAL INOUT epsilon, CCTK_REAL INOUT pressure, \
+-                           CCTK_REAL INOUT Bvecx, CCTK_REAL INOUT Bvecy, CCTK_REAL INOUT Bvecz, \
+-                           CCTK_REAL INOUT Bvecsq, \
++                           CCTK_REAL OUT Bvecx, CCTK_REAL OUT Bvecy, CCTK_REAL OUT Bvecz, \
++                           CCTK_REAL OUT Bvecsq, \
+                            CCTK_REAL INOUT w_lorentz, \
+-                           CCTK_REAL INOUT gxx, CCTK_REAL INOUT gxy, CCTK_REAL INOUT gxz, \
+-                           CCTK_REAL INOUT gyy, CCTK_REAL INOUT gyz, CCTK_REAL INOUT gzz, \
+-                           CCTK_REAL INOUT uxx, CCTK_REAL INOUT uxy, CCTK_REAL INOUT uxz, \
+-                           CCTK_REAL INOUT uyy, CCTK_REAL INOUT uyz, CCTK_REAL INOUT uzz, \
+-                           CCTK_REAL INOUT det, \
++                           CCTK_REAL IN gxx, CCTK_REAL IN gxy, CCTK_REAL IN gxz, \
++                           CCTK_REAL IN gyy, CCTK_REAL IN gyz, CCTK_REAL IN gzz, \
++                           CCTK_REAL IN uxx, CCTK_REAL IN uxy, CCTK_REAL IN uxz, \
++                           CCTK_REAL IN uyy, CCTK_REAL IN uyz, CCTK_REAL IN uzz, \
++                           CCTK_REAL IN det, \
+                            CCTK_INT OUT epsnegative, \
+                            CCTK_REAL OUT retval)
+ 
+-#void FUNCTION Prim2Con CCTK_INT handle, CCTK_REAL gxx, CCTK_REAL gxy, CCTK_REAL gxz, CCTK_REAL gyy, CCTK_REAL gyz, CCTK_REAL gzz, CCTK_REAL det, CCTK_REAL dens, CCTK_REAL sx, CCTK_REAL sy, CCTK_REAL sz, CCTK_REAL tau, CCTK_REAL rho, CCTK_REAL velx, CCTK_REAL vely, CCTK_REAL velz, CCTK_REAL epsilon, CCTK_REAL press, CCTK_REAL w_lorentz
+-
+ void FUNCTION Prim2ConGen(CCTK_INT IN handle, \
+                           CCTK_REAL IN gxx, CCTK_REAL IN gxy, \
+                           CCTK_REAL IN gxz, CCTK_REAL IN gyy, \
+@@ -228,18 +190,16 @@ void FUNCTION Prim2ConPolyM(CCTK_INT IN handle, \
+ 
+ PROVIDES FUNCTION SpatialDet WITH SpatialDeterminant LANGUAGE Fortran
+ PROVIDES FUNCTION UpperMet WITH UpperMetric LANGUAGE Fortran
+-#PROVIDES FUNCTION Con2Prim WITH Con2Prim_pt LANGUAGE Fortran
+-PROVIDES FUNCTION Con2PrimPoly WITH Con2Prim_ptPolytype LANGUAGE Fortran
+-PROVIDES FUNCTION Con2PrimGenM WITH GRHydro_Con2PrimM_ptold LANGUAGE Fortran
+-PROVIDES FUNCTION Con2PrimGenM2 WITH GRHydro_Con2PrimM_pt LANGUAGE Fortran
+-PROVIDES FUNCTION Con2PrimGenMee WITH GRHydro_Con2PrimM_ptee LANGUAGE Fortran
+-PROVIDES FUNCTION Con2PrimGen WITH Con2Prim_pt LANGUAGE Fortran
+-PROVIDES FUNCTION Con2PrimPolyM WITH GRHydro_Con2PrimM_Polytype_pt LANGUAGE Fortran
+-PROVIDES FUNCTION Prim2ConGen WITH prim2con LANGUAGE Fortran
+-PROVIDES FUNCTION Prim2ConPoly WITH prim2conpolytype LANGUAGE Fortran
+-PROVIDES FUNCTION Prim2ConGenM WITH prim2conM LANGUAGE Fortran
+-PROVIDES FUNCTION Prim2ConGenM_hot WITH prim2conM_hot LANGUAGE Fortran
+-PROVIDES FUNCTION Prim2ConPolyM WITH prim2conpolytypeM LANGUAGE Fortran
++PROVIDES FUNCTION Con2PrimPoly WITH Con2PrimPolyWrapper LANGUAGE Fortran
++PROVIDES FUNCTION Con2PrimGenM WITH Con2PrimGenMWrapper LANGUAGE Fortran
++PROVIDES FUNCTION Con2PrimGenMee WITH Con2PrimGenMeeWrapper LANGUAGE Fortran
++PROVIDES FUNCTION Con2PrimGen WITH Con2PrimGenWrapper LANGUAGE Fortran
++PROVIDES FUNCTION Con2PrimPolyM WITH Con2PrimPolyMWrapper LANGUAGE Fortran
++PROVIDES FUNCTION Prim2ConGen WITH Prim2ConGenWrapper LANGUAGE Fortran
++PROVIDES FUNCTION Prim2ConPoly WITH Prim2ConPolyWrapper LANGUAGE Fortran
++PROVIDES FUNCTION Prim2ConGenM WITH Prim2ConGenMWrapper LANGUAGE Fortran
++PROVIDES FUNCTION Prim2ConGenM_hot WITH Prim2ConGenM_hotWrapper LANGUAGE Fortran
++PROVIDES FUNCTION Prim2ConPolyM WITH Prim2ConPolyMWrapper LANGUAGE Fortran
+ 
+ ####################################################
+ ###  Functions provided by MoL for registration  ###
+diff --git a/src/GRHydro_Wrappers.F90 b/src/GRHydro_Wrappers.F90
+new file mode 100644
+index 0000000..6ddca44
+--- /dev/null
++++ b/src/GRHydro_Wrappers.F90
+@@ -0,0 +1,366 @@
++ /*@@
++   @file      GRHydro_Wrappers.F90
++   @date      Sat Jun 29 18:57:07 PDT 2013
++   @author    Roland Haas
++   @desc
++      Wrapper routines to provide a consistent interface to the aliased
++      functions even if the interface to the underlying implementation changes.
++   @enddesc
++ @@*/
++
++#include "cctk.h"
++#include "cctk_Arguments.h"
++#include "cctk_Parameters.h"
++#include "cctk_Functions.h"
++
++subroutine Con2PrimPolyWrapper(handle, dens, sx, sy, sz, tau, rho, &
++     velx, vely, velz, epsilon, press, w_lorentz, uxx, uxy, uxz, uyy, &
++     uyz, uzz, detg, x, y, z, r, GRHydro_rho_min, GRHydro_reflevel, GRHydro_C2P_failed)
++
++  use Con2Prim_fortran_interfaces
++
++  implicit none
++
++  DECLARE_CCTK_FUNCTIONS
++
++  CCTK_REAL, INTENT(INOUT) :: dens, sx, sy, sz
++  CCTK_REAL, INTENT(OUT) :: tau
++  CCTK_REAL, INTENT(INOUT) :: rho
++  CCTK_REAL, INTENT(INOUT) :: velx, vely, velz, epsilon, press, w_lorentz
++  CCTK_REAL, INTENT(IN) :: uxx, uxy, uxz, uyy, uyz, uzz, detg
++  CCTK_REAL, INTENT(IN) :: x, y, z, r, GRHydro_rho_min
++
++  CCTK_INT, INTENT(IN) :: handle, GRHydro_reflevel
++  CCTK_REAL, INTENT(OUT) :: GRHydro_C2P_failed
++
++  CCTK_REAL :: sdetg
++
++  sdetg = sqrt(detg)
++
++  call Con2Prim_ptPolytype(handle, dens, sx, sy, sz, tau, rho, &
++     velx, vely, velz, epsilon, press, w_lorentz, uxx, uxy, uxz, uyy, &
++     uyz, uzz, sdetg, x, y, z, r, GRHydro_rho_min, GRHydro_reflevel, &
++     GRHydro_C2P_failed)
++
++end subroutine
++
++subroutine Con2PrimGenWrapper(handle, dens, sx, sy, sz, tau, rho, velx, vely, &
++                              velz, epsilon, pressure, w_lorentz, uxx, uxy, &
++                              uxz, uyy, uyz, uzz, det, x, y, z, r, epsnegative, &
++                              GRHydro_rho_min, pmin, epsmin, GRHydro_reflevel, &
++                              retval)
++
++  use Con2Prim_fortran_interfaces
++
++  implicit none
++
++  DECLARE_CCTK_FUNCTIONS
++
++  CCTK_INT, INTENT(IN) :: handle
++  CCTK_REAL, INTENT(INOUT) :: dens, sx, sy, sz, tau
++  CCTK_REAL, INTENT(INOUT) :: rho, velx, vely, velz, epsilon, pressure
++  CCTK_REAL, INTENT(INOUT) :: w_lorentz
++  CCTK_REAL, INTENT(IN) :: uxx, uxy, uxz, uyy, uyz, uzz, det
++  CCTK_REAL, INTENT(IN) :: x, y, z, r
++  CCTK_INT, INTENT(OUT) :: epsnegative
++  CCTK_REAL, INTENT(IN) :: GRHydro_rho_min, pmin, epsmin
++  CCTK_INT, INTENT(IN) :: GRHydro_reflevel
++  CCTK_REAL, INTENT(OUT) :: retval
++
++  CCTK_REAL :: sdetg
++  CCTK_INT, parameter :: cctk_iteration = -1, ii = -1, jj = -1, kk = -1
++  logical :: log_epsnegative
++
++  sdetg = sqrt(det)
++
++  call Con2Prim_pt(cctK_iteration, ii, jj, kk, &
++                   handle, dens, sx, sy, sz, tau, rho, velx, vely, &
++                   velz, epsilon, pressure, w_lorentz, uxx, uxy, &
++                   uxz, uyy, uyz, uzz, sdetg, x, y, z, r, log_epsnegative, &
++                   GRHydro_rho_min, pmin, epsmin, GRHydro_reflevel, &
++                   retval)
++  if(log_epsnegative) then
++    epsnegative = 1
++  else
++    epsnegative = 0
++  end if
++
++end subroutine
++
++subroutine Con2PrimGenMWrapper(handle, keytemp, prec, gamma_eos, dens, sx, sy, sz, &
++                               tau, Bconsx, Bconsy, Bconsz, y_e, temp, rho, velx, &
++                               vely, velz, epsilon, pressure, Bvecx, Bvecy, Bvecz, &
++                               Bvecsq, w_lorentz, gxx, gxy, gxz, gyy, gyz, gzz, uxx, &
++                               uxy, uxz, uyy, uyz, uzz, det, epsnegative, retval)
++
++  use Con2PrimM_fortran_interfaces
++
++  implicit none
++
++  DECLARE_CCTK_FUNCTIONS
++
++  CCTK_INT, INTENT(IN) :: handle, keytemp
++  CCTK_REAL, INTENT(IN) :: prec, gamma_eos
++  CCTK_REAL, INTENT(INOUT) :: dens, sx, sy, sz, tau
++  CCTK_REAL, INTENT(IN) :: Bconsx, Bconsy, Bconsz
++  CCTK_REAL, INTENT(INOUT) :: y_e,  temp
++  CCTK_REAL, INTENT(INOUT) :: rho, velx, vely, velz, epsilon, pressure
++  CCTK_REAL, INTENT(OUT) :: Bvecx, Bvecy, Bvecz, Bvecsq
++  CCTK_REAL, INTENT(INOUT) :: w_lorentz
++  CCTK_REAL, INTENT(IN) :: gxx, gxy, gxz, gyy, gyz, gzz
++  CCTK_REAL, INTENT(IN) :: uxx, uxy, uxz, uyy, uyz, uzz
++  CCTK_REAL, INTENT(IN) :: det
++  CCTK_INT, INTENT(OUT) :: epsnegative
++  CCTK_REAL, INTENT(OUT) :: retval
++
++  CCTK_REAL :: sdetg
++
++  sdetg = sqrt(det)
++
++  if(handle.eq.1 .or. handle.eq.2) then
++    call GRHydro_Con2PrimM_ptold(handle, gamma_eos, dens, sx, sy, sz, &
++                                 tau, Bconsx, Bconsy, Bconsz, rho, velx, &
++                                 vely, velz, epsilon, pressure, Bvecx, Bvecy, Bvecz, &
++                                 Bvecsq, w_lorentz, gxx, gxy, gxz, gyy, gyz, gzz, uxx, &
++                                 uxy, uxz, uyy, uyz, uzz, sdetg, epsnegative, retval)
++  else
++    call GRHydro_Con2PrimM_pt2(handle, keytemp, prec, prec, gamma_eos, dens, sx, sy, sz, &
++                               tau, Bconsx, Bconsy, Bconsz, y_e, temp, rho, velx, &
++                               vely, velz, epsilon, pressure, Bvecx, Bvecy, Bvecz, &
++                               Bvecsq, w_lorentz, gxx, gxy, gxz, gyy, gyz, gzz, uxx, &
++                               uxy, uxz, uyy, uyz, uzz, sdetg, epsnegative, retval)
++  end if
++
++end subroutine
++
++subroutine Con2PrimPolyMWrapper(handle, gamma_eos, dens, sx, sy, sz, sc,&
++                                Bconsx, Bconsy, Bconsz, rho, velx, vely, velz,&
++                                epsilon, pressure, Bvecx, Bvecy, Bvecz, Bvecsq,&
++                                w_lorentz, gxx, gxy, gxz, gyy, gyz, gzz, uxx,&
++                                uxy, uxz, uyy, uyz, uzz, det, epsnegative,&
++                                retval)
++
++  use Con2PrimM_fortran_interfaces
++
++  implicit none
++
++  DECLARE_CCTK_FUNCTIONS
++
++  CCTK_INT, INTENT(IN) :: handle
++  CCTK_REAL, INTENT(IN) :: gamma_eos
++  CCTK_REAL, INTENT(INOUT) :: dens, sx, sy, sz, sc
++  CCTK_REAL, INTENT(INOUT) :: Bconsx, Bconsy, Bconsz
++  CCTK_REAL, INTENT(INOUT) :: rho, velx, vely, velz, epsilon, pressure
++  CCTK_REAL, INTENT(OUT) :: Bvecx, Bvecy, Bvecz
++  CCTK_REAL, INTENT(OUT) :: Bvecsq
++  CCTK_REAL, INTENT(INOUT) :: w_lorentz
++  CCTK_REAL, INTENT(IN) :: gxx, gxy, gxz, gyy, gyz, gzz
++  CCTK_REAL, INTENT(IN) :: uxx, uxy, uxz, uyy, uyz, uzz
++  CCTK_REAL, INTENT(IN) :: det
++  CCTK_INT, INTENT(OUT) :: epsnegative
++  CCTK_REAL, INTENT(OUT) :: retval
++
++  CCTK_REAL :: sdetg
++
++  sdetg = sqrt(det)
++
++  call GRHydro_Con2PrimM_Polytype_pt(handle, gamma_eos, dens, sx, sy, sz, sc, &
++                                     Bconsx, Bconsy, Bconsz, rho, velx, vely, velz, &
++                                     epsilon, pressure, Bvecx, Bvecy, Bvecz, Bvecsq, &
++                                     w_lorentz, gxx, gxy, gxz, gyy, gyz, gzz, uxx, &
++                                     uxy, uxz, uyy, uyz, uzz, sdetg, epsnegative, &
++                                     retval)
++end subroutine
++
++subroutine Prim2ConGenWrapper(handle, gxx, gxy, gxz, gyy, gyz, gzz, det, dens,&
++                              sx, sy, sz, tau, rho, velx, vely, velz, epsilon,&
++                              press, w_lorentz)
++
++  use Con2Prim_fortran_interfaces
++
++  implicit none
++
++  DECLARE_CCTK_FUNCTIONS
++
++  CCTK_INT, INTENT(IN) :: handle
++  CCTK_REAL, INTENT(IN) :: gxx, gxy, gxz, gyy, gyz, gzz
++  CCTK_REAL, INTENT(IN) :: det
++  CCTK_REAL, INTENT(OUT) :: dens, sx, sy, sz, tau
++  CCTK_REAL, INTENT(IN) :: rho, velx, vely, velz, epsilon
++  CCTK_REAL, INTENT(OUT) :: press, w_lorentz
++
++  CCTK_REAL :: sdetg
++
++  sdetg = sqrt(det)
++
++  call prim2con(handle, gxx, gxy, gxz, gyy, gyz, gzz, det, dens,&
++                sx, sy, sz, tau, rho, velx, vely, velz, epsilon,&
++                press, w_lorentz)
++end subroutine
++
++subroutine Prim2ConPolyWrapper(handle, gxx, gxy, gxz, gyy, gyz, gzz, det, dens,&
++                               sx, sy, sz, tau, rho, velx, vely, velz, epsilon,&
++                               press, w_lorentz)
++
++  use Con2Prim_fortran_interfaces
++
++  implicit none
++
++  DECLARE_CCTK_FUNCTIONS
++
++  CCTK_INT, INTENT(IN) :: handle
++  CCTK_REAL, INTENT(IN) :: gxx, gxy, gxz, gyy, gyz, gzz
++  CCTK_REAL, INTENT(IN) :: det
++  CCTK_REAL, INTENT(OUT) :: dens, sx, sy, sz, tau
++  CCTK_REAL, INTENT(IN) :: rho, velx, vely, velz
++  CCTK_REAL, INTENT(OUT) :: epsilon, press, w_lorentz
++
++  CCTK_REAL :: sdetg
++
++  sdetg = sqrt(det)
++
++  call prim2conpolytype(handle, gxx, gxy, gxz, gyy, gyz, gzz, det, dens,&
++                        sx, sy, sz, tau, rho, velx, vely, velz, epsilon,&
++                        press, w_lorentz)
++end subroutine
++
++subroutine Prim2ConGenMWrapper(handle, gxx, gxy, gxz, gyy, gyz, gzz, det, dens,&
++                               sx, sy, sz, tau, Bconsx, Bconsy, Bconsz, rho,&
++                               velx, vely, velz, epsilon, press, Bvecx, Bvecy,&
++                               Bvecz, w_lorentz)
++
++  use Con2PrimM_fortran_interfaces
++
++  implicit none
++
++  DECLARE_CCTK_FUNCTIONS
++
++  CCTK_INT, INTENT(IN) :: handle
++  CCTK_REAL, INTENT(IN) :: gxx, gxy, gxz, gyy, gyz, gzz
++  CCTK_REAL, INTENT(IN) :: det
++  CCTK_REAL, INTENT(OUT) :: dens, sx, sy, sz, tau
++  CCTK_REAL, INTENT(OUT) :: Bconsx, Bconsy, Bconsz
++  CCTK_REAL, INTENT(IN) :: rho, velx, vely, velz, epsilon
++  CCTK_REAL, INTENT(OUT) :: press
++  CCTK_REAL, INTENT(IN) :: Bvecx, Bvecy, Bvecz
++  CCTK_REAL, INTENT(OUT) :: w_lorentz
++
++  CCTK_REAL :: sdetg
++
++  sdetg = sqrt(det)
++
++  call prim2conM(handle, gxx, gxy, gxz, gyy, gyz, gzz, sdetg, dens,&
++                 sx, sy, sz, tau, Bconsx, Bconsy, Bconsz, rho,&
++                 velx, vely, velz, epsilon, press, Bvecx, Bvecy,&
++                 Bvecz, w_lorentz)
++end subroutine
++
++subroutine Prim2ConGenM_hotWrapper(handle, GRHydro_reflevel, i, j, k, x, y, z,&
++                                   gxx, gxy, gxz, gyy, gyz, gzz, det, dens, sx,&
++                                   sy, sz, tau, Bconsx, Bconsy, Bconsz, rho,&
++                                   velx, vely, velz, epsilon, press, Bvecx,&
++                                   Bvecy, Bvecz, w_lorentz, temperature, Y_e)
++
++  use Con2PrimM_fortran_interfaces
++
++  implicit none
++
++  DECLARE_CCTK_FUNCTIONS
++
++  CCTK_INT, INTENT(IN) :: handle, GRHydro_reflevel
++  CCTK_INT, INTENT(IN) :: i, j, k
++  CCTK_REAL, INTENT(IN) :: x, y, z
++  CCTK_REAL, INTENT(IN) :: gxx, gxy, gxz, gyy, gyz, gzz
++  CCTK_REAL, INTENT(IN) :: det
++  CCTK_REAL, INTENT(OUT) :: dens, sx, sy, sz, tau
++  CCTK_REAL, INTENT(OUT) :: Bconsx, Bconsy, Bconsz
++  CCTK_REAL, INTENT(IN) :: rho, velx, vely, velz, epsilon
++  CCTK_REAL, INTENT(OUT) :: press
++  CCTK_REAL, INTENT(IN) :: Bvecx, Bvecy, Bvecz
++  CCTK_REAL, INTENT(OUT) :: w_lorentz
++  CCTK_REAL, INTENT(INOUT) :: temperature
++  CCTK_REAL, INTENT(IN) :: Y_e
++
++  CCTK_REAL :: sdetg
++
++  sdetg = sqrt(det)
++
++  call prim2conM_hot(handle, GRHydro_reflevel, i, j, k, x, y, z, gxx,&
++                     gxy, gxz, gyy, gyz, gzz, sdetg, dens, sx, sy, sz,&
++                     tau, Bconsx, Bconsy, Bconsz, rho, velx, vely, velz,&
++                     epsilon, press, Bvecx, Bvecy, Bvecz, w_lorentz,&
++                     temperature, Y_e)
++end subroutine
++
++subroutine Prim2ConPolyMWrapper(handle, gxx, gxy, gxz, gyy, gyz, gzz, det,&
++                                dens, sx, sy, sz, tau, Bconsx, Bconsy, Bconsz,&
++                                rho, velx, vely, velz, epsilon, press, Bvecx,&
++                                Bvecy, Bvecz, w_lorentz)
++
++  use Con2PrimM_fortran_interfaces
++
++  implicit none
++
++  DECLARE_CCTK_FUNCTIONS
++
++  CCTK_INT, INTENT(IN) :: handle
++  CCTK_REAL, INTENT(IN) :: gxx, gxy, gxz, gyy, gyz, gzz
++  CCTK_REAL, INTENT(IN) :: det
++  CCTK_REAL, INTENT(OUT) :: dens, sx, sy, sz, tau
++  CCTK_REAL, INTENT(OUT) :: Bconsx, Bconsy, Bconsz
++  CCTK_REAL, INTENT(IN) :: rho, velx, vely, velz
++  CCTK_REAL, INTENT(OUT) :: epsilon
++  CCTK_REAL, INTENT(OUT) :: press
++  CCTK_REAL, INTENT(IN) :: Bvecx, Bvecy, Bvecz
++  CCTK_REAL, INTENT(OUT) :: w_lorentz
++
++  CCTK_REAL :: sdetg
++
++  sdetg = sqrt(det)
++
++  call prim2conpolytypeM(handle, gxx, gxy, gxz, gyy, gyz, gzz, det,&
++                         dens, sx, sy, sz, tau, Bconsx, Bconsy, Bconsz,&
++                         rho, velx, vely, velz, epsilon, press, Bvecx,&
++                         Bvecy, Bvecz, w_lorentz)
++end subroutine
++
++subroutine Con2PrimGenMeeWrapper(handle, keytemp, prec, gamma_eos, dens, sx, sy,&
++                                 sz, tau, Bconsx, Bconsy, Bconsz, entropycons,&
++                                 y_e, temp, rho, velx, vely, velz, epsilon,&
++                                 pressure, Bvecx, Bvecy, Bvecz, Bvecsq,&
++                                 w_lorentz, gxx, gxy, gxz, gyy, gyz, gzz, uxx,&
++                                 uxy, uxz, uyy, uyz, uzz, det, epsnegative,&
++                                 retval)
++
++  use Con2Prim_fortran_interfaces
++
++  implicit none
++
++  DECLARE_CCTK_FUNCTIONS
++
++  CCTK_INT, INTENT(IN) :: handle, keytemp
++  CCTK_REAL, INTENT(IN) :: prec, gamma_eos
++  CCTK_REAL, INTENT(INOUT) :: dens, sx, sy, sz, tau
++  CCTK_REAL, INTENT(IN) :: Bconsx, Bconsy, Bconsz
++  CCTK_REAL, INTENT(INOUT) :: entropycons, y_e, temp
++  CCTK_REAL, INTENT(INOUT) :: rho, velx, vely, velz, epsilon, pressure
++  CCTK_REAL, INTENT(OUT) :: Bvecx, Bvecy, Bvecz
++  CCTK_REAL, INTENT(OUT) :: Bvecsq
++  CCTK_REAL, INTENT(INOUT) :: w_lorentz
++  CCTK_REAL, INTENT(IN) :: gxx, gxy, gxz, gyy, gyz, gzz
++  CCTK_REAL, INTENT(IN) :: uxx, uxy, uxz, uyy, uyz, uzz
++  CCTK_REAL, INTENT(IN) :: det
++  CCTK_INT, INTENT(OUT) :: epsnegative
++  CCTK_REAL, INTENT(OUT) :: retval
++
++  CCTK_REAL :: sdetg
++
++  sdetg = sqrt(det)
++
++  call GRHydro_Con2PrimM_ptee(handle, keytemp, prec, gamma_eos, dens, sx, sy, sz,&
++                              tau, Bconsx, Bconsy, Bconsz, entropycons, y_e, temp,&
++                              rho, velx, vely, velz, epsilon, pressure, Bvecx,&
++                              Bvecy, Bvecz, Bvecsq, w_lorentz, gxx, gxy, gxz, gyy,&
++                              gyz, gzz, uxx, uxy, uxz, uyy, uyz, uzz, sdetg,&
++                              epsnegative, retval)
++end subroutine
+diff --git a/src/make.code.defn b/src/make.code.defn
+index 1fce82b..527713e 100644
+--- a/src/make.code.defn
++++ b/src/make.code.defn
+@@ -1,5 +1,4 @@
+-# Main make.code.defn file for thorn Hydra
+-# $Header$
++# Main make.code.defn file for thorn GRHydro
+ 
+ # Source files in this directory
+ 
+@@ -82,9 +81,9 @@ SRCS = 	Utils.F90 \
+ 	GRHydro_MP5Reconstruct.F90 \
+         Con2Prim_fortran_interfaces.F90 \
+         Con2PrimM_fortran_interfaces.F90 \
+-        GRHydro_Prim2Con.c
++        GRHydro_Prim2Con.c \
++        GRHydro_Wrappers.F90
+ 	
+-
+ # Subdirectories containing source files
+ SUBDIRS = 
+ 
+-- 
+1.7.10.4
+

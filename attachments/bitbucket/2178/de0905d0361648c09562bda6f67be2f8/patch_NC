@@ -1,0 +1,81 @@
+diff --git a/NullConstr/src/NullConstr_Driver.F90 b/NullConstr/src/NullConstr_Driver.F90
+index a686783..ad9b632 100644
+--- a/NullConstr/src/NullConstr_Driver.F90
++++ b/NullConstr/src/NullConstr_Driver.F90
+@@ -141,12 +141,17 @@ subroutine NullConstr_Driver(CCTK_ARGUMENTS)
+           ub_33(nq,np),ub_34(nq,np))
+   end if
+ 
++  Null_R00 = 0; Null_R01 = 0; Null_R0A = 0
++  if (cctk_iteration .eq. 0) then
++    ! Can't calculate time derivatives at t = 0
++    return
++  endif
++
+   call x2r_derivs(dr_dx,d2r_dx2,dr_dxh,d2r_dx2h,N_radial_pts,xb,xbh)
+ 
+- kc = dsqrt(1+dble(jcn*conjg(jcn)))
+- kc_p = dsqrt(1+dble(jcn_p*conjg(jcn_p)))
++  kc = dsqrt(1+dble(jcn*conjg(jcn)))
++  kc_p = dsqrt(1+dble(jcn_p*conjg(jcn_p)))
+ 
+- Null_R00 = 0; Null_R01 = 0; Null_R0A = 0
+ 
+  ! North patch:
+ 
+diff --git a/NullConstr/src/NullConstr_R00.F90 b/NullConstr/src/NullConstr_R00.F90
+index 58d0209..ad331a1 100644
+--- a/NullConstr/src/NullConstr_R00.F90
++++ b/NullConstr/src/NullConstr_R00.F90
+@@ -1,3 +1,4 @@
++
+ ! vim: syntax=fortran
+ 
+ #include "cctk.h"
+@@ -21,6 +22,12 @@ subroutine NullConstr_R00_calc (R00,nq,np,r, &
+   u_22,u_23,u_24,u_33,u_34, &
+   ub_00,ub_01,ub_02,ub_03,ub_04,ub_11,ub_12,ub_13,ub_14, &
+   ub_22,ub_23,ub_24,ub_33,ub_34)
++
++!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
++!! Compilation on Intel 18 is very slow. 
++!! This forces a lower level of optimization (-O2)
++!DIR$ OPTIMIZE: 2
++!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   
+   implicit none
+   
+diff --git a/NullConstr/src/NullConstr_R01.F90 b/NullConstr/src/NullConstr_R01.F90
+index 20ba489..e3956d2 100644
+--- a/NullConstr/src/NullConstr_R01.F90
++++ b/NullConstr/src/NullConstr_R01.F90
+@@ -22,6 +22,12 @@ subroutine NullConstr_R01_calc (R01,nq,np,r, &
+   ub_00,ub_01,ub_02,ub_03,ub_04,ub_11,ub_12,ub_13,ub_14, &
+   ub_22,ub_23,ub_24,ub_33,ub_34)
+ ! ub_22,ub_23,ub_24,ub_33,ub_34,omm,cctk_time,Ylm_0,patchID)
++
++!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
++!! Compilation on Intel 18 is very slow. 
++!! This forces a lower level of optimization (-O2)
++!DIR$ OPTIMIZE: 2
++!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   
+   implicit none
+   
+diff --git a/NullConstr/src/NullConstr_R0A.F90 b/NullConstr/src/NullConstr_R0A.F90
+index 4c45704..96dc9f6 100644
+--- a/NullConstr/src/NullConstr_R0A.F90
++++ b/NullConstr/src/NullConstr_R0A.F90
+@@ -21,6 +21,12 @@ subroutine NullConstr_R0A_calc (R0A,nq,np,r, &
+   u_22,u_23,u_24,u_33,u_34, &
+   ub_00,ub_01,ub_02,ub_03,ub_04,ub_11,ub_12,ub_13,ub_14, &
+   ub_22,ub_23,ub_24,ub_33,ub_34)
++
++!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
++!! Compilation on Intel 18 is very slow. 
++!! This forces a lower level of optimization (-O2)
++!DIR$ OPTIMIZE: 2
++!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   
+   implicit none
+   

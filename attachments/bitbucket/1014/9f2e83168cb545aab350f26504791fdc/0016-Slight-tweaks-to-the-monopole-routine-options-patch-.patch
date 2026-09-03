@@ -1,0 +1,104 @@
+From 9983efab9fe9a6d6916f7d72e9fa6393b313af40 Mon Sep 17 00:00:00 2001
+From: Bruno Coutinho Mundim <bcmsma@astro.rit.edu>
+Date: Thu, 14 Jun 2012 16:46:04 -0400
+Subject: [PATCH 16/17]  Slight tweaks to the monopole routine options (patch
+ by Josh)
+
+---
+ param.ccl                 |    6 ++++++
+ src/GRHydro_MonopoleM.F90 |   31 ++++++++++++++++++++++++++-----
+ 2 files changed, 32 insertions(+), 5 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index 29f7c29..63a138e 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -147,6 +147,7 @@ KEYWORD monopole_type "Which kind of monopole?"
+   "Gauss" :: "Gaussian w/radius R_Gauss"
+   "1dalt" :: "1-d alternating"
+   "2dalt" :: "2-d alternating"
++  "3dalt" :: "3-d alternating"
+ } "Point"
+ 
+ CCTK_REAL R_Gauss "Radius for a Gaussian monopole"
+@@ -154,6 +155,11 @@ CCTK_REAL R_Gauss "Radius for a Gaussian monopole"
+   0:* :: "Any positive number"
+ } 1.0
+ 
++CCTK_REAL Monopole_point_Bx "Pointlike Monopole Bx value"
++{
++  *:* :: "Any number"
++} 1.0
++
+ # For cylindrical explosion test:
+ CCTK_REAL cyl_r_inner "Inner Radius"
+ {
+diff --git a/src/GRHydro_MonopoleM.F90 b/src/GRHydro_MonopoleM.F90
+index b8bee8c..edb24a7 100644
+--- a/src/GRHydro_MonopoleM.F90
++++ b/src/GRHydro_MonopoleM.F90
+@@ -71,9 +71,14 @@ subroutine GRHydro_MonopoleM(CCTK_ARGUMENTS)
+            vely(i,j,k) = 0.0
+            velz(i,j,k) = 0.0
+            eps(i,j,k) = 0.1
++
++           Bvecx(i,j,k)=0.0
++           Bvecy(i,j,k)=0.0
++           Bvecz(i,j,k)=0.0
++
+            if(CCTK_EQUALS(monopole_type,"Point")) then
+               if(i.eq.nx/2+1.and.j.eq.ny/2+1.and.k.eq.nz/2+1) then
+-                 Bvecx(i,j,k)=0.1
++                 Bvecx(i,j,k)=Monopole_point_Bx
+               else
+                  Bvecx(i,j,k)=0.0
+               endif
+@@ -93,7 +98,7 @@ subroutine GRHydro_MonopoleM(CCTK_ARGUMENTS)
+               else
+                  Bvecx(i,j,k) = 0.0
+               endif
+-              if(mod(i+j,2).eq.0)Bvecx(i,j,k)=-1.0*Bvecx(i,j,k)
++              if(mod(i+j+k,2).eq.0)Bvecx(i,j,k)=-1.0*Bvecx(i,j,k)
+            else if(CCTK_EQUALS(monopole_type,"2dalt")) then
+               rr2=x(i,j,k)**2+y(i,j,k)**2+z(i,j,k)**2
+               rg2=R_Gauss*R_Gauss
+@@ -104,17 +109,33 @@ subroutine GRHydro_MonopoleM(CCTK_ARGUMENTS)
+                  Bvecx(i,j,k) = 0.0
+                  Bvecy(i,j,k) = 0.0
+               endif
++              if(mod(i+j+k,2).eq.0)then
++                 Bvecx(i,j,k)=-1.0*Bvecx(i,j,k)
++!!$  Only vary one component, for different character
++!!$                 Bvecy(i,j,k)=-1.0*Bvecy(i,j,k)
++              endif
++           else if(CCTK_EQUALS(monopole_type,"3dalt")) then
++              rr2=x(i,j,k)**2+y(i,j,k)**2+z(i,j,k)**2
++              rg2=R_Gauss*R_Gauss
++              if(rr2.lt.rg2) then
++                 Bvecx(i,j,k) = exp(-1.0*rr2/rg2)-1.0/exp(1.0)
++                 Bvecy(i,j,k) = exp(-1.0*rr2/rg2)-1.0/exp(1.0)
++                 Bvecz(i,j,k) = exp(-1.0*rr2/rg2)-1.0/exp(1.0)
++              else
++                 Bvecx(i,j,k) = 0.0
++                 Bvecy(i,j,k) = 0.0
++                 Bvecz(i,j,k) = 0.0
++              endif
++!!$  Different spatial pattern!
+               if(mod(i+j,2).eq.0)then
+                  Bvecx(i,j,k)=-1.0*Bvecx(i,j,k)
+                  Bvecy(i,j,k)=-1.0*Bvecy(i,j,k)
++                 Bvecz(i,j,k)=-1.0*Bvecz(i,j,k)
+               endif
+            else
+               call CCTK_WARN(0,"Unrecognized monopole type!!!")
+            endif
+ 
+-           Bvecy(i,j,k)=0.0
+-           Bvecz(i,j,k)=0.0
+-
+            det=SPATIAL_DETERMINANT(gxx(i,j,k),gxy(i,j,k),gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k))
+ 
+         if (CCTK_EQUALS(GRHydro_eos_type,"Polytype")) then
+-- 
+1.7.10.4
+

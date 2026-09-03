@@ -1,0 +1,118 @@
+From: Erik Schnetter <eschnetter@perimeterinstitute.ca>
+Date: 2012-05-06
+Subject: Hard-link Formaline tarballs
+
+Create hard-links for identical,large files during cleanup to save
+disk space.
+
+
+Index: simrestart.py
+===================================================================
+--- simrestart.py	(revision 1655)
++++ simrestart.py	(working copy)
+@@ -2,7 +2,7 @@
+ 'Restart' which is a submitted simulation created and managed by
+ simfactory"""
+ 
+-import os, sys, re, stat
++import filecmp, os, re, stat, sys
+ import restartlib
+ import shutil
+ import time
+@@ -1612,45 +1574,59 @@
+         
+         # step 6. Hard-link (Formaline) tarballs between different restarts
++        # TODO: move this into subroutine
+         
+-        # TODO: Why is this deactivated? Maybe it doesn't work
+-        # reliably... There should be a comment stating why it is
+-        # deactivated. I think Ian Hinder requested that feature; we
+-        # could ask him.
++        # Algorithm:
++        # 1. Loop over all worthwhile files in the current restart
++        # 2.    Loop over all previous restarts (in descending order)
++        # 3.       If the equivalent file does not exist: continue
++        # 4.       Else, compare files (starting with size!)
++        # 5.       If not equal: continue
++        # 6.       Else, replace file with hard link
+         
+-#       old_dir = os.getcwd()
+-#       os.chdir(self.SimulationDir)
+-#       
+-#       files = os.popen("find . -name \*.tar.gz" % self.RestartDir).read().split("\n")
+-# 
+-#       rids = restartlib.GetRestartIds(self)
+-#       rids.sort()
+-#       
+-#       for ff in files:
+-#           ff = ff.strip()
+-#           if len(ff) == 0:
+-#               continue
+-#           
+-#           if not(ff.endswith(".tar.gz")) or not(os.path.exists(ff)):
+-#               continue
+-#           
+-#           statinfo = os.stat(ff)
+-#           
+-#           if statinfo.st_nlink != 1:
+-#               continue
+-#           
+-#       
+-#       
+-#           for rid in rids.reverse():
+-#               restart_path = simlib.BuildPath(self.SimulationDir, "output-%04d" % rid)
+-#               
+-#               if not(os.path.exists(restart_path)):
+-#                   continue
+-#               
+-#               sspath = simlib.BuildPath(restart_path, file)
+-#               
+-#               if filecmp.cmp(sspath, ff) == 0:
+-#                   os.link(sspath, ff)
++        # All restart ids
++        rids = restartlib.GetRestartIds(self)
+         
++        # All files of the current restart
++        files = os.popen("cd %s && find . -name \*.tar.gz" %
++                         self.RestartDir).read().split("\n")
++        for f in files:
++            path = "%s/%s" % (self.RestartDir, f)
++            # Ignore everything but regular files that are not
++            # accessed via symbolic links
++            if not (os.path.isfile(path) and not os.path.islink(path)):
++                continue
++            # Only consider large files
++            if os.path.getsize(path) < 1000:
++                continue
++            for rid in reversed(sorted(rids)):
++                oldpath = "%s/output-%04d/%s" % (self.SimulationDir, rid, f)
++                # Ignore everything but regular files that are not
++                # accessed via symbolic links
++                if not (os.path.isfile(oldpath) and
++                        not os.path.islink(oldpath)):
++                    continue
++                # Ignore the old file if it is the same file
++                if os.path.samefile(path, oldpath):
++                    continue
++                # Do nothing unless the files are identical
++                if not filecmp.cmp(path, oldpath, False):
++                    continue
++                # Find a temporary name that does not yet exist
++                tmppath = "%s.tmp" % path
++                if os.path.exists(tmppath):
++                    continue    # bail out
++                # Replace file by hard link
++                try:
++                    os.link(oldpath, tmppath)
++                    os.rename(tmppath, path)
++                    break       # next file
++                except OSError, e:
++                    # Clean up
++                    try:
++                        os.unlink(tmppath)
++                    except OSError, e:
++                        pass
++        
+         self.SimulationLog.Write("Simulation %s, restart %s, with job id %s has been successfully cleaned up" % (self.SimulationName, self.RestartID, job_id))    
+         # TODO: The log entry should now state that the simulation has
+         # been successfully deactivated.

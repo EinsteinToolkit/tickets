@@ -1,0 +1,112 @@
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 72)
++++ schedule.ccl	(working copy)
+@@ -10,6 +10,12 @@
+   LANG: C
+ } "Register symmetry boundaries"
+ 
++SCHEDULE Rot90_ComputeLevelExtent IN BoundaryConditions BEFORE Rot90_ApplyBC
++{
++  LANG: C
++  OPTIONS: LEVEL
++} "Compute extent of level"
++
+ SCHEDULE Rot90_ApplyBC IN BoundaryConditions
+ {
+   LANG: C
+Index: src/rotatingsymmetry90.c
+===================================================================
+--- src/rotatingsymmetry90.c	(revision 72)
++++ src/rotatingsymmetry90.c	(working copy)
+@@ -60,8 +60,11 @@
+   return srcindex;
+ }
+ 
++/* bbox, lbnd and ubnd of combined level box */
++static int global_bbox[2*DIM];
++static int global_lbnd[DIM], global_ubnd[DIM];
++static int time_of_extent_computation = -1;
+ 
+-
+ int BndRot90VI (cGH const * restrict const cctkGH,
+                 int const nvars,
+                 CCTK_INT const * restrict const vis)
+@@ -84,8 +87,6 @@
+   void const * restrict * restrict srcptrs;
+   int * restrict parities;
+   
+-  int global_bbox[2*DIM];
+-  int global_lbnd[DIM], global_ubnd[DIM];
+   int fake_bbox[2*DIM];
+   
+   CCTK_REAL x0[DIM], dx[DIM];
+@@ -164,20 +165,8 @@
+   }
+   
+   {
+-    int max_handle;
+-    CCTK_INT local[4*DIM], global[4*DIM];
+-    max_handle = CCTK_ReductionArrayHandle ("maximum");
+-    if (max_handle<0) CCTK_WARN (0, "Could not obtain reduction handle");
+-    
+-    for (d=0; d<2*DIM; ++d) local[      d] =  cctkGH->cctk_bbox[d];
+-    for (d=0; d<  DIM; ++d) local[2*DIM+d] = -cctkGH->cctk_lbnd[d];
+-    for (d=0; d<  DIM; ++d) local[3*DIM+d] =  cctkGH->cctk_ubnd[d];
+-    ierr = CCTK_ReduceLocArrayToArray1D
+-      (cctkGH, -1, max_handle, local, global, 4*DIM, CCTK_VARIABLE_INT);
+-    for (d=0; d<2*DIM; ++d) global_bbox[d] =  global[      d];
+-    for (d=0; d<  DIM; ++d) global_lbnd[d] = -global[2*DIM+d];
+-    for (d=0; d<  DIM; ++d) global_ubnd[d] =  global[3*DIM+d];
+-    
++    assert(time_of_extent_computation == cctk_iteration);
++  
+     for (d=0; d<DIM; ++d) {
+       fake_bbox[2*d  ] = data.lbnd[d] == global_lbnd[d];
+       fake_bbox[2*d+1] = data.ubnd[d] == global_ubnd[d];
+@@ -805,6 +794,45 @@
+ 
+ 
+ 
++void Rot90_ComputeLevelExtent (CCTK_ARGUMENTS)
++{
++  DECLARE_CCTK_ARGUMENTS;
++  
++  int nvars;
++
++  assert (cctkGH);
++  
++  nvars = Boundary_SelectedGVs (cctkGH, 0, 0, 0, 0, 0, 0);
++  assert (nvars>=0);
++  
++  if (nvars==0) return;
++
++  {
++    int max_handle;
++    int d;                        /* 0..group.dim-1 */
++    int ierr;
++    CCTK_INT local[4*DIM], global[4*DIM];
++    max_handle = CCTK_ReductionArrayHandle ("maximum");
++    if (max_handle<0) CCTK_WARN (0, "Could not obtain reduction handle");
++    
++    for (d=0; d<2*DIM; ++d) local[      d] =  cctkGH->cctk_bbox[d];
++    for (d=0; d<  DIM; ++d) local[2*DIM+d] = -cctkGH->cctk_lbnd[d];
++    for (d=0; d<  DIM; ++d) local[3*DIM+d] =  cctkGH->cctk_ubnd[d];
++    ierr = CCTK_ReduceLocArrayToArray1D
++      (cctkGH, -1, max_handle, local, global, 4*DIM, CCTK_VARIABLE_INT);
++    assert(!ierr);
++    for (d=0; d<2*DIM; ++d) global_bbox[d] =  global[      d];
++    for (d=0; d<  DIM; ++d) global_lbnd[d] = -global[2*DIM+d];
++    for (d=0; d<  DIM; ++d) global_ubnd[d] =  global[3*DIM+d];
++
++    /* record when we ran to have some sanity check against using old data in
++     * global variables */
++    time_of_extent_computation = cctk_iteration;
++  }
++}
++
++
++
+ void Rot90_ApplyBC (CCTK_ARGUMENTS)
+ {
+   DECLARE_CCTK_ARGUMENTS;

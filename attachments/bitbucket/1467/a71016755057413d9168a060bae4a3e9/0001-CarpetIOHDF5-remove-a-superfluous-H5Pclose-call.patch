@@ -1,0 +1,24 @@
+From 64563c15d217c88ac8de2fbd20f4241f09c41b32 Mon Sep 17 00:00:00 2001
+From: Anton Khirnov <anton@khirnov.net>
+Date: Tue, 5 Nov 2013 12:01:40 +0100
+Subject: [PATCH 1/2] CarpetIOHDF5: remove a superfluous H5Pclose call.
+
+---
+ Carpet/CarpetIOHDF5/src/Output.cc |    1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/Carpet/CarpetIOHDF5/src/Output.cc b/Carpet/CarpetIOHDF5/src/Output.cc
+index 24b5cf7..8fea698 100644
+--- a/Carpet/CarpetIOHDF5/src/Output.cc
++++ b/Carpet/CarpetIOHDF5/src/Output.cc
+@@ -136,7 +136,6 @@ int WriteVarUnchunked (const cGH* const cctkGH,
+         // than recombining an HDF5 dataset on a disk file.
+         HDF5_ERROR (memfile = H5Fcreate ("tempfile", H5F_ACC_EXCL, H5P_DEFAULT,
+                                          plist));
+-        HDF5_ERROR (H5Pclose (plist));
+         HDF5_ERROR (dataspace = H5Screate_simple (group.dim, shape, NULL));
+         HDF5_ERROR (memdataset = H5Dcreate (memfile, datasetname.str().c_str(),
+                                          filedatatype, dataspace, H5P_DEFAULT));
+-- 
+1.7.10.4
+

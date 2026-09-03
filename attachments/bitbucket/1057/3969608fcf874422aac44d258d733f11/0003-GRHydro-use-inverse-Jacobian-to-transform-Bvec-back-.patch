@@ -1,0 +1,34 @@
+From b4bc0ec4393bc9baba560827dfeea58def50344f Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Sun, 8 Jul 2012 16:54:53 -0700
+Subject: [PATCH 03/10] GRHydro: use inverse Jacobian to transform Bvec back
+ to global basis
+
+---
+ src/GRHydro_TransformTensorBasis.c |   10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/src/GRHydro_TransformTensorBasis.c b/src/GRHydro_TransformTensorBasis.c
+index a4813c9..6e86a9a 100644
+--- a/src/GRHydro_TransformTensorBasis.c
++++ b/src/GRHydro_TransformTensorBasis.c
+@@ -431,11 +431,11 @@ void GRHydroTransformPrimToGlobalBasis(CCTK_ARGUMENTS)
+ 
+             if(*evolve_MHD)
+             {
+-              /* Transform primitive B-field from global to local basis.
+-               * Since B-field has contravariant index, use Jacobian */
+-              lBvec[idx1] = Bvec[idx1]*J11[idx] + Bvec[idx2]*J12[idx] + Bvec[idx3]*J13[idx];
+-              lBvec[idx2] = Bvec[idx1]*J21[idx] + Bvec[idx2]*J22[idx] + Bvec[idx3]*J23[idx];
+-              lBvec[idx3] = Bvec[idx1]*J31[idx] + Bvec[idx2]*J32[idx] + Bvec[idx3]*J33[idx];
++              /* Transform primitive B-field from local to global basis.
++	       * Since B-field has contravariant index, use inverse Jacobian */
++              Bvec[idx1] = lBvec[idx1]*iJ11[idx] + lBvec[idx2]*iJ12[idx] + lBvec[idx3]*iJ13[idx];
++              Bvec[idx2] = lBvec[idx1]*iJ21[idx] + lBvec[idx2]*iJ22[idx] + lBvec[idx3]*iJ23[idx];
++              Bvec[idx3] = lBvec[idx1]*iJ31[idx] + lBvec[idx2]*iJ32[idx] + lBvec[idx3]*iJ33[idx];
+             }
+ 	    
+          }
+-- 
+1.7.10.4
+

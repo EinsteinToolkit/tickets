@@ -1,0 +1,27 @@
+From a0d3aaf80d1b4722234857150c11037e69bb7309 Mon Sep 17 00:00:00 2001
+From: Christian Reisswig <reisswig@scriwalker.(none)>
+Date: Sat, 26 May 2012 12:17:56 -0700
+Subject: [PATCH 11/13] GRHydro: register TmunuBase variables as MoL
+ constraint.
+
+---
+ src/GRHydro_RegisterVars.cc |    3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/GRHydro_RegisterVars.cc b/src/GRHydro_RegisterVars.cc
+index bb89899..0a3c330 100644
+--- a/src/GRHydro_RegisterVars.cc
++++ b/src/GRHydro_RegisterVars.cc
+@@ -59,6 +59,9 @@ extern "C" void GRHydro_Register(CCTK_ARGUMENTS)
+   register_constrained("HydroBase::eps");
+   register_constrained("HydroBase::w_lorentz");
+   register_constrained("HydroBase::vel");
++  register_constrained("TmunuBase::stress_energy_scalar");
++  register_constrained("TmunuBase::stress_energy_vector");
++  register_constrained("TmunuBase::stress_energy_tensor");
+   if (general_coordinates) {
+     register_constrained("GRHydro::lvel");
+ 
+-- 
+1.7.10
+

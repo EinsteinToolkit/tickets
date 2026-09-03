@@ -1,0 +1,27 @@
+From 90600fbdfe9567f56a2258f017b776cf3c8ac7b9 Mon Sep 17 00:00:00 2001
+From: Christian Reisswig <reisswig@scriwalker.(none)>
+Date: Wed, 21 Nov 2012 23:42:00 -0800
+Subject: [PATCH 16/25] GRHydro: Improved Tmunu damping.
+
+* faster falloff to make sure to damp to atmosphere at
+  Tmunu_damping_radius_max
+---
+ src/GRHydro_Tmunu.F90 |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/GRHydro_Tmunu.F90 b/src/GRHydro_Tmunu.F90
+index bc7724c..6a2eee3 100644
+--- a/src/GRHydro_Tmunu.F90
++++ b/src/GRHydro_Tmunu.F90
+@@ -122,7 +122,7 @@
+          if ((Tmunu_damping_radius_min .gt. 0) .and. (r(i,j,k) .gt. Tmunu_damping_radius_min)) then
+             !  0.5 * (1.0 - tanh(4.0*(x-x0)/sigma0))
+             if (r(i,j,k) .lt. Tmunu_damping_radius_max) then
+-               dampfac = 0.5 * (1.0 - tanh(4.0*(r(i,j,k)-0.5*(Tmunu_damping_radius_max+Tmunu_damping_radius_min))/(Tmunu_damping_radius_max-Tmunu_damping_radius_min)))
++               dampfac = 0.5d0 * (1.0d0 - tanh((8.0d0*r(i,j,k)-4.0d0*(Tmunu_damping_radius_max+Tmunu_damping_radius_min))/(Tmunu_damping_radius_max-Tmunu_damping_radius_min)))
+             else
+                dampfac = 0.0
+                continue   ! no need to add anything to Tmunu at the current point (it's zero anyway!)
+-- 
+1.7.10.4
+

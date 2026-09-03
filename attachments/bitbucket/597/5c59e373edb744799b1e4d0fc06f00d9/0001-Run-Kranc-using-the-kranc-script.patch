@@ -1,0 +1,124 @@
+From ce3c5b452136f079dcdb2b78f56fd059af9e6f9b Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Fri, 30 Sep 2011 17:38:59 +0200
+Subject: [PATCH] Run Kranc using the "kranc" script
+
+This simplifies the logic in WeylScal4 and also catches more error conditions  (e.g. if messages are generated when running Mathematica, the previous error-detection method would not catch this if the thorn was generated, even though the messages are usually a sign that something has gone wrong).
+---
+ m/Makefile    |    1 -
+ m/WeylScal4.m |    3 --
+ m/runmath.sh  |   61 ++------------------------------------------------------
+ 3 files changed, 3 insertions(+), 62 deletions(-)
+
+diff --git a/m/Makefile b/m/Makefile
+index 4d19481..18bf492 100644
+--- a/m/Makefile
++++ b/m/Makefile
+@@ -8,7 +8,6 @@ all: WeylScal4.out
+ WeylScal4.out: WeylScal4.m
+ 	rm -rf WeylScal4
+ 	./runmath.sh $^
+-	grep --silent 'Thorn ./WeylScal4 created successfully' WeylScal4.out
+ 	for thorn in WeylScal4; do								  \
+ 		./copy-if-changed.sh $$thorn/configuration.ccl ../../$$thorn/configuration.ccl && \
+ 		./copy-if-changed.sh $$thorn/interface.ccl     ../../$$thorn/interface.ccl     && \
+diff --git a/m/WeylScal4.m b/m/WeylScal4.m
+index f6f6bbb..9882062 100644
+--- a/m/WeylScal4.m
++++ b/m/WeylScal4.m
+@@ -1,9 +1,6 @@
+-$Path = Join[$Path, Map[ToString, ReadList[StringToStream[Environment["MATHPATH"]], Word, WordSeparators->{":"}]]];
+ 
+ $RecursionLimit = 1000;
+ 
+-Get["KrancThorn`"];
+-
+ (*SetDebugLevel[InfoFull];*)
+ 
+ SetEnhancedTimes[False];
+diff --git a/m/runmath.sh b/m/runmath.sh
+index ab94b62..3c7615b 100755
+--- a/m/runmath.sh
++++ b/m/runmath.sh
+@@ -2,10 +2,6 @@
+ 
+ # Abort on errors
+ set -e
+-# null-expand non-matching globs
+-set -u
+-
+-MATHEMATICA="math"
+ 
+ script=$1
+ 
+@@ -15,64 +11,13 @@ if test -z "$script"; then
+     exit 2
+ fi
+ 
+-KRANCPATH="${KRANCPATH:+$KRANCPATH}"
+-if [ -z "$KRANCPATH" ] ; then
+-    KRANCPATHS=(. ../../../../arrangements/../repos ../../../arrangements/../repos $HOME)
+-    # look for Kranc in a number of likely locations
+-    # choice 2 and 3 are $CCTK_HOME if the thorn resides in arrangements or
+-    # git-repos
+-    for i in ${KRANCPATHS[@]} ; do
+-        if [ -d $i/kranc/Tools ] ; then
+-            KRANCPATH=$i/kranc
+-            break
+-        elif [ -d $i/Kranc/Tools ] ; then
+-            KRANCPATH=$i/Kranc
+-            break
+-        fi
+-    done
+-fi
+-if [ -z "$KRANCPATH" ] ; then # try some more clever things...
+-    KRANCBIN="$(which kranc || true)"
+-    if [ -h "$KRANCBIN" ] ; then
+-        KRANCBIN=$(readlink "$KRANCBIN")
+-    fi
+-    if [ -d "$(dirname "$KRANCBIN")/../Tools" ] ; then
+-        KRANCPATH="$(dirname "$KRANCBIN")/.."
+-    fi
+-fi
+-if [ -n "$KRANCPATH" ] ; then
+-    LOCALKRANCPATH="$KRANCPATH/Tools/CodeGen:$KRANCPATH/Tools/MathematicaMisc"
+-    
+-    if [ -z "${MATHPATH:+}" ]
+-    then
+-        MATHPATH=$LOCALKRANCPATH
+-    else
+-        MATHPATH=$LOCALKRANCPATH:$MATHPATH
+-    fi
+-    
+-    export MATHPATH
+-else
+-    echo -e "Could not find Kranc. Expect trouble unless you have made sure Mathematica\nwill find Kranc. You might also consider setting \$KRANCPATH."
+-fi
+-
+-echo "MATHPATH = $MATHPATH"
+-
+ error=$(basename $script .m).err
+ output=$(basename $script .m).out
+ 
+ rm -f $output
+ 
+-# Run Mathematica to regenerate the code
+-< $script "$MATHEMATICA" | tee $error
+-
+-if grep 'KrancError' $error; then
+-    echo
+-    echo "There was an error when running Kranc on $script."
+-    echo "The file $error contains details."
+-    echo
+-    echo "*** The Cactus thorns have NOT been updated. ***"
+-    echo
+-    exit 1
+-fi
++# Run Kranc to regenerate the code
++../../../../repos/Kranc/Bin/kranc $script | tee $error
++[ $PIPESTATUS -eq 0 ] || exit $PIPESTATUS
+ 
+ mv $error $output
+-- 
+1.7.5.4
+

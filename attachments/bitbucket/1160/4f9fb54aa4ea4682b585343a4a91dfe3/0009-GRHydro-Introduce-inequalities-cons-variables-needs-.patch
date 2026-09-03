@@ -1,0 +1,381 @@
+From aa3d9058bcebd1238fa05ae9fac61f04ed90072b Mon Sep 17 00:00:00 2001
+From: Bruno Coutinho Mundim <bcmsma@astro.rit.edu>
+Date: Fri, 19 Oct 2012 13:42:08 -0500
+Subject: [PATCH 9/9] GRHydro: Introduce inequalities cons variables needs to
+ satisfy when B/=0.
+
+Introduce temporary prim variables as well.
+
+* Please refer to Illinois' paper (arXiv:1112.0568) appendices for details.
+---
+ param.ccl                 |    5 +
+ src/GRHydro_Con2PrimM.F90 |  233 ++++++++++++++++++++++++++++++++++++++-------
+ 2 files changed, 203 insertions(+), 35 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index a46a856..c2c5c0d 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -351,6 +351,11 @@ int GRHydro_c2p_warnlevel "Warnlevel for Con2Prim warnings" STEERABLE=ALWAYS
+   0:1           :: "Either 0 or 1"
+ } 0
+ 
++REAL sqrtdet_thr "Threshold to apply cons rescalings deep inside the horizon" STEERABLE=ALWAYS
++{
++ 1.0:    :: "Larger values guarantees this sort of rescaling only deep inside the horizon"
++} 30.0
++
+ 
+ boolean c2p_reset_pressure "If the pressure guess is unphysical should we recompute it?"
+ {
+diff --git a/src/GRHydro_Con2PrimM.F90 b/src/GRHydro_Con2PrimM.F90
+index caee604..fd24f09 100644
+--- a/src/GRHydro_Con2PrimM.F90
++++ b/src/GRHydro_Con2PrimM.F90
+@@ -15,6 +15,9 @@
+ #include "GRHydro_InterfacesM.h"
+ #include "GRHydro_Macros.h"
+ 
++#define ITER_TOL (1.0e-8)
++#define MAXITER (50)
++
+  /*@@
+    @routine    Conservative2PrimitiveM
+    @date       Sep 3, 2010
+@@ -58,8 +61,11 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+   DECLARE_CCTK_FUNCTIONS
+   
+   integer :: i, j, k, itracer, nx, ny, nz
+-  CCTK_REAL :: uxx, uxy, uxz, uyy, uyz, uzz, det, pmin(1), epsmin(1)
+-  CCTK_REAL :: b2
++  CCTK_REAL :: uxx, uxy, uxz, uyy, uyz, uzz, det, sdet, pmin(1), epsmin(1)
++  CCTK_REAL :: oob, b2, d2, s2, bscon, bxhat, byhat, bzhat, bhatscon
++  CCTK_REAL :: Wm, Wm0, Wm_resid, Wmold
++  CCTK_REAL :: s2m, s2m0, s2m_resid, s2mold, s2max, taum
++  CCTK_INT :: niter
+   CCTK_INT :: epsnegative
+   character(len=100) warnline
+   
+@@ -81,6 +87,17 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+   CCTK_REAL :: g11c, g12c, g13c, g22c, g23c, g33c
+   CCTK_REAL :: tmp1
+ 
++  ! Save the primitive variables to temporary functions before calling the
++  ! con2prim pointwise routines:
++  CCTK_REAL :: rho_tmp, press_tmp, eps_tmp
++  CCTK_REAL :: velx_tmp, vely_tmp, velz_tmp, w_lorentz_tmp
++  CCTK_REAL :: Bvecx_tmp, Bvecy_tmp, Bvecz_tmp
++
++  ! Assume 3-metric is positive definite. Check deep inside the horizon 
++  ! if this is actually satisfied and if it is not then cast the metric 
++  !as conformally flat only for con2prim inversion purposes.
++  posdef = .true.  
++
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+     g11 => gaa
+     g12 => gab
+@@ -145,7 +162,11 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+   !$OMP PARALLEL DO PRIVATE(i,j,k,itracer,&
+   !$OMP uxx, uxy, uxz, uyy, uyz, uzz, det, epsnegative, &
+   !$OMP b2,xrho,xeps,xpress,xtemp,local_K,local_pgam,sc,keyerr,anyerr,keytemp, &
+-  !$OMP local_perc_ptol,posdef,g11c,g12c,g13c,g22c,g23c,g33c,tmp1)
++  !$OMP local_perc_ptol,posdef,g11c,g12c,g13c,g22c,g23c,g33c,tmp1, &
++  !$OMP sdet,d2,s2,oob,bscon,bxhat,byhat,bzhat, &
++  !$OMP bhatscon,Wm,Wm0,Wm_resid,Wmold,s2m,s2m0,s2m_resid,s2mold,s2max, &
++  !$OMP taum,niter,rho_tmp,press_tmp,eps_tmp,velx_tmp,vely_tmp,velz_tmp, &
++  !$OMP w_lorentz_tmp,Bvecx_tmp,Bvecy_tmp,Bvecz_tmp)
+   do k = 1, nz 
+      do j = 1, ny 
+         do i = 1, nx
+@@ -157,6 +178,7 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+            epsnegative = 0
+            
+            det = SPATIAL_DETERMINANT(g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k))
++           sdet = sqrt(det)
+ 
+            call UpperMetric(uxx,uxy,uxz,uyy,uyz,uzz,det,&
+                 g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),&
+@@ -182,8 +204,14 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+               Y_e(i,j,k) = max(min(Y_e_con(i,j,k) / dens(i,j,k),GRHydro_Y_e_max),&
+                  GRHydro_Y_e_min)
+            endif
++
++           
++           b2=g11(i,j,k)*Bprim(i,j,k,1)**2+g22(i,j,k)*Bprim(i,j,k,2)**2+g33(i,j,k)*Bprim(i,j,k,3)**2+ &
++           2.0*(g12(i,j,k)*Bprim(i,j,k,1)*Bprim(i,j,k,2)+g13(i,j,k)*Bprim(i,j,k,1)*Bprim(i,j,k,3)+ &
++           g23(i,j,k)*Bprim(i,j,k,2)*Bprim(i,j,k,3))
++
+        
+-           if ( dens(i,j,k) .le. sqrt(det)*GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance) ) then
++           if ( dens(i,j,k) .le. sdet*GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance) ) then
+               
+               !call CCTK_WARN(1,"Con2Prim: Resetting to atmosphere")
+               !write(warnline,"(3i5,1P10E15.6)") i,j,k,x(i,j,k),y(i,j,k),z(i,j,k)
+@@ -192,11 +220,8 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+               !      temperature(i,j,k),y_e(i,j,k)
+               !call CCTK_WARN(1,warnline)
+ 
+-              b2=g11(i,j,k)*Bprim(i,j,k,1)**2+g22(i,j,k)*Bprim(i,j,k,2)**2+g33(i,j,k)*Bprim(i,j,k,3)**2+ &
+-                   2.0*(g12(i,j,k)*Bprim(i,j,k,1)*Bprim(i,j,k,2)+g13(i,j,k)*Bprim(i,j,k,1)*Bprim(i,j,k,3)+ &
+-                   g23(i,j,k)*Bprim(i,j,k,2)*Bprim(i,j,k,3))
+               
+-              dens(i,j,k) = sqrt(det)*GRHydro_rho_min !/(1.d0+GRHydro_atmo_tolerance)
++              dens(i,j,k) = sdet*GRHydro_rho_min !/(1.d0+GRHydro_atmo_tolerance)
+               rho(i,j,k) = GRHydro_rho_min
+               scon(i,j,k,:) = 0.d0
+               vup(i,j,k,:) = 0.d0
+@@ -229,29 +254,119 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+               
+               !!$ tau does need to take into account the existing B-field
+               !!$ with w_lorentz=1, we find tau = sqrtdet*(rho (1+eps+b^2/2)) - dens  [Press drops out]
+-              tau(i,j,k)  = sqrt(det) * (rho(i,j,k)*(1.0+eps(i,j,k)+b2/2.0)) - dens(i,j,k)
++              tau(i,j,k)  = sdet * (rho(i,j,k)*(1.0+eps(i,j,k)+b2/2.0)) - dens(i,j,k)
+               
++              if(tau(i,j,k).le.sdet*b2*0.5d0)then
++                tau(i,j,k) = GRHydro_tau_min + sdet*b2*0.5d0
++              endif
++
+               cycle
+               
+            end if
+ 
++
+            if(evolve_temper.eq.0) then
+-              call GRHydro_Con2PrimM_pt(GRHydro_eos_handle, keytemp, GRHydro_eos_rf_prec, local_gam(1), dens(i,j,k), &
++            
++
++              if(sdet.ge.sqrtdet_thr) then
++                    d2 = dens(i,j,k)**2
++                    s2 = uxx*scon(i,j,k,1)**2 + uyy*scon(i,j,k,2)**2 &
++                                              + uzz*scon(i,j,k,3)**2 &
++                       + 2.0d0*uxy*scon(i,j,k,1)*scon(i,j,k,2) &
++                       + 2.0d0*uxz*scon(i,j,k,1)*scon(i,j,k,3) &
++                       + 2.0d0*uyz*scon(i,j,k,2)*scon(i,j,k,3) 
++                   oob = 1.0d0/sqrt(b2)
++                 bxhat = oob*Bprim(i,j,k,1)
++                 byhat = oob*Bprim(i,j,k,2)
++                 bzhat = oob*Bprim(i,j,k,3)
++                 bhatscon = bxhat*scon(i,j,k,1)+byhat*scon(i,j,k,2) &
++                                               +bzhat*scon(i,j,k,3)
++                 bscon = Bprim(i,j,k,1)*scon(i,j,k,1) &
++                       + Bprim(i,j,k,2)*scon(i,j,k,2) &
++                       + Bprim(i,j,k,3)*scon(i,j,k,3)
++                 ! Initial guesses for iterative procedure to find Wm:
++                 Wm0 = sdet*sqrt(bhatscon**2+d2)
++                 s2m0 = (Wm0**2*s2+bhatscon**2*(b2+2.0d0*Wm0)) &
++                      / (Wm0+b2)**2 
++                 Wm = sdet*sqrt(s2m0+d2)
++                 s2m = (Wm**2*s2+bscon**2*(b2+2.0d0*Wm)) &
++                     / (Wm+b2)**2 
++                 s2m_resid = 1.0d60
++                 Wm_resid = 1.0d60
++                 niter = 0
++                 do while((s2m_resid.ge.ITER_TOL.and.Wm_resid.ge.ITER_TOL).and.&
++                          niter.le.MAXITER)
++                   Wmold = Wm
++                   s2mold = s2m
++                   Wm = sdet*sqrt(s2m+d2)
++                   s2m = (Wm**2*s2+bscon**2*(b2+2.0d0*Wm)) &
++                       / (Wm+b2)**2 
++                   Wm_resid = abs(Wmold-Wm)
++                   s2m_resid = abs(s2mold-s2m)
++                   niter = niter + 1
++                 end do
++                 !TODO: abort execution if niter .eq. MAXITER and warn user
++                 taum = tau(i,j,k) - 0.5d0*sdet*b2 -0.5d0*(b2*s2-bscon**2)/ &
++                                                         (sdet*(Wm+b2)**2) 
++                 s2max = taum*(taum+2.0d0*dens(i,j,k))
++                 if(taum.lt.GRHydro_tau_min)then
++                   tau(i,j,k) = GRHydro_tau_min + 0.5d0*sdet*b2 + 0.5d0* &
++                                (b2*s2-bscon**2)/(sdet*(Wm+b2)**2)
++                 end if
++                 if(s2.gt.s2max) then
++                   scon(i,j,k,1) = scon(i,j,k,1)*sqrt(s2max/s2)
++                   scon(i,j,k,2) = scon(i,j,k,2)*sqrt(s2max/s2)
++                   scon(i,j,k,3) = scon(i,j,k,3)*sqrt(s2max/s2)
++                 end if
++              endif 
++
++              rho_tmp = rho(i,j,k)
++              press_tmp = press(i,j,k)
++              eps_tmp = eps(i,j,k)
++              velx_tmp = vup(i,j,k,1)
++              vely_tmp = vup(i,j,k,2)
++              velz_tmp = vup(i,j,k,3)
++              w_lorentz_tmp = w_lorentz(i,j,k)
++              Bvecx_tmp = Bprim(i,j,k,1)
++              Bvecy_tmp = Bprim(i,j,k,2)
++              Bvecz_tmp = Bprim(i,j,k,3)
++
++              keytemp = 0
++
++              call GRHydro_Con2PrimM_pt(GRHydro_eos_handle, keytemp, &
++                   GRHydro_eos_rf_prec, local_gam(1), dens(i,j,k), &
+                    scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3), tau(i,j,k), &
+-                   Bcons(i,j,k,1),Bcons(i,j,k,2),Bcons(i,j,k,3), xye(1), xtemp(1), rho(i,j,k),&
+-                   vup(i,j,k,1),vup(i,j,k,2),vup(i,j,k,3),eps(i,j,k),press(i,j,k),&
+-                   Bprim(i,j,k,1), Bprim(i,j,k,2), Bprim(i,j,k,3),b2, w_lorentz(i,j,k),&
+-                   g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k), &
++                   Bcons(i,j,k,1),Bcons(i,j,k,2),Bcons(i,j,k,3),xye(1), &
++                   xtemp(1),rho_tmp,velx_tmp,vely_tmp,velz_tmp,&
++                   eps_tmp,press_tmp,Bvecx_tmp,Bvecy_tmp,Bvecz_tmp,b2,&
++                   w_lorentz_tmp,g11(i,j,k),g12(i,j,k),g13(i,j,k),&
++                   g22(i,j,k),g23(i,j,k),g33(i,j,k), &
+                    uxx,uxy,uxz,uyy,uyz,uzz,det, &
+                    epsnegative,GRHydro_C2P_failed(i,j,k))
+-           else
++
++           else    ! if(evolve_temper.eq.0) then
++
++              rho_tmp = rho(i,j,k)
++              press_tmp = press(i,j,k)
++              eps_tmp = eps(i,j,k)
++              velx_tmp = vup(i,j,k,1)
++              vely_tmp = vup(i,j,k,2)
++              velz_tmp = vup(i,j,k,3)
++              w_lorentz_tmp = w_lorentz(i,j,k)
++              Bvecx_tmp = Bprim(i,j,k,1)
++              Bvecy_tmp = Bprim(i,j,k,2)
++              Bvecz_tmp = Bprim(i,j,k,3)
++
+               keytemp = 0 
+-              call GRHydro_Con2PrimM_pt(GRHydro_eos_handle, keytemp, GRHydro_eos_rf_prec, local_gam(1), dens(i,j,k), &
++
++              call GRHydro_Con2PrimM_pt(GRHydro_eos_handle, keytemp, &
++                   GRHydro_eos_rf_prec, local_gam(1), dens(i,j,k), &
+                    scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3), tau(i,j,k), &
+-                   Bcons(i,j,k,1),Bcons(i,j,k,2),Bcons(i,j,k,3), Y_e(i,j,k), temperature(i,j,k), rho(i,j,k),&
+-                   vup(i,j,k,1),vup(i,j,k,2),vup(i,j,k,3),eps(i,j,k),press(i,j,k),&
+-                   Bprim(i,j,k,1), Bprim(i,j,k,2), Bprim(i,j,k,3),  b2, w_lorentz(i,j,k),&
+-                   g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k), &
++                   Bcons(i,j,k,1),Bcons(i,j,k,2),Bcons(i,j,k,3), Y_e(i,j,k), &
++                   temperature(i,j,k),rho_tmp,velx_tmp,vely_tmp,velz_tmp,&
++                   eps_tmp,press_tmp,Bvecx_tmp,Bvecy_tmp,Bvecz_tmp,b2,&
++                   w_lorentz_tmp,g11(i,j,k),g12(i,j,k),g13(i,j,k),&
++                   g22(i,j,k),g23(i,j,k),g33(i,j,k), &
+                    uxx,uxy,uxz,uyy,uyz,uzz,det, &
+                    epsnegative,GRHydro_C2P_failed(i,j,k))
+               if(GRHydro_C2P_failed(i,j,k).ne.0) then
+@@ -260,12 +375,25 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+                 ! accuracy requirement; if it fails again, we abort
+                 GRHydro_C2P_failed(i,j,k) = 0
+                 local_perc_ptol = GRHydro_eos_rf_prec*100.0d0
+-                call GRHydro_Con2PrimM_pt(GRHydro_eos_handle, keytemp, local_perc_ptol, local_gam(1), dens(i,j,k), &
++                ! Use the previous primitive values as initial guesses
++                rho_tmp = rho(i,j,k)
++                press_tmp = press(i,j,k)
++                eps_tmp = eps(i,j,k)
++                velx_tmp = vup(i,j,k,1)
++                vely_tmp = vup(i,j,k,2)
++                velz_tmp = vup(i,j,k,3)
++                w_lorentz_tmp = w_lorentz(i,j,k)
++                Bvecx_tmp = Bprim(i,j,k,1)
++                Bvecy_tmp = Bprim(i,j,k,2)
++                Bvecz_tmp = Bprim(i,j,k,3)
++                call GRHydro_Con2PrimM_pt(GRHydro_eos_handle, keytemp, &
++                     local_perc_ptol, local_gam(1), dens(i,j,k), &
+                      scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3), tau(i,j,k), &
+-                     Bcons(i,j,k,1),Bcons(i,j,k,2),Bcons(i,j,k,3), Y_e(i,j,k), temperature(i,j,k), rho(i,j,k),&
+-                     vup(i,j,k,1),vup(i,j,k,2),vup(i,j,k,3),eps(i,j,k),press(i,j,k),&
+-                     Bprim(i,j,k,1), Bprim(i,j,k,2), Bprim(i,j,k,3),  b2, w_lorentz(i,j,k),&
+-                     g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k), &
++                     Bcons(i,j,k,1),Bcons(i,j,k,2),Bcons(i,j,k,3), Y_e(i,j,k), &
++                     temperature(i,j,k),rho_tmp,velx_tmp,vely_tmp,velz_tmp,&
++                     eps_tmp,press_tmp,Bvecx_tmp,Bvecy_tmp,Bvecz_tmp,b2,&
++                     w_lorentz_tmp,g11(i,j,k),g12(i,j,k),g13(i,j,k),&
++                     g22(i,j,k),g23(i,j,k),g33(i,j,k), &
+                      uxx,uxy,uxz,uyy,uyz,uzz,det, &
+                      epsnegative,GRHydro_C2P_failed(i,j,k))
+                 if(GRHydro_C2P_failed(i,j,k).ne.0) then
+@@ -284,7 +412,7 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+                   !$OMP END CRITICAL
+                 endif
+               endif
+-            endif
++           endif    ! if(evolve_temper.eq.0) then
+ 
+            
+            if (epsnegative .ne. 0) then  
+@@ -350,19 +478,50 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+               local_pgam=log(xpress(1)/local_K)/log(xrho(1))
+               sc = local_K*dens(i,j,k)
+ 
+-              call GRHydro_Con2PrimM_Polytype_pt(GRHydro_eos_handle, local_pgam, dens(i,j,k), &
++              rho_tmp = rho(i,j,k)
++              press_tmp = press(i,j,k)
++              eps_tmp = eps(i,j,k)
++              velx_tmp = vup(i,j,k,1)
++              vely_tmp = vup(i,j,k,2)
++              velz_tmp = vup(i,j,k,3)
++              w_lorentz_tmp = w_lorentz(i,j,k)
++              Bvecx_tmp = Bprim(i,j,k,1)
++              Bvecy_tmp = Bprim(i,j,k,2)
++              Bvecz_tmp = Bprim(i,j,k,3)
++
++            call GRHydro_Con2PrimM_Polytype_pt(GRHydro_eos_handle, local_pgam, dens(i,j,k), &
+                    scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3), sc, &
+-                   Bcons(i,j,k,1), Bcons(i,j,k,2), Bcons(i,j,k,3), rho(i,j,k),&
+-                   vup(i,j,k,1),vup(i,j,k,2),vup(i,j,k,3),eps(i,j,k),press(i,j,k),&
+-                   Bprim(i,j,k,1), Bprim(i,j,k,2), Bprim(i,j,k,3),b2, w_lorentz(i,j,k),&
++                   Bcons(i,j,k,1), Bcons(i,j,k,2), Bcons(i,j,k,3),rho_tmp,&
++                   velx_tmp,vely_tmp,velz_tmp,eps_tmp,press_tmp,&
++                   Bvecx_tmp,Bvecy_tmp,Bvecz_tmp,b2,w_lorentz_tmp,&
+                    g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k), &
+                    uxx,uxy,uxz,uyy,uyz,uzz,det, &
+                    epsnegative,GRHydro_C2P_failed(i,j,k))
+-             
++
++
++!            call GRHydro_Con2PrimM_Polytype_pt(GRHydro_eos_handle, local_pgam, dens(i,j,k), &
++!                   scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3), sc, &
++!                   Bcons(i,j,k,1), Bcons(i,j,k,2), Bcons(i,j,k,3), rho(i,j,k),&
++!                   vup(i,j,k,1),vup(i,j,k,2),vup(i,j,k,3),eps(i,j,k),press(i,j,k),&
++!                   Bprim(i,j,k,1), Bprim(i,j,k,2), Bprim(i,j,k,3),b2, w_lorentz(i,j,k),&
++!                   g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k), &
++!                   uxx,uxy,uxz,uyy,uyz,uzz,det, &
++
+ #endif          
+               
+-           end if
+-           
++           end if    ! if (epsnegative .ne. 0) then  
++
++           rho(i,j,k) = rho_tmp 
++           press(i,j,k) = press_tmp 
++           eps(i,j,k) = eps_tmp 
++           vup(i,j,k,1) = velx_tmp 
++           vup(i,j,k,2) = vely_tmp 
++           vup(i,j,k,3) = velz_tmp 
++           w_lorentz(i,j,k) = w_lorentz_tmp 
++           Bprim(i,j,k,1) = Bvecx_tmp 
++           Bprim(i,j,k,2) = Bvecy_tmp 
++           Bprim(i,j,k,3) = Bvecz_tmp 
++          
+            if ( rho(i,j,k) .le. GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance)) then
+ !           if ( rho(i,j,k) .le. GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance) .or. GRHydro_C2P_failed(i,j,k) .ge. 1) then
+                
+@@ -370,7 +529,7 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+                    2.0*(g12(i,j,k)*Bprim(i,j,k,1)*Bprim(i,j,k,2)+g13(i,j,k)*Bprim(i,j,k,1)*Bprim(i,j,k,3)+ &
+                    g23(i,j,k)*Bprim(i,j,k,2)*Bprim(i,j,k,3))
+               
+-              dens(i,j,k) = sqrt(det)*GRHydro_rho_min !/(1.d0+GRHydro_atmo_tolerance)
++              dens(i,j,k) = sdet*GRHydro_rho_min !/(1.d0+GRHydro_atmo_tolerance)
+               rho(i,j,k) = GRHydro_rho_min
+               scon(i,j,k,:) = 0.d0
+               vup(i,j,k,:) = 0.d0
+@@ -397,7 +556,11 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+ 
+               !!$ tau does need to take into account the existing B-field
+               !!$ with w_lorentz=1, we find tau = sqrtdet*(rho (1+eps+b^2/2)) - dens  [Press drops out]
+-              tau(i,j,k)  = sqrt(det) * (rho(i,j,k)*(1.0+eps(i,j,k)+b2/2.0)) - dens(i,j,k)
++              tau(i,j,k)  = sdet * (rho(i,j,k)*(1.0+eps(i,j,k)+b2/2.0)) - dens(i,j,k)
++
++              if(tau(i,j,k).le.sdet*b2*0.5d0)then
++                tau(i,j,k) = GRHydro_tau_min + sdet*b2*0.5d0
++              endif
+ 
+            end if
+ 
+-- 
+1.7.10.4
+

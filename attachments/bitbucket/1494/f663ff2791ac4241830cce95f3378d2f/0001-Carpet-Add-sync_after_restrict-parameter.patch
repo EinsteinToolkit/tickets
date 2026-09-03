@@ -1,0 +1,54 @@
+From a9e6b872fcc50f69518bd2adad35c322160bc3bf Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Thu, 28 Nov 2013 22:36:03 +0100
+Subject: [PATCH] Carpet: Add sync_after_restrict parameter
+
+---
+ Carpet/Carpet/param.ccl       | 4 +++-
+ Carpet/Carpet/src/Restrict.cc | 8 ++------
+ 2 files changed, 5 insertions(+), 7 deletions(-)
+
+diff --git a/Carpet/Carpet/param.ccl b/Carpet/Carpet/param.ccl
+index 90aca4e..998e395 100644
+--- a/Carpet/Carpet/param.ccl
++++ b/Carpet/Carpet/param.ccl
+@@ -360,7 +360,9 @@ BOOLEAN suppress_restriction "Suppress the restriction operations.  This makes t
+ {
+ } "no"
+ 
+-
++BOOLEAN sync_after_restrict "Synchronise ghost zones after restriction.  This is not necessary if synchronisation (by applying BCs) is applied in PostRestrict" STEERABLE=always
++{
++} "no"
+ 
+ BOOLEAN verbose "Display more info on the screen" STEERABLE=always
+ {
+diff --git a/Carpet/Carpet/src/Restrict.cc b/Carpet/Carpet/src/Restrict.cc
+index 3598000..65d7565 100644
+--- a/Carpet/Carpet/src/Restrict.cc
++++ b/Carpet/Carpet/src/Restrict.cc
+@@ -71,19 +71,15 @@ namespace Carpet {
+     }
+ 
+     // Synchronise
+-    // TODO: Why? Restricted grid functions need to have boundary
+-    // conditions applied in postrestrict anyway, so this should not
+-    // be necessary.
+-#if 0
++    // This is only necessary if boundary conditions are not applied in postrestrict
++    if (sync_after_restrict)
+     {
+       static Timers::Timer timer ("RestrictSync");
+       timer.start();
+       SyncGroups (cctkGH, groups);
+       timer.stop();
+     }
+-#endif
+   }
+-  
+ 
+   // restrict a set of groups
+   static void RestrictGroups (const cGH* cctkGH, const vector<int>& groups) {
+-- 
+1.8.4.3
+

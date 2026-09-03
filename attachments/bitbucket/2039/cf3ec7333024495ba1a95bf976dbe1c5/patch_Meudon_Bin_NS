@@ -1,0 +1,267 @@
+diff -ru Meudon_Bin_NS_orig/configuration.ccl Meudon_Bin_NS/configuration.ccl
+--- Meudon_Bin_NS_orig/configuration.ccl	2016-11-21 07:23:21.790525928 -0600
++++ Meudon_Bin_NS/configuration.ccl	2017-05-18 13:42:24.925175136 -0500
+@@ -1,3 +1,3 @@
+ # Configuration definition for thorn Meudon_Bin_NS
+ 
+-REQUIRES LORENE (<<2014-04-19)
++REQUIRES LORENE(<=2017-05-08)
+diff -ru Meudon_Bin_NS_orig/interface.ccl Meudon_Bin_NS/interface.ccl
+--- Meudon_Bin_NS_orig/interface.ccl	2016-11-21 07:23:21.790525928 -0600
++++ Meudon_Bin_NS/interface.ccl	2017-05-18 13:08:47.015931024 -0500
+@@ -12,3 +12,24 @@
+                     CCTK_REAL OUT ARRAY dvar, \
+                     CCTK_INT IN table_handle)
+ USES FUNCTION Diff_gv
++
++void FUNCTION EOS_Omni_press(CCTK_INT IN eoskey,         \
++			     CCTK_INT IN havetemp,       \
++			     CCTK_REAL IN rf_precision,   \
++                             CCTK_INT IN npoints,        \
++			     CCTK_REAL IN ARRAY rho,     \
++			     CCTK_REAL INOUT ARRAY eps,  \
++			     CCTK_REAL INOUT ARRAY temp, \
++			     CCTK_REAL IN ARRAY ye,      \
++			     CCTK_REAL OUT ARRAY press,  \
++			     CCTK_INT OUT ARRAY keyerr,  \
++			     CCTK_INT OUT anyerr)
++
++USES FUNCTION EOS_Omni_press
++
++CCTK_INT FUNCTION EOS_Omni_GetHandle(CCTK_STRING IN name)
++USES FUNCTION EOS_Omni_GetHandle
++
++public:
++
++int init_eos_key type = SCALAR "Initial data eos handle for EOS_Omni"
+diff -ru Meudon_Bin_NS_orig/param.ccl Meudon_Bin_NS/param.ccl
+--- Meudon_Bin_NS_orig/param.ccl	2016-11-21 07:23:21.790525928 -0600
++++ Meudon_Bin_NS/param.ccl	2017-05-18 13:08:47.015931024 -0500
+@@ -4,43 +4,51 @@
+ 
+ EXTENDS KEYWORD initial_data
+ {
+-  "Meudon_Bin_NS" :: ""
++  "Meudon_Bin_NS" :: "LORENE Binary Neutron Star initial data"
+ }
+ 
+ EXTENDS KEYWORD initial_lapse
+ {
+-  "Meudon_Bin_NS" :: ""
++  "Meudon_Bin_NS" :: "LORENE Binary Neutron Star initial data"
+ }
+ 
+ EXTENDS KEYWORD initial_shift
+ {
+-  "Meudon_Bin_NS" :: ""
++  "Meudon_Bin_NS" :: "LORENE Binary Neutron Star initial data"
+ }
+ 
+ EXTENDS KEYWORD initial_dtlapse
+ {
+-  "Meudon_Bin_NS" :: ""
++  "Meudon_Bin_NS" :: "LORENE Binary Neutron Star initial data"
+ }
+ 
+ EXTENDS KEYWORD initial_dtshift
+ {
+-  "Meudon_Bin_NS" :: ""
++  "Meudon_Bin_NS" :: "LORENE Binary Neutron Star initial data"
+ }
+ 
+ 
+-
+ SHARES: HydroBase
+ 
+ EXTENDS KEYWORD initial_hydro
+ {
+-  "Meudon_Bin_NS" :: ""
++  "Meudon_Bin_NS" :: "LORENE Binary Neutron Star initial data"
+ }
+ 
+ 
+-
+ PRIVATE:
+ 
+-STRING filename "Input file name"
++STRING filename "Input file name containing LORENE data"
++{
++  "" :: "Any filename, potentially including path"
++} ""
++
++STRING eos_table "Initial data EOS identifyer"
++{
++  "" :: "Any valid EOS name in EOSOmni"
++} "2D_Polytrope"
++
++STRING eos_table_filepath "Directory containing the EOS file used to generate the initial data"
+ {
+-  "" :: ""
++  "" :: "Directory name, default (empty string) is 'do not tell Lorene to overwrite info found in Lorene data'"
+ } ""
+diff -ru Meudon_Bin_NS_orig/README Meudon_Bin_NS/README
+--- Meudon_Bin_NS_orig/README	2016-11-21 07:23:21.790525928 -0600
++++ Meudon_Bin_NS/README	2017-05-18 13:55:51.467397277 -0500
+@@ -1,6 +1,7 @@
+ Cactus Code Thorn Meudon_Bin_NS
+ Author(s)    : Erik Schnetter
+                Frank Löffler
++               Roberto De Pietri
+ Maintainer(s): Einstein Toolkit Maintainers
+ Licence      : GPL
+ --------------------------------------------------------------------------
+diff -ru Meudon_Bin_NS_orig/schedule.ccl Meudon_Bin_NS/schedule.ccl
+--- Meudon_Bin_NS_orig/schedule.ccl	2016-11-21 07:23:21.790525928 -0600
++++ Meudon_Bin_NS/schedule.ccl	2017-05-18 13:08:47.015931024 -0500
+@@ -11,4 +11,7 @@
+   {
+     LANG: C
+   } "Set up binary neutron star initial data"
++  
++  STORAGE:init_eos_key
++
+ }
+diff -ru Meudon_Bin_NS_orig/src/Bin_NS.cc Meudon_Bin_NS/src/Bin_NS.cc
+--- Meudon_Bin_NS_orig/src/Bin_NS.cc	2016-11-21 07:23:21.790525928 -0600
++++ Meudon_Bin_NS/src/Bin_NS.cc	2017-05-18 13:44:35.746729410 -0500
+@@ -2,9 +2,12 @@
+  * (c) 2010 Frank Loeffler */
+ 
+ #include <cstdio>
++#include <cstring>
+ #include <cassert>
+ #include <vector>
+ #include <ios>
++#include <iostream>
++#include <stdlib.h>
+ 
+ #include <cctk.h>
+ #include <cctk_Arguments.h>
+@@ -15,6 +18,10 @@
+ 
+ using namespace std;
+ 
++// define namespace here for old versions of Lorene that don't do so
++namespace Lorene {}
++using namespace Lorene;
++
+ static void set_dt_from_domega (CCTK_ARGUMENTS,
+                                 CCTK_REAL const* const var,
+                                 CCTK_REAL      * const dtvar,
+@@ -65,13 +72,24 @@
+   // Other quantities in terms of Cactus units
+   CCTK_REAL const coord_unit = cactusL / 1.0e+3;         // from km (~1.477)
+   CCTK_REAL const rho_unit   = cactusM / pow(cactusL,3); // from kg/m^3
+-
++  CCTK_INT keyerr = 0, anyerr = 0;
+ 
+   CCTK_INFO ("Setting up coordinates");
+ 
+   int const npoints = cctk_lsh[0] * cctk_lsh[1] * cctk_lsh[2];
+   vector<double> xx(npoints), yy(npoints), zz(npoints);
+ 
++  //Get EOS_Omni handle 
++
++  if (!(*init_eos_key = EOS_Omni_GetHandle(eos_table)))
++    CCTK_WARN(0,"Cannot get initial eos handle, aborting...");
++  
++  CCTK_VInfo(CCTK_THORNSTRING, "Meudon_Bin_NS will use the %s equation of state.", eos_table);
++  CCTK_VInfo(CCTK_THORNSTRING, "Meudon_Bin_NS will use the %d eos handle", *init_eos_key);
++
++ 
++
++
+ #pragma omp parallel for
+   for (int i=0; i<npoints; ++i) {
+     xx[i] = x[i] * coord_unit;
+@@ -79,6 +97,27 @@
+     zz[i] = z[i] * coord_unit;
+   }
+ 
++  // --------------------------------------------------------------
++  //   CHEKING FILE NAME EXISTENCE
++  // --------------------------------------------------------------
++  FILE *file;
++  if ((file = fopen(filename, "r")) != NULL) 
++       fclose(file);
++  else {
++      CCTK_VInfo (CCTK_THORNSTRING, "File \"%s\" do not exist. ABORTING", filename);
++      /* CCTK_Exit(cctkGH, EXIT_FAILURE); */
++      CCTK_Exit(cctkGH, 0);
++  }
++  // Handle potentially different EOS table directory. LORENE recieves that via
++  // environment variable
++  if (strlen(eos_table_filepath) > 0) {
++    if (setenv("LORENE_TABULATED_EOS_PATH", eos_table_filepath, 1)) {
++      CCTK_ERROR("Unable to set environment variable LORENE_TABULATED_EOS_PATH");
++
++    }
++  }
++
++
+   CCTK_VInfo (CCTK_THORNSTRING, "Reading from file \"%s\"", filename);
+ 
+   try {
+@@ -99,9 +138,9 @@
+   CCTK_VInfo (CCTK_THORNSTRING, "rad2_y [km]:         %g", bin_ns.rad2_y);
+   CCTK_VInfo (CCTK_THORNSTRING, "rad2_z [km]:         %g", bin_ns.rad2_z);
+   CCTK_VInfo (CCTK_THORNSTRING, "rad2_x_opp [km]:     %g", bin_ns.rad2_x_opp);
+-  double K = bin_ns.kappa_poly1 * pow(c_light, 6.0) /
++  double K = bin_ns.kappa_poly1 * pow((pow(c_light, 6.0) /
+              ( pow(G_grav, 3.0) * M_sun * M_sun *
+-               pow(nuc_dens, bin_ns.gamma_poly1-1.) );
++               nuc_dens )),bin_ns.gamma_poly1-1.);
+   CCTK_VInfo (CCTK_THORNSTRING, "K [ET unit]:         %.15g", K);
+ 
+   assert (bin_ns.np == npoints);
+@@ -139,14 +178,30 @@
+ 
+     if (CCTK_EQUALS(initial_data, "Meudon_Bin_NS")) {
+       rho[i] = bin_ns.nbar[i] / rho_unit;
+-      eps[i] = bin_ns.ener_spec[i];
++      //eps[i] = bin_ns.ener_spec[i];
+       // The following would recompute eps using the polytopic EOS, but
+       // setting eps directly seems to work as well
+       // eps[i] = K * pow(rho[i], bin_ns.gamma_poly1-1.) / (bin_ns.gamma_poly1-1.);
+ 
+       // TODO: we should really use some EOS calls for the pressure, but for the
+       //       moment this works with polytropes at least
+-      press[i] = K * pow(rho[i], bin_ns.gamma_poly1);
++      //press[i] = K * pow(rho[i], bin_ns.gamma_poly1);
++      
++      
++
++      //Press from EOS_Omni call 
++      //We set keytemp=1 to have also the initial epsilon set by
++      //EOS_Omni from rho with T=0.
++      
++      if(*init_eos_key == 4){  //if evolve temperature (hot nuclear eos)
++	
++	EOS_Omni_press(*init_eos_key,1,1e-8,1,&(rho[i]),&(eps[i]),&(temperature[i]),&(Y_e[i]),&(press[i]),&keyerr,&anyerr);
++      }
++      else {
++	EOS_Omni_press(*init_eos_key,1,1e-8,1,&(rho[i]),&(eps[i]),NULL,NULL,&(press[i]),&keyerr,&anyerr);
++      }
++      
++      
+ 
+       vel[i          ] = bin_ns.u_euler_x[i];
+       vel[i+  npoints] = bin_ns.u_euler_y[i];
+@@ -176,7 +231,7 @@
+       if (CCTK_EQUALS (initial_dtlapse, "Meudon_Bin_NS")) {
+         CCTK_INFO ("Calculating time derivatives of lapse");
+         set_dt_from_domega (CCTK_PASS_CTOC, alp, dtalp, omega);
+-      } else if (CCTK_EQUALS (initial_dtlapse, "none")) {
++      } else if (CCTK_EQUALS (initial_dtlapse, "none") or CCTK_EQUALS(initial_dtlapse,"zero")) {
+         // do nothing
+       } else {
+         CCTK_WARN (CCTK_WARN_ABORT, "internal error");
+@@ -189,7 +244,7 @@
+         set_dt_from_domega (CCTK_PASS_CTOC, betax, dtbetax, omega);
+         set_dt_from_domega (CCTK_PASS_CTOC, betay, dtbetay, omega);
+         set_dt_from_domega (CCTK_PASS_CTOC, betaz, dtbetaz, omega);
+-      } else if (CCTK_EQUALS (initial_dtshift, "none")) {
++      } else if (CCTK_EQUALS (initial_dtshift, "none") or CCTK_EQUALS(initial_dtshift,"zero")) {
+         // do nothing
+       } else {
+         CCTK_WARN (CCTK_WARN_ABORT, "internal error");

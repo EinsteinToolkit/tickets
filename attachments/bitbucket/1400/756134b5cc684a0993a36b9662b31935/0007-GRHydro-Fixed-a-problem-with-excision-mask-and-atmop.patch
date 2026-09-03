@@ -1,0 +1,35 @@
+From 0bb89dd17af6d9e14f50396e878196d51d6c551f Mon Sep 17 00:00:00 2001
+From: Christian Reisswig <reisswig@scriwalker.(none)>
+Date: Mon, 22 Apr 2013 17:22:39 -0700
+Subject: [PATCH 07/24] GRHydro: Fixed a problem with excision mask and
+ atmopshere treatment in hot Con2Prim.
+
+---
+ src/GRHydro_Con2PrimHot.F90 |    4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/GRHydro_Con2PrimHot.F90 b/src/GRHydro_Con2PrimHot.F90
+index a9e37f4..0d7015d 100644
+--- a/src/GRHydro_Con2PrimHot.F90
++++ b/src/GRHydro_Con2PrimHot.F90
+@@ -83,7 +83,7 @@ subroutine Conservative2PrimitiveHot(CCTK_ARGUMENTS)
+ 
+   !$OMP PARALLEL DO PRIVATE(i,j,k,itracer,&
+   !$OMP uxx, uxy, uxz, uyy, uyz, uzz, det, epsnegative, anyerr, keyerr, keytemp,&
+-  !$OMP warnline, dummy1, dummy2)
++  !$OMP warnline, dummy1, dummy2,reset_to_atmo)
+   do k = 1, nz 
+     do j = 1, ny 
+       do i = 1, nx
+@@ -125,7 +125,7 @@ subroutine Conservative2PrimitiveHot(CCTK_ARGUMENTS)
+            reset_to_atmo = 1
+         endif
+ 
+-        if (reset_to_atmo .gt. 0 .or. hydro_excision_mask(i,j,k) .gt. 0) then
++        if (reset_to_atmo .gt. 0 .or. (GRHydro_enable_internal_excision /= 0 .and. hydro_excision_mask(i,j,k) .gt. 0)) then
+            SET_ATMO_MIN(dens(i,j,k), sqrt(det)*GRHydro_rho_min, r(i,j,k)) 
+            SET_ATMO_MIN(rho(i,j,k), GRHydro_rho_min, r(i,j,k)) 
+            scon(i,j,k,:) = 0.d0
+-- 
+1.7.10.4
+

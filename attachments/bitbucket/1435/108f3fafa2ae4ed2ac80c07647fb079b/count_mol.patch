@@ -1,0 +1,83 @@
+Index: src/variables.cc
+===================================================================
+--- src/variables.cc	(revision 73)
++++ src/variables.cc	(working copy)
+@@ -124,7 +124,6 @@
+     }
+     
+     // Register these variables with MoL
+-    assert(nvars_evolved <= int(refluxing_vars.size()));
+     const int vi_register_fine =
+       CCTK_VarIndex("Refluxing::register_fine[0]");
+     assert(vi_register_fine >= 0);
+@@ -134,10 +133,14 @@
+     const int vi_flux =
+       CCTK_VarIndex("Refluxing::flux[0]");
+     assert(vi_flux >= 0);
+-    for (int n=0; n<nvars_evolved; ++n) {
+-      for (int d=0; d<3; ++d) {
+-        register_evolved(vi_register_fine+3*n+d, vi_flux+3*n+d);
+-        register_evolved(vi_register_coarse+3*n+d, vi_flux+3*n+d);
++    for (int n=0; n<nvars; ++n) {
++      // some time updates are handled by thorns other than MoL. Only register
++      // those fluxes with MoL whose variable is evolved by MoL.
++      if (MoLQueryEvolvedRHS(refluxing_vars.AT(n)) >= 0) {
++        for (int d=0; d<3; ++d) {
++          register_evolved(vi_register_fine+3*n+d, vi_flux+3*n+d);
++          register_evolved(vi_register_coarse+3*n+d, vi_flux+3*n+d);
++        }
+       }
+     }
+   }
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 73)
++++ schedule.ccl	(working copy)
+@@ -33,8 +33,9 @@
+ }
+ 
+ 
+-
+-SCHEDULE Refluxing_SetupVars IN MoL_Register
++# must be scheduled after all of the refluxed variables that will be evolved
++# with MoL are registered with MoL
++SCHEDULE Refluxing_SetupVars IN MoL_Register AFTER GRHydro_Register
+ {
+   LANG: C
+ } "Register evolved variables"
+Index: interface.ccl
+===================================================================
+--- interface.ccl	(revision 73)
++++ interface.ccl	(working copy)
+@@ -29,6 +29,9 @@
+          CCTK_INT IN RHSIndex)
+ USES FUNCTION MoLRegisterEvolvedSlow
+ 
++CCTK_INT FUNCTION MoLQueryEvolvedRHS(CCTK_INT IN EvolvedIndex)
++USES FUNCTION MoLQueryEvolvedRHS
++
+ # Get pointer to grid variable for a specific map and refinement level
+ CCTK_POINTER FUNCTION                     \
+     VarDataPtrI                           \
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 73)
++++ param.ccl	(working copy)
+@@ -29,16 +29,11 @@
+   0:* :: ""
+ } 5
+ 
+-CCTK_INT nvars_evolved "Number of variables which should be evolved via MoL" STEERABLE=recover
+-{
+-  0:* :: ""
+-} 5
+ 
+ 
+-
+ CCTK_INT Refluxing_MaxNumEvolvedVars "The maximum number of evolved variables used by Refluxing" ACCUMULATOR-BASE=MethodofLines::MoL_Num_Evolved_Vars STEERABLE=RECOVER
+ {
+-  0:* :: "must be 6*nvars_evolved"
++  0:* :: "must be 6 times the number of refluxed variables evolved with MoL"
+ } 30
+ 
+ CCTK_INT Refluxing_MaxNumEvolvedVarsSlow "The maximum number of evolved variables used by Refluxing" ACCUMULATOR-BASE=MethodofLines::MoL_Num_Evolved_Vars_Slow STEERABLE=RECOVER

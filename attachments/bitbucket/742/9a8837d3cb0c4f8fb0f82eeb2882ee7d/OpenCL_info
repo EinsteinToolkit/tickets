@@ -1,0 +1,404 @@
+Index: interface.ccl
+===================================================================
+--- interface.ccl	(revision 3)
++++ interface.ccl	(working copy)
+@@ -1,3 +1,4 @@
+ # Interface definition for thorn OpenCL
+ 
+ IMPLEMENTS: OpenCL
++
+Index: src/make.code.deps
+===================================================================
+--- src/make.code.deps	(revision 0)
++++ src/make.code.deps	(revision 0)
+@@ -0,0 +1 @@
++info.o: err_code.o device_info.o
+Index: src/make.code.defn
+===================================================================
+--- src/make.code.defn	(revision 3)
++++ src/make.code.defn	(working copy)
+@@ -1,7 +1,7 @@
+ # Main make.code.defn file for thorn OpenCL
+ 
+ # Source files in this directory
+-SRCS = 
++SRCS = info.c err_code.c device_info.c
+ 
+ # Subdirectories containing source files
+-SUBDIRS = 
++SUBDIRS =
+Index: src/err_code.c
+===================================================================
+--- src/err_code.c	(revision 0)
++++ src/err_code.c	(revision 0)
+@@ -0,0 +1,98 @@
++//------------------------------------------------------------------------------
++//
++// Name:     OpenCL_err_code()    
++//
++// Purpose:  Function to output descriptions of errors for an input error code
++// License:  public domain
++//
++//
++// RETURN:   echoes the input error code
++//
++// HISTORY:  Written by Tim Mattson, June 2010
++//
++//------------------------------------------------------------------------------
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#ifdef APPLE
++#include <OpenCL/opencl.h>
++#else
++#include "CL/cl.h"
++#endif
++
++char *OpenCL_err_code (cl_int err_in);
++char *OpenCL_err_code (cl_int err_in)
++{
++    switch (err_in){
++        case CL_INVALID_PLATFORM:
++           return("CL_INVALID_PLATFORM");
++           break;
++        case CL_INVALID_DEVICE_TYPE:
++           return("CL_INVALID_DEVICE_TYPE");
++           break;
++        case CL_INVALID_CONTEXT:
++           return("CL_INVALID_CONTEXT");
++           break;
++        case CL_INVALID_DEVICE:
++           return("CL_INVALID_DEVICE");
++           break;
++        case CL_INVALID_VALUE:
++           return("CL_INVALID_VALUE");
++           break;
++        case CL_INVALID_QUEUE_PROPERTIES:
++           return("CL_INVALID_QUEUE_PROPERTIES");
++           break;
++        case CL_OUT_OF_RESOURCES:
++           return("CL_OUT_OF_RESOURCES");
++           break;
++        case CL_INVALID_PROGRAM_EXECUTABLE:
++           return("CL_INVALID_PROGRAM_EXECUTABLE"); 
++           break;
++        case CL_INVALID_KERNEL:
++           return("CL_INVALID_KERNEL"); 
++           break;
++        case CL_INVALID_KERNEL_ARGS:
++           return("CL_INVALID_KERNEL_ARGS"); 
++           break;
++        case CL_INVALID_WORK_DIMENSION:
++           return("CL_INVALID_WORK_DIMENSION"); 
++           break;
++        case CL_INVALID_GLOBAL_OFFSET:
++           return("CL_INVALID_GLOBAL_OFFSET"); 
++           break;
++        case CL_INVALID_WORK_GROUP_SIZE:
++           return("CL_INVALID_WORK_GROUP_SIZE"); 
++           break;
++        case CL_INVALID_WORK_ITEM_SIZE:
++           return("CL_INVALID_WORK_ITEM_SIZE"); 
++           break;
++        case CL_INVALID_IMAGE_SIZE:
++           return("CL_INVALID_IMAGE_SIZE"); 
++           break;
++        case CL_INVALID_EVENT_WAIT_LIST:
++           return("CL_INVALID_EVENT_WAIT_LIST"); 
++           break;
++        case CL_INVALID_MEM_OBJECT:
++           return("CL_INVALID_MEM_OBJECT"); 
++           break;
++        case CL_MEM_COPY_OVERLAP:
++           return("CL_MEM_COPY_OVERLAP"); 
++           break;
++        case CL_MEM_OBJECT_ALLOCATION_FAILURE:
++           return("CL_MEM_OBJECT_ALLOCATION_FAILURE"); 
++           break;
++        case CL_OUT_OF_HOST_MEMORY:
++           return("CL_OUT_OF_HOST_MEMORY"); 
++           break;
++        case CL_PROFILING_INFO_NOT_AVAILABLE:
++           return("CL_PROFILING_INFO_NOT_AVAILABLE"); 
++           break;
++        case CL_INVALID_EVENT:
++           return("CL_INVALID_EVENT"); 
++           break;
++        default:
++           return("unknown error.");
++           break;
++    }
++    return "";
++}
+Index: src/device_info.c
+===================================================================
+--- src/device_info.c	(revision 0)
++++ src/device_info.c	(revision 0)
+@@ -0,0 +1,131 @@
++//------------------------------------------------------------------------------
++//
++// Name:     device_info()
++//
++// Purpose:  Function to output key parameters about the input OpenCL device.
++// License:  public domain
++//
++//
++// RETURN:   The OCL_SUCESS or the error code from one of the OCL function
++//           calls internal to this function
++//
++// HISTORY:  Written by Tim Mattson, June 2010
++//
++//------------------------------------------------------------------------------
++#include <cctk.h>
++#include <cctk_Arguments.h>
++#include <cctk_Parameters.h>
++
++#include <stdlib.h>
++#include <string.h>
++#ifdef APPLE
++#include <OpenCL/opencl.h>
++#else
++#include "CL/cl.h"
++#endif
++
++//  define VERBOSE if you want to print info about work groups sizes
++//#define  VERBOSE 1
++#ifdef VERBOSE
++     extern char *OpenCL_err_code(cl_int);
++#endif
++
++#define OpenCL_VWarn(...) CCTK_VWarn(opencl_error_code, __LINE__, __FILE__, CCTK_THORNSTRING, __VA_ARGS__)
++#define OpenCL_VInfo(...) CCTK_VInfo(CCTK_THORNSTRING, __VA_ARGS__)
++
++int output_device_info(cl_device_id device_id);
++int output_device_info(cl_device_id device_id)
++{
++    int err;                            // error code returned from OpenCL calls
++    cl_device_type device_type;         // Parameter defining the type of the compute device
++    cl_uint comp_units;                 // the max number of compute units on a device
++    cl_char vendor_name[1024] = {0};    // string to hold vendor name for compute device
++    cl_char device_name[1024] = {0};    // string to hold name of compute device
++#ifdef VERBOSE
++    cl_uint          max_work_itm_dims;
++    size_t           max_wrkgrp_size;
++#endif
++
++    CCTK_INT opencl_error_code = 0;
++
++    err = clGetDeviceInfo(device_id, CL_DEVICE_NAME, sizeof(device_name), &device_name, NULL);
++    if (err != CL_SUCCESS)
++    {
++        OpenCL_VWarn("Error: Failed to access device name!");
++        return EXIT_FAILURE;
++    }
++    OpenCL_VInfo(" Device: %s", device_name);
++
++    err = clGetDeviceInfo(device_id, CL_DEVICE_TYPE, sizeof(device_type), &device_type, NULL);
++    if (err != CL_SUCCESS)
++    {
++        OpenCL_VWarn("Error: Failed to access device type information!");
++        return EXIT_FAILURE;
++    }
++    if(device_type  == CL_DEVICE_TYPE_GPU)
++       OpenCL_VInfo("  GPU from ");
++
++    else if (device_type == CL_DEVICE_TYPE_CPU)
++       OpenCL_VInfo("  CPU from ");
++
++    else 
++       OpenCL_VInfo("  non CPU or GPU processor from ");
++
++    err = clGetDeviceInfo(device_id, CL_DEVICE_VENDOR, sizeof(vendor_name), &vendor_name, NULL);
++    if (err != CL_SUCCESS)
++    {
++        OpenCL_VWarn("Error: Failed to access device vendor name!");
++        return EXIT_FAILURE;
++    }
++    OpenCL_VInfo("   %s", vendor_name);
++
++    err = clGetDeviceInfo(device_id, CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(cl_uint), &comp_units, NULL);
++    if (err != CL_SUCCESS)
++    {
++        OpenCL_VWarn("Error: Failed to access device number of compute units !");
++        return EXIT_FAILURE;
++    }
++    OpenCL_VInfo("   with a max of %d compute units",comp_units);
++
++#ifdef VERBOSE
++//
++// Optionally print information about work group sizes
++//
++    err = clGetDeviceInfo( device_id, CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS, sizeof(cl_uint), 
++                               &max_work_itm_dims, NULL);
++    if (err != CL_SUCCESS)
++    {
++        OpenCL_VWarn("Error: Failed to get device Info (CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS)!",
++                                                                            OpenCL_err_code(err));
++        return EXIT_FAILURE;
++    }
++    
++    size_t max_loc_size[max_work_itm_dims];
++    err = clGetDeviceInfo( device_id, CL_DEVICE_MAX_WORK_ITEM_SIZES, max_work_itm_dims* sizeof(size_t), 
++                               max_loc_size, NULL);
++    if (err != CL_SUCCESS)
++    {
++        OpenCL_VWarn("Error: Failed to get device Info (CL_DEVICE_MAX_WORK_ITEM_SIZES)!",OpenCL_err_code(err));
++        return EXIT_FAILURE;
++    }
++    err = clGetDeviceInfo( device_id, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(size_t), 
++                               &max_wrkgrp_size, NULL);
++    if (err != CL_SUCCESS)
++    {
++        OpenCL_VWarn("Error: Failed to get device Info (CL_DEVICE_MAX_WORK_GROUP_SIZE)!",OpenCL_err_code(err));
++        return EXIT_FAILURE;
++    }
++    OpenCL_VInfo("work group, work item information");
++    OpenCL_VInfo("\n max loc dim ");
++    for(int i=0; i< max_work_itm_dims; i++)
++        OpenCL_VInfo(" %d ",(int)(*(max_loc_size+i)));
++    OpenCL_VInfo("\n");
++    OpenCL_VInfo(" Max work group size = %d\n",(int)max_wrkgrp_size);
++
++#endif
++
++    return CL_SUCCESS;
++
++}
++
++ 
+Index: src/info.c
+===================================================================
+--- src/info.c	(revision 0)
++++ src/info.c	(revision 0)
+@@ -0,0 +1,95 @@
++#include <string.h>
++#include <math.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++
++#include <cctk.h>
++#include <cctk_Arguments.h>
++#include <cctk_Parameters.h>
++
++#ifdef APPLE
++#include <OpenCL/opencl.h>
++#else
++#include "CL/cl.h"
++#endif
++
++// Two utility functions from "common"
++extern int output_device_info(cl_device_id );
++extern char *OpenCL_err_code (cl_int);
++
++#define OpenCL_VWarn(...) CCTK_VWarn(opencl_error_code, __LINE__, __FILE__, CCTK_THORNSTRING, __VA_ARGS__)
++#define OpenCL_VInfo(...) CCTK_VInfo(CCTK_THORNSTRING, __VA_ARGS__)
++
++//-------------------------------------------------------------------------------
++void OpenCL_PrintInfo(CCTK_ARGUMENTS)
++{
++    int          err;                  // error code returned from OpenCL calls
++    cl_uint numPlatforms;              // number of platforms
++    cl_uint numDevices;                // number of devices for a given platform
++    cl_char vendor_name[1024] = {0};   // string to hold vendor name 
++    cl_char platform_name[1024] = {0};  // string to hold name of platform
++
++    CCTK_INT opencl_error_code = 0;
++
++    // How many platforms are visible to this program?
++    err = clGetPlatformIDs(0, NULL, &numPlatforms);
++    if (err != CL_SUCCESS || numPlatforms <= 0)
++    {
++        OpenCL_VWarn("Error: Failed to find the platform! %s",OpenCL_err_code(err));
++        return;
++    }
++
++    OpenCL_VInfo("%d Platforms found",numPlatforms);
++
++    // find the IDs of the platforms
++    cl_platform_id platformId[numPlatforms];  // array of platform IDs
++    err = clGetPlatformIDs(numPlatforms, platformId, NULL);
++    if (err != CL_SUCCESS  )
++    {
++        OpenCL_VWarn("Error: Failed to find  platform IDs! %s",OpenCL_err_code(err));
++        return;
++    }
++
++    for (unsigned int i=0; i<numPlatforms;i++)
++    {
++        err = clGetPlatformInfo(*(platformId+i), CL_PLATFORM_NAME, sizeof(platform_name), &platform_name, NULL);
++        if (err != CL_SUCCESS)
++        {
++            OpenCL_VWarn("Error: Failed to access platform name!");
++            return;
++        }
++        OpenCL_VInfo("Platform %d is %s ", i+1, platform_name);
++
++        err = clGetPlatformInfo(*(platformId+i), CL_PLATFORM_VENDOR, sizeof(vendor_name), &vendor_name, NULL);
++        if (err != CL_SUCCESS)
++        {
++            OpenCL_VWarn("Error: Failed to access platform vendor!");
++            return;
++        }
++        OpenCL_VInfo("  from %s",vendor_name);
++
++        err = clGetDeviceIDs(*(platformId+i), CL_DEVICE_TYPE_ALL, 0, NULL, &numDevices);
++        if (err != CL_SUCCESS)
++        {
++            OpenCL_VWarn("Error: Failed to find number of devices! %s",OpenCL_err_code(err));
++            return;
++        }
++
++        OpenCL_VInfo("  %d devices found",numDevices);
++
++        cl_device_id device_id[numDevices]; // compute device id 
++        err = clGetDeviceIDs(*(platformId+i), CL_DEVICE_TYPE_ALL, numDevices, device_id, NULL);
++        if (err != CL_SUCCESS)
++        {
++            OpenCL_VWarn("Error: Failed to find defice IDs %s",OpenCL_err_code(err));
++            return;
++        }
++
++        for (unsigned int j=0;j<numDevices;j++)
++        {
++            err = output_device_info(*(device_id+j));
++        }
++    }
++    return;
++}
++
+Index: configuration.ccl
+===================================================================
+--- configuration.ccl	(revision 3)
++++ configuration.ccl	(working copy)
+@@ -1,5 +1,7 @@
+ # Configuration definitions for thorn OpenCL
+ 
++REQUIRES OpenCL
++
+ PROVIDES OpenCL
+ {
+   SCRIPT OpenCL.sh
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 3)
++++ schedule.ccl	(working copy)
+@@ -1 +1,6 @@
+ # Schedule definitions for thorn OpenCL
++schedule OpenCL_PrintInfo AT WRAGH
++{
++  LANG: C
++} "Print OpenCL System Information"
++
+Index: README
+===================================================================
+--- README	(revision 3)
++++ README	(working copy)
+@@ -1,7 +1,7 @@
+ Cactus Code Thorn OpenCL
+ Author(s)    : Erik Schnetter
+ Maintainer(s): Cactus team
+-Licence      : GPL
++Licence      : GPL, public domain
+ --------------------------------------------------------------------------
+ 
+ 1. Purpose

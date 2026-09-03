@@ -1,0 +1,27 @@
+From 703b57cc06b24460529589e09bacb0e2123d3dea Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Tue, 3 Sep 2013 19:09:59 -0700
+Subject: [PATCH] CarpetLib: make poisoning work when aligned memory
+
+since we poison as much memory as we allocated we have to poison
+starting from storage_base_
+---
+ Carpet/CarpetLib/src/mem.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Carpet/CarpetLib/src/mem.cc b/Carpet/CarpetLib/src/mem.cc
+index ddbe0c7..03f6e86 100644
+--- a/Carpet/CarpetLib/src/mem.cc
++++ b/Carpet/CarpetLib/src/mem.cc
+@@ -140,7 +140,7 @@ mem (size_t const vectorlength, size_t const nelems,
+     total_allocated_bytes += nbytes;
+     max_allocated_bytes = max (max_allocated_bytes, total_allocated_bytes);
+     if (poison_new_memory) {
+-      memset (storage_, poison_value, nbytes);
++      memset (storage_base_, poison_value, nbytes);
+     }
+     
+   } else {
+-- 
+1.8.4.rc3
+

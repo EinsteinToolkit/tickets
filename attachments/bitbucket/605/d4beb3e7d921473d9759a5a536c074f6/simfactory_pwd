@@ -1,0 +1,25 @@
+Index: simlib.py
+===================================================================
+--- simlib.py	(revision 1475)
++++ simlib.py	(working copy)
+@@ -318,11 +318,17 @@
+         else:
+             #dprint("Cactus path env: %s" % env_path)
+             return env_path
+-        
++
++    # Let's see if PWD is defined and take this is set. This has the advantage
++    # that symlinks are not dereferenced, but it has the drawback that this will
++    # not be the current directory if chdir() was called from python since the
++    # start of the script
++    current_path = os.environ.get("PWD")
++
+     # lets take a look at os.cwd()
++    if current_path is None:
++        current_path = os.getcwd()
+     
+-    current_path = os.getcwd()
+-    
+     #dprint("DEBUG: current_path: %s" % current_path)
+     
+     if os.path.exists(BuildPath(current_path, "src", "interface.ccl")):

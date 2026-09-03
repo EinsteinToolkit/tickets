@@ -1,0 +1,117 @@
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 251)
++++ schedule.ccl	(working copy)
+@@ -11,55 +11,27 @@
+ ### use of MoL with Einstein                  ###
+ #################################################
+ 
+-if (timelevels == 3)
++STORAGE:dens[timelevels]
++STORAGE:tau[timelevels]
++STORAGE:scon[timelevels]
++if (number_of_particles)
+ {
+-  STORAGE:dens[3]
+-  STORAGE:tau[3]
+-  STORAGE:scon[3]
+-  if (number_of_particles)
+-  {
+-    STORAGE:particles[3]
+-  }
+-  STORAGE: ADMBase::metric[3], ADMBase::curv[3]
+-  STORAGE: ADMBase::lapse[3]
+-  if(CCTK_Equals(Y_e_evolution_method,"GRHydro"))
+-  {
+-    STORAGE: Y_e_con[3]	
+-    STORAGE: Y_e_con_rhs, Y_e_con_flux, Y_e_plus, Y_e_minus
+-  }
+-  if(CCTK_Equals(Bvec_evolution_method,"GRHydro"))
+-  {
+-    STORAGE: HydroBase::Bvec[3]	
+-    if (clean_divergence)
+-    {
+-      STORAGE:psidc[3]
+-    }
+-  }
++  STORAGE:particles[timelevels]
+ }
+-else
++STORAGE: ADMBase::metric[timelevels], ADMBase::curv[timelevels]
++STORAGE: ADMBase::lapse[timelevels]
++if(CCTK_Equals(Y_e_evolution_method,"GRHydro"))
+ {
+-  STORAGE:dens[2]
+-  STORAGE:tau[2]
+-  STORAGE:scon[2]
+-  if (number_of_particles)
++  STORAGE: Y_e_con[timelevels]	
++  STORAGE: Y_e_con_rhs, Y_e_con_flux, Y_e_plus, Y_e_minus
++}
++if(CCTK_Equals(Bvec_evolution_method,"GRHydro"))
++{
++  STORAGE: HydroBase::Bvec[timelevels]	
++  if (clean_divergence)
+   {
+-    STORAGE:particles[2]
++    STORAGE:psidc[timelevels]
+   }
+-  STORAGE: ADMBase::metric[2], ADMBase::curv[2]
+-  STORAGE: ADMBase::lapse[2]
+-  if(CCTK_Equals(Y_e_evolution_method,"GRHydro"))
+-  {
+-    STORAGE: Y_e_con[2]	
+-    STORAGE: Y_e_con_rhs, Y_e_con_flux, Y_e_plus, Y_e_minus
+-  }
+-  if(CCTK_Equals(Bvec_evolution_method,"GRHydro")) 
+-  {
+-    STORAGE: HydroBase::Bvec[2]	
+-    if (clean_divergence)
+-    {
+-      STORAGE:psidc[2]
+-    }
+-  }
+ }
+ STORAGE:evolve_MHD
+ STORAGE:evolve_Y_e
+@@ -127,36 +99,14 @@
+ ### use of MoL with Einstein                  ###
+ #################################################
+ 
+-if (timelevels == 3)
+-{
+-  STORAGE: ADMBase::metric[3], ADMBase::curv[3]
+-  STORAGE: ADMBase::lapse[3]
+-}
+-else
+-{
+-  STORAGE: ADMBase::metric[2], ADMBase::curv[2]
+-  STORAGE: ADMBase::lapse[2]
+-}
++STORAGE: ADMBase::metric[timelevels], ADMBase::curv[timelevels]
++STORAGE: ADMBase::lapse[timelevels]
+ if (!CCTK_Equals(initial_shift,"none")) 
+ {
+-  if (timelevels == 3)
+-  {  
+-    STORAGE: ADMBase::shift[3]
+-  }
+-  else
+-  {
+-    STORAGE: ADMBase::shift[2]
+-  }
++  STORAGE: ADMBase::shift[timelevels]
+   if (CCTK_Equals(shift_evolution_method,"Comoving"))
+   {
+-    if (timelevels == 3)
+-    {  
+-      STORAGE: GRHydro_coords[3]
+-    }
+-    else
+-    {
+-      STORAGE: GRHydro_coords[2]
+-    }
++    STORAGE: GRHydro_coords[timelevels]
+     STORAGE: GRHydro_coords_rhs
+ 
+     schedule GRHydro_SetUpCoords IN HydroBase_Initial

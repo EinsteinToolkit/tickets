@@ -1,0 +1,67 @@
+diff --git a/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc b/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
+index feccb8f..a211cbb 100644
+--- a/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
++++ b/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
+@@ -564,11 +564,20 @@ static int OutputGH (const cGH* const cctkGH)
+ {
+   static Carpet::Timer timer ("OutputGH");
+   timer.start();
+-  for (int vindex = CCTK_NumVars () - 1; vindex >= 0; vindex--) {
+-    if (TimeToOutput (cctkGH, vindex)) {
+-      TriggerOutput (cctkGH, vindex);
++
++  CarpetIOHDF5GH *myGH =
++    (CarpetIOHDF5GH *) CCTK_GHExtension (cctkGH, CCTK_THORNSTRING);
++  CheckSteerableParameters (cctkGH, myGH);
++
++//  if (strcmp(myGH->out_vars,"") || strcmp(myGH->out0D_vars,"") ||
++//      strcmp(myGH->out1D_vars,"") || strcmp(myGH->out2D_vars,"") ||
++//      strcmp(myGH->out3D_vars,"")) {
++    for (int vindex = CCTK_NumVars () - 1; vindex >= 0; vindex--) {
++      if (TimeToOutput (cctkGH, vindex)) {
++        TriggerOutput (cctkGH, vindex);
++      }
+     }
+-  }
++//  }
+   timer.stop();
+ 
+   return (0);
+@@ -589,7 +598,6 @@ static int TimeToOutput (const cGH* const cctkGH, const int vindex)
+ 
+   CarpetIOHDF5GH *myGH =
+     (CarpetIOHDF5GH *) CCTK_GHExtension (cctkGH, CCTK_THORNSTRING);
+-  CheckSteerableParameters (cctkGH, myGH);
+ 
+   // check if output for this variable was requested
+   if (not myGH->requests[vindex]) {
+diff --git a/Carpet/CarpetIOHDF5/src/OutputSlice.cc b/Carpet/CarpetIOHDF5/src/OutputSlice.cc
+index 0a5fcee..9df8ef8 100644
+--- a/Carpet/CarpetIOHDF5/src/OutputSlice.cc
++++ b/Carpet/CarpetIOHDF5/src/OutputSlice.cc
+@@ -237,9 +237,13 @@ namespace CarpetIOHDF5 {
+     Carpet::Timer timer(timer_name.str());
+ 
+     timer.start();
+-    for (int vi=0; vi<CCTK_NumVars(); ++vi) {
+-      if (TimeToOutput(cctkGH, vi)) {
+-        TriggerOutput(cctkGH, vi);
++
++    CheckSteerableParameters (cctkGH);
++    if (strcmp (my_out_slice_vars, "")) {
++      for (int vi=0; vi<CCTK_NumVars(); ++vi) {
++        if (TimeToOutput(cctkGH, vi)) {
++          TriggerOutput(cctkGH, vi);
++        }
+       }
+     }
+     timer.stop();
+@@ -261,8 +265,6 @@ namespace CarpetIOHDF5 {
+       return 0;
+     }
+ 
+-    CheckSteerableParameters (cctkGH);
+-
+     // check if output for this variable was requested
+     if (not slice_requests.at(vindex)) {
+       return 0;

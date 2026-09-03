@@ -1,0 +1,42 @@
+Index: lib/make/setup_configuration.pl
+===================================================================
+--- lib/make/setup_configuration.pl	(revision 5017)
++++ lib/make/setup_configuration.pl	(working copy)
+@@ -26,6 +26,11 @@
+ # Replace slashes with underscores.
+ $config =~ s:[/\\]:_:g;
+ 
++if ($config =~ /-/)
++{
++  die("Configuration names must not contain '-'\n");
++}
++
+ # Work out if there is a user default file
+ if($ENV{CACTUSRC_DIR})
+ {
+Index: Makefile
+===================================================================
+--- Makefile	(revision 5018)
++++ Makefile	(working copy)
+@@ -758,6 +758,10 @@
+ endif
+ 
+ %-config:
++	if ( echo "$(@:%-config=%)" | $(PERL) -ne 'exit 1 if $$_=~/-/;' ) ; then : ; else \
++	  echo "Invalid configuration name $(@:%-config=%) (must not contain '-')"; \
++	  exit 2; \
++	fi 
+ 	@echo Configuration $(@:%-config=%) does not exist.;
+ 	if test "x$(PROMPT)" = "xyes" ; then \
+ 	  echo Setup configuration $(@:%-config=%) \(yes\)?; \
+@@ -1354,6 +1358,10 @@
+ %::
+ 	$(NOTIFY_DIVIDER)
+ 	@echo "Cactus - version: $(CCTK_VERSION)"
++	if ( echo "$(@:%-config=%)" | $(PERL) -ne 'exit 1 if $$_=~/-/;' ) ; then : ; else \
++	  echo "Invalid configuration name $(@:%-config=%) (must not contain '-')"; \
++	  exit 2; \
++	fi 
+ 	if test "x$(PROMPT)" = "xyes" ; then \
+ 	  echo Setup configuration $@ \(yes\)?; \
+ 	  read yesno rest; \

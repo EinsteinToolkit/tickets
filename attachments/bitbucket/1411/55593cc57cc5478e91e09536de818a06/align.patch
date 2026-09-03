@@ -1,0 +1,106 @@
+Index: interface.ccl
+===================================================================
+--- interface.ccl	(revision 523)
++++ interface.ccl	(working copy)
+@@ -6,3 +6,5 @@
+ INCLUDE HEADER: Register.h in pugh_Register.h
+ 
+ USES INCLUDE: pugh_Register.h
++
++USES INCLUDE: Vectors.h
+Index: src/make.code.defn
+===================================================================
+--- src/make.code.defn	(revision 523)
++++ src/make.code.defn	(working copy)
+@@ -4,4 +4,4 @@
+ SRCS =  Startup.c GHExtension.c Overloadables.c PughUtils.c LoadAware.c       \
+         Evolve.c Comm.c Storage.c SetupPGH.c SetupGroup.c SetupPGV.c          \
+         PostSendGA.c PostReceiveGA.c FinishReceiveGA.c Registration.c         \
+-        P2LMappings.c Topology.c
++        P2LMappings.c Topology.c Vectors.cc
+Index: src/Vectors.cc
+===================================================================
+--- src/Vectors.cc	(revision 0)
++++ src/Vectors.cc	(revision 0)
+@@ -0,0 +1,25 @@
++ /*@@
++   @file    Vectors.cc
++   @date    Tue Jul 30 20:25:08 PDT 2013
++   @author  Roland Haas
++   @desc
++            Helper routine to return vector size from Vectors thorn
++   @enddesc
++ @@*/
++
++#include <cstddef>
++
++#include "vectors.h"
++
++#include "pugh.h"
++#include "pughi.h"
++
++extern "C"
++size_t PUGH_GetVectorSize()
++{
++#ifdef CCTK_REAL_VEC_SIZE
++  return  CCTK_REAL_VEC_SIZE;
++#else
++  return 1;
++#endif
++}
+
+Property changes on: src/Vectors.cc
+___________________________________________________________________
+Added: svn:mime-type
+   + text/x-c++src
+
+Index: src/include/pughi.h
+===================================================================
+--- src/include/pughi.h	(revision 523)
++++ src/include/pughi.h	(working copy)
+@@ -106,6 +106,8 @@
+ 
+ int PUGH_NumTimeLevels(const pGH *pughGH, int var);
+ 
++size_t PUGH_GetVectorSize(void);
++
+ #ifdef CCTK_MPI
+ void PostSendGA     (pGH *pughGH, int dir, pComm *comm);
+ void PostReceiveGA  (pGH *pughGH, int dir, pComm *comm);
+Index: src/Storage.c
+===================================================================
+--- src/Storage.c	(revision 523)
++++ src/Storage.c	(working copy)
+@@ -628,9 +628,17 @@
+       else if (! my_padding_active)
+       {
+         /* Easy case. */
+-        GA->data = malloc ((size_t) GA->extras->npoints * GA->varsize
+-			   * GA->vector_size);
+-        GA->padddata = GA->data;
++        size_t align = PUGH_GetVectorSize() * GA->varsize;
++        GA->padddata = malloc ((size_t) GA->extras->npoints * GA->varsize
++			      * GA->vector_size + align-1);
++        if (((size_t) GA->padddata) % align)
++        {
++          GA->data = (char *) GA->padddata + align - (((size_t) GA->padddata) % align);
++        }
++        else
++        {
++          GA->data = GA->padddata;
++        }
+       }
+       else
+       {
+Index: configuration.ccl
+===================================================================
+--- configuration.ccl	(revision 523)
++++ configuration.ccl	(working copy)
+@@ -10,3 +10,7 @@
+ OPTIONAL MPI
+ {
+ }
++
++OPTIONAL_IFACTIVE Vectors
++{
++}

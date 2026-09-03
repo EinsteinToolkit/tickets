@@ -1,0 +1,3898 @@
+From 0f48b4fb3898b6607f6b4aa61058adbb2ddc910a Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Fri, 25 Oct 2013 18:05:38 -0700
+Subject: [PATCH] GRHydro: replace Fortan pointers with Cray pointers
+
+Intel 12 seems to like these better. Otherwise GRHydro_Con2PrimM.F90
+takes very long to compile.
+---
+ src/GRHydro_Con2Prim.F90               | 180 ++++++-------
+ src/GRHydro_Con2PrimAM.F90             | 155 +++++------
+ src/GRHydro_Con2PrimHot.F90            |  40 ++-
+ src/GRHydro_Con2PrimM.F90              | 114 +++-----
+ src/GRHydro_ENOReconstruct_drv.F90     |  16 +-
+ src/GRHydro_EoSChangeGamma.F90         | 120 ++++-----
+ src/GRHydro_HLLC.F90                   |  57 ++--
+ src/GRHydro_HLLE.F90                   | 147 +++++------
+ src/GRHydro_HLLEAM.F90                 |  98 ++++---
+ src/GRHydro_HLLEM.F90                  |  98 ++++---
+ src/GRHydro_HLLE_AM.F90                |  98 ++++---
+ src/GRHydro_MP5Reconstruct_drv.F90     |  45 ++--
+ src/GRHydro_PPMMReconstruct_drv.F90    |  62 ++---
+ src/GRHydro_PPMReconstruct_drv.F90     |  57 ++--
+ src/GRHydro_PPMReconstruct_drv_opt.F90 |  57 ++--
+ src/GRHydro_Prim2Con.F90               | 192 ++++++--------
+ src/GRHydro_Prim2ConAM.F90             |  12 -
+ src/GRHydro_Prim2ConM.F90              | 194 +++++++-------
+ src/GRHydro_Reconstruct.F90            |  40 ++-
+ src/GRHydro_Source.F90                 |  86 +++---
+ src/GRHydro_SourceAM.F90               |  91 +++----
+ src/GRHydro_SourceM.F90                |  91 +++----
+ src/GRHydro_TVDReconstruct_drv.F90     |  45 ++--
+ src/GRHydro_UpdateMask.F90             | 156 ++++++-----
+ src/GRHydro_UpdateMaskM.F90            | 352 ++++++++++++-------------
+ src/GRHydro_WENOReconstruct_drv.F90    |  45 ++--
+ src/Utils.F90                          |  34 ++-
+ 27 files changed, 1191 insertions(+), 1491 deletions(-)
+
+diff --git a/src/GRHydro_Con2Prim.F90 b/GRHydro/src/GRHydro_Con2Prim.F90
+index e1cfb01..829f4e0 100644
+--- a/src/GRHydro_Con2Prim.F90
++++ b/src/GRHydro_Con2Prim.F90
+@@ -43,12 +43,6 @@ subroutine Conservative2Primitive(CCTK_ARGUMENTS)
+   use Con2Prim_fortran_interfaces
+ 
+   implicit none
+-  
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+ 
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+@@ -63,8 +57,10 @@ subroutine Conservative2Primitive(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup
++  pointer (pvup,vup)
+ 
+ ! begin EOS Omni vars
+   integer :: n,keytemp,anyerr,keyerr(1)
+@@ -85,21 +81,21 @@ subroutine Conservative2Primitive(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
+   end if
+ 
+   nx = cctk_lsh(1)
+@@ -789,11 +785,6 @@ subroutine Conservative2PrimitiveBounds(CCTK_ARGUMENTS)
+   
+   implicit none
+   
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -811,7 +802,8 @@ subroutine Conservative2PrimitiveBounds(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
+ 
+ ! begin EOS Omni vars
+   integer :: n,keytemp,anyerr,keyerr(1)
+@@ -822,19 +814,19 @@ subroutine Conservative2PrimitiveBounds(CCTK_ARGUMENTS)
+   
+   ! save memory when MP is not used
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
+   end if
+ 
+   ! this is a poly call
+@@ -1028,12 +1020,6 @@ subroutine Conservative2PrimitivePolytype(CCTK_ARGUMENTS)
+ 
+   implicit none
+   
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -1045,26 +1031,28 @@ subroutine Conservative2PrimitivePolytype(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup
++  pointer (pvup,vup)
+ 
+   ! save memory when MP is not used
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
+   end if
+ 
+                                                                                
+@@ -1409,11 +1397,6 @@ subroutine Con2PrimBoundsPolytype(CCTK_ARGUMENTS)
+   use Con2Prim_fortran_interfaces
+ 
+   implicit none
+-  
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+ 
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+@@ -1426,22 +1409,23 @@ subroutine Con2PrimBoundsPolytype(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
+   end if
+                                                                                
+   nx = cctk_lsh(1)
+@@ -1527,11 +1511,6 @@ subroutine Con2PrimBoundsTracer(CCTK_ARGUMENTS)
+   use Con2Prim_fortran_interfaces
+ 
+   implicit none
+-  
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+ 
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+@@ -1544,22 +1523,23 @@ subroutine Con2PrimBoundsTracer(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
+   end if
+  
+   nx = cctk_lsh(1)
+@@ -1728,10 +1708,6 @@ subroutine check_GRHydro_C2P_failed(CCTK_ARGUMENTS)
+   use GRHydro_EvolutionMask
+ 
+   implicit none
+-  
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET lvel, vel
+ 
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_ARGUMENTS
+diff --git a/src/GRHydro_Con2PrimAM.F90 b/GRHydro/src/GRHydro_Con2PrimAM.F90
+index 374d794..2140a81 100644
+--- a/src/GRHydro_Con2PrimAM.F90
++++ b/src/GRHydro_Con2PrimAM.F90
+@@ -49,13 +49,6 @@ subroutine Conservative2PrimitiveAM(CCTK_ARGUMENTS)
+ 
+   implicit none
+   
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+-  TARGET lBvec, Bvec
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+@@ -77,10 +70,11 @@ subroutine Conservative2PrimitiveAM(CCTK_ARGUMENTS)
+   real*8  :: xpress(1),xtemp(1),xye(1),xeps(1),xrho(1),one(1)=1.0d0
+ ! end EOS Omni vars                 
+ 
+-  ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup, Bprim
++  pointer (pvup,vup), (pBprim,Bprim)
+ 
+   logical :: posdef
+ 
+@@ -102,23 +96,23 @@ subroutine Conservative2PrimitiveAM(CCTK_ARGUMENTS)
+   posdef = .true. 
+  
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
+-    Bprim => lBvec
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
++    pBprim = loc(lBvec)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
+-    Bprim => Bvec
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
++    pBprim = loc(Bvec)
+   end if
+ #define gxx faulty_gxx
+ #define gxy faulty_gxy
+@@ -765,11 +759,6 @@ subroutine Conservative2PrimitiveBoundsAM(CCTK_ARGUMENTS)
+   
+   implicit none
+   
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+@@ -793,22 +782,23 @@ subroutine Conservative2PrimitiveBoundsAM(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
+   end if
+ #define gxx faulty_gxx
+ #define gxy faulty_gxy
+@@ -1056,13 +1046,6 @@ subroutine Conservative2PrimitivePolytypeAM(CCTK_ARGUMENTS)
+   
+   implicit none
+   
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+-  TARGET lBvec, Bvec
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -1082,29 +1065,31 @@ subroutine Conservative2PrimitivePolytypeAM(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup, Bprim
++  pointer (pvup,vup), (pBprim,Bprim)
+ 
+   call GRHydro_BvecfromAvec(CCTK_PASS_FTOF)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
+-    Bprim => lBvec
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
++    pBprim = loc(lBvec)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
+-    Bprim => Bvec
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
++    pBprim = loc(Bvec)
+   end if
+ #define gxx faulty_gxx
+ #define gxy faulty_gxy
+@@ -1242,11 +1227,6 @@ subroutine Con2PrimBoundsPolytypeAM(CCTK_ARGUMENTS)
+   
+   implicit none
+   
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -1268,22 +1248,23 @@ subroutine Con2PrimBoundsPolytypeAM(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
+   end if
+ #define gxx faulty_gxx
+ #define gxy faulty_gxy
+diff --git a/src/GRHydro_Con2PrimHot.F90 b/GRHydro/src/GRHydro_Con2PrimHot.F90
+index bee72d1..be2743e 100644
+--- a/src/GRHydro_Con2PrimHot.F90
++++ b/src/GRHydro_Con2PrimHot.F90
+@@ -9,12 +9,6 @@
+ subroutine Conservative2PrimitiveHot(CCTK_ARGUMENTS)
+ 
+   implicit none
+-  
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+ 
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+@@ -32,8 +26,10 @@ subroutine Conservative2PrimitiveHot(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup
++  pointer (pvup,vup)
+ 
+ ! begin EOS Omni vars
+   integer :: n,keytemp,anyerr,keyerr(1), reset_to_atmo
+@@ -47,21 +43,21 @@ subroutine Conservative2PrimitiveHot(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
+   end if
+ 
+   nx = cctk_lsh(1)
+diff --git a/src/GRHydro_Con2PrimM.F90 b/GRHydro/src/GRHydro_Con2PrimM.F90
+index 8b2ec1f..e16f521 100644
+--- a/src/GRHydro_Con2PrimM.F90
++++ b/src/GRHydro_Con2PrimM.F90
+@@ -47,9 +47,6 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+   use Con2PrimM_fortran_interfaces
+ 
+   implicit none
+-  
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+   TARGET gaa, gab, gac, gbb, gbc, gcc
+   TARGET gxx, gxy, gxz, gyy, gyz, gzz
+   TARGET lvel, vel
+@@ -78,8 +75,10 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
++  CCTK_REAL, DIMENSION(cctk_ash(1),cctk_ash(2),cctk_ash(3)) :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(cctk_ash(1),cctk_ash(2),cctk_ash(3),3) :: vup, Bprim
++  pointer (pg11, g11), (pg12, g12), (pg13, g13), (pg22, g22), (pg23, g23), (pg33, g33)
++  pointer (pvup, vup), (pBprim, Bprim)
+ 
+   logical :: posdef
+ 
+@@ -100,23 +99,13 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+   posdef = .true.  
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
+-    Bprim => lBvec
++    pg11 = loc(gaa) ; pg12 = loc(gab) ; pg13 = loc(gac)
++    pg22 = loc(gbb) ; pg23 = loc(gbc) ; pg33 = loc(gcc)
++    pvup = loc(lvel) ; pBprim = loc(lBvec)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
+-    Bprim => Bvec
++    pg11 = loc(gxx) ; pg12 = loc(gxy) ; pg13 = loc(gxz)
++    pg22 = loc(gyy) ; pg23 = loc(gyz) ; pg33 = loc(gzz)
++    pvup = loc(vel) ; pBprim = loc(Bvec)
+   end if
+ #define gxx faulty_gxx
+ #define gxy faulty_gxy
+@@ -786,11 +775,6 @@ subroutine Conservative2PrimitiveBoundsM(CCTK_ARGUMENTS)
+   use Con2PrimM_fortran_interfaces
+   
+   implicit none
+-  
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+ 
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+@@ -814,22 +798,15 @@ subroutine Conservative2PrimitiveBoundsM(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(cctk_ash(1),cctk_ash(2),cctk_ash(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11, g11), (pg12, g12), (pg13, g13), (pg22, g22), (pg23, g23), (pg33, g33)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
++    pg11 = loc(gaa) ; pg12 = loc(gab) ; pg13 = loc(gac)
++    pg22 = loc(gbb) ; pg23 = loc(gbc) ; pg33 = loc(gcc)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
++    pg11 = loc(gxx) ; pg12 = loc(gxy) ; pg13 = loc(gxz)
++    pg22 = loc(gyy) ; pg23 = loc(gyz) ; pg33 = loc(gzz)
+   end if
+ #define gxx faulty_gxx
+ #define gxy faulty_gxy
+@@ -1070,13 +1047,6 @@ specialised from polytropic type EOS.
+ subroutine Conservative2PrimitivePolytypeM(CCTK_ARGUMENTS)
+   
+   implicit none
+-  
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+-  TARGET lBvec, Bvec
+ 
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+@@ -1096,27 +1066,19 @@ subroutine Conservative2PrimitivePolytypeM(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
++  CCTK_REAL, DIMENSION(cctk_ash(1),cctk_ash(2),cctk_ash(3)) :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(cctk_ash(1),cctk_ash(2),cctk_ash(3),3) :: vup, Bprim
++  pointer (pg11, g11), (pg12, g12), (pg13, g13), (pg22, g22), (pg23, g23), (pg33, g33)
++  pointer (pvup, vup), (pBprim, Bprim)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
+-    Bprim => lBvec
++    pg11 = loc(gaa) ; pg12 = loc(gab) ; pg13 = loc(gac)
++    pg22 = loc(gbb) ; pg23 = loc(gbc) ; pg33 = loc(gcc)
++    pvup = loc(lvel) ; pBprim = loc(lBvec)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
+-    Bprim => Bvec
++    pg11 = loc(gxx) ; pg12 = loc(gxy) ; pg13 = loc(gxz)
++    pg22 = loc(gyy) ; pg23 = loc(gyz) ; pg33 = loc(gzz)
++    pvup = loc(vel) ; pBprim = loc(Bvec)
+   end if
+ #define gxx faulty_gxx
+ #define gxy faulty_gxy
+@@ -1248,11 +1210,6 @@ end subroutine Conservative2PrimitivePolytypeM
+ subroutine Con2PrimBoundsPolytypeM(CCTK_ARGUMENTS)
+   
+   implicit none
+-  
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+ 
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+@@ -1274,22 +1231,15 @@ subroutine Con2PrimBoundsPolytypeM(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(cctk_ash(1),cctk_ash(2),cctk_ash(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11, g11), (pg12, g12), (pg13, g13), (pg22, g22), (pg23, g23), (pg33, g33)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
++    pg11 = loc(gaa) ; pg12 = loc(gab) ; pg13 = loc(gac)
++    pg22 = loc(gbb) ; pg23 = loc(gbc) ; pg33 = loc(gcc)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
++    pg11 = loc(gxx) ; pg12 = loc(gxy) ; pg13 = loc(gxz)
++    pg22 = loc(gyy) ; pg23 = loc(gyz) ; pg33 = loc(gzz)
+   end if
+ #define gxx faulty_gxx
+ #define gxy faulty_gxy
+diff --git a/src/GRHydro_ENOReconstruct_drv.F90 b/GRHydro/src/GRHydro_ENOReconstruct_drv.F90
+index 0dfdde9..907efff 100644
+--- a/src/GRHydro_ENOReconstruct_drv.F90
++++ b/src/GRHydro_ENOReconstruct_drv.F90
+@@ -47,11 +47,6 @@ subroutine GRHydro_ENOReconstruct_drv(CCTK_ARGUMENTS)
+   
+   implicit none
+   
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET vel, lvel
+-  TARGET Bvec, lBvec
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+@@ -71,14 +66,15 @@ subroutine GRHydro_ENOReconstruct_drv(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup, Bprim
++  pointer (pvup,vup), (pBprim,Bprim)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    vup => lvel
+-    Bprim => lBvec
++    pvup = loc(lvel)
++    pBprim = loc(lBvec)
+   else
+-    vup => vel
+-    Bprim => Bvec
++    pvup = loc(vel)
++    pBprim = loc(Bvec)
+   end if
+ 
+   allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
+diff --git a/src/GRHydro_EoSChangeGamma.F90 b/GRHydro/src/GRHydro_EoSChangeGamma.F90
+index 8a56430..504f82e 100644
+--- a/src/GRHydro_EoSChangeGamma.F90
++++ b/src/GRHydro_EoSChangeGamma.F90
+@@ -41,12 +41,6 @@ subroutine GRHydro_EoSChangeGamma(CCTK_ARGUMENTS)
+ 
+   implicit none
+ 
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+ 
+@@ -56,8 +50,10 @@ subroutine GRHydro_EoSChangeGamma(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup
++  pointer (pvup,vup)
+ 
+ !!$  Set up the fluid constants
+ ! begin EOS Omni vars
+@@ -74,21 +70,21 @@ subroutine GRHydro_EoSChangeGamma(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
+   end if
+   
+   local_Gamma = 1.0d0 + xpress/xeps
+@@ -143,12 +139,6 @@ subroutine GRHydro_EoSChangeK(CCTK_ARGUMENTS)
+ 
+   implicit none
+ 
+-  ! save memory when MP is not used
+-  ! TARGET has to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+ 
+@@ -160,8 +150,10 @@ subroutine GRHydro_EoSChangeK(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup
++  pointer (pvup,vup)
+ 
+ !!$  Set up the fluid constants
+ ! begin EOS Omni vars
+@@ -208,21 +200,21 @@ subroutine GRHydro_EoSChangeK(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
+   end if
+ 
+   do k = 1, cctk_lsh(3)
+@@ -271,12 +263,6 @@ subroutine GRHydro_EoSChangeGammaK_Shibata(CCTK_ARGUMENTS)
+ 
+   implicit none
+ 
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+ 
+@@ -286,8 +272,10 @@ subroutine GRHydro_EoSChangeGammaK_Shibata(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup
++  pointer (pvup,vup)
+ 
+ ! begin EOS Omni vars
+   integer :: n,keytemp,anyerr,keyerr(1)
+@@ -305,21 +293,21 @@ subroutine GRHydro_EoSChangeGammaK_Shibata(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
+   end if
+ 
+   local_Gamma = 1.0d0 + xpress/xeps
+diff --git a/src/GRHydro_HLLC.F90 b/GRHydro/src/GRHydro_HLLC.F90
+index 0fdb387..1f0c820 100644
+--- a/src/GRHydro_HLLC.F90
++++ b/src/GRHydro_HLLC.F90
+@@ -36,14 +36,6 @@ subroutine GRHydro_HLLC(CCTK_ARGUMENTS)
+ 
+   implicit none
+   
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET betaa, betab, betac
+-  TARGET betax, betay, betaz
+-  TARGET lvel, vel
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -69,32 +61,35 @@ subroutine GRHydro_HLLC(CCTK_ARGUMENTS)
+   
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: beta1, beta2, beta3
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: beta1, beta2, beta3
++  pointer (pbeta1,beta1), (pbeta2,beta2), (pbeta3,beta3)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup
++  pointer (pvup,vup)
+   
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    beta1 => betaa
+-    beta2 => betab
+-    beta3 => betac
+-    vup => lvel
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pbeta1 = loc(betaa)
++    pbeta2 = loc(betab)
++    pbeta3 = loc(betac)
++    pvup = loc(lvel)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    beta1 => betax
+-    beta2 => betay
+-    beta3 => betaz
+-    vup => vel
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pbeta1 = loc(betax)
++    pbeta2 = loc(betay)
++    pbeta3 = loc(betaz)
++    pvup = loc(vel)
+   end if
+ 
+   if (flux_direction == 1) then
+diff --git a/src/GRHydro_HLLE.F90 b/GRHydro/src/GRHydro_HLLE.F90
+index d52b622..494041b 100644
+--- a/src/GRHydro_HLLE.F90
++++ b/src/GRHydro_HLLE.F90
+@@ -46,13 +46,8 @@
+   
+ 
+ subroutine H_viscosity(CCTK_ARGUMENTS)
++
+   implicit none
+-  
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+ 
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+@@ -63,8 +58,10 @@ subroutine H_viscosity(CCTK_ARGUMENTS)
+   
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup
++  pointer (pvup,vup)
+   
+ ! begin EOS Omni vars
+   integer :: n,keytemp,anyerr,keyerr(1)
+@@ -75,21 +72,21 @@ subroutine H_viscosity(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
+   end if
+ 
+   nx = cctk_lsh(1)
+@@ -148,14 +145,6 @@ subroutine GRHydro_HLLE(CCTK_ARGUMENTS)
+ 
+   implicit none
+   
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET betaa, betab, betac
+-  TARGET betax, betay, betaz
+-  TARGET lvel, vel
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -175,36 +164,39 @@ subroutine GRHydro_HLLE(CCTK_ARGUMENTS)
+   
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: beta1, beta2, beta3
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: beta1, beta2, beta3
++  pointer (pbeta1,beta1), (pbeta2,beta2), (pbeta3,beta3)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup
++  pointer (pvup,vup)
+ 
+   if(GRHydro_disable_hydro_update.ne.0) then
+      return
+   endif
+   
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    beta1 => betaa
+-    beta2 => betab
+-    beta3 => betac
+-    vup => lvel
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pbeta1 = loc(betaa)
++    pbeta2 = loc(betab)
++    pbeta3 = loc(betac)
++    pvup = loc(lvel)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    beta1 => betax
+-    beta2 => betay
+-    beta3 => betaz
+-    vup => vel
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pbeta1 = loc(betax)
++    pbeta2 = loc(betay)
++    pbeta3 = loc(betaz)
++    pvup = loc(vel)
+   end if
+ 
+   if (flux_direction == 1) then
+@@ -626,13 +618,6 @@ subroutine GRHydro_HLLE_Tracer(CCTK_ARGUMENTS)
+ 
+   implicit none
+   
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET betaa, betab, betac
+-  TARGET betax, betay, betaz
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -648,29 +633,31 @@ subroutine GRHydro_HLLE_Tracer(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: beta1, beta2, beta3
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: beta1, beta2, beta3
++  pointer (pbeta1,beta1), (pbeta2,beta2), (pbeta3,beta3)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    beta1 => betaa
+-    beta2 => betab
+-    beta3 => betac
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pbeta1 = loc(betaa)
++    pbeta2 = loc(betab)
++    pbeta3 = loc(betac)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    beta1 => betax
+-    beta2 => betay
+-    beta3 => betaz
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pbeta1 = loc(betax)
++    pbeta2 = loc(betay)
++    pbeta3 = loc(betaz)
+   end if
+ 
+   if (flux_direction == 1) then
+diff --git a/src/GRHydro_HLLEAM.F90 b/GRHydro/src/GRHydro_HLLEAM.F90
+index a7c313d..b07e318 100644
+--- a/src/GRHydro_HLLEAM.F90
++++ b/src/GRHydro_HLLEAM.F90
+@@ -37,13 +37,6 @@ subroutine GRHydro_HLLEAM(CCTK_ARGUMENTS)
+ 
+   implicit none
+   
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET betaa, betab, betac
+-  TARGET betax, betay, betaz
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -69,29 +62,31 @@ subroutine GRHydro_HLLEAM(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: beta1, beta2, beta3
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: beta1, beta2, beta3
++  pointer (pbeta1,beta1), (pbeta2,beta2), (pbeta3,beta3)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    beta1 => betaa
+-    beta2 => betab
+-    beta3 => betac
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pbeta1 = loc(betaa)
++    pbeta2 = loc(betab)
++    pbeta3 = loc(betac)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    beta1 => betax
+-    beta2 => betay
+-    beta3 => betaz
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pbeta1 = loc(betax)
++    pbeta2 = loc(betay)
++    pbeta3 = loc(betaz)
+   end if
+ #define gxx faulty_gxx
+ #define gxy faulty_gxy
+@@ -655,13 +650,6 @@ subroutine GRHydro_HLLE_TracerAM(CCTK_ARGUMENTS)
+ 
+   implicit none
+   
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET betaa, betab, betac
+-  TARGET betax, betay, betaz
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -681,29 +669,31 @@ subroutine GRHydro_HLLE_TracerAM(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: beta1, beta2, beta3
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: beta1, beta2, beta3
++  pointer (pbeta1,beta1), (pbeta2,beta2), (pbeta3,beta3)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    beta1 => betaa
+-    beta2 => betab
+-    beta3 => betac
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pbeta1 = loc(betaa)
++    pbeta2 = loc(betab)
++    pbeta3 = loc(betac)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    beta1 => betax
+-    beta2 => betay
+-    beta3 => betaz
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pbeta1 = loc(betax)
++    pbeta2 = loc(betay)
++    pbeta3 = loc(betaz)
+   end if
+ #define gxx faulty_gxx
+ #define gxy faulty_gxy
+diff --git a/src/GRHydro_HLLEM.F90 b/GRHydro/src/GRHydro_HLLEM.F90
+index cde1d09..4dab82f 100644
+--- a/src/GRHydro_HLLEM.F90
++++ b/src/GRHydro_HLLEM.F90
+@@ -36,13 +36,6 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+   USE GRHydro_Scalars
+ 
+   implicit none
+-  
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET betaa, betab, betac
+-  TARGET betax, betay, betaz
+ 
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+@@ -70,29 +63,31 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: beta1, beta2, beta3
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: beta1, beta2, beta3
++  pointer (pbeta1,beta1), (pbeta2,beta2), (pbeta3,beta3)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    beta1 => betaa
+-    beta2 => betab
+-    beta3 => betac
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pbeta1 = loc(betaa)
++    pbeta2 = loc(betab)
++    pbeta3 = loc(betac)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    beta1 => betax
+-    beta2 => betay
+-    beta3 => betaz
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pbeta1 = loc(betax)
++    pbeta2 = loc(betay)
++    pbeta3 = loc(betaz)
+   end if
+ #define gxx faulty_gxx
+ #define gxy faulty_gxy
+@@ -705,13 +700,6 @@ subroutine GRHydro_HLLE_TracerM(CCTK_ARGUMENTS)
+ 
+   implicit none
+   
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET betaa, betab, betac
+-  TARGET betax, betay, betaz
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -730,29 +718,31 @@ subroutine GRHydro_HLLE_TracerM(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: beta1, beta2, beta3
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: beta1, beta2, beta3
++  pointer (pbeta1,beta1), (pbeta2,beta2), (pbeta3,beta3)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    beta1 => betaa
+-    beta2 => betab
+-    beta3 => betac
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pbeta1 = loc(betaa)
++    pbeta2 = loc(betab)
++    pbeta3 = loc(betac)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    beta1 => betax
+-    beta2 => betay
+-    beta3 => betaz
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pbeta1 = loc(betax)
++    pbeta2 = loc(betay)
++    pbeta3 = loc(betaz)
+   end if
+ #define gxx faulty_gxx
+ #define gxy faulty_gxy
+diff --git a/src/GRHydro_HLLE_AM.F90 b/GRHydro/src/GRHydro_HLLE_AM.F90
+index d13364d..9e681c2 100644
+--- a/src/GRHydro_HLLE_AM.F90
++++ b/src/GRHydro_HLLE_AM.F90
+@@ -37,13 +37,6 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+ 
+   implicit none
+ 
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET betaa, betab, betac
+-  TARGET betax, betay, betaz
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+ 
+@@ -68,29 +61,31 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: beta1, beta2, beta3
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: beta1, beta2, beta3
++  pointer (pbeta1,beta1), (pbeta2,beta2), (pbeta3,beta3)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    beta1 => betaa
+-    beta2 => betab
+-    beta3 => betac
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pbeta1 = loc(betaa)
++    pbeta2 = loc(betab)
++    pbeta3 = loc(betac)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    beta1 => betax
+-    beta2 => betay
+-    beta3 => betaz
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pbeta1 = loc(betax)
++    pbeta2 = loc(betay)
++    pbeta3 = loc(betaz)
+   end if
+ #define gxx faulty_gxx
+ #define gxy faulty_gxy
+@@ -662,13 +657,6 @@ subroutine GRHydro_HLLE_TracerAM(CCTK_ARGUMENTS)
+ 
+   implicit none
+   
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET betaa, betab, betac
+-  TARGET betax, betay, betaz
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -687,29 +675,31 @@ subroutine GRHydro_HLLE_TracerAM(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: beta1, beta2, beta3
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: beta1, beta2, beta3
++  pointer (pbeta1,beta1), (pbeta2,beta2), (pbeta3,beta3)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    beta1 => betaa
+-    beta2 => betab
+-    beta3 => betac
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pbeta1 = loc(betaa)
++    pbeta2 = loc(betab)
++    pbeta3 = loc(betac)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    beta1 => betax
+-    beta2 => betay
+-    beta3 => betaz
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pbeta1 = loc(betax)
++    pbeta2 = loc(betay)
++    pbeta3 = loc(betaz)
+   end if
+ #define gxx faulty_gxx
+ #define gxy faulty_gxy
+diff --git a/src/GRHydro_MP5Reconstruct_drv.F90 b/GRHydro/src/GRHydro_MP5Reconstruct_drv.F90
+index bb222dd..d625841 100644
+--- a/src/GRHydro_MP5Reconstruct_drv.F90
++++ b/src/GRHydro_MP5Reconstruct_drv.F90
+@@ -49,13 +49,6 @@
+ subroutine GRHydro_MP5Reconstruct_drv(CCTK_ARGUMENTS)
+   
+   implicit none
+-  
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET vel, lvel
+-  TARGET Bvec, lBvec
+ 
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+@@ -76,27 +69,29 @@ subroutine GRHydro_MP5Reconstruct_drv(CCTK_ARGUMENTS)
+   
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup, Bprim
++  pointer (pvup,vup), (pBprim,Bprim)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
+-    Bprim => lBvec
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
++    pBprim = loc(lBvec)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
+-    Bprim => Bvec
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
++    pBprim = loc(Bvec)
+   end if
+ 
+   allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
+diff --git a/src/GRHydro_PPMMReconstruct_drv.F90 b/GRHydro/src/GRHydro_PPMMReconstruct_drv.F90
+index f9ceaf7..6bc74e1 100644
+--- a/src/GRHydro_PPMMReconstruct_drv.F90
++++ b/src/GRHydro_PPMMReconstruct_drv.F90
+@@ -46,15 +46,6 @@
+ subroutine GRHydro_PPMMReconstruct_drv(CCTK_ARGUMENTS)
+   
+   implicit none
+-  
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET betaa, betab, betac
+-  TARGET betax, betay, betaz
+-  TARGET lvel, vel
+-  TARGET lBvec, Bvec
+ 
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+@@ -75,34 +66,37 @@ subroutine GRHydro_PPMMReconstruct_drv(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: beta1, beta2, beta3
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: beta1, beta2, beta3
++  pointer (pbeta1,beta1), (pbeta2,beta2), (pbeta3,beta3)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup, Bprim
++  pointer (pvup,vup), (pBprim,Bprim)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    beta1 => betaa
+-    beta2 => betab
+-    beta3 => betac
+-    vup => lvel
+-    Bprim => lBvec
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pbeta1 = loc(betaa)
++    pbeta2 = loc(betab)
++    pbeta3 = loc(betac)
++    pvup = loc(lvel)
++    pBprim = loc(lBvec)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    beta1 => betax
+-    beta2 => betay
+-    beta3 => betaz
+-    vup => vel
+-    Bprim => Bvec
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pbeta1 = loc(betax)
++    pbeta2 = loc(betay)
++    pbeta3 = loc(betaz)
++    pvup = loc(vel)
++    pBprim = loc(Bvec)
+   end if
+ 
+   allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
+diff --git a/src/GRHydro_PPMReconstruct_drv.F90 b/GRHydro/src/GRHydro_PPMReconstruct_drv.F90
+index f8959a2..492b3ef 100644
+--- a/src/GRHydro_PPMReconstruct_drv.F90
++++ b/src/GRHydro_PPMReconstruct_drv.F90
+@@ -40,14 +40,6 @@
+ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+   
+   implicit none
+-  
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET betaa, betab, betac
+-  TARGET betax, betay, betaz
+-  TARGET lvel, vel
+ 
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+@@ -65,34 +57,37 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: beta1, beta2, beta3
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: beta1, beta2, beta3
++  pointer (pbeta1,beta1), (pbeta2,beta2), (pbeta3,beta3)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup
++  pointer (pvup,vup)
+ 
+   logical :: apply_enhanced_ppm
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    beta1 => betaa
+-    beta2 => betab
+-    beta3 => betac
+-    vup => lvel
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pbeta1 = loc(betaa)
++    pbeta2 = loc(betab)
++    pbeta3 = loc(betac)
++    pvup = loc(lvel)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    beta1 => betax
+-    beta2 => betay
+-    beta3 => betaz
+-    vup => vel
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pbeta1 = loc(betax)
++    pbeta2 = loc(betay)
++    pbeta3 = loc(betaz)
++    pvup = loc(vel)
+   end if
+ 
+   allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
+diff --git a/src/GRHydro_PPMReconstruct_drv_opt.F90 b/GRHydro/src/GRHydro_PPMReconstruct_drv_opt.F90
+index 4222965..1a5fe04 100644
+--- a/src/GRHydro_PPMReconstruct_drv_opt.F90
++++ b/src/GRHydro_PPMReconstruct_drv_opt.F90
+@@ -40,14 +40,6 @@
+ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+   
+   implicit none
+-  
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET betaa, betab, betac
+-  TARGET betax, betay, betaz
+-  TARGET lvel, vel
+ 
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+@@ -65,34 +57,37 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: beta1, beta2, beta3
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: beta1, beta2, beta3
++  pointer (pbeta1,beta1), (pbeta2,beta2), (pbeta3,beta3)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup
++  pointer (pvup,vup)
+ 
+   logical :: apply_enhanced_ppm
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    beta1 => betaa
+-    beta2 => betab
+-    beta3 => betac
+-    vup => lvel
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pbeta1 = loc(betaa)
++    pbeta2 = loc(betab)
++    pbeta3 = loc(betac)
++    pvup = loc(lvel)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    beta1 => betax
+-    beta2 => betay
+-    beta3 => betaz
+-    vup => vel
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pbeta1 = loc(betax)
++    pbeta2 = loc(betay)
++    pbeta3 = loc(betaz)
++    pvup = loc(vel)
+   end if
+ 
+   allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
+diff --git a/src/GRHydro_Prim2Con.F90 b/GRHydro/src/GRHydro_Prim2Con.F90
+index 20a6c9d..a85c2b9 100644
+--- a/src/GRHydro_Prim2Con.F90
++++ b/src/GRHydro_Prim2Con.F90
+@@ -39,12 +39,6 @@
+ subroutine primitive2conservative(CCTK_ARGUMENTS)
+ 
+   implicit none
+-  
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+ 
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+@@ -57,25 +51,27 @@ subroutine primitive2conservative(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup
++  pointer (pvup,vup)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
+   end if
+ 
+   if(evolve_temper.ne.1) then
+@@ -471,12 +467,6 @@ subroutine Primitive2ConservativeCells(CCTK_ARGUMENTS)
+ 
+   implicit none
+   
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -486,25 +476,27 @@ subroutine Primitive2ConservativeCells(CCTK_ARGUMENTS)
+   character(len=512) :: warnline 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup
++  pointer (pvup,vup)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
+   end if
+ 
+   if(evolve_temper.ne.1) then
+@@ -583,12 +575,6 @@ subroutine Prim2ConservativePolytype(CCTK_ARGUMENTS)
+ 
+   implicit none
+   
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -598,25 +584,27 @@ subroutine Prim2ConservativePolytype(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup
++  pointer (pvup,vup)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
+   end if
+   
+   !$OMP PARALLEL DO PRIVATE(i, j, k, g11l,g12l,g13l,g22l,g23l,g33l,avg_sdetl,&
+@@ -761,12 +749,6 @@ subroutine Primitive2ConservativePolyCells(CCTK_ARGUMENTS)
+ 
+   implicit none
+   
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -774,25 +756,27 @@ subroutine Primitive2ConservativePolyCells(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup
++  pointer (pvup,vup)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
+   end if
+   
+   !$OMP PARALLEL DO PRIVATE(i, j, k)
+@@ -844,11 +828,6 @@ subroutine Prim2ConservativeTracer(CCTK_ARGUMENTS)
+ 
+   implicit none
+   
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -858,22 +837,23 @@ subroutine Prim2ConservativeTracer(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
+   end if
+   
+   do k = GRHydro_stencil,cctk_lsh(3)-GRHydro_stencil+1
+diff --git a/src/GRHydro_Prim2ConAM.F90 b/GRHydro/src/GRHydro_Prim2ConAM.F90
+index 2aee515..5544c86 100644
+--- a/src/GRHydro_Prim2ConAM.F90
++++ b/src/GRHydro_Prim2ConAM.F90
+@@ -56,20 +56,8 @@ subroutine primitive2conservativeAM(CCTK_ARGUMENTS)
+   integer :: i, j, k
+   CCTK_REAL :: gxxl,gxyl,gxzl,gyyl,gyzl,gzzl,avg_sdetl,&
+        gxxr,gxyr,gxzr,gyyr,gyzr,gzzr,avg_sdetr
+-  !CCTK_REAL :: g11l,g12l,g13l,g22l,g23l,g33l,&
+-  !     g11r,g12r,g13r,g22r,g23r,g33r
+   CCTK_REAL :: xtemp(1)
+   character(len=256) NaN_WarnLine
+-  !TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-
+-  !CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  
+-  !g11 => gxx
+-  !g12 => gxy
+-  !g13 => gxz
+-  !g22 => gyy
+-  !g23 => gyz
+-  !g33 => gzz
+ 
+   ! constraint transport needs to be able to average fluxes in the directions
+   ! other that flux_direction, which in turn need the primitives on interfaces
+diff --git a/src/GRHydro_Prim2ConM.F90 b/GRHydro/src/GRHydro_Prim2ConM.F90
+index 2a6086e..b0cb42e 100644
+--- a/src/GRHydro_Prim2ConM.F90
++++ b/src/GRHydro_Prim2ConM.F90
+@@ -48,15 +48,6 @@
+ 
+ subroutine primitive2conservativeM(CCTK_ARGUMENTS)
+ 
+-  implicit none
+-  
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+-  TARGET lBvec, Bvec
+-  
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -67,28 +58,31 @@ subroutine primitive2conservativeM(CCTK_ARGUMENTS)
+   character(len=256) NaN_WarnLine
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: Bprim
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup
++  pointer (pvup,vup)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: Bprim
++  pointer (pBprim,Bprim)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
+-    Bprim => lBvec
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
++    pBprim = loc(lBvec)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
+-    Bprim => Bvec
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
++    pBprim = loc(Bvec)
+   end if
+   
+   ! constraint transport needs to be able to average fluxes in the directions
+@@ -476,13 +470,6 @@ subroutine Primitive2ConservativeCellsM(CCTK_ARGUMENTS)
+ 
+   implicit none
+   
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+-  TARGET lBvec, Bvec
+-  
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -491,28 +478,31 @@ subroutine Primitive2ConservativeCellsM(CCTK_ARGUMENTS)
+   CCTK_REAL :: maxtau0
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: Bprim
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup
++  pointer (pvup,vup)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: Bprim
++  pointer (pBprim,Bprim)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
+-    Bprim => lBvec
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
++    pBprim = loc(lBvec)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
+-    Bprim => Bvec
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
++    pBprim = loc(Bvec)
+   end if
+   
+   
+@@ -620,13 +610,6 @@ subroutine Prim2ConservativePolytypeM(CCTK_ARGUMENTS)
+ 
+   implicit none
+   
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+-  TARGET lBvec, Bvec
+-  
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -635,28 +618,31 @@ subroutine Prim2ConservativePolytypeM(CCTK_ARGUMENTS)
+        g11r,g12r,g13r,g22r,g23r,g33r,avg_sdetr
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: Bprim
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup
++  pointer (pvup,vup)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: Bprim
++  pointer (pBprim,Bprim)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
+-    Bprim => lBvec
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
++    pBprim = loc(lBvec)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
+-    Bprim => Bvec
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
++    pBprim = loc(Bvec)
+   end if
+   
+   
+@@ -828,13 +814,6 @@ subroutine Primitive2ConservativePolyCellsM(CCTK_ARGUMENTS)
+ 
+   implicit none
+   
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+-  TARGET lBvec, Bvec
+-  
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+@@ -842,28 +821,31 @@ subroutine Primitive2ConservativePolyCellsM(CCTK_ARGUMENTS)
+   CCTK_REAL :: sdet
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: Bprim
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup
++  pointer (pvup,vup)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: Bprim
++  pointer (pBprim,Bprim)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
+-    Bprim => lBvec
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
++    pBprim = loc(lBvec)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
+-    Bprim => Bvec
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
++    pBprim = loc(Bvec)
+   end if
+   
+   !$OMP PARALLEL DO PRIVATE(k,j,i,sdet)
+diff --git a/src/GRHydro_Reconstruct.F90 b/GRHydro/src/GRHydro_Reconstruct.F90
+index bc1a222..5cec3dc 100644
+--- a/src/GRHydro_Reconstruct.F90
++++ b/src/GRHydro_Reconstruct.F90
+@@ -18,12 +18,6 @@
+ subroutine Reconstruction(CCTK_ARGUMENTS)
+   
+   implicit none
+-
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+   
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+@@ -36,29 +30,31 @@ subroutine Reconstruction(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup
++  pointer (pvup,vup)
+ 
+   if(GRHydro_disable_hydro_update.ne.0) then
+      return
+   endif
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
+   end if
+   
+   ! Initialize plus and minus states
+diff --git a/src/GRHydro_Source.F90 b/GRHydro/src/GRHydro_Source.F90
+index b3d39d7..29c8b63 100644
+--- a/src/GRHydro_Source.F90
++++ b/src/GRHydro_Source.F90
+@@ -54,16 +54,6 @@
+ subroutine SourceTerms(CCTK_ARGUMENTS)
+       
+   implicit none
+-  
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET kaa, kab, kac, kbb, kbc, kcc
+-  TARGET kxx, kxy, kxz, kyy, kyz, kzz
+-  TARGET betaa, betab, betac
+-  TARGET betax, betay, betaz
+-  TARGET lvel, vel
+ 
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+@@ -93,46 +83,50 @@ subroutine SourceTerms(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: k11, k12, k13, k22, k23, k33
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: beta1, beta2, beta3
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: k11, k12, k13, k22, k23, k33
++  pointer (pk11,k11), (pk12,k12), (pk13,k13), (pk22,k22), (pk23,k23), (pk33,k33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: beta1, beta2, beta3
++  pointer (pbeta1,beta1), (pbeta2,beta2), (pbeta3,beta3)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup
++  pointer (pvup,vup)
+ 
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    k11 => kaa
+-    k12 => kab
+-    k13 => kac
+-    k22 => kbb
+-    k23 => kbc
+-    k33 => kcc
+-    beta1 => betaa
+-    beta2 => betab
+-    beta3 => betac
+-    vup => lvel
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pk11 = loc(kaa)
++    pk12 = loc(kab)
++    pk13 = loc(kac)
++    pk22 = loc(kbb)
++    pk23 = loc(kbc)
++    pk33 = loc(kcc)
++    pbeta1 = loc(betaa)
++    pbeta2 = loc(betab)
++    pbeta3 = loc(betac)
++    pvup = loc(lvel)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    k11 => kxx
+-    k12 => kxy
+-    k13 => kxz
+-    k22 => kyy
+-    k23 => kyz
+-    k33 => kzz
+-    beta1 => betax
+-    beta2 => betay
+-    beta3 => betaz
+-    vup => vel
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pk11 = loc(kxx)
++    pk12 = loc(kxy)
++    pk13 = loc(kxz)
++    pk22 = loc(kyy)
++    pk23 = loc(kyz)
++    pk33 = loc(kzz)
++    pbeta1 = loc(betax)
++    pbeta2 = loc(betay)
++    pbeta3 = loc(betaz)
++    pvup = loc(vel)
+   end if
+ 
+   one = 1.0d0
+diff --git a/src/GRHydro_SourceAM.F90 b/GRHydro/src/GRHydro_SourceAM.F90
+index d090fa7..b4000e3 100644
+--- a/src/GRHydro_SourceAM.F90
++++ b/src/GRHydro_SourceAM.F90
+@@ -58,17 +58,6 @@
+ subroutine SourceTermsAM(CCTK_ARGUMENTS)
+       
+   implicit none
+-  
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET kaa, kab, kac, kbb, kbc, kcc
+-  TARGET kxx, kxy, kxz, kyy, kyz, kzz
+-  TARGET betaa, betab, betac
+-  TARGET betax, betay, betaz
+-  TARGET lvel, vel
+-  TARGET lBvec, Bvec
+ 
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+@@ -104,47 +93,51 @@ subroutine SourceTermsAM(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: k11, k12, k13, k22, k23, k33
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: beta1, beta2, beta3
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: k11, k12, k13, k22, k23, k33
++  pointer (pk11,k11), (pk12,k12), (pk13,k13), (pk22,k22), (pk23,k23), (pk33,k33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: beta1, beta2, beta3
++  pointer (pbeta1,beta1), (pbeta2,beta2), (pbeta3,beta3)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup, Bprim
++  pointer (pvup,vup), (pBprim,Bprim)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    k11 => kaa
+-    k12 => kab
+-    k13 => kac
+-    k22 => kbb
+-    k23 => kbc
+-    k33 => kcc
+-    beta1 => betaa
+-    beta2 => betab
+-    beta3 => betac
+-    vup => lvel
+-    Bprim => lBvec
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pk11 = loc(kaa)
++    pk12 = loc(kab)
++    pk13 = loc(kac)
++    pk22 = loc(kbb)
++    pk23 = loc(kbc)
++    pk33 = loc(kcc)
++    pbeta1 = loc(betaa)
++    pbeta2 = loc(betab)
++    pbeta3 = loc(betac)
++    pvup = loc(lvel)
++    pBprim = loc(lBvec)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    k11 => kxx
+-    k12 => kxy
+-    k13 => kxz
+-    k22 => kyy
+-    k23 => kyz
+-    k33 => kzz
+-    beta1 => betax
+-    beta2 => betay
+-    beta3 => betaz
+-    vup => vel
+-    Bprim => Bvec
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pk11 = loc(kxx)
++    pk12 = loc(kxy)
++    pk13 = loc(kxz)
++    pk22 = loc(kyy)
++    pk23 = loc(kyz)
++    pk33 = loc(kzz)
++    pbeta1 = loc(betax)
++    pbeta2 = loc(betay)
++    pbeta3 = loc(betaz)
++    pvup = loc(vel)
++    pBprim = loc(Bvec)
+   end if
+ #define gxx faulty_gxx
+ #define gxy faulty_gxy
+diff --git a/src/GRHydro_SourceM.F90 b/GRHydro/src/GRHydro_SourceM.F90
+index 9664864..e7ac2cf 100644
+--- a/src/GRHydro_SourceM.F90
++++ b/src/GRHydro_SourceM.F90
+@@ -65,17 +65,6 @@
+ subroutine SourceTermsM(CCTK_ARGUMENTS)
+       
+   implicit none
+-  
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET kaa, kab, kac, kbb, kbc, kcc
+-  TARGET kxx, kxy, kxz, kyy, kyz, kzz
+-  TARGET betaa, betab, betac
+-  TARGET betax, betay, betaz
+-  TARGET lvel, vel
+-  TARGET lBvec, Bvec
+ 
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+@@ -117,47 +106,51 @@ subroutine SourceTermsM(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: k11, k12, k13, k22, k23, k33
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: beta1, beta2, beta3
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: k11, k12, k13, k22, k23, k33
++  pointer (pk11,k11), (pk12,k12), (pk13,k13), (pk22,k22), (pk23,k23), (pk33,k33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: beta1, beta2, beta3
++  pointer (pbeta1,beta1), (pbeta2,beta2), (pbeta3,beta3)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup, Bprim
++  pointer (pvup,vup), (pBprim,Bprim)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    k11 => kaa
+-    k12 => kab
+-    k13 => kac
+-    k22 => kbb
+-    k23 => kbc
+-    k33 => kcc
+-    beta1 => betaa
+-    beta2 => betab
+-    beta3 => betac
+-    vup => lvel
+-    Bprim => lBvec
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pk11 = loc(kaa)
++    pk12 = loc(kab)
++    pk13 = loc(kac)
++    pk22 = loc(kbb)
++    pk23 = loc(kbc)
++    pk33 = loc(kcc)
++    pbeta1 = loc(betaa)
++    pbeta2 = loc(betab)
++    pbeta3 = loc(betac)
++    pvup = loc(lvel)
++    pBprim = loc(lBvec)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    k11 => kxx
+-    k12 => kxy
+-    k13 => kxz
+-    k22 => kyy
+-    k23 => kyz
+-    k33 => kzz
+-    beta1 => betax
+-    beta2 => betay
+-    beta3 => betaz
+-    vup => vel
+-    Bprim => Bvec
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pk11 = loc(kxx)
++    pk12 = loc(kxy)
++    pk13 = loc(kxz)
++    pk22 = loc(kyy)
++    pk23 = loc(kyz)
++    pk33 = loc(kzz)
++    pbeta1 = loc(betax)
++    pbeta2 = loc(betay)
++    pbeta3 = loc(betaz)
++    pvup = loc(vel)
++    pBprim = loc(Bvec)
+   end if
+ #define gxx faulty_gxx
+ #define gxy faulty_gxy
+diff --git a/src/GRHydro_TVDReconstruct_drv.F90 b/GRHydro/src/GRHydro_TVDReconstruct_drv.F90
+index 6925132..866f099 100644
+--- a/src/GRHydro_TVDReconstruct_drv.F90
++++ b/src/GRHydro_TVDReconstruct_drv.F90
+@@ -47,13 +47,6 @@
+ subroutine GRHydro_TVDReconstruct_drv(CCTK_ARGUMENTS)
+   
+   implicit none
+-  
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET vel, lvel
+-  TARGET Bvec, lBvec
+ 
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+@@ -76,27 +69,29 @@ subroutine GRHydro_TVDReconstruct_drv(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup, Bprim
++  pointer (pvup,vup), (pBprim,Bprim)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
+-    Bprim => lBvec
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
++    pBprim = loc(lBvec)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
+-    Bprim => Bvec
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
++    pBprim = loc(Bvec)
+   end if
+ 
+   allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
+diff --git a/src/GRHydro_UpdateMask.F90 b/GRHydro/src/GRHydro_UpdateMask.F90
+index 2772961..ed82cad 100644
+--- a/src/GRHydro_UpdateMask.F90
++++ b/src/GRHydro_UpdateMask.F90
+@@ -265,12 +265,6 @@ subroutine GRHydro_AtmosphereReset(CCTK_ARGUMENTS)
+ 
+   implicit none
+ 
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+ 
+@@ -280,8 +274,10 @@ subroutine GRHydro_AtmosphereReset(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup
++  pointer (pvup,vup)
+ 
+ ! begin EOS Omni vars
+   integer :: n,keytemp,anyerr,keyerr(1)
+@@ -292,21 +288,21 @@ subroutine GRHydro_AtmosphereReset(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
+   end if
+ 
+   if (verbose.eq.1) call CCTK_INFO("Entering AtmosphereReset.")
+@@ -369,18 +365,6 @@ subroutine GRHydro_InitialAtmosphereReset(CCTK_ARGUMENTS)
+ 
+   implicit none
+ 
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+-  TARGET gaa_p, gab_p, gac_p, gbb_p, gbc_p, gcc_p
+-  TARGET gxx_p, gxy_p, gxz_p, gyy_p, gyz_p, gzz_p
+-  TARGET lvel_p, vel_p
+-  TARGET gaa_p_p, gab_p_p, gac_p_p, gbb_p_p, gbc_p_p, gcc_p_p
+-  TARGET gxx_p_p, gxy_p_p, gxz_p_p, gyy_p_p, gyz_p_p, gzz_p_p
+-  TARGET lvel_p_p, vel_p_p
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+ 
+@@ -393,14 +377,22 @@ subroutine GRHydro_InitialAtmosphereReset(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11_p, g12_p, g13_p, g22_p, &
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup
++  pointer (pvup,vup)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11_p, g12_p, g13_p, g22_p, &
+                                           g23_p, g33_p
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup_p
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11_p_p, g12_p_p, g13_p_p, g22_p_p, &
++  pointer (pg11_p,g11_p), (pg12_p,g12_p), (pg13_p,g13_p), (pg22_p,g22_p), &
++                                          (pg23_p,g23_p), (pg33_p,g33_p)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup_p
++  pointer (pvup_p,vup_p)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11_p_p, g12_p_p, g13_p_p, g22_p_p, &
+                                           g23_p_p, g33_p_p
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup_p_p
++  pointer (pg11_p_p,g11_p_p), (pg12_p_p,g12_p_p), (pg13_p_p,g13_p_p), (pg22_p_p,g22_p_p), &
++                                          (pg23_p_p, g23_p_p), (pg33_p_p, g33_p_p)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup_p_p
++  pointer (pvup_p_p,vup_p_p)
+ 
+ ! begin EOS Omni vars
+   integer :: n,keytemp,anyerr,keyerr(1)
+@@ -411,58 +403,58 @@ subroutine GRHydro_InitialAtmosphereReset(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
+   end if
+   if (timelevels .gt. 1) then
+     if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-      g11_p => gaa_p
+-      g12_p => gab_p
+-      g13_p => gac_p
+-      g22_p => gbb_p
+-      g23_p => gbc_p
+-      g33_p => gcc_p
+-      vup_p => lvel_p
++      pg11_p = loc(gaa_p)
++      pg12_p = loc(gab_p)
++      pg13_p = loc(gac_p)
++      pg22_p = loc(gbb_p)
++      pg23_p = loc(gbc_p)
++      pg33_p = loc(gcc_p)
++      pvup_p = loc(lvel_p)
+     else
+-      g11_p => gxx_p
+-      g12_p => gxy_p
+-      g13_p => gxz_p
+-      g22_p => gyy_p
+-      g23_p => gyz_p
+-      g33_p => gzz_p
+-      vup_p => vel_p
++      pg11_p = loc(gxx_p)
++      pg12_p = loc(gxy_p)
++      pg13_p = loc(gxz_p)
++      pg22_p = loc(gyy_p)
++      pg23_p = loc(gyz_p)
++      pg33_p = loc(gzz_p)
++      pvup_p = loc(vel_p)
+     end if
+   end if 
+   if (timelevels .gt. 2) then
+     if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-      g11_p_p => gaa_p_p
+-      g12_p_p => gab_p_p
+-      g13_p_p => gac_p_p
+-      g22_p_p => gbb_p_p
+-      g23_p_p => gbc_p_p
+-      g33_p_p => gcc_p_p
+-      vup_p_p => lvel_p_p
++      pg11_p_p = loc(gaa_p_p)
++      pg12_p_p = loc(gab_p_p)
++      pg13_p_p = loc(gac_p_p)
++      pg22_p_p = loc(gbb_p_p)
++      pg23_p_p = loc(gbc_p_p)
++      pg33_p_p = loc(gcc_p_p)
++      pvup_p_p = loc(lvel_p_p)
+     else
+-      g11_p_p => gxx_p_p
+-      g12_p_p => gxy_p_p
+-      g13_p_p => gxz_p_p
+-      g22_p_p => gyy_p_p
+-      g23_p_p => gyz_p_p
+-      g33_p_p => gzz_p_p
+-      vup_p_p => vel_p_p
++      pg11_p_p = loc(gxx_p_p)
++      pg12_p_p = loc(gxy_p_p)
++      pg13_p_p = loc(gxz_p_p)
++      pg22_p_p = loc(gyy_p_p)
++      pg23_p_p = loc(gyz_p_p)
++      pg33_p_p = loc(gzz_p_p)
++      pvup_p_p = loc(vel_p_p)
+     end if
+   end if 
+ 
+diff --git a/src/GRHydro_UpdateMaskM.F90 b/GRHydro/src/GRHydro_UpdateMaskM.F90
+index 13991ff..54e1d2a 100644
+--- a/src/GRHydro_UpdateMaskM.F90
++++ b/src/GRHydro_UpdateMaskM.F90
+@@ -48,13 +48,6 @@ subroutine GRHydro_AtmosphereResetM(CCTK_ARGUMENTS)
+ 
+   implicit none
+ 
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+-  TARGET lBvec, Bvec
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+ 
+@@ -68,8 +61,10 @@ subroutine GRHydro_AtmosphereResetM(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup, Bprim
++  pointer (pvup,vup), (pBprim,Bprim)
+ 
+ ! begin EOS Omni vars
+   n=1;keytemp=0;anyerr=0;keyerr(1)=0
+@@ -78,23 +73,23 @@ subroutine GRHydro_AtmosphereResetM(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
+-    Bprim => lBvec
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
++    pBprim = loc(lBvec)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
+-    Bprim => Bvec
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
++    pBprim = loc(Bvec)
+   end if
+ #define gxx faulty_gxx
+ #define gxy faulty_gxy
+@@ -181,21 +176,6 @@ subroutine GRHydro_InitialAtmosphereResetM(CCTK_ARGUMENTS)
+ 
+   implicit none
+ 
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+-  TARGET lBvec, Bvec
+-  TARGET gaa_p, gab_p, gac_p, gbb_p, gbc_p, gcc_p
+-  TARGET gxx_p, gxy_p, gxz_p, gyy_p, gyz_p, gzz_p
+-  TARGET lvel_p, vel_p
+-  TARGET lBvec_p, Bvec_p
+-  TARGET gaa_p_p, gab_p_p, gac_p_p, gbb_p_p, gbc_p_p, gcc_p_p
+-  TARGET gxx_p_p, gxy_p_p, gxz_p_p, gyy_p_p, gyz_p_p, gzz_p_p
+-  TARGET lvel_p_p, vel_p_p
+-  TARGET lBvec_p_p, Bvec_p_p
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+ 
+@@ -208,14 +188,22 @@ subroutine GRHydro_InitialAtmosphereResetM(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11_p, g12_p, g13_p, g22_p, &
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup, Bprim
++  pointer (pvup,vup), (pBprim,Bprim)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11_p, g12_p, g13_p, g22_p, &
+                                           g23_p, g33_p
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup_p, Bprim_p
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11_p_p, g12_p_p, g13_p_p, g22_p_p, &
++  pointer (pg11_p,g11_p), (pg12_p,g12_p), (pg13_p,g13_p), (pg22_p,g22_p), &
++                                          (pg23_p,g23_p), (pg33_p,g33_p)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup_p, Bprim_p
++  pointer (pvup_p,vup_p), (pBprim_p,Bprim_p)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11_p_p, g12_p_p, g13_p_p, g22_p_p, &
+                                           g23_p_p, g33_p_p
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup_p_p, Bprim_p_p
++  pointer (pg11_p_p,g11_p_p), (pg12_p_p,g12_p_p), (pg13_p_p,g13_p_p), (pg22_p_p,g22_p_p), &
++                                          (pg23_p_p,g23_p_p), (pg33_p_p,g33_p_p)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup_p_p, Bprim_p_p
++  pointer (pvup_p_p,vup_p_p), (pBprim_p_p,Bprim_p_p)
+ 
+ ! begin EOS Omni vars
+   integer :: n,keytemp,anyerr,keyerr(1)
+@@ -226,64 +214,64 @@ subroutine GRHydro_InitialAtmosphereResetM(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
+-    Bprim => lBvec
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
++    pBprim = loc(lBvec)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
+-    Bprim => Bvec
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
++    pBprim = loc(Bvec)
+   end if
+   if (timelevels .gt. 1) then
+     if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-      g11_p => gaa_p
+-      g12_p => gab_p
+-      g13_p => gac_p
+-      g22_p => gbb_p
+-      g23_p => gbc_p
+-      g33_p => gcc_p
+-      vup_p => lvel_p
+-      Bprim_p => Bvec_p
++      pg11_p = loc(gaa_p)
++      pg12_p = loc(gab_p)
++      pg13_p = loc(gac_p)
++      pg22_p = loc(gbb_p)
++      pg23_p = loc(gbc_p)
++      pg33_p = loc(gcc_p)
++      pvup_p = loc(lvel_p)
++      pBprim_p = loc(Bvec_p)
+     else
+-      g11_p => gxx_p
+-      g12_p => gxy_p
+-      g13_p => gxz_p
+-      g22_p => gyy_p
+-      g23_p => gyz_p
+-      g33_p => gzz_p
+-      vup_p => vel_p
+-      Bprim_p => Bvec_p
++      pg11_p = loc(gxx_p)
++      pg12_p = loc(gxy_p)
++      pg13_p = loc(gxz_p)
++      pg22_p = loc(gyy_p)
++      pg23_p = loc(gyz_p)
++      pg33_p = loc(gzz_p)
++      pvup_p = loc(vel_p)
++      pBprim_p = loc(Bvec_p)
+     end if
+   end if 
+   if (timelevels .gt. 2) then
+     if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-      g11_p_p => gaa_p_p
+-      g12_p_p => gab_p_p
+-      g13_p_p => gac_p_p
+-      g22_p_p => gbb_p_p
+-      g23_p_p => gbc_p_p
+-      g33_p_p => gcc_p_p
+-      vup_p_p => lvel_p_p
+-      Bprim_p_p => lBvec_p_p
++      pg11_p_p = loc(gaa_p_p)
++      pg12_p_p = loc(gab_p_p)
++      pg13_p_p = loc(gac_p_p)
++      pg22_p_p = loc(gbb_p_p)
++      pg23_p_p = loc(gbc_p_p)
++      pg33_p_p = loc(gcc_p_p)
++      pvup_p_p = loc(lvel_p_p)
++      pBprim_p_p = loc(lBvec_p_p)
+     else
+-      g11_p_p => gxx_p_p
+-      g12_p_p => gxy_p_p
+-      g13_p_p => gxz_p_p
+-      g22_p_p => gyy_p_p
+-      g23_p_p => gyz_p_p
+-      g33_p_p => gzz_p_p
+-      vup_p_p => vel_p_p
+-      Bprim_p_p => Bvec_p_p
++      pg11_p_p = loc(gxx_p_p)
++      pg12_p_p = loc(gxy_p_p)
++      pg13_p_p = loc(gxz_p_p)
++      pg22_p_p = loc(gyy_p_p)
++      pg23_p_p = loc(gyz_p_p)
++      pg33_p_p = loc(gzz_p_p)
++      pvup_p_p = loc(vel_p_p)
++      pBprim_p_p = loc(Bvec_p_p)
+     end if
+   end if 
+ #define gxx faulty_gxx
+@@ -523,13 +511,6 @@ subroutine GRHydro_AtmosphereResetAM(CCTK_ARGUMENTS)
+ 
+   implicit none
+ 
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+-  TARGET lBvec, Bvec
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+ 
+@@ -543,8 +524,10 @@ subroutine GRHydro_AtmosphereResetAM(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup, Bprim
++  pointer (pvup,vup), (pBprim,Bprim)
+ 
+ ! begin EOS Omni vars
+   n=1;keytemp=0;anyerr=0;keyerr(1)=0
+@@ -553,23 +536,23 @@ subroutine GRHydro_AtmosphereResetAM(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
+-    Bprim => lBvec
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
++    pBprim = loc(lBvec)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
+-    Bprim => Bvec
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
++    pBprim = loc(Bvec)
+   end if
+ #define gxx faulty_gxx
+ #define gxy faulty_gxy
+@@ -654,21 +637,6 @@ subroutine GRHydro_InitialAtmosphereResetAM(CCTK_ARGUMENTS)
+ 
+   implicit none
+ 
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET lvel, vel
+-  TARGET lBvec, Bvec
+-  TARGET gaa_p, gab_p, gac_p, gbb_p, gbc_p, gcc_p
+-  TARGET gxx_p, gxy_p, gxz_p, gyy_p, gyz_p, gzz_p
+-  TARGET lvel_p, vel_p
+-  TARGET lBvec_p, Bvec_p
+-  TARGET gaa_p_p, gab_p_p, gac_p_p, gbb_p_p, gbc_p_p, gcc_p_p
+-  TARGET gxx_p_p, gxy_p_p, gxz_p_p, gyy_p_p, gyz_p_p, gzz_p_p
+-  TARGET lvel_p_p, vel_p_p
+-  TARGET lBvec_p_p, Bvec_p_p
+-
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+ 
+@@ -681,14 +649,22 @@ subroutine GRHydro_InitialAtmosphereResetAM(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11_p, g12_p, g13_p, g22_p, &
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup, Bprim
++  pointer (pvup,vup), (pBprim,Bprim)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11_p, g12_p, g13_p, g22_p, &
+                                           g23_p, g33_p
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup_p, Bprim_p
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11_p_p, g12_p_p, g13_p_p, g22_p_p, &
++  pointer (pg11_p,g11_p), (pg12_p,g12_p), (pg13_p,g13_p), (pg22_p,g22_p), &
++                                          (pg23_p,g23_p), (pg33_p,g33_p)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup_p, Bprim_p
++  pointer (pvup_p,vup_p), (pBprim_p,Bprim_p)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11_p_p, g12_p_p, g13_p_p, g22_p_p, &
+                                           g23_p_p, g33_p_p
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup_p_p, Bprim_p_p
++  pointer (pg11_p_p,g11_p_p), (pg12_p_p,g12_p_p), (pg13_p_p,g13_p_p), (pg22_p_p,g22_p_p), &
++                                          (pg23_p_p,g23_p_p), (pg33_p_p,g33_p_p)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup_p_p, Bprim_p_p
++  pointer (pvup_p_p,vup_p_p), (pBprim_p_p,Bprim_p_p)
+ 
+ ! begin EOS Omni vars
+   integer :: n,keytemp,anyerr,keyerr(1)
+@@ -699,64 +675,64 @@ subroutine GRHydro_InitialAtmosphereResetAM(CCTK_ARGUMENTS)
+ 
+   ! save memory when MP is not used
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
+-    Bprim => lBvec
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
++    pBprim = loc(lBvec)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
+-    Bprim => Bvec
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
++    pBprim = loc(Bvec)
+   end if
+   if (timelevels .gt. 1) then
+     if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-      g11_p => gaa_p
+-      g12_p => gab_p
+-      g13_p => gac_p
+-      g22_p => gbb_p
+-      g23_p => gbc_p
+-      g33_p => gcc_p
+-      vup_p => lvel_p
+-      Bprim_p => Bvec_p
++      pg11_p = loc(gaa_p)
++      pg12_p = loc(gab_p)
++      pg13_p = loc(gac_p)
++      pg22_p = loc(gbb_p)
++      pg23_p = loc(gbc_p)
++      pg33_p = loc(gcc_p)
++      pvup_p = loc(lvel_p)
++      pBprim_p = loc(Bvec_p)
+     else
+-      g11_p => gxx_p
+-      g12_p => gxy_p
+-      g13_p => gxz_p
+-      g22_p => gyy_p
+-      g23_p => gyz_p
+-      g33_p => gzz_p
+-      vup_p => vel_p
+-      Bprim_p => Bvec_p
++      pg11_p = loc(gxx_p)
++      pg12_p = loc(gxy_p)
++      pg13_p = loc(gxz_p)
++      pg22_p = loc(gyy_p)
++      pg23_p = loc(gyz_p)
++      pg33_p = loc(gzz_p)
++      pvup_p = loc(vel_p)
++      pBprim_p = loc(Bvec_p)
+     end if
+   end if 
+   if (timelevels .gt. 2) then
+     if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-      g11_p_p => gaa_p_p
+-      g12_p_p => gab_p_p
+-      g13_p_p => gac_p_p
+-      g22_p_p => gbb_p_p
+-      g23_p_p => gbc_p_p
+-      g33_p_p => gcc_p_p
+-      vup_p_p => lvel_p_p
+-      Bprim_p_p => lBvec_p_p
++      pg11_p_p = loc(gaa_p_p)
++      pg12_p_p = loc(gab_p_p)
++      pg13_p_p = loc(gac_p_p)
++      pg22_p_p = loc(gbb_p_p)
++      pg23_p_p = loc(gbc_p_p)
++      pg33_p_p = loc(gcc_p_p)
++      pvup_p_p = loc(lvel_p_p)
++      pBprim_p_p = loc(lBvec_p_p)
+     else
+-      g11_p_p => gxx_p_p
+-      g12_p_p => gxy_p_p
+-      g13_p_p => gxz_p_p
+-      g22_p_p => gyy_p_p
+-      g23_p_p => gyz_p_p
+-      g33_p_p => gzz_p_p
+-      vup_p_p => vel_p_p
+-      Bprim_p_p => Bvec_p_p
++      pg11_p_p = loc(gxx_p_p)
++      pg12_p_p = loc(gxy_p_p)
++      pg13_p_p = loc(gxz_p_p)
++      pg22_p_p = loc(gyy_p_p)
++      pg23_p_p = loc(gyz_p_p)
++      pg33_p_p = loc(gzz_p_p)
++      pvup_p_p = loc(vel_p_p)
++      pBprim_p_p = loc(Bvec_p_p)
+     end if
+   end if 
+ #define gxx faulty_gxx
+diff --git a/src/GRHydro_WENOReconstruct_drv.F90 b/GRHydro/src/GRHydro_WENOReconstruct_drv.F90
+index 396c54d..6a4f784 100644
+--- a/src/GRHydro_WENOReconstruct_drv.F90
++++ b/src/GRHydro_WENOReconstruct_drv.F90
+@@ -103,13 +103,6 @@ end subroutine undo_Wv
+ subroutine GRHydro_WENOReconstruct_drv(CCTK_ARGUMENTS)
+   
+   implicit none
+-  
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-  TARGET vel, lvel
+-  TARGET Bvec, lBvec
+ 
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+@@ -135,27 +128,29 @@ subroutine GRHydro_WENOReconstruct_drv(CCTK_ARGUMENTS)
+   
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+-  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3),3) :: vup, Bprim
++  pointer (pvup,vup), (pBprim,Bprim)
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
+-    vup => lvel
+-    Bprim => lBvec
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
++    pvup = loc(lvel)
++    pBprim = loc(lBvec)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
+-    vup => vel
+-    Bprim => Bvec
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
++    pvup = loc(vel)
++    pBprim = loc(Bvec)
+   end if
+ 
+   allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
+diff --git a/src/Utils.F90 b/GRHydro/src/Utils.F90
+index d6a4c45..647fd7a 100644
+--- a/src/Utils.F90
++++ b/src/Utils.F90
+@@ -30,7 +30,9 @@
+ subroutine GRHydro_Debug(CCTK_ARGUMENTS)
+ 
+   implicit none
++
+   DECLARE_CCTK_ARGUMENTS
++
+   integer i,j,k
+   integer nx, ny, nz
+ 
+@@ -75,34 +77,30 @@ subroutine GRHydro_SqrtSpatialDeterminant(CCTK_ARGUMENTS)
+ 
+   implicit none
+ 
+-  ! save memory when MP is not used
+-  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
+-  TARGET gaa, gab, gac, gbb, gbc, gcc
+-  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+-
+   DECLARE_CCTK_ARGUMENTS
+   integer i,j,k
+   integer nx, ny, nz
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
+ 
+   ! save memory when MP is not used
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    g11 => gaa
+-    g12 => gab
+-    g13 => gac
+-    g22 => gbb
+-    g23 => gbc
+-    g33 => gcc
++    pg11 = loc(gaa)
++    pg12 = loc(gab)
++    pg13 = loc(gac)
++    pg22 = loc(gbb)
++    pg23 = loc(gbc)
++    pg33 = loc(gcc)
+   else
+-    g11 => gxx
+-    g12 => gxy
+-    g13 => gxz
+-    g22 => gyy
+-    g23 => gyz
+-    g33 => gzz
++    pg11 = loc(gxx)
++    pg12 = loc(gxy)
++    pg13 = loc(gxz)
++    pg22 = loc(gyy)
++    pg23 = loc(gyz)
++    pg33 = loc(gzz)
+   end if
+ 
+   nx = cctk_lsh(1)
+-- 
+1.8.4.rc3
+

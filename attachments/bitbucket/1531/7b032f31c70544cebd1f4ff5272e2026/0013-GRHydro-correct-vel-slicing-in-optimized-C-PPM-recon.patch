@@ -1,0 +1,50 @@
+From 5509dcb594a2707cdf556a6894ce09a211cde0ee Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Tue, 26 Nov 2013 10:26:38 -0800
+Subject: [PATCH 13/36] GRHydro: correct vel slicing in optimized C++ PPM
+ reconstruction
+
+---
+ src/GRHydro_PPMReconstruct_drv_opt.cc | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/src/GRHydro_PPMReconstruct_drv_opt.cc b/src/GRHydro_PPMReconstruct_drv_opt.cc
+index 7629019..3f5610f 100644
+--- a/src/GRHydro_PPMReconstruct_drv_opt.cc
++++ b/src/GRHydro_PPMReconstruct_drv_opt.cc
+@@ -281,8 +281,8 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+         oned_slice(nx,nstart,1,rho,rho1d);
+         
+         oned_slice(nx,nstart,       1,vup,velx1d);
+-        oned_slice(nx,nstart+nxyz,  1,vup,velx1d);
+-        oned_slice(nx,nstart+2*nxyz,1,vup,velx1d);
++        oned_slice(nx,nstart+nxyz,  1,vup,vely1d);
++        oned_slice(nx,nstart+2*nxyz,1,vup,velz1d);
+         
+         oned_slice(nx,nstart,1,eps,eps1d);
+         oned_slice(nx,nstart,1,press,press1d);
+@@ -371,8 +371,8 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+         oned_slice(ny,nstart,nx,rho,rho1d);
+         
+         oned_slice(ny,nstart,       nx,vup,velx1d);
+-        oned_slice(ny,nstart+nxyz,  nx,vup,velx1d);
+-        oned_slice(ny,nstart+2*nxyz,nx,vup,velx1d);
++        oned_slice(ny,nstart+nxyz,  nx,vup,vely1d);
++        oned_slice(ny,nstart+2*nxyz,nx,vup,velz1d);
+         
+         oned_slice(ny,nstart,nx,eps,eps1d);
+         oned_slice(ny,nstart,nx,press,press1d);
+@@ -463,8 +463,8 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+         oned_slice(nz,nstart,nxy,rho,rho1d);
+         
+         oned_slice(nz,nstart,       nxy,vup,velx1d);
+-        oned_slice(nz,nstart+nxyz,  nxy,vup,velx1d);
+-        oned_slice(nz,nstart+2*nxyz,nxy,vup,velx1d);
++        oned_slice(nz,nstart+nxyz,  nxy,vup,vely1d);
++        oned_slice(nz,nstart+2*nxyz,nxy,vup,velz1d);
+         
+         oned_slice(nz,nstart,nxy,eps,eps1d);
+         oned_slice(nz,nstart,nxy,press,press1d);
+-- 
+1.9.0
+

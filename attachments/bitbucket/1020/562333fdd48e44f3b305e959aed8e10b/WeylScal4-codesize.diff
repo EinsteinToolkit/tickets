@@ -1,0 +1,175 @@
+Index: m/WeylScal4.m
+===================================================================
+--- m/WeylScal4.m	(revision 119)
++++ m/WeylScal4.m	(working copy)
+@@ -32,9 +32,11 @@
+ (* Register all the tensors that will be used with TensorTools *)
+ Map[DefineTensor, 
+ {
+-  R, gamma,g, gInv, k, ltet, n, rm, im, rmbar, imbar, tn, va, vb, vc,
++  R, gammal, gamma, g, gInv, k, ltet, n, rm, im, rmbar, imbar, tn, va, vb, vc,
+   wa, wb, wc, ea, eb, ec,
+-  Ro, Rojo, R4p, Psi0r, Psi0i, Psi1r, Psi1i, Psi2r, Psi2i, Psi3r,
++  Ro, Rojo, R4p, R4pnn,
++  Rnbnd, Rn0nc, Rn0n0, Rland, Rn0lb, Rlbld, Rn0lc, Rlalc,
++  Psi0r, Psi0i, Psi1r, Psi1i, Psi2r, Psi2i, Psi3r,
+   Psi3i, Psi4r,Psi4i, curvIr, curvIi, curvJr, curvJi, curvJ1, curvJ2, curvJ3, curvJ4
+ }];
+ 
+@@ -57,8 +59,13 @@
+   k[la,lb], g[la,lb]
+ }];
+ 
++AssertSymmetricDecreasing[gammal[ld,lb,lc], lb, lc];
+ AssertSymmetricDecreasing[gamma[ua,lb,lc], lb, lc];
+ 
++(* AssertAntiSymmetricDecreasing[R[la,lb,lc,ld], la, lb]; *)
++(* AssertAntiSymmetricDecreasing[R[la,lb,lc,ld], lc, ld]; *)
++(* AssertSymmetricDecreasing[R[la,lb,lc,ld], {lc, ld}, {la, lb}]; *)
++
+ (* Determinants of the metrics in terms of their components
+    (Mathematica symbolic expressions) *)
+ gDet = Det[MatrixOfComponents[g[la,lb]]];
+@@ -94,8 +101,10 @@
+ 
+ shorthands = 
+ {
+-  gamma[ua,lb,lc], R[la,lb,lc,ld], invdetg, detg, third, detgmthirdroot,
+-  gInv[ua,ub], Ro[la,lb,lc], Rojo[la,lb], R4p[li,lj,lk,ll],
++  gammal[ld,lb,lc], gamma[ua,lb,lc], R[la,lb,lc,ld], invdetg, detg, third, detgmthirdroot,
++  gInv[ua,ub], Ro[la,lb,lc], Rojo[la,lb], R4p[li,lj,lk,ll], R4pnn[lj,ll],
++  Rnbnd[la,lc], Rn0nc[la,lb], Rn0n0[la,lb], Rland[lb,lc],
++  Rn0lb[la,lc], Rlbld[la,lc], Rn0lc[la,lb], Rlalc[lb,ld],
+   omega11, omega22, omega33, omega12, omega13, omega23, va[ua], vb[ua], vc[ua],
+   wa[ua], wb[ua], wc[ua], ea[ua], eb[ua], ec[ua],
+   tn[ua], nn, ltet[ua],n[ua],rm[ua],im[ua],rmbar[ua],imbar[ua], isqrt2, xmoved,
+@@ -111,7 +120,8 @@
+   detg -> gDet,
+   invdetg -> 1 / detg,
+   gInv[ua,ub] -> invdetg gDet MatrixInverse[g[ua,ub]],
+-  gamma[ua, lb, lc] -> 1/2 gInv[ua,ud] (PD[g[lb,ld], lc] + PD[g[lc,ld], lb] - PD[g[lb,lc],ld]),
++  gammal[ld, lb, lc] -> 1/2 (PD[g[lb,ld], lc] + PD[g[lc,ld], lb] - PD[g[lb,lc],ld]),
++  gamma[ua, lb, lc] -> gInv[ua,ud] gammal[ld,lb,lc],
+ 
+   (****************************************************************************
+     Offset the origin
+@@ -170,12 +180,12 @@
+    ****************************************************************************)
+ 
+   (* Calculate the relevant Riemann Quantities *)
+-		
++        
+   (* The 3-Riemann *)
+   R[la,lb,lc,ld] -> 1/2 ( PD[g[la,ld],lc,lb] + PD[g[lb,lc],ld,la] )
+-			      - 1/2 ( PD[g[la,lc],lb,ld] + PD[g[lb,ld],la,lc] )
+-			      + g[lj,le] gamma[uj,lb,lc] gamma[ue,la,ld]
+-			      - g[lj,le] gamma[uj,lb,ld] gamma[ue,la,lc],
++                  - 1/2 ( PD[g[la,lc],lb,ld] + PD[g[lb,ld],la,lc] )
++                  + gammal[le,lb,lc] gamma[ue,la,ld]
++                  - gammal[le,lb,ld] gamma[ue,la,lc],
+ 
+   (* The 4-Riemann projected into the slice on all its indices. The Gauss equation. *)
+   R4p[li,lj,lk,ll] -> R[li,lj,lk,ll] + 2 AntiSymmetrize[k[li,lk] k[ll,lj], lk, ll],
+@@ -183,58 +193,69 @@
+   (* The 4-Riemann projected in the unit normal direction on one
+      index, then into the slice on the remaining indices. The Codazzi equation. *)
+   Ro[lj,lk,ll] -> - 2 AntiSymmetrize[ PD[k[lj,lk],ll], lk,ll]
+-			      - 2 AntiSymmetrize[ gamma[up,lj,lk] k[ll,lp], lk,ll],
++                  - 2 AntiSymmetrize[ gamma[up,lj,lk] k[ll,lp], lk,ll],
+ 
+   (* The 4-Riemann projected in the unit normal direction on two
+      indices, and into the slice on the remaining two. *)
+   Rojo[lj,ll] ->  gInv[uc,ud] (R[lj,lc,ll,ld] ) - k[lj,lp] gInv[up,ud] k[ld,ll]
+-			      + k[lc,ld] gInv[uc,ud] k[lj,ll],
++                  + k[lc,ld] gInv[uc,ud] k[lj,ll],
+ 
+   (* Calculate End Quantities
+      NOTE: In writing this, I assume m[0]=0!! to save lots of work *)
+ 
+-  Psi4r -> R4p[li,lj,lk,ll] n[ui] n[uk] ( rmbar[uj] rmbar[ul] - imbar[uj] imbar[ul] )
+-		 + 2 Ro[lj,lk,ll] n[uk] nn ( rmbar[uj] rmbar[ul] - imbar[uj] imbar[ul] )
+-		 + Rojo[lj,ll] nn nn ( rmbar[uj] rmbar[ul] - imbar[uj] imbar[ul] 
+-         (* + terms in mbar^0 == 0 *) ),
++  R4pnn[lj,ll] -> (R4p[li,lj,lk,ll] n[ui] n[uk] +
++                   2 Ro[lj,lk,ll] n[uk] nn +
++                   Rojo[lj,ll] nn nn),
+ 
+-  Psi4i -> R4p[la,lb,lc,ld] n[ua] n[uc] ( - rm[ub] im[ud] - im[ub] rm[ud] )
+-		 + 2 Ro[la,lb,lc] n[ub] nn ( - rm[ua] im[uc] - im[ua] rm[uc] )
+-		 + Rojo[la,lb] nn nn ( - rm[ua] im[ub] - im[ua] rm[ub] )
++  Psi4r -> R4pnn[lj,ll] ( rmbar[uj] rmbar[ul] - imbar[uj] imbar[ul] )
++           (* + terms in mbar^0 == 0 *),
++  Psi4i -> R4pnn[lj,ll] ( - rm[uj] im[ul] - im[uj] rm[ul] )
+ };
+ 
+ otherPsiEqs = {
+-  Psi3r -> R4p[la,lb,lc,ld] ltet[ua] n[ub] rm[uc] n[ud]
+-		 + Ro[la,lb,lc] ( nn (n[ua]-ltet[ua]) rm[ub] n[uc] - nn rm[ua] ltet[ub] n[uc] )
+-		 - Rojo[la,lb] nn (n[ua]-ltet[ua]) nn rm[ub],
++  Rnbnd[la,lc] -> R4p[la,lb,lc,ld] n[ub] n[ud],
++  Rn0nc[la,lb] -> Ro[la,lb,lc] nn n[uc],
++  Rn0n0[la,lb] -> Rojo[la,lb] nn nn,
+ 
+-  Psi3i -> - R4p[la,lb,lc,ld] ltet[ua] n[ub] im[uc] n[ud]
+-		 - Ro[la,lb,lc] ( nn (n[ua]-ltet[ua]) im[ub] n[uc] - nn im[ua] ltet[ub] n[uc] )
+-		 + Rojo[la,lb] nn (n[ua]-ltet[ua]) nn im[ub],
++  Psi3r -> Rnbnd[la,lc] ltet[ua] rm[uc]
++         + Rn0nc[la,lb] ( (n[ua]-ltet[ua]) rm[ub] - rm[ua] ltet[ub] )
++         - Rn0n0[la,lb] (n[ua]-ltet[ua]) rm[ub],
+ 
+-  Psi2r -> R4p[la,lb,lc,ld] ltet[ua] n[ud] (rm[ub] rm[uc] + im[ub] im[uc])
+-		 + Ro[la,lb,lc] nn ( n[uc] (rm[ua] rm[ub] + im[ua] im[ub]) - ltet[ub] (rm[ua] rm[uc] + im[ua] im[uc]) )
+-		 - Rojo[la,lb] nn nn (rm[ua] rm[ub] + im[ua] im[ub]),
++  Psi3i -> - Rnbnd[la,lc] ltet[ua] im[uc]
++         - Rn0nc[la,lb] ( (n[ua]-ltet[ua]) im[ub] - im[ua] ltet[ub] )
++         + Rn0n0[la,lb] (n[ua]-ltet[ua]) im[ub],
+ 
+-  Psi2i -> R4p[la,lb,lc,ld] ltet[ua] n[ud] (im[ub] rm[uc] - rm[ub] im[uc])
+-		 + Ro[la,lb,lc] nn ( n[uc] (im[ua] rm[ub] - rm[ua] im[ub]) - ltet[ub] (rm[ua] im[uc] - im[ua] rm[uc]) )
+-		 - Rojo[la,lb] nn nn (im[ua] rm[ub] - rm[ua] im[ub]),
++  Rland[lb,lc] -> R4p[la,lb,lc,ld] ltet[ua] n[ud],
++  Rn0lb[la,lc] -> Ro[la,lb,lc] nn ltet[ub],
+ 
+-  Psi1r -> R4p[la,lb,lc,ld] n[ua] ltet[ub] rm[uc] ltet[ud]
+-		 + Ro[la,lb,lc] ( nn ltet[ua] rm[ub] ltet[uc] - nn rm[ua] n[ub] ltet[uc] - nn n[ua] rm[ub] ltet[uc] )
+-		 + Rojo[la,lb] nn nn ( n[ua] rm[ub] - ltet[ua] rm[ub] ),
++  Psi2r -> Rland[lb,lc] (rm[ub] rm[uc] + im[ub] im[uc])
++         + Rn0nc[la,lb] (rm[ua] rm[ub] + im[ua] im[ub]) - Rn0lb[la,lc] (rm[ua] rm[uc] + im[ua] im[uc])
++         - Rn0n0[la,lb] (rm[ua] rm[ub] + im[ua] im[ub]),
+ 
+-  Psi1i -> R4p[la,lb,lc,ld] n[ua] ltet[ub] im[uc] ltet[ud]
+-		 + Ro[la,lb,lc] ( nn ltet[ua] im[ub] ltet[uc] - nn im[ua] n[ub] ltet[uc] - nn n[ua] im[ub] ltet[uc] )
+-		 + Rojo[la,lb] nn nn ( n[ua] im[ub] - ltet[ua] im[ub] ),
++  Psi2i -> Rland[lb,lc] (im[ub] rm[uc] - rm[ub] im[uc])
++         + Rn0nc[la,lb]  (im[ua] rm[ub] - rm[ua] im[ub]) - Rn0lb[la,lc] (rm[ua] im[uc] - im[ua] rm[uc])
++         - Rn0n0[la,lb] (im[ua] rm[ub] - rm[ua] im[ub]),
+ 
+-  Psi0r -> R4p[la,lb,lc,ld] ltet[ua] ltet[uc] (rm[ub] rm[ud] - im[ub] im[ud])
+-		 + 2 Ro[la,lb,lc] nn ltet[ub] (rm[ua] rm[uc] - im[ua] im[uc])
+-		 + Rojo[la,lb] nn nn (rm[ua] rm[ub] - im[ua] im[ub]),
++  Rlbld[la,lc] -> R4p[la,lb,lc,ld] ltet[ub] ltet[ud],
++  Rn0lc[la,lb] -> Ro[la,lb,lc] nn ltet[uc],
+ 
+-  Psi0i -> R4p[la,lb,lc,ld] ltet[ua] ltet[uc] (rm[ub] im[ud] + im[ub] rm[ud])
+-		 + 2 Ro[la,lb,lc] nn ltet[ub] (rm[ua] im[uc] + im[ua] rm[uc])
+-		 + Rojo[la,lb] nn nn (rm[ua] im[ub] + im[ua] rm[ub])
++  Psi1r -> Rlbld[la,lc] n[ua] rm[uc]
++         + Rn0lc[la,lb] ( ltet[ua] rm[ub] - rm[ua] n[ub] - n[ua] rm[ub] )
++         + Rn0n0[la,lb] ( n[ua] rm[ub] - ltet[ua] rm[ub] ),
++
++  Psi1i -> Rlbld[la,lc] n[ua] im[uc]
++         + Rn0lc[la,lb] ( ltet[ua] im[ub] - im[ua] n[ub] - n[ua] im[ub] )
++         + Rn0n0[la,lb] ( n[ua] im[ub] - ltet[ua] im[ub] ),
++
++  Rlalc[lb,ld] -> R4p[la,lb,lc,ld] ltet[ua] ltet[uc],
++
++  Psi0r -> Rlalc[lb,ld] (rm[ub] rm[ud] - im[ub] im[ud])
++         + 2 Rn0lb[la,lc] (rm[ua] rm[uc] - im[ua] im[uc])
++         + Rn0n0[la,lb] (rm[ua] rm[ub] - im[ua] im[ub]),
++
++  Psi0i -> Rlalc[lb,ld] (rm[ub] im[ud] + im[ub] rm[ud])
++         + 2 Rn0lb[la,lc] (rm[ua] im[uc] + im[ua] rm[uc])
++         + Rn0n0[la,lb] (rm[ua] im[ub] + im[ua] rm[ub])
+ };
+ 
+ invariantEqs = {

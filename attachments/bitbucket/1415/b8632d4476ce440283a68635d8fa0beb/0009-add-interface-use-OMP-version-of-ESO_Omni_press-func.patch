@@ -1,0 +1,38 @@
+From a43038e9a6df679a85601df7ed8e8b65614d11b8 Mon Sep 17 00:00:00 2001
+From: Christian Ott <cott@tapir.caltech.edu>
+Date: Sun, 23 Jun 2013 00:59:58 -0700
+Subject: [PATCH 09/19] add interface  use OMP version of ESO_Omni_press
+ function
+
+---
+ interface.ccl |   14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/interface.ccl b/interface.ccl
+index da64a20..d7451a4 100644
+--- a/interface.ccl
++++ b/interface.ccl
+@@ -258,6 +258,20 @@ CCTK_INT FUNCTION EOS_Omni_GetHandle(CCTK_STRING IN name)
+ USES FUNCTION EOS_Omni_GetHandle
+ 
+ 
++void FUNCTION EOS_Omni_pressOMP(CCTK_INT IN eoskey,         \
++			     CCTK_INT IN havetemp,       \
++			     CCTK_REAL IN rf_precision,   \
++                             CCTK_INT IN npoints,        \
++			     CCTK_REAL IN ARRAY rho,     \
++			     CCTK_REAL INOUT ARRAY eps,  \
++			     CCTK_REAL INOUT ARRAY temp, \
++			     CCTK_REAL IN ARRAY ye,      \
++			     CCTK_REAL OUT ARRAY press,  \
++			     CCTK_INT OUT ARRAY keyerr,  \
++			     CCTK_INT OUT anyerr)
++
++USES FUNCTION EOS_Omni_pressOMP
++
+ void FUNCTION EOS_Omni_press(CCTK_INT IN eoskey,         \
+ 			     CCTK_INT IN havetemp,       \
+ 			     CCTK_REAL IN rf_precision,   \
+-- 
+1.7.10.4
+

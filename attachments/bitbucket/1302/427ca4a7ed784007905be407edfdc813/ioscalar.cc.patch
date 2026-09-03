@@ -1,0 +1,33 @@
+diff --git a/Carpet/CarpetIOScalar/src/ioscalar.cc b/Carpet/CarpetIOScalar/src/ioscalar.cc
+index 1cd0ee1..4ba25ca 100644
+--- a/Carpet/CarpetIOScalar/src/ioscalar.cc
++++ b/Carpet/CarpetIOScalar/src/ioscalar.cc
+@@ -163,11 +163,16 @@ namespace CarpetIOScalar {
+   int
+   OutputGH (const cGH * const cctkGH)
+   {
++    DECLARE_CCTK_PARAMETERS;
++
+     static Carpet::Timer timer ("OutputGH");
+     timer.start();
+-    for (int vindex=0; vindex<CCTK_NumVars(); ++vindex) {
+-      if (TimeToOutput(cctkGH, vindex)) {
+-	TriggerOutput(cctkGH, vindex);
++    CheckSteerableParameters (cctkGH);
++    if (strcmp (IOparameters.out_vars, "")) {
++      for (int vindex=0; vindex<CCTK_NumVars(); ++vindex) {
++        if (TimeToOutput(cctkGH, vindex)) {
++    	  TriggerOutput(cctkGH, vindex);
++        }
+       }
+     }
+     timer.stop();
+@@ -544,8 +549,6 @@ namespace CarpetIOScalar {
+ 
+     if (not do_global_mode) return 0;
+ 
+-    CheckSteerableParameters (cctkGH);
+-
+     // check if output for this variable was requested
+     if (not IOparameters.requests[vindex])
+     {

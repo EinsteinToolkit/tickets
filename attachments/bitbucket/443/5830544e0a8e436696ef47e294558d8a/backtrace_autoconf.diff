@@ -1,0 +1,104 @@
+Index: configure.in
+===================================================================
+--- configure.in	(revision 4711)
++++ configure.in	(working copy)
+@@ -897,6 +897,30 @@
+ CCTK_FORTRAN_COMPLEX16
+ CCTK_FORTRAN_COMPLEX32
+ 
++dnl Do we whave __cxa_demangle
++AC_LANG_SAVE
++AC_LANG_CPLUSPLUS
++CCTK_CHECK_HEADERS(cxxabi.h)
++AC_MSG_CHECKING([for __cxa_demangle])
++AC_CACHE_VAL(cctk_cv_have___cxa_demangle,
++[AC_TRY_COMPILE([#include <cxxabi.h>],
++[abi::__cxa_demangle(0,0,0,0)], eval "cctk_cv_have___cxa_demangle=yes",
++eval "cctk_cv_have___cxa_demangle=no")
++])
++if test "x$cctk_cv_have___cxa_demangle" = xyes; then
++  AC_DEFINE(HAVE_MODE___CXA_DEMANGLE)
++  AC_MSG_RESULT(yes)
++else
++  AC_MSG_RESULT(no)
++fi
++AC_LANG_RESTORE
++
++dnl Do we have dladdr(3)
++CCTK_CHECK_MEMBER(Dl_info, dli_sname,
++                CCTK_CHECK_FUNC(dladdr, , CCTK_CHECK_LIB_FUNC(dl, dladdr)),
++                ,
++                [[#include <dlfcn.h>]] )
++
+ dnl Do we have crypt(3)
+ CCTK_CHECK_FUNC(crypt, , CCTK_CHECK_LIB_FUNC(crypt, crypt))
+ 
+Index: cctk_Config.h.in
+===================================================================
+--- cctk_Config.h.in	(revision 4711)
++++ cctk_Config.h.in	(working copy)
+@@ -18,6 +18,8 @@
+ /* Various library functions */
+ #undef HAVE_GETHOSTBYNAME
+ #undef HAVE_GETOPT_LONG_ONLY
++#undef HAVE___CXA_DEMANGLE
++#undef HAVE_DLADDR
+ #undef HAVE_CRYPT
+ #undef HAVE_FINITE
+ #undef HAVE_ISNAN
+Index: aclocal.m4
+===================================================================
+--- aclocal.m4	(revision 4711)
++++ aclocal.m4	(working copy)
+@@ -46,6 +46,51 @@
+ done
+ ])
+ 
++dnl A simplified version of AC_CHECK_MEMBER from autoconf 2.50 and up
++dnl CCTK_CHECK_MEMBER(AGGREGATE, MEMBER,
++dnl                 [ACTION-IF-FOUND], [ACTION-IF-NOT-FOUND],
++dnl                 [INCLUDES])
++dnl ---------------------------------------------------------
++dnl AGGREGATE, MEMBER is for instance `struct passwd pw_gecos', shell
++dnl variables are not a valid argument.
++AC_DEFUN([CCTK_CHECK_MEMBER],
++[dnl Extract the aggregate name, and the member name
++ac_member_var=`echo $1['_']$2 | sed 'y% %_%'`
++AC_MSG_CHECKING([for $1.$2])
++AC_CACHE_VAL(ac_cv_member_$ac_member_var,
++[dnl
++AC_TRY_COMPILE([$5],
++[static $1 ac_aggr;
++if (ac_aggr.$2)
++return 0;],
++		eval "ac_cv_member_$ac_member_var=yes",
++		eval "ac_cv_member_$ac_member_var=no"dnl
++)
++if eval "test \"`echo '$''{'ac_cv_member_$ac_member_var'}'`\" = no"; then
++AC_TRY_COMPILE([$5],
++[static $1 ac_aggr;
++if (sizeof ac_aggr.$2)
++return 0;],
++		eval "ac_cv_member_$ac_member_var=yes",
++		eval "ac_cv_member_$ac_member_var=no"dnl
++)
++fi dnl
++])dnl
++if eval "test \"`echo '$ac_cv_member_'$ac_member_var`\" = yes"; then
++  AC_MSG_RESULT(yes)
++  ifelse([$3], ,
++[ac_tr_member=HAVE_MEMBER`echo $1 | sed -e 'y% %_%' \
++    -e 'y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ/'`
++  AC_DEFINE_UNQUOTED($ac_tr_member)
++], [$3])
++else
++  AC_MSG_RESULT(no)
++ifelse([$4], , , [$4
++])dnl
++fi 
++])
++
++
+ dnl A version of AC_TRY_COMPILER(TEST-PROGRAM, WORKING-VAR, CROSS-VAR) which,
+ dnl if the TEST-PROGRAM could not be executed, does not throw away the stderr
+ dnl but redirects it into the config.log logfile instead.

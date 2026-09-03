@@ -1,0 +1,34 @@
+From 0570829b5947d8450be95b724cbf962ce3af50f1 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Wed, 17 Aug 2011 14:14:31 +0200
+Subject: [PATCH 3/3] cleanup: Fix cleaning up multiple simulations
+
+---
+ lib/sim-manage.py |    4 +---
+ 1 files changed, 1 insertions(+), 3 deletions(-)
+
+diff --git a/lib/sim-manage.py b/lib/sim-manage.py
+index 65a5a0e..4eb9a62 100755
+--- a/lib/sim-manage.py
++++ b/lib/sim-manage.py
+@@ -61,8 +61,6 @@ def command_cleanup():
+         fatal("Error: no simulation name specified\nUsage: %s cleanup <simulationname> <simulationname> ..." % sys.argv[0])
+ 
+     for simulationName in simenv.OptionsManager.args:
+-        simulationName = simenv.OptionsManager.args.pop(0)
+-
+         info("Simulation name: %s" % simulationName)
+ 
+         restart = simrestart.SimRestart()
+@@ -74,7 +72,7 @@ def command_cleanup():
+             rid = restartlib.GetActiveRestartId(restart)
+         if rid<0:
+             info("Simulation is not active; doing nothing")
+-            return
++            continue
+         
+         ret = restart.load(simulationName, rid)
+         if ret == -1:
+-- 
+1.7.5.4
+

@@ -1,0 +1,263 @@
+From c4fd2d250aa2e24cf3977ac7875f360e7508c086 Mon Sep 17 00:00:00 2001
+From: Philipp Moesta <pmoesta@tapir.caltech.edu>
+Date: Fri, 17 Aug 2012 02:37:22 +0100
+Subject: [PATCH 06/10] GRHydro: Changes fixing issues with hot EOS treatment:
+ 1) Set correct keytemp in C2P 2) Fix OpenMP private
+ variable declaration in HLLEM 3) Fix velocity
+ arguments for Y_e 1D PPM reconstruction 4) If in
+ atmosphere and if evolve a Y_e also reset Y_e with
+ cell averaged value in Reconstruction 5) Fix index
+ permutation bug in ReconstructPoly routines for
+ divergence cleaning field 6) Remove extra comment
+ character in UpdateMaskM 7) Fix a missing velocity
+ permutation when calling 1D reconstruction for Y_e.
+ 8) Insert missing sqrt(det) factor for pressure term
+ in resetting tau when temperature got too cold with a
+ hot EOS.
+
+---
+ src/GRHydro_Con2Prim.F90            |    2 +-
+ src/GRHydro_Con2PrimM.F90           |   16 +++-------------
+ src/GRHydro_HLLEM.F90               |    8 ++++----
+ src/GRHydro_PPMMReconstruct_drv.F90 |    4 ++--
+ src/GRHydro_PPMReconstruct_drv.F90  |    4 ++--
+ src/GRHydro_Prim2ConM.F90           |    2 +-
+ src/GRHydro_Reconstruct.F90         |   24 ++++++++++++++----------
+ src/GRHydro_ReconstructPoly.F90     |   10 +++++-----
+ src/GRHydro_UpdateMaskM.F90         |    2 +-
+ 9 files changed, 33 insertions(+), 39 deletions(-)
+
+diff --git a/src/GRHydro_Con2Prim.F90 b/src/GRHydro_Con2Prim.F90
+index 22afcd3..bb53c0a 100644
+--- a/src/GRHydro_Con2Prim.F90
++++ b/src/GRHydro_Con2Prim.F90
+@@ -327,7 +327,7 @@ subroutine Conservative2Primitive(CCTK_ARGUMENTS)
+               call EOS_Omni_press(GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,n,&
+                    rho(i,j,k),eps(i,j,k),temperature(i,j,k),y_e(i,j,k),press(i,j,k),keyerr,anyerr)
+               tau(i,j,k)  = sqrt(det) * (rho(i,j,k)+rho(i,j,k)*eps(i,j,k) +press(i,j,k))&
+-                   * w_lorentz(i,j,k)**2 - dens(i,j,k) - press(i,j,k)
++                   * w_lorentz(i,j,k)**2 - dens(i,j,k) - sqrt(det)*press(i,j,k)
+               keytemp = 0
+ 
+            endif
+diff --git a/src/GRHydro_Con2PrimM.F90 b/src/GRHydro_Con2PrimM.F90
+index af1d55f..244c82e 100644
+--- a/src/GRHydro_Con2PrimM.F90
++++ b/src/GRHydro_Con2PrimM.F90
+@@ -238,17 +238,7 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+                    uxx,uxy,uxz,uyy,uyz,uzz,det, &
+                    epsnegative,GRHydro_C2P_failed(i,j,k))
+            else
+-              keytemp = 1
+-              !call Con2Prim_pt_hot(cctk_iteration,i,j,k,GRHydro_eos_handle, dens(i,j,k),scon(i,j,k,1),&
+-              !   scon(i,j,k,2),scon(i,j,k,3),tau(i,j,k),Y_e_con(i,j,k),rho(i,j,k),vup(i,j,k,1),&
+-              !   vup(i,j,k,2),vup(i,j,k,3),eps(i,j,k),temperature(i,j,k),y_e(i,j,k),&
+-              !   press(i,j,k),w_lorentz(i,j,k), &
+-              !   uxx,uxy,uxz,uyy,uyz,uzz,det,x(i,j,k),y(i,j,k), &
+-              !   z(i,j,k),r(i,j,k),epsnegative,GRHydro_rho_min,pmin, epsmin, & 
+-              !   GRHydro_reflevel, GRHydro_C2P_failed(i,j,k), GRHydro_perc_ptol)
+-              !   Bprim(i,j,k,1) = 0.0d0
+-              !   Bprim(i,j,k,2) = 0.0d0
+-              !   Bprim(i,j,k,3) = 0.0d0
++              keytemp = 0 
+               call GRHydro_Con2PrimM_pt(GRHydro_eos_handle, keytemp, GRHydro_eos_rf_prec, local_gam(1), dens(i,j,k), &
+                    scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3), tau(i,j,k), &
+                    Bcons(i,j,k,1),Bcons(i,j,k,2),Bcons(i,j,k,3), Y_e(i,j,k), temperature(i,j,k), rho(i,j,k),&
+@@ -257,7 +247,7 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+                    g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k), &
+                    uxx,uxy,uxz,uyy,uyz,uzz,det, &
+                    epsnegative,GRHydro_C2P_failed(i,j,k))
+-              if(GRHydro_C2P_failed(i,j,k).eq.2) then
++              if(GRHydro_C2P_failed(i,j,k).ne.0) then
+                 ! this means c2p did not converge.
+                 ! In this case, we attempt to call c2p with a reduced
+                 ! accuracy requirement; if it fails again, we abort
+@@ -271,7 +261,7 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+                      g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k), &
+                      uxx,uxy,uxz,uyy,uyz,uzz,det, &
+                      epsnegative,GRHydro_C2P_failed(i,j,k))
+-                if(GRHydro_C2P_failed(i,j,k).eq.2) then
++                if(GRHydro_C2P_failed(i,j,k).ne.0) then
+                   !$OMP CRITICAL
+                   if (GRHydro_reflevel.ge.GRHydro_c2p_warn_from_reflevel) then
+                      call CCTK_WARN(1,"Convergence problem in c2p")
+diff --git a/src/GRHydro_HLLEM.F90 b/src/GRHydro_HLLEM.F90
+index 17a553d..3782846 100644
+--- a/src/GRHydro_HLLEM.F90
++++ b/src/GRHydro_HLLEM.F90
+@@ -133,7 +133,7 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+   !$OMP velzlowp,velzlowm,Bveczlowp,Bveczlowm,&
+   !$OMP bdotvp,bdotvm,b2p,b2m,v2p,v2m,wp,wm,&
+   !$OMP bxlowp,bxlowm,bylowp,bylowm,bzlowp,bzlowm,&
+-  !$OMP rhoenth_p,rhoenth_m,ab0p,ab0m,vA2p,vA2m,pressstarp,pressstarm,usendh,psidcdiff,psidcfp,psidcfm,charmin,charmax,chartop,charpm,m)
++  !$OMP rhoenth_p,rhoenth_m,ab0p,ab0m,vA2p,vA2m,pressstarp,pressstarm,usendh,psidcdiff,psidcfp,psidcfm,charmin,charmax,chartop,charpm,m,xtemp)
+   do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil + transport_constraints*(1-zoffset)
+     do j = GRHydro_stencil, cctk_lsh(2) - GRHydro_stencil + transport_constraints*(1-yoffset)
+       do i = GRHydro_stencil, cctk_lsh(1) - GRHydro_stencil + transport_constraints*(1-xoffset)
+@@ -362,7 +362,7 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+                    lamplus,gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,&
+                    usendh,avg_alp,avg_beta)
+             else
+-              xtemp = temperature(i+xoffset,j+yoffset,k+zoffset)
++              xtemp = temperature(i,j,k)
+               call eigenvaluesM_hot(GRHydro_eos_handle,i,j,k,&
+                    prim_m(1),prim_m(2),prim_m(3),prim_m(4),prim_m(5),prim_m(7), &
+                    prim_m(8),prim_m(9),prim_m(10),&
+@@ -414,7 +414,7 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+                    lamplus,gyyh,gyzh,gxyh,gzzh,gxzh,gxxh,&
+                    usendh,avg_alp,avg_beta)
+             else
+-              xtemp = temperature(i+xoffset,j+yoffset,k+zoffset)
++              xtemp = temperature(i,j,k)
+               call eigenvaluesM_hot(GRHydro_eos_handle,i,j,k,&
+                    prim_m(1),prim_m(3),prim_m(4),prim_m(2),prim_m(5),prim_m(7), &
+                    prim_m(9),prim_m(10),prim_m(8),&
+@@ -466,7 +466,7 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+                    lamplus,gzzh,gxzh,gyzh,gxxh,gxyh,gyyh,&
+                    usendh,avg_alp,avg_beta)
+             else
+-              xtemp = temperature(i+xoffset,j+yoffset,k+zoffset)
++              xtemp = temperature(i,j,k)
+               call eigenvaluesM_hot(GRHydro_eos_handle,i,j,k,&
+                    prim_m(1),prim_m(4),prim_m(2),prim_m(3),prim_m(5),prim_m(7), &
+                    prim_m(10),prim_m(8),prim_m(9),&
+diff --git a/src/GRHydro_PPMMReconstruct_drv.F90 b/src/GRHydro_PPMMReconstruct_drv.F90
+index 93538b3..113f7a1 100644
+--- a/src/GRHydro_PPMMReconstruct_drv.F90
++++ b/src/GRHydro_PPMMReconstruct_drv.F90
+@@ -318,7 +318,7 @@ subroutine GRHydro_PPMMReconstruct_drv(CCTK_ARGUMENTS)
+           do k = GRHydro_stencil, nz - GRHydro_stencil + 1 + transport_constraints
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1 + transport_constraints
+                call SimplePPM_ye_1d(ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
+-                    velx(j,:,k),vely(j,:,k),velz(j,:,k), &
++                    vely(j,:,k),velz(j,:,k),velx(j,:,k), &
+                     Y_e(j,:,k),Y_e_minus(j,:,k),Y_e_plus(j,:,k), &
+                     press(j,:,k))
+             end do
+@@ -391,7 +391,7 @@ subroutine GRHydro_PPMMReconstruct_drv(CCTK_ARGUMENTS)
+           do k = GRHydro_stencil, ny - GRHydro_stencil + 1 + transport_constraints
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1 + transport_constraints
+                call SimplePPM_ye_1d(nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
+-                    velx(j,k,:),vely(j,k,:),velz(j,k,:), &
++                    velz(j,k,:),velx(j,k,:),vely(j,k,:), &
+                     Y_e(j,k,:),Y_e_minus(j,k,:),Y_e_plus(j,k,:), &
+                     press(j,k,:))
+             end do
+diff --git a/src/GRHydro_PPMReconstruct_drv.F90 b/src/GRHydro_PPMReconstruct_drv.F90
+index 02486d0..0a6bcb6 100644
+--- a/src/GRHydro_PPMReconstruct_drv.F90
++++ b/src/GRHydro_PPMReconstruct_drv.F90
+@@ -246,7 +246,7 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+                call SimplePPM_ye_1d(ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
+-                    velx(j,:,k),vely(j,:,k),velz(j,:,k), &
++                    vely(j,:,k),velz(j,:,k),velx(j,:,k), &
+                     Y_e(j,:,k),Y_e_minus(j,:,k),Y_e_plus(j,:,k), &
+                     press(j,:,k))
+             end do
+@@ -298,7 +298,7 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+          do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+                call SimplePPM_ye_1d(nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
+-                    velx(j,k,:),vely(j,k,:),velz(j,k,:), &
++                    velz(j,k,:),velx(j,k,:),vely(j,k,:), &
+                     Y_e(j,k,:),Y_e_minus(j,k,:),Y_e_plus(j,k,:), &
+                     press(j,k,:))
+             end do
+diff --git a/src/GRHydro_Prim2ConM.F90 b/src/GRHydro_Prim2ConM.F90
+index a6aef7d..da64604 100644
+--- a/src/GRHydro_Prim2ConM.F90
++++ b/src/GRHydro_Prim2ConM.F90
+@@ -77,7 +77,7 @@ subroutine primitive2conservativeM(CCTK_ARGUMENTS)
+   if(evolve_temper.ne.1) then
+ 
+   !$OMP PARALLEL DO PRIVATE(k,j,i,avg_detl,avg_detr,&
+-  !$OMP                      gxxl,gxyl,gxzl,gyyl,gyzl,gzzl, &
++  !$OMP                      gxxl,gxyl,gxzl,gyyl,gyzl,gzzl,&
+   !$OMP                      gxxr,gxyr,gxzr,gyyr,gyzr,gzzr)
+   do k = GRHydro_stencil, cctk_lsh(3)-GRHydro_stencil+1 + transport_constraints*(1-zoffset)
+     do j = GRHydro_stencil, cctk_lsh(2)-GRHydro_stencil+1 + transport_constraints*(1-yoffset)
+diff --git a/src/GRHydro_Reconstruct.F90 b/src/GRHydro_Reconstruct.F90
+index f10bc71..238808a 100644
+--- a/src/GRHydro_Reconstruct.F90
++++ b/src/GRHydro_Reconstruct.F90
+@@ -118,17 +118,21 @@ subroutine Reconstruction(CCTK_ARGUMENTS)
+                  velxminus(i,j,k) = vup(i,j,k,1)
+                  velyminus(i,j,k) = vup(i,j,k,2)
+                  velzminus(i,j,k) = vup(i,j,k,3)
++                 if(evolve_y_e.ne.0) then
++                    y_e_plus(i,j,k)  = y_e(i,j,k)
++                    y_e_minus(i,j,k) = y_e(i,j,k)
++                 endif 
++                 if(evolve_tracer.ne.0) then
++                    where(tracerplus(i,j,k,:).le.local_min_tracer .or. &
++                         tracerminus(i,j,k,:).le.local_min_tracer)
++                       tracerplus(i,j,k,:) = tracer(i,j,k,:)
++                       tracerminus(i,j,k,:) = tracer(i,j,k,:)
++                    end where
++                 end if
+               end if
+-              if(evolve_tracer.ne.0) then
+-                 where(tracerplus(i,j,k,:).le.local_min_tracer .or. &
+-                      tracerminus(i,j,k,:).le.local_min_tracer)
+-                   tracerplus(i,j,k,:) = tracer(i,j,k,:)
+-                   tracerminus(i,j,k,:) = tracer(i,j,k,:)
+-                end where
+-             end if
+-             ! Riemann problem might not be trivial anymore!!!!
+-             SpaceMask_SetStateBitsF90(space_mask, i-xoffset, j-yoffset, k-zoffset, type_bits, not_trivial)
+-             SpaceMask_SetStateBitsF90(space_mask, i, j, k, type_bits, not_trivial)
++              ! Riemann problem might not be trivial anymore!!!!
++              SpaceMask_SetStateBitsF90(space_mask, i-xoffset, j-yoffset, k-zoffset, type_bits, not_trivial)
++              SpaceMask_SetStateBitsF90(space_mask, i, j, k, type_bits, not_trivial)
+       enddo
+     enddo
+   enddo
+diff --git a/src/GRHydro_ReconstructPoly.F90 b/src/GRHydro_ReconstructPoly.F90
+index fce45a3..9f30cb7 100644
+--- a/src/GRHydro_ReconstructPoly.F90
++++ b/src/GRHydro_ReconstructPoly.F90
+@@ -496,11 +496,11 @@ subroutine ReconstructionPolytype(CCTK_ARGUMENTS)
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+               call SimplePPM_1dM(GRHydro_eos_handle,1,nz,CCTK_DELTA_SPACE(3),&
+                    rho(j,k,:),velz(j,k,:),velx(j,k,:),vely(j,k,:),&
+-                   Bvecz(j,k,:),Bvecx(j,k,:),Bvecy(j,k,:),psidc(:,j,k),eps(j,k,:),press(j,k,:),&
++                   Bvecz(j,k,:),Bvecx(j,k,:),Bvecy(j,k,:),psidc(j,k,:),eps(j,k,:),press(j,k,:),&
+                    rhominus(j,k,:),velzminus(j,k,:),velxminus(j,k,:),velyminus(j,k,:),&
+-                   Bveczminus(j,k,:),Bvecxminus(j,k,:),Bvecyminus(j,k,:),psidcminus(:,j,k),epsminus(j,k,:),&
++                   Bveczminus(j,k,:),Bvecxminus(j,k,:),Bvecyminus(j,k,:),psidcminus(j,k,:),epsminus(j,k,:),&
+                    rhoplus(j,k,:),velzplus(j,k,:),velxplus(j,k,:),velyplus(j,k,:),&
+-                   Bveczplus(j,k,:),Bvecxplus(j,k,:),Bvecyplus(j,k,:),psidcplus(:,j,k),epsplus(j,k,:),&
++                   Bveczplus(j,k,:),Bvecxplus(j,k,:),Bvecyplus(j,k,:),psidcplus(j,k,:),epsplus(j,k,:),&
+                    1,trivial_rp(j,k,:), hydro_excision_mask(j,k,:),&
+                    gzz(j,k,:), gxz(j,k,:), gyz(j,k,:), gxx(j,k,:), gxy(j,k,:), &
+                    gyy(j,k,:), psi4(j,k,:), lbetaz(j,k,:), alp(j,k,:),&
+@@ -526,9 +526,9 @@ subroutine ReconstructionPolytype(CCTK_ARGUMENTS)
+                    rho(j,k,:),velz(j,k,:),velx(j,k,:),vely(j,k,:),&
+                    Bvecz(j,k,:),Bvecx(j,k,:),Bvecy(j,k,:),dum(:,j,k),eps(j,k,:),press(j,k,:),&
+                    rhominus(j,k,:),velzminus(j,k,:),velxminus(j,k,:),velyminus(j,k,:),&
+-                   Bveczminus(j,k,:),Bvecxminus(j,k,:),Bvecyminus(j,k,:),dumm(:,j,k),epsminus(j,k,:),&
++                   Bveczminus(j,k,:),Bvecxminus(j,k,:),Bvecyminus(j,k,:),dumm(j,k,:),epsminus(j,k,:),&
+                    rhoplus(j,k,:),velzplus(j,k,:),velxplus(j,k,:),velyplus(j,k,:),&
+-                   Bveczplus(j,k,:),Bvecxplus(j,k,:),Bvecyplus(j,k,:),dump(:,j,k),epsplus(j,k,:),&
++                   Bveczplus(j,k,:),Bvecxplus(j,k,:),Bvecyplus(j,k,:),dump(j,k,:),epsplus(j,k,:),&
+                    0,trivial_rp(j,k,:), hydro_excision_mask(j,k,:),&
+                    gzz(j,k,:), gxz(j,k,:), gyz(j,k,:), gxx(j,k,:), gxy(j,k,:), &
+                    gyy(j,k,:), psi4(j,k,:), lbetaz(j,k,:), alp(j,k,:),&
+diff --git a/src/GRHydro_UpdateMaskM.F90 b/src/GRHydro_UpdateMaskM.F90
+index d2bafaf..8bf4117 100644
+--- a/src/GRHydro_UpdateMaskM.F90
++++ b/src/GRHydro_UpdateMaskM.F90
+@@ -123,7 +123,7 @@ subroutine GRHydro_AtmosphereResetM(CCTK_ARGUMENTS)
+ 
+           if(evolve_temper.ne.0) then
+ 
+-!             ! set the temperature to be relatively low
++             ! set the temperature to be relatively low
+              temperature(i,j,k) = grhydro_hot_atmo_temp
+              y_e(i,j,k) = grhydro_hot_atmo_Y_e
+              keytemp = 1
+-- 
+1.7.10.4
+

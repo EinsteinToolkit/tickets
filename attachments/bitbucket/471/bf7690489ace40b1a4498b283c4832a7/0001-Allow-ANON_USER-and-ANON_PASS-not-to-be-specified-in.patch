@@ -1,0 +1,61 @@
+From c4cac7056544083c9b1134f6cdfbfc5f2cba0b4d Mon Sep 17 00:00:00 2001
+From: Bruno Coutinho Mundim <bcmsma@astro.rit.edu>
+Date: Sat, 9 Jul 2011 18:56:28 -0400
+Subject: [PATCH] Allow !ANON_USER and !ANON_PASS not to be specified in a cvs
+ checkout.
+
+This patch allows GetComponents to handle correctly the checkout
+of cvs modules when authentication is performed via ssh keys and
+ssh-agent. The directives
+
+!TARGET   = $ARR
+!TYPE     = cvs
+!URL      = :ext:cvsrepo:cvs_repo_path
+!REPO_PATH = path_to_module/$1
+!CHECKOUT =
+cvs_module
+
+works as expected now:
+
+cvs -d :ext:cvsrepo:cvs_repo_path co path_to_module/cvs_module
+
+without complaininig about "$user:$pass\@" as in the following
+example:
+
+  Checking out module: cvs_module
+      from repository: :@:ext:cvsrepo:cvs_repo_path
+                 into: Cactus/arrangements
+Executing: cvs -z9 -q -d :@:ext:cvsrepo:cvs_repo_path checkout  cvs_module
+       In: Cactus/arrangements
+cvs checkout: Unknown method (`@') in CVSROOT.
+cvs [checkout aborted]: Bad CVSROOT: `:@:ext:cvsrepo:cvs_repo_path'.
+---
+ GetComponents |    5 ++++-
+ 1 files changed, 4 insertions(+), 1 deletions(-)
+
+diff --git a/GetComponents b/GetComponents
+index 133487e..c13af21 100755
+--- a/GetComponents
++++ b/GetComponents
+@@ -1028,7 +1028,7 @@ sub handle_cvs {
+             $url = "$user\@$url" if defined $user;
+         }
+     }
+-    else {
++    elsif ( defined( $component{ANON_USER} ) && defined( $component{ANON_PASS} ) ) {
+         $url  = $component{URL};
+         $user = $component{ANON_USER};
+         $pass = $component{ANON_PASS};
+@@ -1039,6 +1039,9 @@ sub handle_cvs {
+             $url = "$user:$pass\@$url";
+         }
+     }
++    else {
++        $url  = $component{URL};
++    }
+ 
+     if ( $method eq 'checkout' ) {
+ 
+-- 
+1.7.5.4
+

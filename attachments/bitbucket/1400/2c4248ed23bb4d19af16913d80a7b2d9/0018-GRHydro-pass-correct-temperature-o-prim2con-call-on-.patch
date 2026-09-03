@@ -1,0 +1,40 @@
+From 4f5b239a432b6ce7078c01efea9aa55a02178f50 Mon Sep 17 00:00:00 2001
+From: abdik <abdik@tapir.caltech.edu>
+Date: Thu, 6 Jun 2013 20:47:44 -0700
+Subject: [PATCH 18/24] GRHydro: pass correct temperature o prim2con call on
+ coarse levels
+
+Fix a bug in prim2con_hot that was causing temp to go negative near the
+shock in 3D CCSN simulations with WENO reconstruction.
+---
+ src/GRHydro_Prim2Con.F90  |    1 +
+ src/GRHydro_Prim2ConM.F90 |    1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/src/GRHydro_Prim2Con.F90 b/src/GRHydro_Prim2Con.F90
+index 80ce321..680ecfc 100644
+--- a/src/GRHydro_Prim2Con.F90
++++ b/src/GRHydro_Prim2Con.F90
+@@ -378,6 +378,7 @@ subroutine prim2con_hot(handle, keytemp, GRHydro_reflevel, cctk_iteration, ii, j
+            ! away), we use the average temperature between cells and call
+            ! the EOS with keytemp=1
+            lkeytemp=1
++           temp = temp0
+            call EOS_Omni_press(handle,lkeytemp,GRHydro_eos_rf_prec,n,&
+                 drho,deps,temp,ye,dpress,keyerr,anyerr)  
+            lkeytemp=0
+diff --git a/src/GRHydro_Prim2ConM.F90 b/src/GRHydro_Prim2ConM.F90
+index 7c6118f..cb459ee 100644
+--- a/src/GRHydro_Prim2ConM.F90
++++ b/src/GRHydro_Prim2ConM.F90
+@@ -294,6 +294,7 @@ subroutine prim2conM_hot(handle, GRHydro_reflevel, ii, jj, kk, x, y, z, gxx, gxy
+         ! away), we use the average temperature between cells and call
+         ! the EOS with keytemp=1
+         keytemp=1
++        temp = temp0
+         call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+              drho,deps,temp,ye,dpress,keyerr,anyerr)  
+         keytemp=0
+-- 
+1.7.10.4
+

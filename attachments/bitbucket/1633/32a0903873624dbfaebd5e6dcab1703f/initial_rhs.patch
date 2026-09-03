@@ -1,0 +1,38 @@
+Index: src/InitialCopy.c
+===================================================================
+--- src/InitialCopy.c	(revision 224)
++++ src/InitialCopy.c	(working copy)
+@@ -590,7 +590,33 @@
+     MoL_LinearCombination(cctkGH, RHSVariableIndex[var], rl, tl, 0.0,
+                           NULL, NULL, NULL, 0);
+   }
++  
++  for (var = 0; var < MoLNumEvolvedVariablesSlow; var++)
++  {
++    StorageOn = CCTK_QueryGroupStorageI(cctkGH,
++                                       CCTK_GroupIndexFromVarI(RHSVariableIndexSlow[var]));
+     
++    if (StorageOn < 0)
++    {
++      CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,"Warning for index %i", 
++                 RHSVariableIndexSlow[var]);
++      CCTK_WARN(0, "The index passed does not correspond to a GF.");
++    }
++    else if (StorageOn == 0) {
++#ifdef MOLDEBUG
++      printf("Aargh! Vars %d var %d index %d name %s\n",
++             MoLNumEvolvedVariablesSlow, var, RHSVariableIndexSlow[var],  
++                 CCTK_VarName(RHSVariableIndexSlow[var]));
++#endif
++      CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,"Warning for GF %s", 
++                 CCTK_VarName(RHSVariableIndexSlow[var]));
++      CCTK_WARN(0, "The grid function does not have storage assigned.");
++    }
++    
++    MoL_LinearCombination(cctkGH, RHSVariableIndexSlow[var], rl, tl, 0.0,
++                          NULL, NULL, NULL, 0);
++  }
++    
+   for (var = 0; var < MoLNumEvolvedArrayVariables; var++)
+   {
+     RHSVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0,

@@ -1,0 +1,1112 @@
+Index: src/include/cctk.h
+===================================================================
+--- src/include/cctk.h	(revision 4831)
++++ src/include/cctk.h	(working copy)
+@@ -1,382 +0,0 @@
+-/*@@
+-   @header    cctk.h
+-   @date      Tue Jan 26 17:29:34 1999
+-   @author    Tom Goodale
+-   @desc
+-              Main include file for the CCTK.
+-              All thorns should include this.
+-   @enddesc
+-   @version   $Header$
+- @@*/
+-
+-#ifndef _CCTK_H_
+-#define _CCTK_H_ 1
+-
+-/* Grab the main configuration info. */
+-#include "cctk_Config.h"
+-
+-/* Define which thorn the file is in */
+-#include "definethisthorn.h"
+-
+-/* Include the constants */
+-#include "cctk_Constants.h"
+-
+-/* Define some stuff */
+-
+-#ifdef FCODE
+-
+-#include "cctk_Faces.h"
+-#include "cctk_Interp.h"
+-#include "cctk_Loop.h"
+-#include "cctk_WarnLevel.h"
+-
+-#define CCTK_PRINTSEPARATOR\
+-  print '("--------------------------------------------------------------------------------")'
+-
+-#define _CCTK_FARGUMENTS \
+-cctk_dim,cctk_gsh,cctk_lsh,cctk_lbnd,cctk_ubnd,cctk_lssh,cctk_from,cctk_to,\
+-cctk_bbox,cctk_delta_time,cctk_time,cctk_delta_space,cctk_origin_space,\
+-cctk_levfac,cctk_levoff,cctk_levoffdenom,cctk_timefac,cctk_convlevel,\
+-cctk_convfac,cctk_nghostzones,cctk_iteration,cctkGH,\
+-cctk_lsh1,cctk_lsh2,cctk_lsh3
+-
+-#define _DECLARE_CCTK_ARGUMENTS _DECLARE_CCTK_FARGUMENTS
+-#define _DECLARE_CCTK_FARGUMENTS &&\
+-        CCTK_DECLARE(INTEGER,cctk_dim,)&&\
+-        CCTK_DECLARE(INTEGER,cctk_gsh,(cctk_dim))&&\
+-        CCTK_DECLARE(INTEGER,cctk_lsh,(cctk_dim))&&\
+-        CCTK_DECLARE(INTEGER,cctk_lbnd,(cctk_dim))&&\
+-        CCTK_DECLARE(INTEGER,cctk_ubnd,(cctk_dim))&&\
+-        CCTK_DECLARE(INTEGER,cctk_lssh,(CCTK_NSTAGGER*cctk_dim))&&\
+-        CCTK_DECLARE(INTEGER,cctk_from,(cctk_dim))&&\
+-        CCTK_DECLARE(INTEGER,cctk_to,(cctk_dim))&&\
+-        CCTK_DECLARE(INTEGER,cctk_bbox,(2*cctk_dim))&&\
+-        CCTK_DECLARE(CCTK_REAL,cctk_delta_time,)&&\
+-        CCTK_DECLARE(CCTK_REAL,cctk_time,)&&\
+-        CCTK_DECLARE(CCTK_REAL,cctk_delta_space,(cctk_dim))&&\
+-        CCTK_DECLARE(CCTK_REAL,cctk_origin_space,(cctk_dim))&&\
+-        CCTK_DECLARE(INTEGER,cctk_levfac,(cctk_dim))&&\
+-        CCTK_DECLARE(INTEGER,cctk_levoff,(cctk_dim))&&\
+-        CCTK_DECLARE(INTEGER,cctk_levoffdenom,(cctk_dim))&&\
+-        CCTK_DECLARE(INTEGER,cctk_timefac,)&&\
+-        CCTK_DECLARE(INTEGER,cctk_convlevel,)&&\
+-        CCTK_DECLARE(INTEGER,cctk_convfac,)&&\
+-        CCTK_DECLARE(INTEGER,cctk_nghostzones,(cctk_dim))&&\
+-        CCTK_DECLARE(INTEGER,cctk_iteration,)&&\
+-        CCTK_DECLARE(CCTK_POINTER,cctkGH,)&&\
+-        CCTK_DECLARE(INTEGER,cctk_lsh1,)&&\
+-        CCTK_DECLARE(INTEGER,cctk_lsh2,)&&\
+-        CCTK_DECLARE(INTEGER,cctk_lsh3,)&&
+-
+-#define CCTK_WARN(a,b) CCTK_Warn(a,__LINE__,__FORTRANFILE__,CCTK_THORNSTRING,b)
+-
+-#define CCTK_CoordRegisterSystem(a,b,c) CCTKi_CoordRegisterSystem(a,b,CCTK_THORNSTRING,c)
+-
+-/* John Shalf says that the operator .ne. needs to be enclosed by
+-   spaces, because ANSI C preprocessors otherwise interpret the
+-   character sequence ".0" as preprocessor token */
+-#define CCTK_EQUALS(a,b) (CCTK_Equals(a,b) .ne. 0)
+-
+-#define CCTK_PASS_FTOF CCTK_FARGUMENTS
+-
+-#define CCTK_ORIGIN_SPACE(x) (cctk_origin_space(x)+cctk_delta_space(x)/cctk_levfac(x)*cctk_levoff(x)/cctk_levoffdenom(x))
+-#define CCTK_DELTA_SPACE(x) (cctk_delta_space(x)/cctk_levfac(x))
+-#define CCTK_DELTA_TIME (cctk_delta_time/cctk_timefac)
+-/* The "stagger index" stag is zero-based (0,1,...), the direction dim
+-   is one-based in Fortran (1,2,3,...) */
+-#define CCTK_LSSH(stag,dim) cctk_lssh(CCTK_LSSH_IDX(stag,dim))
+-#define CCTK_LSSH_IDX(stag,dim) (1+(stag)+CCTK_NSTAGGER*((dim)-1))
+-
+-#ifdef F90CODE
+-
+-#define _DECLARE_CCTK_FUNCTIONS                   \
+-  external     CCTK_PointerTo                   &&\
+-  CCTK_POINTER CCTK_PointerTo                   &&\
+-  interface                                     &&\
+-     integer function CCTK_Equals (arg1, arg2)  &&\
+-       implicit none                            &&\
+-       CCTK_POINTER_TO_CONST arg1               &&\
+-       character(*) arg2                        &&\
+-     end function CCTK_Equals                   &&\
+-     integer function CCTK_MyProc (cctkGH)      &&\
+-       implicit none                            &&\
+-       CCTK_POINTER_TO_CONST cctkGH             &&\
+-     end function CCTK_MyProc                   &&\
+-     integer function CCTK_nProcs (cctkGH)      &&\
+-       implicit none                            &&\
+-       CCTK_POINTER_TO_CONST cctkGH             &&\
+-     end function CCTK_nProcs                   &&\
+-     integer function CCTK_IsThornActive (name) &&\
+-       implicit none                            &&\
+-       character(*) name                        &&\
+-     end function CCTK_IsThornActive            &&\
+-     CCTK_POINTER function CCTK_NullPointer ()  &&\
+-       implicit none                            &&\
+-     end function CCTK_NullPointer              &&\
+-  end interface                                 &&
+-
+-#else /* ! F90CODE */
+-
+-#define _DECLARE_CCTK_FUNCTIONS \
+-  integer      CCTK_Equals, CCTK_MyProc, CCTK_nProcs, CCTK_IsThornActive &&\
+-  external     CCTK_Equals, CCTK_MyProc, CCTK_nProcs, CCTK_IsThornActive &&\
+-  CCTK_POINTER CCTK_PointerTo, CCTK_NullPointer &&\
+-  external     CCTK_PointerTo, CCTK_NullPointer &&
+-
+-#endif /* ! F90CODE */
+-
+-#endif /*FCODE*/
+-
+-#ifdef CCODE
+-
+-/* get the definition of ptrdiff_t */
+-#include <stddef.h>
+-
+-#include "cGH.h"
+-
+-#include "cctk_ActiveThorns.h"
+-#include "cctk_Banner.h"
+-#include "cctk_Cache.h"
+-#include "cctk_Coord.h"
+-#include "cctk_Comm.h"
+-#include "cctk_CommandLine.h"
+-#include "cctk_Complex.h"
+-#include "cctk_DebugDefines.h"
+-#include "cctk_Faces.h"
+-#include "cctk_File.h"
+-#include "cctk_Flesh.h"
+-#include "cctk_FortranString.h"
+-#include "cctk_Functions.h"
+-#include "cctk_GHExtensions.h"
+-#include "cctk_Groups.h"
+-#include "cctk_GroupsOnGH.h"
+-#include "cctk_Interp.h"
+-#include "cctk_IO.h"
+-#include "cctk_IOMethods.h"
+-#include "cctk_Loop.h"
+-#include "cctk_Main.h"
+-#include "cctk_Malloc.h"
+-#include "cctk_Misc.h"
+-#include "cctk_Parameter.h"
+-#include "cctk_Reduction.h"
+-#include "cctk_Stagger.h"
+-#include "cctk_Sync.h"
+-#include "cctk_Timers.h"
+-#include "cctk_Termination.h"
+-#include "cctk_WarnLevel.h"
+-
+-/* Include prototypes for scheduled functions */
+-#include "cctk_ScheduleFunctions.h"
+-
+-/* Include prototypes for scheduled functions */
+-#include "cctk_ScheduleFunctions.h"
+-
+-/* Include definitions provided by capabilities */
+-#include "cctk_Capabilities.h"
+-
+-
+-
+-/*
+- * Routines to compute the linear index of a grid funtion element from
+- * its i,j,k indices
+- */
+-
+-#ifdef CCTK_DEBUG
+-
+-/*
+- * For CCTK_DEBUG, call the external C routines defined in
+- * DebugDefines.c
+- */
+-
+-#  define CCTK_GFINDEX0D(cctkGH) CCTK_GFIndex0D(cctkGH)
+-#  define CCTK_GFINDEX1D(cctkGH,i) CCTK_GFIndex1D(cctkGH,i)
+-#  define CCTK_GFINDEX2D(cctkGH,i,j) CCTK_GFIndex2D(cctkGH,i,j)
+-#  define CCTK_GFINDEX3D(cctkGH,i,j,k) CCTK_GFIndex3D(cctkGH,i,j,k)
+-#  define CCTK_GFINDEX4D(cctkGH,i,j,k,l) CCTK_GFIndex4D(cctkGH,i,j,k,l)
+-
+-#  define CCTK_VECTGFINDEX0D(cctkGH,n) CCTK_VectGFIndex0D(cctkGH,n)
+-#  define CCTK_VECTGFINDEX1D(cctkGH,i,n) CCTK_VectGFIndex1D(cctkGH,i,n)
+-#  define CCTK_VECTGFINDEX2D(cctkGH,i,j,n) CCTK_VectGFIndex2D(cctkGH,i,j,n)
+-#  define CCTK_VECTGFINDEX3D(cctkGH,i,j,k,n) CCTK_VectGFIndex3D(cctkGH,i,j,k,n)
+-#  define CCTK_VECTGFINDEX4D(cctkGH,i,j,k,l,n) CCTK_VectGFIndex4D(cctkGH,i,j,k,l,n)
+-
+-#else
+-
+-/*
+- * Without CCTK_DEBUG, define the calculations directly
+- */
+-
+-static inline int CCTK_GFINDEX0D (const cGH *CCTK_RESTRICT cctkGH)
+-{
+-  return 0;
+-}
+-
+-static inline int CCTK_GFINDEX1D (const cGH *CCTK_RESTRICT cctkGH,
+-                                  int i)
+-{
+-  return i;
+-}
+-
+-static inline int CCTK_GFINDEX2D (const cGH *CCTK_RESTRICT cctkGH,
+-                                  int i, int j)
+-{
+-  return i + cctkGH->cctk_lsh[0] * j;
+-}
+-
+-static inline int CCTK_GFINDEX3D (const cGH *CCTK_RESTRICT cctkGH,
+-                                  int i, int j, int k)
+-{
+-  return (i + cctkGH->cctk_lsh[0] *
+-          (j + cctkGH->cctk_lsh[1] * k));
+-}
+-
+-static inline int CCTK_GFINDEX4D (const cGH *CCTK_RESTRICT cctkGH,
+-                                  int i, int j, int k, int l)
+-{
+-  return (i + cctkGH->cctk_lsh[0] *
+-          (j + cctkGH->cctk_lsh[1] *
+-           (k + cctkGH->cctk_lsh[2] * l)));
+-}
+-
+-static inline int CCTK_VECTGFINDEX0D (const cGH *CCTK_RESTRICT cctkGH,
+-                                      int n)
+-{
+-  return n;
+-}
+-
+-static inline int CCTK_VECTGFINDEX1D (const cGH *CCTK_RESTRICT cctkGH,
+-                                      int i, int n)
+-{
+-  return i + cctkGH->cctk_lsh[0] * n;
+-}
+-
+-static inline int CCTK_VECTGFINDEX2D (const cGH *CCTK_RESTRICT cctkGH,
+-                                      int i, int j, int n)
+-{
+-  return (i + cctkGH->cctk_lsh[0] *
+-          (j + cctkGH->cctk_lsh[1] * n));
+-}
+-
+-static inline int CCTK_VECTGFINDEX3D (const cGH *CCTK_RESTRICT cctkGH,
+-                                      int i, int j, int k, int n)
+-{
+-  return (i + cctkGH->cctk_lsh[0] *
+-          (j + cctkGH->cctk_lsh[1] *
+-           (k + cctkGH->cctk_lsh[2] * n)));
+-}
+-
+-static inline int CCTK_VECTGFINDEX4D (const cGH *CCTK_RESTRICT cctkGH,
+-                                      int i, int j, int k, int l, int n)
+-{
+-  return (i + cctkGH->cctk_lsh[0] *
+-          (j + cctkGH->cctk_lsh[1] *
+-           (k + cctkGH->cctk_lsh[2] *
+-            (l + cctkGH->cctk_lsh[3] * n))));
+-}
+-
+-#endif
+-
+-
+-
+-
+-#define CCTK_PRINTSEPARATOR \
+-  printf("--------------------------------------------------------------------------------\n");
+-
+-#define _DECLARE_CCTK_ARGUMENTS _DECLARE_CCTK_CARGUMENTS
+-#define _DECLARE_CCTK_CARGUMENTS \
+-        CCTK_DECLARE_INIT(ptrdiff_t,cctki_dummy_int,0);\
+-        CCTK_DECLARE_INIT(int const,cctk_dim,cctkGH->cctk_dim);\
+-        CCTK_DECLARE_INIT(int const *CCTK_RESTRICT const,cctk_gsh,cctkGH->cctk_gsh);\
+-        CCTK_DECLARE_INIT(int const *CCTK_RESTRICT const,cctk_lsh,cctkGH->cctk_lsh);\
+-        CCTK_DECLARE_INIT(int const *CCTK_RESTRICT const,cctk_lbnd,cctkGH->cctk_lbnd);\
+-        CCTK_DECLARE_INIT(int const *CCTK_RESTRICT const,cctk_ubnd,cctkGH->cctk_ubnd);\
+-        CCTK_DECLARE_INIT(int const *CCTK_RESTRICT const,cctk_lssh,cctkGH->cctk_lssh);\
+-        CCTK_DECLARE_INIT(int const *CCTK_RESTRICT const,cctk_from,cctkGH->cctk_from);\
+-        CCTK_DECLARE_INIT(int const *CCTK_RESTRICT const,cctk_to,cctkGH->cctk_to);\
+-        CCTK_DECLARE_INIT(int const *CCTK_RESTRICT const,cctk_bbox,cctkGH->cctk_bbox);\
+-        CCTK_DECLARE_INIT(CCTK_REAL const,cctk_delta_time,cctkGH->cctk_delta_time);\
+-        CCTK_DECLARE_INIT(CCTK_REAL const,cctk_time,cctkGH->cctk_time);\
+-        CCTK_DECLARE_INIT(CCTK_REAL const *CCTK_RESTRICT const,cctk_delta_space,cctkGH->cctk_delta_space);\
+-        CCTK_DECLARE_INIT(CCTK_REAL const *CCTK_RESTRICT const,cctk_origin_space,cctkGH->cctk_origin_space);\
+-        CCTK_DECLARE_INIT(int const *CCTK_RESTRICT const,cctk_levfac,cctkGH->cctk_levfac);\
+-        CCTK_DECLARE_INIT(int const *CCTK_RESTRICT const,cctk_levoff,cctkGH->cctk_levoff);\
+-        CCTK_DECLARE_INIT(int const *CCTK_RESTRICT const,cctk_levoffdenom,cctkGH->cctk_levoffdenom);\
+-        CCTK_DECLARE_INIT(int const,cctk_timefac,cctkGH->cctk_timefac);\
+-        CCTK_DECLARE_INIT(int const,cctk_convlevel,cctkGH->cctk_convlevel);\
+-        CCTK_DECLARE_INIT(int const,cctk_convfac,cctkGH->cctk_convfac);\
+-        CCTK_DECLARE_INIT(int const *CCTK_RESTRICT const,cctk_nghostzones,cctkGH->cctk_nghostzones);\
+-        CCTK_DECLARE_INIT(int const,cctk_iteration,cctkGH->cctk_iteration);\
+-
+-#define _INITIALISE_CCTK_C2F
+-#define _DECLARE_CCTK_C2F
+-#define _PASS_CCTK_C2F(xGH) &((xGH)->cctk_dim),\
+-                            (xGH)->cctk_gsh,(xGH)->cctk_lsh,\
+-                            (xGH)->cctk_lbnd,(xGH)->cctk_ubnd,\
+-                            (xGH)->cctk_lssh,\
+-                            (xGH)->cctk_from,(xGH)->cctk_to,\
+-                            (xGH)->cctk_bbox,\
+-                            &((xGH)->cctk_delta_time), &((xGH)->cctk_time),\
+-                            (xGH)->cctk_delta_space, (xGH)->cctk_origin_space,\
+-                            (xGH)->cctk_levfac,\
+-                            (xGH)->cctk_levoff,\
+-                            (xGH)->cctk_levoffdenom,\
+-                            &((xGH)->cctk_timefac),\
+-                            &((xGH)->cctk_convlevel),\
+-                            &((xGH)->cctk_convfac),\
+-                            (xGH)->cctk_nghostzones,\
+-                            &((xGH)->cctk_iteration),\
+-                            &(xGH),\
+-                            &(xGH)->cctk_lsh[0],\
+-                            &(xGH)->cctk_lsh[1],\
+-                            &(xGH)->cctk_lsh[2]
+-#define _CCTK_C2F_PROTO     int const *,\
+-                            int const *, int const *,\
+-                            int const *, int const *,\
+-                            int const *,\
+-                            int const *, int const *,\
+-                            int const *,\
+-                            CCTK_REAL const *, CCTK_REAL const *,\
+-                            CCTK_REAL const *, CCTK_REAL const *,\
+-                            int const *,\
+-                            int const *,\
+-                            int const *,\
+-                            int const *,\
+-                            int const *,\
+-                            int const *,\
+-                            int const *,\
+-                            int const *,\
+-                            cGH const *const *,\
+-                            int const *,\
+-                            int const *,\
+-                            int const *
+-
+-#define CCTK_EQUALS(a,b) (CCTK_Equals((a),(b)))
+-
+-#define CCTK_PASS_CTOC cctkGH
+-
+-#define CCTK_ORIGIN_SPACE(x) (cctk_origin_space[x]+cctk_delta_space[x]/cctk_levfac[x]*cctk_levoff[x]/cctk_levoffdenom[x])
+-#define CCTK_DELTA_SPACE(x) (cctk_delta_space[x]/cctk_levfac[x])
+-#define CCTK_DELTA_TIME (cctk_delta_time/cctk_timefac)
+-/* The "stagger index" stag is zero-based (0,1,...), the direction dim
+-   is zero-based in C (0,1,2,...) */
+-#define CCTK_LSSH(stag,dim) cctk_lssh[CCTK_LSSH_IDX(stag,dim)]
+-#define CCTK_LSSH_IDX(stag,dim) ((stag)+CCTK_NSTAGGER*(dim))
+-
+-#define CCTK_WARN(a,b) CCTK_Warn(a,__LINE__,__FILE__,CCTK_THORNSTRING,b)
+-
+-#define CCTK_MALLOC(s) CCTKi_Malloc(s,__LINE__,__FILE__)
+-#define CCTK_FREE(p) CCTKi_Free(p)
+-
+-#endif /*CCODE*/
+-
+-#define CCTK_INFO(a) CCTK_Info(CCTK_THORNSTRING,(a))
+-#define CCTK_PARAMWARN(a) CCTK_ParamWarn(CCTK_THORNSTRING,(a))
+-
+-/*
+-#define CCTK_MAKESTRING(x) CCTK_REALSTRING(x)
+-#define CCTK_REALSTRING(x) #x
+-#define CCTK_WARN(a,b) CCTK_Warn(a,CCTK_MAKESTRING(CCTK_THORN),b,__LINE__,__FILE__)
+-*/
+-
+-
+-#endif
+Index: src/main/CactusDefaultEvolve.c
+===================================================================
+--- src/main/CactusDefaultEvolve.c	(revision 4831)
++++ src/main/CactusDefaultEvolve.c	(working copy)
+@@ -13,6 +13,8 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ 
++#include "definethisthorn.h"
++
+ #include "cctk_Flesh.h"
+ #include "cctk_Parameters.h"
+ #include "cctk_Groups.h"
+Index: src/main/ShutdownCactus.c
+===================================================================
+--- src/main/ShutdownCactus.c	(revision 4831)
++++ src/main/ShutdownCactus.c	(working copy)
+@@ -8,6 +8,8 @@
+    @version   $Id$
+  @@*/
+ 
++#include "definethisthorn.h"
++
+ #include <stdio.h>
+ #include <stdlib.h>
+ 
+Index: src/main/SetupCache.c
+===================================================================
+--- src/main/SetupCache.c	(revision 4831)
++++ src/main/SetupCache.c	(working copy)
+@@ -8,6 +8,8 @@
+    @version   $Id$
+  @@*/
+ 
++#include "definethisthorn.h"
++
+ #include "cctk_Config.h"
+ #include "cctk_Flesh.h"
+ #include "cctk_Parameters.h"
+Index: lib/sbin/CreateConfigurationBindings.pl
+===================================================================
+--- lib/sbin/CreateConfigurationBindings.pl	(revision 4831)
++++ lib/sbin/CreateConfigurationBindings.pl	(working copy)
+@@ -244,13 +244,12 @@
+   {
+     if ($cfg->{"\U$thorn\E REQUIRES"} || $cfg->{"\U$thorn\E OPTIONAL"})
+     {
+-      $temp .= "#ifdef THORN_IS_$thorn\n";
+       $temp .= "#include \"../Configuration/Thorns/cctki_$thorn.h\"\n";
+-      $temp .= "#endif\n";
+       $temp .= "\n";
+     }
++    &WriteFile("../include/$thorn/cctk_Capabilities.h",\$temp);
+   }
+-  &WriteFile("../include/cctk_Capabilities.h",\$temp);
++  &WriteFile("../include/CactusBindings/cctk_Capabilities.h","#include \"../Configuration/Thorns/cctki_Cactus.h\"\n\n");
+ }
+ 
+ return 1;
+Index: lib/sbin/CST
+===================================================================
+--- lib/sbin/CST	(revision 4831)
++++ lib/sbin/CST	(working copy)
+@@ -142,7 +142,11 @@
+ &CreateThornsHeaders(%source_thorns);
+ &WriteFile("$bindings_dir/include/thornlist.h", \$thornsheader);
+ &WriteFile("$bindings_dir/include/cctk_DefineThorn.h", \$definethornsheader);
+-&WriteFile("$bindings_dir/include/definethisthorn.h", \$definethisthornheader);
++for my $header (@$definethisthornheader) {
++  my $thorn = $header->{thorn};
++  my $body = $header->{body};
++  &WriteFile("$bindings_dir/include/$thorn/definethisthorn.h", \$body);
++}
+ 
+ # Create the header files used by the thorns
+ &BuildHeaders($cctk_home,$bindings_dir,%interface_database);
+@@ -484,25 +488,31 @@
+ sub CreateThornsHeaders
+ {
+   my(%thorns) = @_;
+-  my($header1,$header2,$header3,$thorn,$nthorns);
++  my($header1,$header2,@header3,$thorn,$nthorns);
+ 
+   $header1 = "\/* List of compiled thorns in the code. *\/\n\n";
+   $header1 .= "static char const *const thorn_name[] = {\n";
+   $header2 = "\/* Defines for compiled thorns in the code. *\/\n\n";
+-  $header3 = "\/* Defines for thorn this file is part of *\/\n\n";
+ 
++  my @thorns = keys %thorns;
++
+   $nthorns = 0;
+-  foreach $thorn (sort keys %thorns)
++  foreach $thorn (sort @thorns)
+   {
+     # Only place package_name/thorn_name in the file.
+     $thorns{$thorn} =~ m:.*/(.*)/(.*):;
++    my ($arr,$th) = ($1,$2);
+ 
+-    $header3 .= "#ifdef THORN_IS_$thorn\n" .
+-                "#define CCTK_THORN $2\n" .
+-                "#define CCTK_THORNSTRING \"$2\"\n" .
+-                "#define CCTK_ARRANGEMENT $1\n" .
+-                "#define CCTK_ARRANGEMENTSTRING \"$1\"\n" .
+-                "#endif\n\n";
++    push @header3, {thorn => $thorn, body=>
++                "\/* Defines for thorn this file is part of *\/\n\n".
++                "#ifndef DEFINE_THIS_THORN_H\n".
++                "#define DEFINE_THIS_THORN_H 1\n".
++                "#define THORN_IS_$thorn 1\n".
++                "#define CCTK_THORN $th\n" .
++                "#define CCTK_THORNSTRING \"$th\"\n" .
++                "#define CCTK_ARRANGEMENT $arr\n" .
++                "#define CCTK_ARRANGEMENTSTRING \"$arr\"\n".
++                "#endif\n\n"};
+ 
+     # Ignore the main sources for the other headers - they may confuse
+     next if ($thorn eq 'Cactus');
+@@ -515,8 +525,9 @@
+ 
+   $header1 .= "\"\"};\n\n";
+   $header1 .= "static int const nthorns = $nthorns;\n\n";
++  push @header3, {thorn=>"CactusBindings", body=>"#define THORN_IS_CactusBindings\n\n"};
+ 
+-  return ($header1, $header2, $header3);
++  return ($header1, $header2, \@header3);
+ }
+ 
+ 
+Index: lib/sbin/CreateParameterBindings.pl
+===================================================================
+--- lib/sbin/CreateParameterBindings.pl	(revision 4831)
++++ lib/sbin/CreateParameterBindings.pl	(working copy)
+@@ -154,13 +154,14 @@
+   foreach $thorn (split(' ',$rhinterface_db->{'THORNS'}))
+   {
+     $dataout = &CreateFortranThornParameterBindings($thorn, $rhparameter_db, $rhinterface_db);
+-    &WriteFile("include/${thorn}_FParameters.h",\$dataout);
++    mkdir("include/$thorn");
++    &WriteFile("include/${thorn}/FParameters.h",\$dataout);
+ 
+     $implementation = $rhinterface_db->{"\U$thorn\E IMPLEMENTS"};
+ 
+     @data = ();
+     push(@data, '/*@@');
+-    push(@data, "   \@header  ${thorn}_CParameters.h");
++    push(@data, "   \@header  ${thorn}/CParameters.h");
+     push(@data, '   @author  Automatically generated by CreateParameterBindings.pl');
+     push(@data, '   @desc');
+     push(@data, "            Declares parameters of thorn $thorn");
+@@ -172,6 +173,7 @@
+     push(@data, "#ifndef _\U$thorn\E_PARAMETERS_H_");
+     push(@data, "#define _\U$thorn\E_PARAMETERS_H_ 1");
+     push(@data, '');
++    push(@data, '#include "CParameterStructNames.h"');
+ 
+     if($header_files{'GLOBAL'})
+     {
+@@ -231,7 +233,7 @@
+     push(@data, "\n");  # workaround for perl 5.004_04 to add a trailing newline
+ 
+     $dataout = join ("\n", @data);
+-    &WriteFile("include/${thorn}_CParameters.h",\$dataout);
++    &WriteFile("include/${thorn}/CParameters.h",\$dataout);
+   }
+ 
+ # Write this one to a temporary file and read it back in
+@@ -253,48 +255,24 @@
+ 
+   &WriteFile('include/CParameterStructNames.h',\$dataout);
+ 
+-
+-  @data = ();
+-  push(@data, '#include "CParameterStructNames.h"');
+-  push(@data, '');
+   foreach $thorn (split(' ',$rhinterface_db->{'THORNS'}))
+   {
+-    push(@data, "#ifdef THORN\_IS\_$thorn");
+-    push(@data, "#include \"${thorn}_CParameters.h\"");
+-    push(@data, '#endif');
++    @data = ();
++    push(@data, '/* get the CCTK datatype definitions */');
++    push(@data, '#include "cctk_Types.h"');
+     push(@data, '');
+-  }
+-  push(@data, "\n");  # workaround for perl 5.004_04 to add a trailing newline
+-  $dataout = join ("\n", @data);
+-  &WriteFile('include/CParameters.h',\$dataout);
+-
+-  @data = ();
+-  foreach $thorn (split(' ',$rhinterface_db->{'THORNS'}))
+-  {
+-    push(@data, "#ifdef THORN\_IS\_$thorn");
+-    push(@data, "#include \"${thorn}_FParameters.h\"");
++    push(@data, '#ifdef CCODE');
++    push(@data, "#include \"${thorn}/CParameters.h\"");
++    push(@data, '#elif FCODE');
++    push(@data, "#include \"${thorn}/FParameters.h\"");
+     push(@data, '#endif');
+-    push(@data, '');
++    push(@data, "\n");   # workaround for perl 5.004_04 to add a trailing newline
++
++    $dataout = join ("\n", @data);
++    &WriteFile("include/${thorn}/cctk_Parameters.h",\$dataout);
+   }
+-  push(@data, "\n");  # workaround for perl 5.004_04 to add a trailing newline
+-  $dataout = join ("\n", @data);
+-  &WriteFile('include/FParameters.h',\$dataout);
+ 
+-  @data = ();
+-  push(@data, '/* get the CCTK datatype definitions */');
+-  push(@data, '#include "cctk_Types.h"');
+-  push(@data, '');
+-  push(@data, '#ifdef CCODE');
+-  push(@data, '#include "CParameters.h"');
+-  push(@data, '#elif FCODE');
+-  push(@data, '#include "FParameters.h"');
+-  push(@data, '#endif');
+-  push(@data, "\n");   # workaround for perl 5.004_04 to add a trailing newline
+ 
+-  $dataout = join ("\n", @data);
+-  &WriteFile('include/cctk_Parameters.h',\$dataout);
+-
+-
+   chdir $start_dir;
+ }
+ 
+Index: lib/sbin/CreateImplementationBindings.pl
+===================================================================
+--- lib/sbin/CreateImplementationBindings.pl	(revision 4831)
++++ lib/sbin/CreateImplementationBindings.pl	(working copy)
+@@ -37,6 +37,21 @@
+   }
+ 
+   @thorns = sort split(' ', $rhinterface_db->{'THORNS'});
++  if(! -d 'include')
++  {
++    mkdir('include', 0755) || die 'Unable to create include directory';
++  }
++  if(! -d 'include/CactusBindings')
++  {
++    mkdir('include/CactusBindings', 0755) || die 'Unable to create include/CactusBindings directory';
++  }
++  my $thorn;
++  foreach $thorn (@thorns) {
++    if(! -d "include/$thorns") {
++      mkdir("include/$thorn",0755) || die "Unable to create include/$thorn directory";
++    }
++  }
++
+   @data = map { "void CCTKi_BindingsThorn_$_(void);" } @thorns;
+   push(@data, '');
+ 
+Index: lib/sbin/GridFuncStuff.pl
+===================================================================
+--- lib/sbin/GridFuncStuff.pl	(revision 4831)
++++ lib/sbin/GridFuncStuff.pl	(working copy)
+@@ -43,92 +43,122 @@
+     WriteFile("include/$thorn\_Arguments.h",\$dataout);
+   }
+ 
+-  @data = ();
+-  push(@data, '/*@@');
+-  push(@data, '   @header  cctk_Arguments.h');
+-  push(@data, '   @author  Automatically generated by GridFuncStuff.pl');
+-  push(@data, '   @desc');
+-  push(@data, '            Defines the CCTK_ARGUMENTS macro for all thorns');
+-  push(@data, '   @enddesc');
+-  push(@data, ' @@*/');
+-  push(@data, '');
+-  push(@data, '');
++  my @thorns = split(" ",$rhinterface_db->{"THORNS"});
++  foreach my $thorn (@thorns)
++  {
++    @data = ();
++    push(@data, "#ifndef CCTK_ARGUMENTS_H_");
++    push(@data, "#define CCTK_ARGUMENTS_H_ 1");
++    push(@data, '/*@@');
++    push(@data, '   @header  cctk_Arguments.h');
++    push(@data, '   @author  Automatically generated by GridFuncStuff.pl');
++    push(@data, '   @desc');
++    push(@data, '            Defines the CCTK_ARGUMENTS macro for all thorns');
++    push(@data, '   @enddesc');
++    push(@data, ' @@*/');
++    push(@data, '');
++    push(@data, '');
++    push(@data, "#include \"${thorn}_Arguments.h\"");
+ 
+-  push(@data, '/* get the CCTK datatype definitions */');
+-  push(@data, '#include "cctk_Types.h"');
+-  push(@data, '');
+-  push(@data, '#ifdef CCODE');
++    push(@data, '/* get the CCTK datatype definitions */');
++    push(@data, '#include "cctk_Types.h"');
++    push(@data, '');
++    push(@data, '#ifdef CCODE');
+ 
+-  # Deprecated in 4.0 beta 17
+-  push(@data, '/* Older configurations do not define CCTK_RESTRICT.');
+-  push(@data, ' * Remove this section after 4.0 beta 16 has been released');
+-  push(@data, ' */');
++    # Deprecated in 4.0 beta 17
++    push(@data, '/* Older configurations do not define CCTK_RESTRICT.');
++    push(@data, ' * Remove this section after 4.0 beta 16 has been released');
++    push(@data, ' */');
+ 
+-  push(@data, '#ifndef CCTK_RESTRICT');
+-  push(@data,   '#ifdef __cplusplus');
+-  push(@data,     '#ifdef CCTK_CXX_RESTRICT');
+-  push(@data,       '#define CCTK_RESTRICT CCTK_CXX_RESTRICT');
+-  push(@data,     '#else');
+-  push(@data,       '#define CCTK_RESTRICT');
+-  push(@data,     '#endif');
+-  push(@data,   '#else');
+-  push(@data,     '#ifdef CCTK_C_RESTRICT');
+-  push(@data,       '#define CCTK_RESTRICT CCTK_C_RESTRICT');
+-  push(@data,     '#else');
+-  push(@data,       '#define CCTK_RESTRICT');
+-  push(@data,     '#endif');
+-  push(@data,   '#endif');
+-  push(@data, '#endif');
++    push(@data, '#ifndef CCTK_RESTRICT');
++    push(@data,   '#ifdef __cplusplus');
++    push(@data,     '#ifdef CCTK_CXX_RESTRICT');
++    push(@data,       '#define CCTK_RESTRICT CCTK_CXX_RESTRICT');
++    push(@data,     '#else');
++    push(@data,       '#define CCTK_RESTRICT');
++    push(@data,     '#endif');
++    push(@data,   '#else');
++    push(@data,     '#ifdef CCTK_C_RESTRICT');
++    push(@data,       '#define CCTK_RESTRICT CCTK_C_RESTRICT');
++    push(@data,     '#else');
++    push(@data,       '#define CCTK_RESTRICT');
++    push(@data,     '#endif');
++    push(@data,   '#endif');
++    push(@data, '#endif');
+ 
+-  # End deprecated section
++    # End deprecated section
+ 
+-  push(@data, '/* prototype for CCTKi_VarDataPtr() goes here');
+-  push(@data, '   because we don\'t want to include another CCTK header file */');
+-  push(@data, '#include "cGH.h"');
+-  push(@data, '#ifdef __cplusplus');
+-  push(@data, 'extern "C"');
+-  push(@data, '#endif');
+-  push(@data, 'void *CCTKi_VarDataPtr(const cGH *GH, int timelevel,');
+-  push(@data, '                       const char *implementation, const char *varname);');
+-  push(@data, '');
++    push(@data, '/* prototype for CCTKi_VarDataPtr() goes here');
++    push(@data, '   because we don\'t want to include another CCTK header file */');
++    push(@data, '#include "cGH.h"');
++    push(@data, '#ifdef __cplusplus');
++    push(@data, 'extern "C"');
++    push(@data, '#endif');
++    push(@data, 'void *CCTKi_VarDataPtr(const cGH *GH, int timelevel,');
++    push(@data, '                       const char *implementation, const char *varname);');
++    push(@data, '');
+ 
+-  push(@data, '#define PASS_GROUPSIZE(group, dir)  CCTKGROUPNUM_##group >= 0 ? \\');
+-  push(@data, '                                    CCTK_ArrayGroupSizeI(GH, dir, CCTKGROUPNUM_##group) : &_cctk_zero');
+-  push(@data, '');
+-  push(@data, '#define PASS_GROUPLEN(thorn, group) CCTKGROUPNUM_##group >= 0 ? \\');
+-  push(@data, '                                    CCTKi_GroupLengthAsPointer(#thorn "::" #group) : &_cctk_zero');
+-  push(@data, '');
+-  push(@data, '#define PASS_REFERENCE(var, level)  CCTKARGNUM_##var >= 0 ? \\');
+-  push(@data, '                                    GH->data[CCTKARGNUM_##var][level] : 0');
+-  push(@data, '');
++    push(@data, '#define PASS_GROUPSIZE(group, dir)  CCTKGROUPNUM_##group >= 0 ? \\');
++    push(@data, '                                    CCTK_ArrayGroupSizeI(GH, dir, CCTKGROUPNUM_##group) : &_cctk_zero');
++    push(@data, '');
++    push(@data, '#define PASS_GROUPLEN(thorn, group) CCTKGROUPNUM_##group >= 0 ? \\');
++    push(@data, '                                    CCTKi_GroupLengthAsPointer(#thorn "::" #group) : &_cctk_zero');
++    push(@data, '');
++    push(@data, '#define PASS_REFERENCE(var, level)  CCTKARGNUM_##var >= 0 ? \\');
++    push(@data, '                                    GH->data[CCTKARGNUM_##var][level] : 0');
++    push(@data, '');
+ 
+-  push(@data, '#define CCTK_ARGUMENTS CCTK_CARGUMENTS');
+-  push(@data, '#define _CCTK_ARGUMENTS _CCTK_CARGUMENTS');
+-  push(@data, '#define DECLARE_CCTK_ARGUMENTS DECLARE_CCTK_CARGUMENTS');
+-  push(@data, '#endif');
+-  push(@data, '');
+-  push(@data, '#ifdef FCODE');
+-  push(@data, '#define CCTK_ARGUMENTS CCTK_FARGUMENTS');
+-  push(@data, '#define _CCTK_ARGUMENTS _CCTK_FARGUMENTS');
+-  push(@data, '#define DECLARE_CCTK_ARGUMENTS DECLARE_CCTK_FARGUMENTS');
+-  push(@data, '#endif');
++    push(@data, "#define CCTK_ARGUMENTS \U${thorn}_CARGUMENTS");
++    push(@data, '#define _CCTK_ARGUMENTS _CCTK_CARGUMENTS');
++    push(@data, "#define DECLARE_CCTK_ARGUMENTS DECLARE_\U${thorn}_CARGUMENTS");
++    push(@data, '#endif');
++    push(@data, '');
++    push(@data, '#ifdef FCODE');
++    push(@data, "#define CCTK_ARGUMENTS \U${thorn}_FARGUMENTS");
++    push(@data, '#define _CCTK_ARGUMENTS _CCTK_FARGUMENTS');
++    push(@data, "#define DECLARE_CCTK_ARGUMENTS DECLARE_\U${thorn}_FARGUMENTS");
++    push(@data, '#endif');
+ 
+-  foreach my $thorn (split(" ",$rhinterface_db->{"THORNS"}))
+-  {
+     push(@data, '');
+-    push(@data, "#ifdef THORN_IS_$thorn");
+-    push(@data, "#include \"${thorn}_Arguments.h\"");
+     push(@data, "#define CCTK_FARGUMENTS \U$thorn" . '_FARGUMENTS');
+     push(@data, "#define DECLARE_CCTK_FARGUMENTS DECLARE_\U$thorn" . '_FARGUMENTS');
+     push(@data, "#define CCTK_CARGUMENTS \U$thorn" . '_CARGUMENTS');
+     push(@data, "#define DECLARE_CCTK_CARGUMENTS DECLARE_\U$thorn" . '_CARGUMENTS');
+-    push(@data, '#endif');
++    push(@data, "#endif");
++    push(@data, "\n");  # workaround for perl 5.004_04 to add a trailing newline
++
++    my $dataout = join ("\n", @data);
++    unless(-d "include/$thorn") {
++        mkdir("include/$thorn");
++    }
++    WriteFile("include/$thorn/cctk_Arguments.h",\$dataout);
++    if($thorn eq "Cactus") {
++      unless(-d "include/CactusBindings") {
++          mkdir("include/CactusBindings");
++      }
++      WriteFile("include/CactusBindings/cctk_Arguments.h",\$dataout);
++    }
++    @data = ();
++    # alternate
++    push @data, "#ifndef _CCTK_H_";
++    push @data, "#define _CCTK_H_ 1";
++    push @data, "#include \"${thorn}/definethisthorn.h\"";
++    push @data, "";
++    push @data, "/* Include prototypes for scheduled functions */";
++    push @data, "#include \"${thorn}/cctk_ScheduleFunctions.h\"";
++    push @data, "#include \"cctk_core.h\"";
++    push @data, "#endif";
++    push @data, "";
++    $dataout = join ("\n", @data);
++    WriteFile("include/$thorn/cctk.h",\$dataout);
++    if($thorn eq "Cactus") {
++      unless(-d "include/CactusBindings") {
++          mkdir("include/CactusBindings");
++      }
++      WriteFile("include/CactusBindings/cctk.h",\$dataout);
++    }
+   }
+-  push(@data, "\n");  # workaround for perl 5.004_04 to add a trailing newline
+ 
+-  my $dataout = join ("\n", @data);
+-  WriteFile("include/cctk_Arguments.h",\$dataout);
+-
+   if(! -d "Variables")
+   {
+     mkdir("Variables", 0755) || die "Unable to create Variables directory";
+@@ -189,16 +219,17 @@
+     push(@data, '');
+     push(@data, '');
+ 
+-    push(@data, "#define THORN_IS_$thorn 1");
++    #push(@data, "#define THORN_IS_$thorn 1");
+     push(@data, '');
+     push(@data, '#include <stddef.h>');
+     push(@data, '');
+-    push(@data, '#include "cctk.h"');
+-    push(@data, '#include "cctk_Arguments.h"');
+-    push(@data, '#include "cctk_Parameter.h"');
++    push(@data, "#include \"$thorn/cctk.h\"");
++    push(@data, "#include \"$thorn/cctk_Arguments.h\"");
++    push(@data, "#include \"cctk_Parameter.h\"");
+     push(@data, '#include "cctk_WarnLevel.h"');
+     push(@data, '#include "cctki_Groups.h"');
+     push(@data, '#include "cctki_FortranWrappers.h"');
++    push(@data, "#include \"$thorn/cctk_ScheduleFunctions.h\"");
+     push(@data, '');
+ 
+     push(@data, "int CactusBindingsVariables_${thorn}_Initialise(void);");
+@@ -377,20 +408,20 @@
+           $sep = ',';
+           if ($gtype ne 'GF')
+           {
+-            if($block eq 'PRIVATE')
+-            {
++          if($block eq 'PRIVATE')
++          {
+ # FIXME: quick hack to shorten argument names
+ #            $arguments{"cctkv$dim$group"} = "(STORAGESIZE($thorn\::$group, $dim))";
+-              $arguments{"X$dim$group"} = "(STORAGESIZE($thorn\::$group, $dim))";
+-            }
+-            else
+-            {
++            $arguments{"X$dim$group"} = "(STORAGESIZE($thorn\::$group, $dim))";
++          }
++          else
++          {
+ # FIXME: quick hack to shorten argument names
+ #            $arguments{"cctkv$dim$group"} = "(STORAGESIZE($imp\::$group, $dim))";
+-              $arguments{"X$dim$group"} = "(STORAGESIZE($imp\::$group, $dim))";
+-            }
++            $arguments{"X$dim$group"} = "(STORAGESIZE($imp\::$group, $dim))";
+           }
+         }
++        }
+         if(defined($vararraysize) && $compactgroup == 0)
+         {
+           $type .= "$sep${group}_length";
+Index: lib/sbin/CreateFunctionBindings.pl
+===================================================================
+--- lib/sbin/CreateFunctionBindings.pl	(revision 4831)
++++ lib/sbin/CreateFunctionBindings.pl	(working copy)
+@@ -282,7 +282,6 @@
+ ###
+ 
+   $dataout = &ThornMasterIncludes($function_db);
+-  &WriteFile('include/cctk_Functions.h',\$dataout);
+ 
+ ###
+ # Create the prototype header file for all thorns that USE a
+@@ -1757,50 +1756,52 @@
+   use strict;
+ 
+   my %function_db = %{$_[0]};
++  my @thorns = keys %function_db;
+ 
+-  my(@data) = ();
++  my $thorn;
++  foreach $thorn (sort @thorns)
++  {
++    my(@data) = ();
+ 
+-  # Header Data
+-  push(@data, '/*@@');
+-  push(@data, '   @header  cctk_Functions.h');
+-  push(@data, '   @author  Automatically generated by CreateFunctionBindings.pl');
+-  push(@data, '   @desc');
+-  push(@data, '            Prototypes for overloaded functions used by all thorns');
+-  push(@data, '   @enddesc');
+-  push(@data, '  @@*/');
+-  push(@data, '');
+-  push(@data, '');
++    # Header Data
++    push(@data, '/*@@');
++    push(@data, '   @header  $thorn/cctk_Functions.h');
++    push(@data, '   @author  Automatically generated by CreateFunctionBindings.pl');
++    push(@data, '   @desc');
++    push(@data, '            Prototypes for overloaded functions used by all thorns');
++    push(@data, '   @enddesc');
++    push(@data, '  @@*/');
++    push(@data, '');
++    push(@data, '');
+ 
+-  push(@data, '#ifndef _CCTK_FUNCTIONALIASES_H_');
+-  push(@data, '#define _CCTK_FUNCTIONALIASES_H_ 1');
+-  push(@data, '');
++    push(@data, '#ifndef _CCTK_FUNCTIONALIASES_H_');
++    push(@data, '#define _CCTK_FUNCTIONALIASES_H_ 1');
++    push(@data, '');
+ 
+-  push(@data, '#ifdef CCODE');
+-  push(@data, '#ifdef __cplusplus');
+-  push(@data, 'extern "C" {');
+-  push(@data, '#endif');
+-  push(@data, '  CCTK_INT CCTK_IsFunctionAliased(const char *function);');
+-  push(@data, '#ifdef __cplusplus');
+-  push(@data, '}');
+-  push(@data, '#endif');
+-  push(@data, '#endif');
+-  push(@data, '');
++    push(@data, '#ifdef CCODE');
++    push(@data, '#ifdef __cplusplus');
++    push(@data, 'extern "C" {');
++    push(@data, '#endif');
++    push(@data, '  CCTK_INT CCTK_IsFunctionAliased(const char *function);');
++    push(@data, '#ifdef __cplusplus');
++    push(@data, '}');
++    push(@data, '#endif');
++    push(@data, '#endif');
++    push(@data, '');
+ 
+-  my $thorn;
+-
+-  foreach $thorn (sort keys %function_db)
+-  {
+-    push(@data, "#ifdef THORN_IS_$thorn");
+     push(@data, "#include \"${thorn}_Prototypes.h\"");
+     push(@data, "#define DECLARE_CCTK_FUNCTIONS DECLARE_\U$thorn\E_FUNCTIONS");
+-    push(@data, '#endif');
+-    push(@data, '');
+-  }
+ 
+-  push(@data, '#endif  /* _CCTK_FUNCTIONALIASES_H_ */');
+-  push(@data, "\n");   # workaround for perl 5.004_04 to add a trailing newline
++    push(@data, '#endif  /* _CCTK_FUNCTIONALIASES_H_ */');
++    push(@data, "\n");   # workaround for perl 5.004_04 to add a trailing newline
+ 
+-  return join ("\n",@data);
++    my $dataout = join ("\n",@data);
++    mkdir("include/${thorn}");
++    &WriteFile("include/${thorn}/cctk_Functions.h",\$dataout);
++    if($thorn eq "Cactus") {
++      &WriteFile("include/CactusBindings/cctk_Functions.h",\$dataout);
++    }
++  }
+ }
+ 
+ #/*@@
+Index: lib/sbin/CreateScheduleBindings.pl
+===================================================================
+--- lib/sbin/CreateScheduleBindings.pl	(revision 4831)
++++ lib/sbin/CreateScheduleBindings.pl	(working copy)
+@@ -53,21 +53,12 @@
+     $file_list .= " Schedule$thorn.c";
+ 
+     $rsbuffer = &ScheduleCreateInterfaceFile($thorn, $rhinterface_db, $rhschedule_db);
+-    &WriteFile("../include/${thorn}_Schedule.h",\$rsbuffer);
++    &WriteFile("../include/${thorn}/cctk_ScheduleFunctions.h",\$rsbuffer);
++    if($thorn eq "Cactus") {
++        &WriteFile("../include/CactusBindings/cctk_ScheduleFunctions.h",\$rsbuffer);
++    }
+   }
+ 
+-  @data = ();
+-  foreach $thorn (split(' ',$rhinterface_db->{'THORNS'}))
+-  {
+-    push(@data, "#ifdef THORN\_IS\_$thorn");
+-    push(@data, "#include \"${thorn}_Schedule.h\"");
+-    push(@data, '#endif');
+-    push(@data, '');
+-  }
+-  push(@data, "\n");  # workaround for perl 5.004_04 to add a trailing newline
+-  $dataout = join ("\n", @data);
+-  &WriteFile('../include/cctk_ScheduleFunctions.h',\$dataout);
+-
+   $rsbuffer = &ScheduleCreateBindings($rhinterface_db, $rhschedule_db);
+   &WriteFile("BindingsSchedule.c", \$rsbuffer);
+   $file_list .= " BindingsSchedule.c";
+@@ -115,7 +106,7 @@
+   # Process each schedule block
+   
+   my @data = ();
+-  push (@data, '#include "cctk_Arguments.h"');
++  push (@data, "#include \"$thorn/cctk_Arguments.h\"");
+   
+   for (my $block = 0;
+        $block < $rhschedule_db->{"\U$thorn\E N_BLOCKS"};
+@@ -292,11 +283,13 @@
+   push(@data, '   @enddesc');
+   push(@data, '@@*/');
+   push(@data, '');
+-  push(@data, "#define THORN_IS_$thorn");
++  #push(@data, "#define THORN_IS_$thorn");
++  #push(@data, "#define CCTK_THORNSTRING \"$thorn\"");
+   push(@data, '');
+-  push(@data, '#include "cctk.h"');
+-  push(@data, '#include "cctk_Parameters.h"');
++  push(@data, "#include \"$thorn/cctk.h\"");
++  push(@data, "#include \"$thorn/CParameters.h\"");
+   push(@data, '#include "cctki_ScheduleBindings.h"');
++  push(@data, "#include \"$thorn/cctk_ScheduleFunctions.h\"");
+   push(@data, '');
+   #push(@data, '/* prototypes for schedule bindings functions to be registered */');
+   #push(@data, '/* Note that this is a cheat, we just need a function pointer. */');
+Index: lib/make/make.thornlib
+===================================================================
+--- lib/make/make.thornlib	(revision 4831)
++++ lib/make/make.thornlib	(working copy)
+@@ -35,13 +35,11 @@
+ endif
+ 
+ # Add appropriate include lines
+-INC_DIRS += $(SYS_INC_DIRS) $(SRCDIR) $(SRCDIR)/include $(CONFIG) $(BINDINGS_DIR)/include $(CCTK_HOME)/src/include $(CCTK_HOME)/arrangements $(BINDINGS_DIR)/Configuration/Thorns
++INC_DIRS += $(SYS_INC_DIRS) $(SRCDIR) $(SRCDIR)/include $(CONFIG) $(BINDINGS_DIR)/include $(CCTK_HOME)/src/include $(CCTK_HOME)/arrangements $(BINDINGS_DIR)/Configuration/Thorns $(BINDINGS_DIR)/include/$(THORN)
+ 
+ # Allow subdirectories to inherit these include directories
+ export INC_DIRS
+ 
+-EXTRA_DEFINES += THORN_IS_$(THORN) 
+-
+ # Define some make variables
+ PRE_WRAPPER = make.pre
+ POST_WRAPPER = make.post
+Index: lib/make/make.config.defn.in
+===================================================================
+--- lib/make/make.config.defn.in	(revision 4831)
++++ lib/make/make.config.defn.in	(working copy)
+@@ -179,7 +179,8 @@
+ export USE_RANLIB = @USE_RANLIB@
+ 
+ # Exclude some files from the dependency lists
+-export DEP_EXCLUDE_FILES = cctk_Functions\.h|CParameterStructNames\.h|cctk_Arguments\.h|cctk_ScheduleFunctions\.h|definethisthorn\.h|FParameters.h|CParameters\.h|cctk_Capabilities\.h
++#export DEP_EXCLUDE_FILES = cctk_Functions\.h|CParameterStructNames\.h|cctk_Arguments\.h|cctk_ScheduleFunctions\.h|definethisthorn\.h|FParameters.h|CParameters\.h|cctk_Capabilities\.h
++#export DEP_EXCLUDE_FILES =
+ 
+ # Command used to get the working directory
+ export GET_WD = @GET_WD@
+Index: lib/make/make.subdir
+===================================================================
+--- lib/make/make.subdir	(revision 4831)
++++ lib/make/make.subdir	(working copy)
+@@ -25,10 +25,8 @@
+ endif
+ 
+ # Add appropriate include lines
+-INC_DIRS += $(SRCDIR) $(SRCDIR)/include 
++INC_DIRS += $(SRCDIR) $(SRCDIR)/include  $(BINDINGS_DIR)/include/$(THORN)
+ 
+-EXTRA_DEFINES += THORN_IS_$(THORN) 
+-
+ # Include the subdirectory's local include data
+ -include $(SRCDIR)/make.code.defn
+ 
+Index: lib/make/make.config.rules.in
+===================================================================
+--- lib/make/make.config.rules.in	(revision 4831)
++++ lib/make/make.config.rules.in	(working copy)
+@@ -62,12 +62,12 @@
+ # Define how to do dependencies
+ ifeq ($(strip $(PERL_BACKUP_NECESSARY)),)
+ define DEPENDENCY_FIXER
+-	$(PERL) -pi -e "s,([^:]*),$(basename $@).o $(basename $@).d, if(m/: /);\
++	#$(PERL) -pi -e "s,([^:]*),$(basename $@).o $(basename $@).d, if(m/: /);\
+ 	 s:\s+\S*[/\\\]($(DEP_EXCLUDE_FILES))\b::g" $@
+ endef
+ else
+ define DEPENDENCY_FIXER
+-	$(PERL) -pi.bak -e "s,([^:]*),$(basename $@).o $(basename $@).d, if(m/: /);\
++	#$(PERL) -pi.bak -e "s,([^:]*),$(basename $@).o $(basename $@).d, if(m/: /);\
+ 	 s:\s+\S*[/\\\]($(DEP_EXCLUDE_FILES))\b::g" $@
+ 	rm $@.bak
+ endef

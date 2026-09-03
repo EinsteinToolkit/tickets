@@ -1,0 +1,69 @@
+From: Erik Schnetter <eschnetter@perimeterinstitute.ca>
+Date: 2012-05-05
+Subject: Write Formaline tarballs in the background
+
+Write the Formaline tarballs in the background (using fork()) to
+elminiate the wait.
+
+
+Index: arrangements/CactusUtils/Formaline/src/output_source.c
+===================================================================
+--- arrangements/CactusUtils/Formaline/src/output_source.c	(revision 218)
++++ arrangements/CactusUtils/Formaline/src/output_source.c	(working copy)
+@@ -7,8 +7,12 @@
+ #include "cctk_Arguments.h"
+ #include "cctk_Parameters.h"
+ 
++#ifdef HAVE_UNISTD_H
++#  include <unistd.h>
++#endif
+ 
+ 
++
+ struct datainfo
+ {
+   unsigned char const * data;
+@@ -34,16 +38,28 @@
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+ 
++#ifdef HAVE_UNISTD_H
++  pid_t pid;
++#endif
+   size_t myproc, nprocs, nioprocs;
+   char filename [10000];
+   FILE * file;
+   size_t count;
+   struct datainfo const * datainfo;
+-
++  
+   myproc = CCTK_MyProc (cctkGH);
+   nprocs = CCTK_nProcs (cctkGH);
+   nioprocs = nprocs < 10 ? nprocs : 10;
+-
++  
++#ifdef HAVE_UNISTD_H
++  /* Fork after the MPI calls above, just to be safe */
++  /* Maybe we should use pthread_create instead of fork? */
++  pid = fork ();
++  /* Return the parent, continue the child. If there was an error, we
++     also continue. */
++  if (pid > 0) return;
++#endif
++  
+   { CCTK_PRINTSEPARATOR }
+   CCTK_VInfo (CCTK_THORNSTRING,
+               "Writing tarballs with the Cactus sources into the directory \"%s/%s\"",
+@@ -109,4 +125,12 @@
+              );
+     fclose (file);
+   }
++  
++#ifdef HAVE_UNISTD_H
++  if (pid == 0) {
++    /* Exit the child. We exit secretly, so that the parent's files
++       and MPI communicators are not affected. */
++    _exit(0);
++  }
++#endif
+ }

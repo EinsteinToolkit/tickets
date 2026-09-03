@@ -1,0 +1,48 @@
+From feabb129fa0713ad5ef71e5efc265947217918e9 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Wed, 4 Dec 2013 14:56:06 +0100
+Subject: [PATCH 3/3] stampede.ini: Use mvapich by default instead of Intel MPI
+
+See https://trac.einsteintoolkit.org/ticket/1476.
+---
+ mdb/machines/stampede.ini | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/mdb/machines/stampede.ini b/mdb/machines/stampede.ini
+index 78f4f83..aa07d14 100644
+--- a/mdb/machines/stampede.ini
++++ b/mdb/machines/stampede.ini
+@@ -17,7 +17,7 @@ status          = experimental
+ # Access to this machine
+ hostname        = stampede.tacc.utexas.edu
+ rsynccmd        = /home1/00507/eschnett/rsync-3.0.9/bin/rsync
+-envsetup        = module load intel/13.1.1.163 && module unload mvapich2 && module load impi/4.1.1.036 && module load papi
++envsetup        = module load intel/13.1.1.163 && module load papi
+ aliaspattern    = ^login[1234](\.stampede\.tacc\.utexas\.edu)?$
+ 
+ # Source tree management
+@@ -50,9 +50,9 @@ enabled-thorns = <<EOT
+ #        McLachlan/ML_BSSN_CL_Helper
+ #        McLachlan/ML_WaveToy_CL
+ EOT
+-optionlist      = stampede-impi.cfg
++optionlist      = stampede-mvapich.cfg
+ submitscript    = stampede.sub
+-runscript       = stampede-impi.run
++runscript       = stampede-mvapich.run
+ make            = make -j8
+ 
+ # Simulation management
+@@ -101,3 +101,9 @@ holdingpattern  = ' S '
+ #stdout          = cat @SIMULATION_NAME@.out
+ #stderr          = cat @SIMULATION_NAME@.err
+ #stdout-follow   = tail -n 100 -f @SIMULATION_NAME@.out @SIMULATION_NAME@.err
++
++# Intel MPI: Set the following in the [stampede] section of
++# defs.local.ini if you want to use Intel MPI.
++#
++# optionlist      = stampede-impi.cfg
++# runscript       = stampede-impi.run
+-- 
+1.8.4.3
+

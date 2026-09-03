@@ -1,0 +1,30 @@
+From c0d6fb3ea533d2040e8ef87dd79c8b46677768c9 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Sat, 3 Aug 2013 23:34:51 -0700
+Subject: [PATCH 05/19] GRHydro: explicitly recompute SqrtDetg after RECOVERY
+
+this is usually not required, unless
+MoL_run_MoL_PostStep_in_PostRecoverVariables is set to false.
+---
+ schedule.ccl |    5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/schedule.ccl b/schedule.ccl
+index 3e53386..5361c4b 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -1084,6 +1084,11 @@ schedule GRHydro_SqrtSpatialDeterminant IN HydroBase_Con2Prim BEFORE Con2Prim IF
+   LANG: Fortran
+ } "Calculate sdetg"
+ 
++schedule GRHydro_SqrtSpatialDeterminant AT CCTK_POST_RECOVER_VARIABLES
++{
++  LANG: Fortran
++} "Calculate sdetg"
++
+ 
+ #debug
+ ###schedule GRHydro_Debug IN HydroBase_PostStep
+-- 
+1.7.10.4
+

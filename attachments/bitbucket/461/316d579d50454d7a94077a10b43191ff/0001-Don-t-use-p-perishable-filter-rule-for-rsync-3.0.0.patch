@@ -1,0 +1,92 @@
+From 936a4f06bdc5506bd66f80cc4394ae12b8fb6940 Mon Sep 17 00:00:00 2001
+From: Barry Wardell <barry.wardell@gmail.com>
+Date: Wed, 29 Jun 2011 02:42:00 +0200
+Subject: [PATCH] Don't use p (perishable) filter rule for rsync < 3.0.0.
+
+It is not supported in previous versions and causes an error if it is included.
+---
+ etc/filter.prersync3.rules |   18 ++++++++++++++++++
+ lib/sim-sync.py            |   21 ++++++++++++++++++---
+ 2 files changed, 36 insertions(+), 3 deletions(-)
+ create mode 100644 etc/filter.prersync3.rules
+
+diff --git a/etc/filter.prersync3.rules b/etc/filter.prersync3.rules
+new file mode 100644
+index 0000000..6a6a761
+--- /dev/null
++++ b/etc/filter.prersync3.rules
+@@ -0,0 +1,18 @@
++# This file contains the list of files to include/exclude.  See "man
++# rsync" for details.  The first matching pattern is used, whether it
++# is an include or an exclude.  If no pattern matches, the file is
++# included.
++
++# User specified filters
++: .rsync.rules
++
++# Files to exclude
++-C
++- _darcs
++- .hg
++- .git
++- doxygen
++- .DS_Store
++
++# Compiled simfactory python files
++- *.pyc
+diff --git a/lib/sim-sync.py b/lib/sim-sync.py
+index 8a7cebe..1f4264d 100755
+--- a/lib/sim-sync.py
++++ b/lib/sim-sync.py
+@@ -5,7 +5,7 @@
+ # Louisiana State University 
+ #
+ 
+-import sys, os
++import sys, os, re
+ 
+ optionGroups = ['sim-sync']
+ Purpose = "sync cactus sourcetree to a remote machine"
+@@ -49,6 +49,12 @@ def GetSubbedInfo(machineEntry, keys):
+     
+     return data
+ 
++def RsyncVersion(rsyncInfo):
++    (rsynccmd, rsyncopts) = rsyncInfo
++    versionText = simlib.ExecuteCommand('%s --version' % rsynccmd, True)
++    (major, minor, revision) = re.match('rsync  version (\d).(\d).(\d)', versionText).groups()
++    return (int(major), int(minor), int(revision))
++
+ def CompileCommand(machineName, rsyncInfo, paths):
+   
+     
+@@ -60,7 +66,9 @@ def CompileCommand(machineName, rsyncInfo, paths):
+     DefineDatabase = simsubs.DefineDatabase()
+ 
+     (rsynccmd, rsyncopts) = rsyncInfo
+-    
++
++    rsyncversion = RsyncVersion(rsyncInfo)
++
+     if machineName == localMachineName:
+         fatal("cannot sync to local machine")
+ 
+@@ -130,7 +138,14 @@ def CompileCommand(machineName, rsyncInfo, paths):
+           rsyncfiles.append(tail)
+ 
+     rsyncoptions = ['--archive', '--hard-links', '--sparse', '--verbose', '--progress', '--partial',
+-                    '--delete', '--stats', '--compress', '--filter \'merge simfactory/etc/filter.rules\'']
++                    '--delete', '--stats', '--compress']
++
++    # We need to use a different rules file for pre 3.0.0 versions of rsync
++    if rsyncversion[0] < 3:
++        warning('Old rsync version (%s.%s.%s) in use. Upgrade to at least 3.0.0 for best support.' % rsyncversion)
++        rsyncoptions.append('--filter \'merge simfactory/etc/filter.prersync3.rules\'')
++    else:
++        rsyncoptions.append('--filter \'merge simfactory/etc/filter.rules\'')
+ 
+     fullpath = "%s@%s:%s%s%s" % (machineEntry.user, machineEntry.hostname, sourcebasedir, os.sep, local_suffix)
+     
+-- 
+1.7.5.1
+

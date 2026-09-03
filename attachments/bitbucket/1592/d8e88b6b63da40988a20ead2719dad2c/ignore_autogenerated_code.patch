@@ -1,0 +1,28 @@
+Index: utils/GcovAnalysis.pl
+===================================================================
+--- utils/GcovAnalysis.pl	(revision 760)
++++ utils/GcovAnalysis.pl	(working copy)
+@@ -51,7 +51,7 @@
+             # red mark shows up when displaying the file.
+             my $unused = "$cwd$pre";
+ 
+-            # There are no capitol F's in the config dir
++            # There are no capital F's in the config dir
+             $unused =~ s/\.F$/.f/;
+             $unused =~ s/\.F90$/.f90/;
+             $unused =~ s/\.F77$/.f77/;
+@@ -66,7 +66,13 @@
+             next if($fn eq "..");
+             last if($done);
+             my $full = "$f/$fn";
+-            do_dir($full);
++            # ignore automatically generated code as well as ExternalLibraries
++            unless ($full =~ m'.*/cctk_Bindings$' or 
++                    $full =~ m'.*/bindings$' or
++                    $full =~ m'.*/scratch$' or
++                    $full =~ m'.*/build/CactusBindings$') {
++                do_dir($full);
++            }
+         }
+         closedir($fd);
+     }

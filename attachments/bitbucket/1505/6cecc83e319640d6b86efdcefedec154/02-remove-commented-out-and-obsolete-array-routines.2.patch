@@ -1,0 +1,141 @@
+diff -u MoL-orig/interface.ccl MoL/interface.ccl
+--- MoL-orig/interface.ccl	2013-12-13 10:39:07.660814398 -0800
++++ MoL/interface.ccl	2013-12-13 10:41:32.981967841 -0800
+@@ -3,11 +3,6 @@
+ 
+ implements: MethodOfLines
+ 
+-#INCLUDE HEADER: MoLFunctions.h IN MoLFunctions.h
+-#INCLUDE HEADER: MoL.h IN MoL.h
+-
+-#USES INCLUDE: carpet.h
+-
+ ##################################################
+ ### Functions from NaNChecker that may be used ###
+ ##################################################
+@@ -121,90 +116,6 @@
+ # PROVIDES FUNCTION MoLChangeToNoneComplex WITH MoL_ChangeToNoneComplex \
+ #                   LANGUAGE C
+ 
+-################################################################
+-### Aliased registration and type changing function for real ###
+-### grid arrays of all dimensions.                           ###
+-################################################################
+-
+-# CCTK_INT FUNCTION MoLRegisterEvolvedArray(CCTK_INT IN EvolvedIndex, \
+-#                                           CCTK_INT IN RHSIndex)
+-# CCTK_INT FUNCTION MoLRegisterConstrainedArray(CCTK_INT IN ConstrainedIndex)
+-# CCTK_INT FUNCTION MoLRegisterSaveAndRestoreArray(CCTK_INT IN SandRIndex)
+-# CCTK_INT FUNCTION MoLRegisterEvolvedArrayGroup(CCTK_INT IN EvolvedIndex, \
+-#                                                CCTK_INT IN RHSIndex)
+-# CCTK_INT FUNCTION MoLRegisterConstrainedArrayGroup(CCTK_INT IN \
+-#                                                    ConstrainedIndex)
+-# CCTK_INT FUNCTION MoLRegisterSaveAndRestoreArrayGroup(CCTK_INT IN SandRIndex)
+-# CCTK_INT FUNCTION MoLChangeToEvolvedArray(CCTK_INT IN EvolvedIndex, \
+-#                                           CCTK_INT IN RHSIndex)
+-# CCTK_INT FUNCTION MoLChangeToConstrainedArray(CCTK_INT IN ConstrainedIndex)
+-# CCTK_INT FUNCTION MoLChangeToSaveAndRestoreArray(CCTK_INT IN SandRIndex)
+-# CCTK_INT FUNCTION MoLChangeToNoneArray(CCTK_INT IN RemoveIndex)
+-#
+-# PROVIDES FUNCTION MoLRegisterEvolvedArray WITH MoL_RegisterEvolvedArray \
+-#                   LANGUAGE C
+-# PROVIDES FUNCTION MoLRegisterConstrainedArray WITH \
+-#                   MoL_RegisterConstrainedArray LANGUAGE C
+-# PROVIDES FUNCTION MoLRegisterSaveAndRestoreArray WITH \
+-#                   MoL_RegisterSaveAndRestoreArray LANGUAGE C
+-# PROVIDES FUNCTION MoLRegisterEvolvedArrayGroup WITH \
+-#                   MoL_RegisterEvolvedArrayGroup LANGUAGE C
+-# PROVIDES FUNCTION MoLRegisterConstrainedArrayGroup WITH \
+-#                   MoL_RegisterConstrainedArrayGroup LANGUAGE C
+-# PROVIDES FUNCTION MoLRegisterSaveAndRestoreArrayGroup WITH \
+-#                   MoL_RegisterSaveAndRestoreArrayGroup LANGUAGE C
+-# PROVIDES FUNCTION MoLChangeToEvolvedArray WITH MoL_ChangeToEvolvedArray \
+-#                   LANGUAGE C
+-# PROVIDES FUNCTION MoLChangeToConstrainedArray WITH \
+-#                   MoL_ChangeToConstrainedArray LANGUAGE C
+-# PROVIDES FUNCTION MoLChangeToSaveAndRestoreArray WITH \
+-#                   MoL_ChangeToSaveAndRestoreArray LANGUAGE C
+-# PROVIDES FUNCTION MoLChangeToNoneArray WITH MoL_ChangeToNoneArray LANGUAGE C
+-
+-###################################################################
+-### Aliased registration and type changing function for complex ###
+-### grid arrays of all dimensions.                              ###
+-###################################################################
+-
+-# CCTK_INT FUNCTION MoLRegisterEvolvedComplexArray(CCTK_INT IN EvolvedIndex, \
+-#                                                  CCTK_INT IN RHSIndex)
+-# CCTK_INT FUNCTION MoLRegisterConstrainedComplexArray(CCTK_INT IN \
+-#                                                      ConstrainedIndex)
+-# CCTK_INT FUNCTION MoLRegisterSaveAndRestoreComplexArray(CCTK_INT IN SandRIndex)
+-# CCTK_INT FUNCTION MoLRegisterEvolvedComplexArrayGroup(CCTK_INT IN \
+-#                                                       EvolvedIndex, \
+-#                                                       CCTK_INT IN RHSIndex)
+-# CCTK_INT FUNCTION MoLRegisterConstrainedComplexArrayGroup(CCTK_INT IN \
+-#                                                           ConstrainedIndex)
+-# CCTK_INT FUNCTION MoLRegisterSaveAndRestoreComplexArrayGroup(CCTK_INT IN \
+-#                                                              SandRIndex)
+-# CCTK_INT FUNCTION MoLChangeToEvolvedComplexArray(CCTK_INT IN EvolvedIndex, \
+-#                                                  CCTK_INT IN RHSIndex)
+-# CCTK_INT FUNCTION MoLChangeToConstrainedComplexArray(CCTK_INT IN \
+-#                                                      ConstrainedIndex)
+-# CCTK_INT FUNCTION MoLChangeToSaveAndRestoreComplexArray(CCTK_INT IN SandRIndex)
+-# CCTK_INT FUNCTION MoLChangeToNoneComplexArray(CCTK_INT IN RemoveIndex)
+-#
+-# PROVIDES FUNCTION MoLRegisterEvolvedComplexArray WITH \
+-#                   MoL_RegisterEvolvedComplexArray LANGUAGE C
+-# PROVIDES FUNCTION MoLRegisterConstrainedComplexArray WITH \
+-#                   MoL_RegisterConstrainedComplexArray LANGUAGE C
+-# PROVIDES FUNCTION MoLRegisterSaveAndRestoreComplexArray WITH \
+-#                   MoL_RegisterSaveAndRestoreComplexArray LANGUAGE C
+-# PROVIDES FUNCTION MoLRegisterEvolvedComplexArrayGroup WITH \
+-#                   MoL_RegisterEvolvedComplexArrayGroup LANGUAGE C
+-# PROVIDES FUNCTION MoLRegisterConstrainedComplexArrayGroup WITH \
+-#                   MoL_RegisterConstrainedComplexArrayGroup LANGUAGE C
+-# PROVIDES FUNCTION MoLRegisterSaveAndRestoreComplexArrayGroup WITH \
+-#                   MoL_RegisterSaveAndRestoreComplexArrayGroup LANGUAGE C
+-# PROVIDES FUNCTION MoLChangeToEvolvedComplexArray WITH \
+-#                   MoL_ChangeToEvolvedComplexArray LANGUAGE C
+-# PROVIDES FUNCTION MoLChangeToConstrainedComplexArray WITH \
+-#                   MoL_ChangeToConstrainedComplexArray LANGUAGE C
+-# PROVIDES FUNCTION MoLChangeToSaveAndRestoreComplexArray WITH \
+-#                   MoL_ChangeToSaveAndRestoreComplexArray LANGUAGE C
+-# PROVIDES FUNCTION MoLChangeToNoneComplexArray WITH \
+-#                   MoL_ChangeToNoneComplexArray LANGUAGE C
+ 
+ ##############################################################
+ ### Aliased functions that can be provided by other thorns ###
+@@ -303,34 +214,6 @@
+ #            Timelevels = 1 \
+ #            TAGS       = 'Checkpoint="no"'
+ 
+-# CCTK_REAL ArrayScratchSpace[MoL_Num_Scratch_Levels] \
+-#             TYPE       = ARRAY \
+-#             DIM        = 1 \
+-#             SIZE       = MoL_Max_Evolved_Array_Size \
+-#             Timelevels = 1 \
+-#             TAGS       = 'Checkpoint="no"'
+-# 
+-# CCTK_REAL ArraySandRScratchSpace \
+-#             TYPE       = ARRAY \
+-#             DIM        = 1 \
+-#             SIZE       = MoL_Max_Evolved_Array_Size \
+-#             Timelevels = 1 \
+-#             TAGS       = 'Checkpoint="no"'
+-
+-#CCTK_COMPLEX ComplexArrayScratchSpace[MoL_Num_Scratch_Levels] \
+-#            TYPE       = ARRAY \
+-#            DIM        = 1 \
+-#            SIZE       = MoL_Max_Evolved_ComplexArray_Size \
+-#            Timelevels = 1 \
+-#            TAGS       = 'Checkpoint="no"'
+-
+-#CCTK_COMPLEX ComplexArraySandRScratchSpace \
+-#            TYPE       = ARRAY \
+-#            DIM        = 1 \
+-#            SIZE       = MoL_Max_Evolved_ComplexArray_Size \
+-#            Timelevels = 1 \
+-#            TAGS       = 'Checkpoint="no"'
+-
+ #Error vector and scalars for RK45
+ 
+ CCTK_REAL ErrorEstimate[MoL_Num_Evolved_Vars] \

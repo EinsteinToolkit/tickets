@@ -1,0 +1,480 @@
+From 4b9f51fabdd7e1c3c25a4a059732212e91217e1b Mon Sep 17 00:00:00 2001
+From: Philipp Moesta <pmoesta@tapir.caltech.edu>
+Date: Wed, 4 Apr 2012 18:08:20 -0400
+Subject: [PATCH 10/11] GRHydro: fixes for GRMHD
+
+All by Philipp Moesta.
+
+1) Fix parity of psidc and divb
+2) Fix a wrong index in the source terms of scon
+3) Fix wrong indices of derivatives of space-time metric in the source of the divergence cleaning scalar.
+4) Calculate divergence of B in MoL PseudoEvolution and set its Prolongation="Restrict".
+5) Correct the source terms and fluxes for the Bfield and the divergence cleaning field when having a non-flat space-time.
+6) Make sure alpha factors match between UpdateCalculation and fluxes definition.
+7) Include 1/sqrt(detg) factor in calculation of \epsilon^{\muijk} in the cross product to obtain the Bfield form the vector potential.
+---
+ interface.ccl              |    4 +-
+ schedule.ccl               |   19 +++++++++
+ src/GRHydro_Analysis.F90   |   91 ++++++++++++++++++++++++++++++++++++++++++++
+ src/GRHydro_CalcUpdate.F90 |   24 ++++++------
+ src/GRHydro_HLLEM.F90      |   73 ++++++++++++++++++-----------------
+ src/GRHydro_SourceM.F90    |   30 ++++++++++-----
+ src/make.code.defn         |    1 +
+ 7 files changed, 182 insertions(+), 60 deletions(-)
+ create mode 100644 src/GRHydro_Analysis.F90
+
+diff --git a/interface.ccl b/interface.ccl
+index f704aac..bcba8da 100644
+--- a/interface.ccl
++++ b/interface.ccl
+@@ -358,7 +358,7 @@ real GRHydro_tracers[number_of_tracers] type = GF Timelevels = 3 tags='Prolongat
+ 
+ #real w_lorentz type = GF Timelevels = 3 tags='ProlongationParameter="HydroBase::prolongation_type" tensortypealias="Scalar" tensorweight=+1.0 interpolator="matter"' "Lorentz factor"
+ 
+-real psidc type = GF Timelevels = 3 tags='ProlongationParameter="HydroBase::prolongation_type" tensortypealias="Scalar" tensorweight=+1.0 jacobian="inverse_jacobian" interpolator="matter"' "Psi parameter for divergence cleaning"
++real psidc type = GF Timelevels = 3 tags='ProlongationParameter="HydroBase::prolongation_type" tensortypealias="Scalar" tensorweight=+1.0 tensorparity=-1 jacobian="inverse_jacobian" interpolator="matter"' "Psi parameter for divergence cleaning"
+ 
+ real densrhs type = GF Timelevels = 1 tags='Prolongation="None" checkpoint="no"' "Update term for dens"
+ real taurhs  type = GF Timelevels = 1 tags='Prolongation="None" checkpoint="no"' "Update term for tau"
+@@ -367,7 +367,7 @@ real Bconsrhs[3] type = GF Timelevels = 1 tags='Prolongation="None" checkpoint="
+ 
+ real psidcrhs type = GF Timelevels = 1 tags='Prolongation="None" checkpoint="no"' "Update term for psidc"
+ 
+-real divB type = GF Timelevels = 1 tags='Prolongation="None" checkpoint="no"' "Magnetic field constraint"
++real divB type = GF Timelevels = 1 tags='Prolongation="Restrict" checkpoint="no" tensorparity=-1' "Magnetic field constraint"
+ 
+ real bcom[3] type = GF Timelevels = 3 tags='ProlongationParameter="HydroBase::prolongation_type" tensortypealias="U" tensorparity=-1 interpolator="matter"' "b^i: comoving contravariant magnetic field 4-vector spatial components"
+ real bcom0 type = GF Timelevels = 3 tags='ProlongationParameter="HydroBase::prolongation_type" tensortypealias="Scalar" interpolator="matter"' "b^0 component of the comoving contravariant magnetic field 4-vector"
+diff --git a/schedule.ccl b/schedule.ccl
+index 392086a..7e9b765 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -1162,3 +1162,22 @@ schedule GROUP SetTmunu AT POSTPOSTINITIAL AFTER Con2Prim BEFORE ADMConstraintsG
+ {
+ } "Calculate the stress-energy tensor"
+ 
++# Calculate divergence in PseudoEvolution
++
++if(track_divB)
++{
++  # bit of a misnomer. Currently only contains divB
++  schedule group GRHydroAnalysis IN MoL_PseudoEvolution
++  {
++  } "Calculate analysis quantities"
++
++  schedule GRHydro_Analysis_Init IN GRHydroAnalysis
++  {
++    LANG: Fortran
++  } "Initialize variables"
++
++  schedule GRHydro_CalcDivB IN GRHydroAnalysis AFTER GRHydro_Analysis_Init
++  {
++    LANG: Fortran
++  } "Calculate divB"
++}                           
+diff --git a/src/GRHydro_Analysis.F90 b/src/GRHydro_Analysis.F90
+new file mode 100644
+index 0000000..918f91a
+--- /dev/null
++++ b/src/GRHydro_Analysis.F90
+@@ -0,0 +1,91 @@
++
++#include "cctk.h"
++#include "cctk_Arguments.h"
++#include "cctk_Parameters.h"
++#include "cctk_Functions.h"
++#include "SpaceMask.h"
++
++subroutine GRHydro_Analysis_Init(CCTK_ARGUMENTS)
++
++  implicit none
++
++  DECLARE_CCTK_ARGUMENTS
++  DECLARE_CCTK_PARAMETERS
++  DECLARE_CCTK_FUNCTIONS
++
++  CCTK_INT :: i,j,k
++  !$OMP PARALLEL DO PRIVATE(i,j,k)
++  do k = GRHydro_stencil + 1 - transport_constraints, cctk_lsh(3) - GRHydro_stencil ! we need to compute Evec on all faces/edges where the fluxes are defined
++     do j = GRHydro_stencil + 1 - transport_constraints, cctk_lsh(2) - GRHydro_stencil
++        do i = GRHydro_stencil + 1 - transport_constraints, cctk_lsh(1) - GRHydro_stencil
++           divB(i,j,k) = 0.0d0
++        end do
++     end do
++  end do
++  !$OMP END PARALLEL DO
++
++end subroutine GRHydro_Analysis_Init
++
++subroutine GRHydro_CalcDivB(CCTK_ARGUMENTS)
++    
++  implicit none
++
++  DECLARE_CCTK_ARGUMENTS
++  DECLARE_CCTK_PARAMETERS
++  DECLARE_CCTK_FUNCTIONS
++
++  CCTK_INT :: i,j,k,itracer
++  CCTK_REAL :: idx, idy, idz, Bcons_l1, Bcons_r1, Bcons_l2, Bcons_r2, Bcons_l3, Bcons_r3
++
++  idx = 1.d0 / CCTK_DELTA_SPACE(1)
++  idy = 1.d0 / CCTK_DELTA_SPACE(2)
++  idz = 1.d0 / CCTK_DELTA_SPACE(3)
++
++      !$OMP PARALLEL DO PRIVATE(i,j,k,itracer,Bcons_l1,Bcons_r1,Bcons_l2,Bcons_r2,Bcons_l3,Bcons_r3)
++      do k = GRHydro_stencil + 1 - transport_constraints, cctk_lsh(3) - GRHydro_stencil ! we need to compute Evec on all faces/edges where the fluxes are defined
++        do j = GRHydro_stencil + 1 - transport_constraints, cctk_lsh(2) - GRHydro_stencil
++          do i = GRHydro_stencil + 1 - transport_constraints, cctk_lsh(1) - GRHydro_stencil
++
++           if(evolve_mhd.ne.0) then
++               if(track_divB.ne.0) then
++                 if(transport_constraints.ne.0) then
++                   ! edge based divergence (see WhiskyMHD & Bruno's thesis, Eq. 7.27)
++                   divB(i,j,k) = divB(i,j,k) + &
++                     0.25d0*(Bcons(i+1,j,k,1)-Bcons(i,j,k,1)+ &
++                             Bcons(i+1,j+1,k,1)-Bcons(i,j+1,k,1)+ &
++                             Bcons(i+1,j,k+1,1)-Bcons(i,j,k+1,1)+ &
++                             Bcons(i+1,j+1,k+1,1)-Bcons(i,j+1,k+1,1))*idx + &
++                     0.25d0*(Bcons(i,j+1,k,2)-Bcons(i,j,k,2)+ &
++                             Bcons(i+1,j+1,k,2)-Bcons(i+1,j,k,2)+ &
++                             Bcons(i,j+1,k+1,2)-Bcons(i,j,k+1,2)+ &
++                             Bcons(i+1,j+1,k+1,2)-Bcons(i+1,j,k+1,2))*idy + &
++                     0.25d0*(Bcons(i,j,k+1,3)-Bcons(i,j,k,3)+ &
++                             Bcons(i+1,j,k+1,3)-Bcons(i+1,j,k,3)+ &
++                             Bcons(i,j+1,k+1,3)-Bcons(i,j+1,k,3)+ &
++                             Bcons(i+1,j+1,k+1,3)-Bcons(i+1,j+1,k,3))*idz 
++                 else
++                   Bcons_l1 = 0.5d0 * (Bcons(i,j,k,1) + &
++                            Bcons(i-1,j,k,1)) 
++                   Bcons_l2 = 0.5d0 * (Bcons(i,j,k,2) + &
++                            Bcons(i,j-1,k,2)) 
++                   Bcons_l3 = 0.5d0 * (Bcons(i,j,k,3) + &
++                            Bcons(i,j,k-1,3))
++                   Bcons_r1 = 0.5d0 * (Bcons(i,j,k,1) + &
++                            Bcons(i+1,j,k,1))
++                   Bcons_r2 = 0.5d0 * (Bcons(i,j,k,2) + &
++                            Bcons(i,j+1,k,2))
++                   Bcons_r3 = 0.5d0 * (Bcons(i,j,k,3) + &
++                            Bcons(i,j,k+1,3))
++                   !write(*,*) "Bcons_r1 = ", Bcons_r1
++                   divB(i,j,k) = divB(i,j,k) + (Bcons_l1 - Bcons_r1) * idx + (Bcons_l2 - Bcons_r2) * idy + (Bcons_l3 - Bcons_r3) * idz  
++                   !divB(i,j,k) = 0.0d0 
++                 endif
++               endif
++            endif
++    
++          enddo
++        enddo
++      enddo
++      !$OMP END PARALLEL DO
++ 
++end subroutine GRHydro_CalcDivB 
+diff --git a/src/GRHydro_CalcUpdate.F90 b/src/GRHydro_CalcUpdate.F90
+index 8c634d4..62653e9 100644
+--- a/src/GRHydro_CalcUpdate.F90
++++ b/src/GRHydro_CalcUpdate.F90
+@@ -39,7 +39,7 @@ subroutine UpdateCalculation(CCTK_ARGUMENTS)
+   DECLARE_CCTK_FUNCTIONS
+ 
+   CCTK_INT :: i,j,k,itracer
+-  CCTK_REAL :: idx, alp_l, alp_r, Bvec_l, Bvec_r, alp_tmp
++  CCTK_REAL :: idx, alp_l, alp_r, Bcons_l, Bcons_r, alp_tmp
+ 
+   idx = 1.d0 / CCTK_DELTA_SPACE(flux_direction)
+ 
+@@ -47,7 +47,7 @@ subroutine UpdateCalculation(CCTK_ARGUMENTS)
+ 
+     if (use_weighted_fluxes == 0) then
+ 
+-      !$OMP PARALLEL DO PRIVATE(i,j,k,itracer,alp_l,alp_r,alp_tmp,Bvec_l,Bvec_r)
++      !$OMP PARALLEL DO PRIVATE(i,j,k,itracer,alp_l,alp_r,alp_tmp,Bcons_l,Bcons_r)
+       do k = GRHydro_stencil + 1 - transport_constraints, cctk_lsh(3) - GRHydro_stencil ! we need to compute Evec on all faces/edges where the fluxes are defined
+         do j = GRHydro_stencil + 1 - transport_constraints, cctk_lsh(2) - GRHydro_stencil
+           do i = GRHydro_stencil + 1 - transport_constraints, cctk_lsh(1) - GRHydro_stencil
+@@ -119,11 +119,11 @@ subroutine UpdateCalculation(CCTK_ARGUMENTS)
+                              Bcons(i+xoffset,j+1-xoffset,k+1      ,flux_direction)-Bcons(i          ,j+zoffset  ,k+1-zoffset,flux_direction)+ &
+                              Bcons(i+1      ,j+1        ,k+1      ,flux_direction)-Bcons(i+1-xoffset,j+1-yoffset,k+1-zoffset,flux_direction))*idx
+                  else
+-                   Bvec_l = 0.5d0 * (Bvec(i,j,k,flux_direction) + &
+-                            Bvec(i-xoffset,j-yoffset,k-zoffset,flux_direction))
+-                   Bvec_r = 0.5d0 * (Bvec(i,j,k,flux_direction) + &
+-                            Bvec(i+xoffset,j+yoffset,k+zoffset,flux_direction))
+-                   divB(i,j,k) = divB(i,j,k) + ( alp_l * Bvec_l - alp_r * Bvec_r ) * idx 
++                   Bcons_l = 0.5d0 * (Bcons(i,j,k,flux_direction) + &
++                            Bcons(i-xoffset,j-yoffset,k-zoffset,flux_direction))
++                   Bcons_r = 0.5d0 * (Bcons(i,j,k,flux_direction) + &
++                            Bcons(i+xoffset,j+yoffset,k+zoffset,flux_direction))
++                   divB(i,j,k) = divB(i,j,k) + (Bcons_l - Bcons_r ) * idx 
+                 endif
+                endif
+ 
+@@ -276,11 +276,11 @@ subroutine UpdateCalculation(CCTK_ARGUMENTS)
+                      psidcflux(i,j,k)) * idx
+              endif
+              if(track_divB.ne.0) then
+-               Bvec_l = 0.5d0 * (Bvec(i,j,k,flux_direction) + &
+-                        Bvec(i-xoffset,j-yoffset,k-zoffset,flux_direction))
+-               Bvec_r = 0.5d0 * (Bvec(i,j,k,flux_direction) + &
+-                        Bvec(i+xoffset,j+yoffset,k+zoffset,flux_direction))
+-               divB(i,j,k) = divB(i,j,k) + ( Bvec_l - Bvec_r ) * idx 
++               Bcons_l = 0.5d0 * (Bcons(i,j,k,flux_direction) + &
++                        Bcons(i-xoffset,j-yoffset,k-zoffset,flux_direction))
++               Bcons_r = 0.5d0 * (Bcons(i,j,k,flux_direction) + &
++                        Bcons(i+xoffset,j+yoffset,k+zoffset,flux_direction))
++               divB(i,j,k) = divB(i,j,k) + ( Bcons_l - Bcons_r ) * idx 
+              endif
+           endif
+ 
+diff --git a/src/GRHydro_HLLEM.F90 b/src/GRHydro_HLLEM.F90
+index 6f1791e..995dd67 100644
+--- a/src/GRHydro_HLLEM.F90
++++ b/src/GRHydro_HLLEM.F90
+@@ -226,10 +226,10 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+                  vxtp,vytp,vztp,pressstarp,bxlowp,bylowp,bzlowp,ab0p,wp, &
+                  avg_det,avg_alp,avg_beta)
+             if(clean_divergence.ne.0) then
+-               f1(6)=f1(6) + avg_alp*sdet*uxxh*psidcp - cons_p(6)*avg_betax
+-               f1(7)=f1(7) + avg_alp*sdet*uxyh*psidcp - cons_p(6)*avg_betay
+-               f1(8)=f1(8) + avg_alp*sdet*uxzh*psidcp - cons_p(6)*avg_betaz
+-               psidcf = avg_alp*cons_p(6)/sdet-psidcp*avg_betax
++               f1(6)=f1(6) + 1.0*sdet*uxxh*psidcp - cons_p(6)*avg_betax/avg_alp
++               f1(7)=f1(7) + 1.0*sdet*uxyh*psidcp - cons_p(6)*avg_betay/avg_alp
++               f1(8)=f1(8) + 1.0*sdet*uxzh*psidcp - cons_p(6)*avg_betaz/avg_alp
++               psidcf = cons_p(6)/sdet-psidcp*avg_betax/avg_alp
+             endif
+ 
+           else if (flux_direction == 2) then
+@@ -239,10 +239,10 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+                  vytp,vztp,vxtp,pressstarp,bylowp,bzlowp,bxlowp,ab0p,wp, &
+                  avg_det,avg_alp,avg_beta)
+             if(clean_divergence.ne.0) then
+-               f1(6)=f1(6) + avg_alp*sdet*uxyh*psidcp - cons_p(7)*avg_betax
+-               f1(7)=f1(7) + avg_alp*sdet*uyyh*psidcp - cons_p(7)*avg_betay
+-               f1(8)=f1(8) + avg_alp*sdet*uyzh*psidcp - cons_p(7)*avg_betaz
+-               psidcf = avg_alp*cons_p(7)/sdet-psidcp*avg_betay
++               f1(6)=f1(6) + 1.0*sdet*uxyh*psidcp - cons_p(7)*avg_betax/avg_alp
++               f1(7)=f1(7) + 1.0*sdet*uyyh*psidcp - cons_p(7)*avg_betay/avg_alp
++               f1(8)=f1(8) + 1.0*sdet*uyzh*psidcp - cons_p(7)*avg_betaz/avg_alp
++               psidcf = cons_p(7)/sdet-psidcp*avg_betay/avg_alp
+             endif
+ 
+           else if (flux_direction == 3) then
+@@ -252,10 +252,10 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+                  vztp,vxtp,vytp,pressstarp,bzlowp,bxlowp,bylowp,ab0p,wp, &
+                  avg_det,avg_alp,avg_beta)
+             if(clean_divergence.ne.0) then
+-               f1(6)=f1(6) + avg_alp*sdet*uxzh*psidcp - cons_p(8)*avg_betax
+-               f1(7)=f1(7) + avg_alp*sdet*uyzh*psidcp - cons_p(8)*avg_betay
+-               f1(8)=f1(8) + avg_alp*sdet*uzzh*psidcp - cons_p(8)*avg_betaz
+-               psidcf = avg_alp*cons_p(8)/sdet-psidcp*avg_betaz
++               f1(6)=f1(6) + 1.0*sdet*uxzh*psidcp - cons_p(8)*avg_betax/avg_alp
++               f1(7)=f1(7) + 1.0*sdet*uyzh*psidcp - cons_p(8)*avg_betay/avg_alp
++               f1(8)=f1(8) + 1.0*sdet*uzzh*psidcp - cons_p(8)*avg_betaz/avg_alp
++               psidcf = cons_p(8)/sdet-psidcp*avg_betaz/avg_alp
+             endif
+             
+           else
+@@ -315,14 +315,14 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+                  avg_det,avg_alp,avg_beta)
+ 
+             if(clean_divergence.ne.0) then
+-               fminus(6)=fminus(6) + avg_alp*sdet*uxxh*psidcm - cons_m(6)*avg_betax
+-               fminus(7)=fminus(7) + avg_alp*sdet*uxyh*psidcm - cons_m(6)*avg_betay
+-               fminus(8)=fminus(8) + avg_alp*sdet*uxzh*psidcm - cons_m(6)*avg_betaz
+-               fplus(6)=fplus(6) + avg_alp*sdet*uxxh*psidcp - cons_p(6)*avg_betax
+-               fplus(7)=fplus(7) + avg_alp*sdet*uxyh*psidcp - cons_p(6)*avg_betay
+-               fplus(8)=fplus(8) + avg_alp*sdet*uxzh*psidcp - cons_p(6)*avg_betaz
+-               psidcfp = avg_alp*cons_p(6)/sdet-avg_betax*psidcp
+-               psidcfm = avg_alp*cons_m(6)/sdet-avg_betax*psidcm
++               fminus(6)=fminus(6) + 1.0*sdet*uxxh*psidcm - cons_m(6)*avg_betax/avg_alp
++               fminus(7)=fminus(7) + 1.0*sdet*uxyh*psidcm - cons_m(6)*avg_betay/avg_alp
++               fminus(8)=fminus(8) + 1.0*sdet*uxzh*psidcm - cons_m(6)*avg_betaz/avg_alp
++               fplus(6)=fplus(6) + 1.0*sdet*uxxh*psidcp - cons_p(6)*avg_betax/avg_alp
++               fplus(7)=fplus(7) + 1.0*sdet*uxyh*psidcp - cons_p(6)*avg_betay/avg_alp
++               fplus(8)=fplus(8) + 1.0*sdet*uxzh*psidcp - cons_p(6)*avg_betaz/avg_alp
++               psidcfp = cons_p(6)/sdet-avg_betax*psidcp/avg_alp
++               psidcfm = cons_m(6)/sdet-avg_betax*psidcm/avg_alp
+             endif
+ 
+           else if (flux_direction == 2) then
+@@ -349,14 +349,14 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+                  avg_det,avg_alp,avg_beta)
+ 
+             if(clean_divergence.ne.0) then
+-               fminus(6)=fminus(6) + avg_alp*sdet*uxyh*psidcm - cons_m(7)*avg_betax
+-               fminus(7)=fminus(7) + avg_alp*sdet*uyyh*psidcm - cons_m(7)*avg_betay
+-               fminus(8)=fminus(8) + avg_alp*sdet*uyzh*psidcm - cons_m(7)*avg_betaz
+-               fplus(6)=fplus(6) + avg_alp*sdet*uxyh*psidcp - cons_p(7)*avg_betax
+-               fplus(7)=fplus(7) + avg_alp*sdet*uyyh*psidcp - cons_p(7)*avg_betay
+-               fplus(8)=fplus(8) + avg_alp*sdet*uyzh*psidcp - cons_p(7)*avg_betaz
+-               psidcfp = avg_alp*cons_p(7)/sdet-avg_betay*psidcp
+-               psidcfm = avg_alp*cons_m(7)/sdet-avg_betay*psidcm
++               fminus(6)=fminus(6) + 1.0*sdet*uxyh*psidcm - cons_m(7)*avg_betax/avg_alp
++               fminus(7)=fminus(7) + 1.0*sdet*uyyh*psidcm - cons_m(7)*avg_betay/avg_alp
++               fminus(8)=fminus(8) + 1.0*sdet*uyzh*psidcm - cons_m(7)*avg_betaz/avg_alp
++               fplus(6)=fplus(6) + 1.0*sdet*uxyh*psidcp - cons_p(7)*avg_betax/avg_alp
++               fplus(7)=fplus(7) + 1.0*sdet*uyyh*psidcp - cons_p(7)*avg_betay/avg_alp
++               fplus(8)=fplus(8) + 1.0*sdet*uyzh*psidcp - cons_p(7)*avg_betaz/avg_alp
++               psidcfp = cons_p(7)/sdet-avg_betay*psidcp/avg_alp
++               psidcfm = cons_m(7)/sdet-avg_betay*psidcm/avg_alp
+             endif
+ 
+           else if (flux_direction == 3) then
+@@ -383,14 +383,14 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+                  avg_det,avg_alp,avg_beta)
+ 
+             if(clean_divergence.ne.0) then
+-               fminus(6)=fminus(6) + avg_alp*sdet*uxzh*psidcm - cons_m(8)*avg_betax
+-               fminus(7)=fminus(7) + avg_alp*sdet*uyzh*psidcm - cons_m(8)*avg_betay
+-               fminus(8)=fminus(8) + avg_alp*sdet*uzzh*psidcm - cons_m(8)*avg_betaz
+-               fplus(6)=fplus(6) + avg_alp*sdet*uxzh*psidcp - cons_p(8)*avg_betax
+-               fplus(7)=fplus(7) + avg_alp*sdet*uyzh*psidcp - cons_p(8)*avg_betay
+-               fplus(8)=fplus(8) + avg_alp*sdet*uzzh*psidcp - cons_p(8)*avg_betaz
+-               psidcfp = avg_alp*cons_p(8)/sdet-avg_betaz*psidcp
+-               psidcfm = avg_alp*cons_m(8)/sdet-avg_betaz*psidcm
++               fminus(6)=fminus(6) + 1.0*sdet*uxzh*psidcm - cons_m(8)*avg_betax/avg_alp
++               fminus(7)=fminus(7) + 1.0*sdet*uyzh*psidcm - cons_m(8)*avg_betay/avg_alp
++               fminus(8)=fminus(8) + 1.0*sdet*uzzh*psidcm - cons_m(8)*avg_betaz/avg_alp
++               fplus(6)=fplus(6) + 1.0*sdet*uxzh*psidcp - cons_p(8)*avg_betax/avg_alp
++               fplus(7)=fplus(7) + 1.0*sdet*uyzh*psidcp - cons_p(8)*avg_betay/avg_alp
++               fplus(8)=fplus(8) + 1.0*sdet*uzzh*psidcp - cons_p(8)*avg_betaz/avg_alp
++               psidcfp = cons_p(8)/sdet-avg_betaz*psidcp/avg_alp
++               psidcfm = cons_m(8)/sdet-avg_betaz*psidcm/avg_alp
+             endif
+ 
+           else
+@@ -428,6 +428,7 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+           end do
+ 
+           if(clean_divergence.ne.0) then
++
+            psidcdiff = psidcm - psidcp
+            select case(whichpsidcspeed)
+              case(0)
+diff --git a/src/GRHydro_SourceM.F90 b/src/GRHydro_SourceM.F90
+index cf88c62..bcd2b9e 100644
+--- a/src/GRHydro_SourceM.F90
++++ b/src/GRHydro_SourceM.F90
+@@ -395,7 +395,10 @@ subroutine SourceTermsM(CCTK_ARGUMENTS)
+         halfTdgz = half*(txx*dz_gxx + tyy*dz_gyy + tzz*dz_gzz) +&
+              txy*dz_gxy + txz*dz_gxz + tyz*dz_gyz
+ 
+-        sx_source = t00*&
++     
++
++
++       sx_source = t00*&
+              (halfshiftdgx - alp(i,j,k)*dx_alp) + halfTdgx + &
+              t0x*(shiftx*dx_gxx + shifty*dx_gxy + shiftz*dx_gxz) +&
+              t0y*(shiftx*dx_gxy + shifty*dx_gyy + shiftz*dx_gyz) +&
+@@ -403,7 +406,7 @@ subroutine SourceTermsM(CCTK_ARGUMENTS)
+              rhohstarW2*invalp*(vlowx*dx_betax + vlowy*dx_betay + vlowz*dx_betaz) -&
+              bt*(bxlow*dx_betax + bylow*dx_betay + bzlow*dx_betaz)
+         
+-        sy_source = t00*&
++       sy_source = t00*&
+              (halfshiftdgy - alp(i,j,k)*dy_alp) + halfTdgy + &
+              t0x*(shiftx*dy_gxx + shifty*dy_gxy + shiftz*dy_gxz) +&
+              t0y*(shiftx*dy_gxy + shifty*dy_gyy + shiftz*dy_gyz) +&
+@@ -411,8 +414,8 @@ subroutine SourceTermsM(CCTK_ARGUMENTS)
+              rhohstarW2*invalp*(vlowx*dy_betax + vlowy*dy_betay + vlowz*dy_betaz) -&
+              bt*(bxlow*dy_betax + bylow*dy_betay + bzlow*dy_betaz)
+ 
+-        sz_source = t00*&
+-             (halfshiftdgz - alp(i,j,k)*dz_alp) + halfTdgy + &
++       sz_source = t00*&
++             (halfshiftdgz - alp(i,j,k)*dz_alp) + halfTdgz + &
+              t0x*(shiftx*dz_gxx + shifty*dz_gxy + shiftz*dz_gxz) +&
+              t0y*(shiftx*dz_gxy + shifty*dz_gyy + shiftz*dz_gyz) +&
+              t0z*(shiftx*dz_gxz + shifty*dz_gyz + shiftz*dz_gzz) +&
+@@ -423,20 +426,21 @@ subroutine SourceTermsM(CCTK_ARGUMENTS)
+         srhs(i,j,k,1)  = alp(i,j,k)*sqrtdet*sx_source
+         srhs(i,j,k,2)  = alp(i,j,k)*sqrtdet*sy_source
+         srhs(i,j,k,3)  = alp(i,j,k)*sqrtdet*sz_source
+-        taurhs(i,j,k) = alp(i,j,k)*sqrtdet*tau_source
++        taurhs(i,j,k)  = alp(i,j,k)*sqrtdet*tau_source
+ 
+         if(clean_divergence.ne.0) then
++
+            psidcrhs(i,j,k) = -1.d0 * (kap_dc*alp(i,j,k) + &
+                 dx_betax + dy_betay + dz_betaz ) * psidc(i,j,k) + &
+-                Bconsx(i,j,k) * ( dx_alp - half*alp(i,j,k) * &
++                Bconsx(i,j,k) * (dx_alp - half*alp(i,j,k) * &
+                  ( uxx*dx_gxx + uyy*dx_gyy + uzz*dx_gzz + 2.d0*uxy*dx_gxy + &
+-                   2.d0*uxz*dx_gxz + 2.d0*uyz*dx_gyz ) )/ sqrtdet + &
++                   2.d0*uxz*dx_gxz + 2.d0*uyz*dx_gyz ) )/sqrtdet + &
+                 Bconsy(i,j,k) * (dy_alp - half*alp(i,j,k) * &
+                  ( uxx*dy_gxx + uyy*dy_gyy + uzz*dy_gzz + 2.d0*uxy*dy_gxy + &
+-                   2.d0*uxz*dy_gxz + 2.d0*uyz*dy_gyz ) )/ sqrtdet + &
++                   2.d0*uxz*dy_gxz + 2.d0*uyz*dy_gyz ) )/sqrtdet + &
+                 Bconsz(i,j,k) * (dz_alp - half*alp(i,j,k) * &
+-                 ( uxx*dz_gxx + uyy*dy_gyy + uzz*dy_gzz + 2.d0*uxy*dy_gxy + &
+-                   2.d0*uxz*dz_gxz + 2.d0*uyz*dy_gyz ) )/ sqrtdet
++                 ( uxx*dz_gxx + uyy*dz_gyy + uzz*dz_gzz + 2.d0*uxy*dz_gxy + &
++                   2.d0*uxz*dz_gxz + 2.d0*uyz*dz_gyz ) )/sqrtdet
+ 
+            !!$ g^{jk} d_i g_{kj} = d_i (g) / det
+            dx_det_bydet = uxx*dx_gxx + uyy*dx_gyy + uzz*dx_gzz + &
+@@ -511,6 +515,7 @@ subroutine SourceTermsM(CCTK_ARGUMENTS)
+         Bcons(i,j,k,1) = -1d100
+         Bcons(i,j,k,2) = -1d100
+         Bcons(i,j,k,3) = -1d100
++        psidc(i,j,k) = -1d100
+       end do
+     end do
+   end do
+@@ -525,6 +530,7 @@ subroutine SourceTermsM(CCTK_ARGUMENTS)
+         Bcons(i,j,k,1) = -1d100
+         Bcons(i,j,k,2) = -1d100
+         Bcons(i,j,k,3) = -1d100
++        psidc(i,j,k) = -1d100
+       end do
+     end do
+   end do
+@@ -539,6 +545,7 @@ subroutine SourceTermsM(CCTK_ARGUMENTS)
+         Bcons(i,j,k,1) = -1d100
+         Bcons(i,j,k,2) = -1d100
+         Bcons(i,j,k,3) = -1d100
++        psidc(i,j,k) = -1d100
+       end do
+     end do
+   end do
+@@ -553,6 +560,7 @@ subroutine SourceTermsM(CCTK_ARGUMENTS)
+         Bcons(i,j,k,1) = -1d100
+         Bcons(i,j,k,2) = -1d100
+         Bcons(i,j,k,3) = -1d100
++        psidc(i,j,k) = -1d100
+       end do
+     end do
+   end do
+@@ -567,6 +575,7 @@ subroutine SourceTermsM(CCTK_ARGUMENTS)
+         Bcons(i,j,k,1) = -1d100
+         Bcons(i,j,k,2) = -1d100
+         Bcons(i,j,k,3) = -1d100
++        psidc(i,j,k) = -1d100
+       end do
+     end do
+   end do
+@@ -581,6 +590,7 @@ subroutine SourceTermsM(CCTK_ARGUMENTS)
+         Bcons(i,j,k,1) = -1d100
+         Bcons(i,j,k,2) = -1d100
+         Bcons(i,j,k,3) = -1d100
++        psidc(i,j,k) = -1d100
+       end do
+     end do
+   end do
+diff --git a/src/make.code.defn b/src/make.code.defn
+index 50cd1bb..45ca16a 100644
+--- a/src/make.code.defn
++++ b/src/make.code.defn
+@@ -4,6 +4,7 @@
+ # Source files in this directory
+ 
+ SRCS = 	Utils.F90 \
++	GRHydro_Analysis.F90 \
+ 	GRHydro_Boundaries.F90 \
+ 	GRHydro_CalcBcom.F90 \
+ 	GRHydro_CalcUpdate.F90 \
+-- 
+1.7.8
+

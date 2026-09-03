@@ -1,0 +1,45 @@
+From 81d1c6a8192b6e4e191c4a47c40249fd7903eaeb Mon Sep 17 00:00:00 2001
+From: Christian Reisswig <reisswig@scriwalker.(none)>
+Date: Fri, 23 Mar 2012 15:06:21 -0700
+Subject: [PATCH 06/11] GRHydro: Fixed minor bugs in registration in
+ Boundaries
+
+Some variables were stil set to "Flat" boundaries even though "None" is
+supposed to be set.
+---
+ src/GRHydro_Boundaries.F90 |   12 +++++++++---
+ 1 files changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/src/GRHydro_Boundaries.F90 b/src/GRHydro_Boundaries.F90
+index 63fb864..eca3adc 100644
+--- a/src/GRHydro_Boundaries.F90
++++ b/src/GRHydro_Boundaries.F90
+@@ -260,8 +260,14 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+          "HydroBase::press", "None")
+     ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+          "HydroBase::eps", "None")
+-    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-         "HydroBase::vel", "None")
++    if (general_coordinates .ne. 0) then
++       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "GRHydro::lvel", "None")
++    else
++       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::vel", "None")
++    endif
++    
+     if(evolve_mhd.ne.0) then
+        if (general_coordinates .ne. 0) then
+           ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+@@ -299,7 +305,7 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+             "HydroBase::entropy", "None")
+     endif
+ 
+-  end if
++  endif
+ 
+   if (CCTK_EQUALS(bound,"scalar")) then
+     call CCTK_WARN(0, "Until somebody uses this I see no reason to support it")
+-- 
+1.7.8
+

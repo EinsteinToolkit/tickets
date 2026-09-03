@@ -1,0 +1,54 @@
+From b721b3fd05f975d9390a20087a173d58640daba1 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Sun, 8 Jul 2012 17:21:45 -0700
+Subject: [PATCH 03/25] GRHydro: remove any traces of non-functional Fisheye
+ support
+
+---
+ interface.ccl |   23 -----------------------
+ 1 file changed, 23 deletions(-)
+
+diff --git a/interface.ccl b/interface.ccl
+index bf6fbbb..2829ffb 100644
+--- a/interface.ccl
++++ b/interface.ccl
+@@ -9,7 +9,6 @@
+ implements: GRHydro
+ inherits: ADMBase, Boundary, SpaceMask, ADMMacros, Tmunubase, HydroBase
+ 
+-USES INCLUDE: FishEye.h
+ USES INCLUDE: SpaceMask.h
+ USES INCLUDE HEADER: carpet.hh
+ 
+@@ -537,28 +536,6 @@ real GRHydro_MHD_psidc_bext type = GF Timelevels = 1 tags='Prolongation="None" c
+ 
+ int whichpsidcspeed type = SCALAR tags='checkpoint="no"' "Which speed to set for psidc? Set in ParamCheck"
+ 
+-# real fluxweightvolume type = GF Timelevels = 1
+-# {
+-#   cell_volume
+-#   cell_jdet
+-# } "Weighting factors for the interfaces for using FishEye"
+-# 
+-# real cell_surface[3] type = GF Timelevels = 1
+-# 
+-# real GRHydro_fisheye_scalars type=GF timelevels=1
+-# {
+-#   frho
+-#   fpress
+-#   feps
+-# } "GRHydro scalars in physical coordinates"
+-# 
+-# real GRHydro_fisheye_vectors type=GF timelevels=1
+-# {
+-#   fvelx
+-#   fvely
+-#   fvelz
+-# } "GRHydro vectors in physical coordinates"
+-
+ real GRHydro_coords type=GF timelevels=3 
+ {
+   GRHydro_x
+-- 
+1.7.10.4
+

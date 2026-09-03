@@ -1,0 +1,17 @@
+Index: GNUmakefile
+===================================================================
+--- GNUmakefile	(revision 28)
++++ GNUmakefile	(working copy)
+@@ -12,10 +12,10 @@
+ 
+ # find out what compile and link flags HDF5 itself needs
+ HDF5_CC     := $(shell grep -s 'C Compiler:' $(HDF5_DIR)/lib/libhdf5.settings | cut -f2 -d':')
+-HDF5_CFLAGS := $(shell grep -s 'Compiler switches:' $(HDF5_DIR)/lib/libhdf5.settings | cut -f2-)
++HDF5_CFLAGS := $(shell grep -s 'CFLAGS:' $(HDF5_DIR)/lib/libhdf5.settings | cut -f2- -d':')
+ # enforce backwards compatibility with HDF5 1.6.x API
+ HDF5_CFLAGS += -DH5_USE_16_API
+-HDF5_LIBS   := $(shell grep -s 'Extra libraries:' $(HDF5_DIR)/lib/libhdf5.settings | cut -f2-)
++HDF5_LIBS   := $(shell grep -s 'Extra libraries:' $(HDF5_DIR)/lib/libhdf5.settings | cut -f2- -d':')
+ 
+ # now set the makefile variables for compiling and linking
+ CC	= $(HDF5_CC)

@@ -1,0 +1,67 @@
+From 756858fa373e8f6440a5245ef5f16a416c0c7295 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Tue, 22 Feb 2011 18:08:00 +0100
+Subject: [PATCH 2/2] Correct check for whether to truncate output HDF5 file
+
+Previously a "first_time" variable was used to determine if truncation should happen.  When decomposing multiple variables, this logic is incorrect.  We now store the first_time information per output file.
+---
+ src/utils.cc |   27 +++++++++++++++++++++------
+ 1 files changed, 21 insertions(+), 6 deletions(-)
+
+diff --git a/src/utils.cc b/src/utils.cc
+index 7140718..74d9eef 100644
+--- a/src/utils.cc
++++ b/src/utils.cc
+@@ -2,6 +2,7 @@
+ #include <string.h>
+ #include <math.h>
+ #include <string>
++#include <map>
+ #include <sys/stat.h>
+ #include <errno.h>
+ #include <iostream>
+@@ -152,6 +153,12 @@ void Multipole_OutputComplexToFile(CCTK_ARGUMENTS, const string &name, CCTK_REAL
+ 
+ #ifdef HAVE_CAPABILITY_HDF5
+ 
++static bool file_exists(const string &name)
++{
++  struct stat sts;
++  return !(stat(name.c_str(), &sts) == -1 && errno == ENOENT);
++}
++
+ bool dataset_exists(hid_t file, const string &dataset_name)
+ {
+   // To test whether a dataset exists, the recommended way in API 1.6
+@@ -182,14 +189,22 @@ void Multipole_OutputComplexToH5File(CCTK_ARGUMENTS, const string &basename, con
+ 
+   string output_name = out_dir + string("/") + basename;
+   int status = 0;
+-  static int first_time = true;
++  static map<string,bool> checked; // Has the given file been checked
++                                   // for truncation? map<*,bool>
++                                   // defaults to false
+ 
+-  hid_t file =
+-    (first_time && IO_TruncateOutputFiles(cctkGH)) ?
+-    H5Fcreate(output_name.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT) :
+-    H5Fopen(output_name.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
++  hid_t file;
++
++  if (!file_exists(output_name) || (!checked[output_name] && IO_TruncateOutputFiles(cctkGH)))
++  {
++    file = H5Fcreate(output_name.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
++  }
++  else
++  {
++    file = H5Fopen(output_name.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
++  }
+ 
+-  first_time = false;
++  checked[output_name] = true;
+ 
+   hid_t dataset = -1;
+ 
+-- 
+1.7.3.4
+

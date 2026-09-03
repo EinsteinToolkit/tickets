@@ -1,0 +1,81 @@
+From e231ca51122c1a5775141c635e0ae14de5c4a7a8 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Sun, 14 Oct 2012 22:49:40 -0700
+Subject: [PATCH 3/9] GRHydro: make sure to pass distinct dummy arguments to
+ Fortran routines
+
+since Fortran does not allow aliased arguments
+---
+ src/GRHydro_SourceM.F90 |    6 +++---
+ src/GRHydro_TmunuM.F90  |    7 ++++---
+ 2 files changed, 7 insertions(+), 6 deletions(-)
+
+diff --git a/src/GRHydro_SourceM.F90 b/src/GRHydro_SourceM.F90
+index fb4d52c..73e72e9 100644
+--- a/src/GRHydro_SourceM.F90
++++ b/src/GRHydro_SourceM.F90
+@@ -97,7 +97,7 @@ subroutine SourceTermsM(CCTK_ARGUMENTS)
+   CCTK_REAL :: dx_det_bydet, dy_det_bydet, dz_det_bydet
+   CCTK_REAL :: gdg_x, gdg_y, gdg_z !! g^{ik} d_k g_{ij}
+ 
+-  CCTK_REAL :: Bvecxlow,Bvecylow,Bveczlow,bdotv,b2,dum,bxlow,bylow,bzlow
++  CCTK_REAL :: Bvecxlow,Bvecylow,Bveczlow,bdotv,b2,dum1,dum2,bxlow,bylow,bzlow
+   CCTK_REAL :: bt,bx,by,bz,rhohstarW2,pstar
+ 
+   logical, allocatable, dimension (:,:,:) :: force_spatial_second_order
+@@ -254,7 +254,7 @@ subroutine SourceTermsM(CCTK_ARGUMENTS)
+   !$OMP dx_betax,dx_betay,dx_betaz,dy_betax,dy_betay,dy_betaz,&
+   !$OMP dz_betax,dz_betay,dz_betaz,velxshift,velyshift,velzshift,&
+   !$OMP vlowx,vlowy,vlowz,Bvecxlow,Bvecylow,Bveczlow, &
+-  !$OMP  bdotv,b2,dum,bxlow,bylow,bzlow,bt,bx,by,bz,rhohstarW2,pstar,&
++  !$OMP  bdotv,b2,dum1,dum2,bxlow,bylow,bzlow,bt,bx,by,bz,rhohstarW2,pstar,&
+   !$OMP t00,t0x,t0y,t0z,txx,txy,txz,tyy,tyz,tzz,&
+   !$OMP dx_alp,dy_alp,dz_alp,&
+   !$OMP tau_source,sx_source,sy_source,sz_source,&
+@@ -336,7 +336,7 @@ subroutine SourceTermsM(CCTK_ARGUMENTS)
+         call calc_vlow_blow(localgxx,localgxy,localgxz,localgyy,localgyz,localgzz, &
+              velx(i,j,k),vely(i,j,k),velz(i,j,k),Bvecx(i,j,k),Bvecy(i,j,k),Bvecz(i,j,k), &
+              vlowx,vlowy,vlowz,Bvecxlow,Bvecylow,Bveczlow, &
+-             bdotv,b2,dum,dum,bxlow,bylow,bzlow)
++             bdotv,b2,dum1,dum2,bxlow,bylow,bzlow)
+ 
+ !!$ These are the contravariant components
+         bt = w_lorentz(i,j,k)/alp(i,j,k)*bdotv
+diff --git a/src/GRHydro_TmunuM.F90 b/src/GRHydro_TmunuM.F90
+index 841ff69..eaff8d2 100644
+--- a/src/GRHydro_TmunuM.F90
++++ b/src/GRHydro_TmunuM.F90
+@@ -81,14 +81,14 @@
+    CCTK_REAL :: velxlow, velylow, velzlow
+    CCTK_REAL :: betaxlow, betaylow, betazlow, beta2
+    CCTK_REAL :: Bvecxlow,Bvecylow,Bveczlow
+-   CCTK_REAL :: bdotv,b2,bxlow,bylow,bzlow,btlow,dum
++   CCTK_REAL :: bdotv,b2,bxlow,bylow,bzlow,btlow,dum1,dum2
+    CCTK_REAL :: utlow,rhohstarw2,pstar
+    CCTK_REAL :: bdotbeta,vdotbeta
+    CCTK_INT :: i,j,k
+ 
+ 
+    !$OMP PARALLEL DO PRIVATE(i,j,k,velxlow, velylow, velzlow,&
+-   !$OMP Bvecxlow,Bvecylow,Bveczlow, bdotv,dum,b2,bxlow,bylow,bzlow,&
++   !$OMP Bvecxlow,Bvecylow,Bveczlow, bdotv,dum1,dum2,b2,bxlow,bylow,bzlow,&
+    !$OMP betaxlow, betaylow, betazlow, beta2, bdotbeta,vdotbeta,utlow, btlow,&
+    !$OMP rhohstarw2,pstar)
+ 
+@@ -96,11 +96,12 @@
+      do j = 1, cctk_lsh(2)
+        do i = 1, cctk_lsh(1)
+ 
++          ! need separate dum1, dum2 b/c of Fortrans aliasing rules
+           call calc_vlow_blow(gxx(i,j,k),gxy(i,j,k),gxz(i,j,k),&
+                gyy(i,j,k),gyz(i,j,k),gzz(i,j,k), &
+                velx(i,j,k),vely(i,j,k),velz(i,j,k),Bvecx(i,j,k),Bvecy(i,j,k),Bvecz(i,j,k), &
+                velxlow,velylow,velzlow,Bvecxlow,Bvecylow,Bveczlow, &
+-               bdotv,b2,dum,dum,bxlow,bylow,bzlow)
++               bdotv,b2,dum1,dum2,bxlow,bylow,bzlow)
+           
+ !!$       Calculate lower components and square of shift vector.
+           
+-- 
+1.7.10.4
+

@@ -1,0 +1,36 @@
+From 52dcb294c8a4c99ec2cf3377db1efd5ac7cb3641 Mon Sep 17 00:00:00 2001
+From: Philipp Moesta <pmoesta@tapir.caltech.edu>
+Date: Fri, 24 Feb 2012 11:10:26 -0800
+Subject: [PATCH 03/11] Error check for C2P_failed mask greater or equal 1, do
+ not abort code if in the atmosphere though.
+
+---
+ src/GRHydro_Con2Prim.F90 |    5 ++++-
+ 1 files changed, 4 insertions(+), 1 deletions(-)
+
+diff --git a/src/GRHydro_Con2Prim.F90 b/src/GRHydro_Con2Prim.F90
+index 550e2bd..e7aaa9a 100644
+--- a/src/GRHydro_Con2Prim.F90
++++ b/src/GRHydro_Con2Prim.F90
+@@ -1978,7 +1978,7 @@ subroutine check_GRHydro_C2P_failed(CCTK_ARGUMENTS)
+     do j = 1, ny 
+       do i = 1, nx
+ 
+-        if (GRHydro_C2P_failed(i,j,k) == 1) then
++        if (GRHydro_C2P_failed(i,j,k) .ge. 1) then
+ 
+            if(con2prim_oct_hack.ne.0.and.&
+                 (x(i,j,k) .lt. -1.0d-12 .or.&
+@@ -1987,6 +1987,9 @@ subroutine check_GRHydro_C2P_failed(CCTK_ARGUMENTS)
+               cycle
+            endif
+ 
++           if ( rho(i,j,k) .le. GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance) ) then
++               cycle
++           end if 
+ 
+           !$OMP CRITICAL
+           call CCTK_WARN(1,'Con2Prim failed; stopping the code.')
+-- 
+1.7.8
+

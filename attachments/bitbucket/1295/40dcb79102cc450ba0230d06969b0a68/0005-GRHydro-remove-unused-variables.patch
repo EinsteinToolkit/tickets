@@ -1,0 +1,765 @@
+From dcb7098c6fb08158e7fc8f80722935752c06f057 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Sat, 9 Mar 2013 23:06:22 -0800
+Subject: [PATCH 05/11] GRHydro: remove unused variables
+
+---
+ src/GRHydro_Boundaries.F90            |    3 ---
+ src/GRHydro_Con2Prim.F90              |   17 ++++++++---------
+ src/GRHydro_Differences.F90           |    2 +-
+ src/GRHydro_ENOReconstruct.F90        |    2 +-
+ src/GRHydro_Eigenproblem.F90          |    3 +--
+ src/GRHydro_EigenproblemM.F90         |    2 +-
+ src/GRHydro_Eigenproblem_Marquina.F90 |   24 ++++++++++--------------
+ src/GRHydro_EoSChangeGamma.F90        |    4 ----
+ src/GRHydro_Flux.F90                  |    1 -
+ src/GRHydro_FluxSplit.F90             |    4 ++--
+ src/GRHydro_HLLE.F90                  |    8 ++++----
+ src/GRHydro_HLLEM.F90                 |   10 ++++------
+ src/GRHydro_HLLE_AM.F90               |   10 ++++------
+ src/GRHydro_MP5Reconstruct.F90        |    4 ++--
+ src/GRHydro_Marquina.F90              |    3 +--
+ src/GRHydro_PPM.F90                   |   20 ++------------------
+ src/GRHydro_PPMM.F90                  |    1 -
+ src/GRHydro_PPMMReconstruct_drv.F90   |    2 +-
+ src/GRHydro_PPMReconstruct_drv.F90    |    2 +-
+ src/GRHydro_Particle.F90              |    3 +--
+ src/GRHydro_Prim2Con.F90              |    1 -
+ src/GRHydro_Prim2ConAM.F90            |    3 +--
+ src/GRHydro_Prim2ConM.F90             |    3 +--
+ src/GRHydro_Reconstruct.F90           |    1 -
+ src/GRHydro_RiemannSolve.F90          |    4 ----
+ src/GRHydro_RiemannSolveAM.F90        |    4 ----
+ src/GRHydro_RiemannSolveM.F90         |    4 ----
+ src/GRHydro_RoeSolver.F90             |    8 ++++----
+ src/GRHydro_WENOReconstruct.F90       |    7 +++----
+ 29 files changed, 53 insertions(+), 107 deletions(-)
+
+diff --git a/src/GRHydro_Boundaries.F90 b/src/GRHydro_Boundaries.F90
+index e3be957..0f6db02 100644
+--- a/src/GRHydro_Boundaries.F90
++++ b/src/GRHydro_Boundaries.F90
+@@ -376,7 +376,6 @@ subroutine GRHydro_SelectPrimitiveInitialGuessesBoundaries(CCTK_ARGUMENTS)
+   
+   integer, dimension(3) :: sw
+   integer :: ierr = 0
+-  integer :: i,j,k
+   CCTK_INT :: GRHydro_UseGeneralCoordinates, general_coordinates
+ 
+   CCTK_INT, parameter :: faces=CCTK_ALL_FACES
+@@ -515,7 +514,6 @@ subroutine GRHydro_SelectPrimitiveBoundaries(CCTK_ARGUMENTS)
+   
+   integer, dimension(3) :: sw
+   integer :: ierr = 0
+-  integer :: i,j,k
+   CCTK_INT :: GRHydro_UseGeneralCoordinates, general_coordinates
+ 
+   CCTK_INT, parameter :: faces=CCTK_ALL_FACES
+@@ -651,7 +649,6 @@ subroutine GRHydro_SelectAtmosphereMaskBoundaries(CCTK_ARGUMENTS)
+   
+   integer, dimension(3) :: sw
+   integer :: ierr = 0
+-  integer :: i,j,k
+ 
+   CCTK_INT, parameter :: faces=CCTK_ALL_FACES
+   CCTK_INT, parameter :: ione=1
+diff --git a/src/GRHydro_Con2Prim.F90 b/src/GRHydro_Con2Prim.F90
+index 1387c65..40a3898 100644
+--- a/src/GRHydro_Con2Prim.F90
++++ b/src/GRHydro_Con2Prim.F90
+@@ -54,7 +54,6 @@ subroutine Conservative2Primitive(CCTK_ARGUMENTS)
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+-  integer :: CCTK_MyProc
+   integer :: i, j, k, itracer, nx, ny, nz
+   CCTK_REAL :: uxx, uxy, uxz, uyy, uyz, uzz, det, pmin, epsmin, dummy1, dummy2
+   logical :: epsnegative
+@@ -416,11 +415,11 @@ subroutine Con2Prim_pt(handle, dens, sx, sy, sz, tau, rho, velx, vely, &
+        press, uxx, uxy, uxz, uyy, uyz, uzz, det, w_lorentz, x, &
+        y, z, r, GRHydro_rho_min
+   
+-  CCTK_REAL s2, c0, c1, c2, c3, c4, f, df, ftol, v2, w, vlowx, vlowy, vlowz
++  CCTK_REAL s2, f, df, vlowx, vlowy, vlowz
+   CCTK_INT count, i, handle, GRHydro_reflevel
+   CCTK_REAL GRHydro_C2P_failed, dummy1, dummy2
+-  CCTK_REAL udens, usx, usy, usz, utau, pold, pnew, epsold, epsnew, w2, &
+-       w2mhalf, temp1, drhobydpress, depsbydpress, dpressbydeps, dpressbydrho, pmin, epsmin
++  CCTK_REAL udens, usx, usy, usz, utau, pold, pnew, &
++            temp1, drhobydpress, depsbydpress, dpressbydeps, dpressbydrho, pmin, epsmin
+   character(len=200) warnline
+   logical epsnegative, mustbisect
+ 
+@@ -778,11 +777,11 @@ subroutine Con2Prim_pt_hot(cctk_iteration, ii,jj,kk,handle, dens, &
+        press, uxx, uxy, uxz, uyy, uyz, uzz, det, w_lorentz, x, &
+        y, z, r, GRHydro_rho_min
+   CCTK_REAL temp, ye
+-  CCTK_REAL s2, c0, c1, c2, c3, c4, f, df, ftol, v2, w, vlowx, vlowy, vlowz
++  CCTK_REAL s2, f, df, vlowx, vlowy, vlowz
+   CCTK_INT cctk_iteration, ii,jj,kk,count, i, handle, GRHydro_reflevel
+   CCTK_REAL GRHydro_C2P_failed
+-  CCTK_REAL udens, usx, usy, usz, utau, pold, pnew, epsold, epsnew, w2, &
+-       w2mhalf, temp1, drhobydpress, depsbydpress, dpressbydeps, dpressbydrho, pmin, epsmin
++  CCTK_REAL udens, usx, usy, usz, utau, pold, pnew, &
++            temp1, drhobydpress, depsbydpress, dpressbydeps, dpressbydrho, pmin, epsmin
+   CCTK_REAL epsminl,pminl,plow,tmp, dummy1, dummy2
+   CCTK_REAL local_perc_ptol
+ 
+@@ -1248,7 +1247,7 @@ subroutine Con2Prim_pt_hot(cctk_iteration, ii,jj,kk,handle, dens, &
+     w_lorentz = 1.d0
+   end if
+ 
+-51 press = pnew
++  press = pnew
+   vlowx = usx / ( (rho + rho*epsilon + press) * w_lorentz**2)
+   vlowy = usy / ( (rho + rho*epsilon + press) * w_lorentz**2)
+   vlowz = usz / ( (rho + rho*epsilon + press) * w_lorentz**2)
+@@ -1666,7 +1665,7 @@ subroutine Con2Prim_ptPolytype(handle, dens, sx, sy, sz, tau, rho, &
+   
+   CCTK_REAL s2, f, df, vlowx, vlowy, vlowz
+   CCTK_INT count, handle, GRHydro_reflevel
+-  CCTK_REAL udens, usx, usy, usz, rhoold, rhonew, epsold, epsnew, &
++  CCTK_REAL udens, usx, usy, usz, rhoold, rhonew, &
+        enthalpy, denthalpy, sqrtdet, invsqrtdet, invfac, GRHydro_C2P_failed, dummy1, dummy2
+   character(len=200) warnline
+ 
+diff --git a/src/GRHydro_Differences.F90 b/src/GRHydro_Differences.F90
+index 91383e5..c9bb729 100644
+--- a/src/GRHydro_Differences.F90
++++ b/src/GRHydro_Differences.F90
+@@ -27,7 +27,7 @@ subroutine GRHydro_DiffRho(CCTK_ARGUMENTS)
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+ 
+-  CCTK_INT :: i, j, k, nx, ny, nz, kk, ll
++  CCTK_INT :: i, j, k, nx, ny, nz
+   CCTK_REAL :: idx, idy, idz
+ 
+   CCTK_REAL :: dr_eps = 1.d-2
+diff --git a/src/GRHydro_ENOReconstruct.F90 b/src/GRHydro_ENOReconstruct.F90
+index 904181e..169af04 100644
+--- a/src/GRHydro_ENOReconstruct.F90
++++ b/src/GRHydro_ENOReconstruct.F90
+@@ -40,7 +40,7 @@ subroutine GRHydro_ENOSetup(CCTK_ARGUMENTS)
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+ 
+-  CCTK_INT :: i, j, k, l, m, q, allocstat
++  CCTK_INT :: i, j, l, m, q, allocstat
+   CCTK_REAL :: denominator, numerator, numerator_product
+ 
+   if(.not.coeffs_allocated) then
+diff --git a/src/GRHydro_Eigenproblem.F90 b/src/GRHydro_Eigenproblem.F90
+index 7fe8bdb..4981508 100644
+--- a/src/GRHydro_Eigenproblem.F90
++++ b/src/GRHydro_Eigenproblem.F90
+@@ -145,7 +145,6 @@ subroutine eigenvalues_hot(handle,keytemp,ii,jj,kk,rho,velx,vely,velz,eps, &
+   CCTK_REAL vlowx,vlowy,vlowz,v2,w
+   CCTK_REAL lam1,lam2,lam3,lamm,lamp,lamm_nobeta,lamp_nobeta
+   CCTK_INT handle,ii,jj,kk
+-  CCTK_REAL dpdrho,dpdeps,press
+ 
+ ! begin EOS Omni vars
+   integer :: n,keytemp,anyerr,keyerr(1)
+@@ -598,7 +597,7 @@ subroutine eigenproblem_leftright(handle,rho,velx,vely,velz,eps,&
+   CCTK_REAL lam1,lam2,lam3,lamm,lamp,lamm_nobeta,lamp_nobeta
+   CCTK_REAL cs2,one,two
+   CCTK_REAL vlowx,vlowy,vlowz,v2,w
+-  CCTK_REAL press,dpdrho,dpdeps,enthalpy,kappa
++  CCTK_REAL press,dpdeps,enthalpy,kappa
+   CCTK_REAL axp,axm,vxp,vxm,cxx,cxy,cxz,gam,xsi,dlt
+   CCTK_INT handle
+ 
+diff --git a/src/GRHydro_EigenproblemM.F90 b/src/GRHydro_EigenproblemM.F90
+index ec4d44a..dbd90be 100644
+--- a/src/GRHydro_EigenproblemM.F90
++++ b/src/GRHydro_EigenproblemM.F90
+@@ -155,7 +155,7 @@ subroutine eigenvaluesM_hot(handle,ii,jj,kk,rho,velx,vely,velz,eps,w_lorentz,&
+   CCTK_REAL vlowx,vlowy,vlowz,v2,w
+   CCTK_REAL lam1,lam2,lam3,lamm,lamp,lamm_nobeta,lamp_nobeta
+   CCTK_INT handle, ii,jj,kk
+-  CCTK_REAL dpdrho,dpdeps,press
++  CCTK_REAL press
+ 
+   CCTK_REAL Bvcxlow,Bvcylow,Bvczlow,Bvc2,rhohstar,va2
+   CCTK_REAL Bdotv,b2
+diff --git a/src/GRHydro_Eigenproblem_Marquina.F90 b/src/GRHydro_Eigenproblem_Marquina.F90
+index 79c7390..4efa494 100644
+--- a/src/GRHydro_Eigenproblem_Marquina.F90
++++ b/src/GRHydro_Eigenproblem_Marquina.F90
+@@ -49,8 +49,8 @@ subroutine eigenproblem_marquina(handle,rhor,velxr,velyr,&
+ 
+   DECLARE_CCTK_PARAMETERS
+ 
+-  CCTK_REAL rhor,velxr,velyr,velzr,epsr,w_lorentzr
+-  CCTK_REAL rhol,velxl,velyl,velzl,epsl,w_lorentzl
++  CCTK_REAL rhor,velxr,velyr,velzr,epsr
++  CCTK_REAL rhol,velxl,velyl,velzl,epsl
+   CCTK_REAL densl,sxl,syl,szl,taul
+   CCTK_REAL densr,sxr,syr,szr,taur
+ 
+@@ -63,8 +63,8 @@ subroutine eigenproblem_marquina(handle,rhor,velxr,velyr,&
+ 
+ !!$  LOCAL VARS
+ 
+-  CCTK_REAL du(5),aa(5,5),qdiff1,qdiff2,qdiff3,qdiff4,qdiff5
+-  integer i,j,k,l
++  CCTK_REAL du(5),aa(5,5)
++  integer i,j,k
+   CCTK_REAL paug(5,6),tmp1,tmp2,sump,summ,f_du(5)
+   CCTK_REAL leivec1l(5),leivec2l(5),leivec3l(5),leivecpl(5),leivecml(5)
+   CCTK_REAL leivec1r(5),leivec2r(5),leivec3r(5),leivecpr(5),leivecmr(5)
+@@ -78,8 +78,6 @@ subroutine eigenproblem_marquina(handle,rhor,velxr,velyr,&
+   CCTK_REAL vlowxr,vlowyr,vlowzr,v2r,wr
+   CCTK_REAL vlowxl,vlowyl,vlowzl,v2l,wl
+ 
+-  CCTK_REAL lamp_nobeta,lamm_nobeta
+-
+   CCTK_REAL pressl,dpdrhol,dpdepsl,enthalpyl,kappal
+   CCTK_REAL pressr,dpdrhor,dpdepsr,enthalpyr,kappar
+   CCTK_REAL axpl,axml,vxpl,vxml,xsil,dltl
+@@ -774,8 +772,8 @@ subroutine eigenproblem_marquina_hot(handle,keytemp,rhor,velxr,velyr,&
+ 
+   DECLARE_CCTK_PARAMETERS
+ 
+-  CCTK_REAL rhor,velxr,velyr,velzr,epsr,w_lorentzr
+-  CCTK_REAL rhol,velxl,velyl,velzl,epsl,w_lorentzl
++  CCTK_REAL rhor,velxr,velyr,velzr,epsr
++  CCTK_REAL rhol,velxl,velyl,velzl,epsl
+   CCTK_REAL densl,sxl,syl,szl,taul
+   CCTK_REAL densr,sxr,syr,szr,taur
+   CCTK_REAL templ,tempr,ye_l,ye_r
+@@ -789,8 +787,8 @@ subroutine eigenproblem_marquina_hot(handle,keytemp,rhor,velxr,velyr,&
+ 
+ !!$  LOCAL VARS
+ 
+-  CCTK_REAL du(5),aa(5,5),qdiff1,qdiff2,qdiff3,qdiff4,qdiff5
+-  integer i,j,k,l
++  CCTK_REAL du(5),aa(5,5)
++  integer i,j,k
+   CCTK_REAL paug(5,6),tmp1,tmp2,sump,summ,f_du(5)
+   CCTK_REAL leivec1l(5),leivec2l(5),leivec3l(5),leivecpl(5),leivecml(5)
+   CCTK_REAL leivec1r(5),leivec2r(5),leivec3r(5),leivecpr(5),leivecmr(5)
+@@ -804,10 +802,8 @@ subroutine eigenproblem_marquina_hot(handle,keytemp,rhor,velxr,velyr,&
+   CCTK_REAL vlowxr,vlowyr,vlowzr,v2r,wr
+   CCTK_REAL vlowxl,vlowyl,vlowzl,v2l,wl
+ 
+-  CCTK_REAL lamp_nobeta,lamm_nobeta
+-
+-  CCTK_REAL pressl,dpdrhol,dpdepsl,enthalpyl,kappal
+-  CCTK_REAL pressr,dpdrhor,dpdepsr,enthalpyr,kappar
++  CCTK_REAL pressl,dpdepsl,enthalpyl,kappal
++  CCTK_REAL pressr,dpdepsr,enthalpyr,kappar
+   CCTK_REAL axpl,axml,vxpl,vxml,xsil,dltl
+   CCTK_REAL axpr,axmr,vxpr,vxmr,xsir,dltr
+   CCTK_REAL cxx,cxy,cxz,gam,vxa,vxb
+diff --git a/src/GRHydro_EoSChangeGamma.F90 b/src/GRHydro_EoSChangeGamma.F90
+index ce8440f..b81a267 100644
+--- a/src/GRHydro_EoSChangeGamma.F90
++++ b/src/GRHydro_EoSChangeGamma.F90
+@@ -291,10 +291,6 @@ subroutine GRHydro_EoSChangeGammaK_Shibata(CCTK_ARGUMENTS)
+   
+   CCTK_REAL :: local_Gamma, local_k, eos_k_initial
+ 
+-  CCTK_REAL, dimension(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: Q
+-
+-  character(len=100) infoline
+-
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+   CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+diff --git a/src/GRHydro_Flux.F90 b/src/GRHydro_Flux.F90
+index f467e1c..0b9eaab 100644
+--- a/src/GRHydro_Flux.F90
++++ b/src/GRHydro_Flux.F90
+@@ -36,7 +36,6 @@ subroutine num_flux(xoffset,yoffset,zoffset,dens,sx,sy,sz,tau,&
+   CCTK_REAL :: dens,sx,sy,sz,tau,velx,vely,velz,det
+   CCTK_REAL :: densf,sxf,syf,szf,tauf
+   CCTK_REAL :: alp,beta,press 
+-  integer :: i,j,k
+   integer :: xoffset,yoffset,zoffset
+ 
+   densf = dens * ( (velx*xoffset + vely*yoffset + &
+diff --git a/src/GRHydro_FluxSplit.F90 b/src/GRHydro_FluxSplit.F90
+index 16777c3..7ff4abc 100644
+--- a/src/GRHydro_FluxSplit.F90
++++ b/src/GRHydro_FluxSplit.F90
+@@ -40,7 +40,7 @@ subroutine GRHydro_FSAlpha(CCTK_ARGUMENTS)
+   DECLARE_CCTK_FUNCTIONS
+ 
+   integer :: nx, ny, nz, i, j, k, ierr, max_handle
+-  CCTK_REAL :: uxx, uxy, uxz, uyy, uyz, uzz, det, psi4pt, beta
++  CCTK_REAL :: uxx, uxy, uxz, uyy, uyz, uzz, det, beta
+   CCTK_REAL, dimension(5) :: lambda
+   CCTK_REAL :: alpha1_local, alpha2_local, alpha3_local, alpha4_local, &
+        alpha5_local
+@@ -287,7 +287,7 @@ subroutine GRHydro_SplitFlux(CCTK_ARGUMENTS)
+   integer :: nx, ny, nz, i, j, k
+ 
+   CCTK_REAL, dimension(:), allocatable :: upper, det, dummy
+-  CCTK_REAL :: uxx, uxy, uxz, uyy, uyz, uzz, psi4pt
++  CCTK_REAL :: uxx, uxy, uxz, uyy, uyz, uzz
+ 
+   nx = cctk_lsh(1)
+   ny = cctk_lsh(2)
+diff --git a/src/GRHydro_HLLE.F90 b/src/GRHydro_HLLE.F90
+index 4b578ee..bfe3cd0 100644
+--- a/src/GRHydro_HLLE.F90
++++ b/src/GRHydro_HLLE.F90
+@@ -166,9 +166,9 @@ subroutine GRHydro_HLLE(CCTK_ARGUMENTS)
+   CCTK_REAL, dimension(5) :: qdiff
+   CCTK_REAL ::  charmin, charmax, charpm,avg_alp,avg_det, etabar
+   CCTK_REAL :: gxxh, gxyh, gxzh, gyyh, gyzh, gzzh, uxxh, uxyh, &
+-       uxzh, uyyh, uyzh, uzzh, avg_beta, usendh, alp_l, alp_r
++       uxzh, uyyh, uyzh, uzzh, avg_beta, usendh
+     
+-  CCTK_INT :: type_bits, trivial, not_trivial
++  CCTK_INT :: type_bits, trivial
+ 
+   ! sign requires its arguments to be of identical KIND
+   CCTK_REAL, parameter :: one = 1d0
+@@ -634,9 +634,9 @@ subroutine GRHydro_HLLE_Tracer(CCTK_ARGUMENTS)
+   CCTK_REAL, dimension(number_of_tracers) :: qdiff
+   CCTK_REAL ::  charmin, charmax, charpm,avg_alp,avg_det
+   CCTK_REAL :: gxxh, gxyh, gxzh, gyyh, gyzh, gzzh, uxxh, uxyh, &
+-       uxzh, uyyh, uyzh, uzzh, avg_beta, usendh, alp_l, alp_r
++       uxzh, uyyh, uyzh, uzzh, avg_beta, usendh
+     
+-  CCTK_INT :: type_bits, trivial, not_trivial
++  CCTK_INT :: type_bits, trivial
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+diff --git a/src/GRHydro_HLLEM.F90 b/src/GRHydro_HLLEM.F90
+index 75af760..b503922 100644
+--- a/src/GRHydro_HLLEM.F90
++++ b/src/GRHydro_HLLEM.F90
+@@ -53,8 +53,7 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+   CCTK_REAL, dimension(5) :: lamminus,lamplus
+   CCTK_REAL ::  charmin, charmax, charpm,chartop,avg_alp,avg_det, sdet
+   CCTK_REAL :: gxxh, gxyh, gxzh, gyyh, gyzh, gzzh, uxxh, uxyh, &
+-       uxzh, uyyh, uyzh, uzzh, avg_beta, usendh, alp_l, alp_r, &
+-       cs2_p, cs2_m, dpdeps_p, dpdeps_m
++       uxzh, uyyh, uyzh, uzzh, avg_beta, usendh
+   CCTK_REAL :: rhoenth_p, rhoenth_m, avg_betax, avg_betay, avg_betaz
+   CCTK_REAL :: vxtp,vytp,vztp,vxtm,vytm,vztm,ab0p,ab0m,b2p,b2m,bdotvp,bdotvm
+   CCTK_REAL :: wp,wm,v2p,v2m,bxlowp,bxlowm,bylowp,bylowm,bzlowp,bzlowm,vA2m,vA2p
+@@ -66,7 +65,7 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+   CCTK_REAL :: psidcp, psidcm, psidcf, psidcdiff, psidcfp, psidcfm
+   CCTK_REAL :: charmax_dc, charmin_dc, charpm_dc   
+  
+-  CCTK_INT :: type_bits, trivial, not_trivial
++  CCTK_INT :: type_bits, trivial
+   CCTK_REAL :: xtemp
+ 
+   ! save memory when MP is not used
+@@ -724,11 +723,10 @@ subroutine GRHydro_HLLE_TracerM(CCTK_ARGUMENTS)
+   CCTK_REAL, dimension(3) :: mag_p, mag_m
+   CCTK_REAL ::  charmin, charmax, charpm,avg_alp,avg_det
+   CCTK_REAL :: gxxh, gxyh, gxzh, gyyh, gyzh, gzzh, uxxh, uxyh, &
+-       uxzh, uyyh, uyzh, uzzh, avg_beta, usendh, alp_l, alp_r, &
+-       cs2_p, cs2_m, dpdeps_p, dpdeps_m
++       uxzh, uyyh, uyzh, uzzh, avg_beta, usendh
+   CCTK_REAL :: b2p,b2m,vA2m,vA2p
+     
+-  CCTK_INT :: type_bits, trivial, not_trivial
++  CCTK_INT :: type_bits, trivial
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+diff --git a/src/GRHydro_HLLE_AM.F90 b/src/GRHydro_HLLE_AM.F90
+index 45e3afa..319d946 100644
+--- a/src/GRHydro_HLLE_AM.F90
++++ b/src/GRHydro_HLLE_AM.F90
+@@ -53,8 +53,7 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+   CCTK_REAL, dimension(5) :: lamminus,lamplus
+   CCTK_REAL ::  charmin, charmax, charpm,chartop,avg_alp,avg_det, sdet
+   CCTK_REAL :: gxxh, gxyh, gxzh, gyyh, gyzh, gzzh, uxxh, uxyh, &
+-       uxzh, uyyh, uyzh, uzzh, avg_beta, usendh, alp_l, alp_r, &
+-       cs2_p, cs2_m, dpdeps_p, dpdeps_m
++       uxzh, uyyh, uyzh, uzzh, avg_beta, usendh
+   CCTK_REAL :: rhoenth_p, rhoenth_m, avg_betax, avg_betay, avg_betaz
+   CCTK_REAL :: vxtp,vytp,vztp,vxtm,vytm,vztm,ab0p,ab0m,b2p,b2m,bdotvp,bdotvm
+   CCTK_REAL :: wp,wm,v2p,v2m,bxlowp,bxlowm,bylowp,bylowm,bzlowp,bzlowm,vA2m,vA2p
+@@ -64,7 +63,7 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+   CCTK_REAL :: psidcp, psidcm, psidcf, psidcdiff, psidcfp, psidcfm
+   CCTK_REAL :: charmax_dc, charmin_dc, charpm_dc
+ 
+-  CCTK_INT :: type_bits, trivial, not_trivial
++  CCTK_INT :: type_bits, trivial
+   CCTK_REAL :: xtemp
+ 
+   ! save memory when MP is not used
+@@ -681,11 +680,10 @@ subroutine GRHydro_HLLE_TracerAM(CCTK_ARGUMENTS)
+   CCTK_REAL, dimension(3) :: mag_p, mag_m
+   CCTK_REAL ::  charmin, charmax, charpm,avg_alp,avg_det
+   CCTK_REAL :: gxxh, gxyh, gxzh, gyyh, gyzh, gzzh, uxxh, uxyh, &
+-       uxzh, uyyh, uyzh, uzzh, avg_beta, usendh, alp_l, alp_r, &
+-       cs2_p, cs2_m, dpdeps_p, dpdeps_m
++       uxzh, uyyh, uyzh, uzzh, avg_beta, usendh
+   CCTK_REAL :: b2p,b2m,vA2m,vA2p
+     
+-  CCTK_INT :: type_bits, trivial, not_trivial
++  CCTK_INT :: type_bits, trivial
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+diff --git a/src/GRHydro_MP5Reconstruct.F90 b/src/GRHydro_MP5Reconstruct.F90
+index be42731..72b2f73 100644
+--- a/src/GRHydro_MP5Reconstruct.F90
++++ b/src/GRHydro_MP5Reconstruct.F90
+@@ -40,7 +40,7 @@ subroutine GRHydro_MP5Reconstruct1d(nx, v, vminus, vplus, trivial_rp, &
+ 
+   DECLARE_CCTK_PARAMETERS
+ 
+-  CCTK_INT :: nx, i, j, k, r
++  CCTK_INT :: nx, i
+   CCTK_REAL, dimension(nx) :: v, vplus, vminus
+ 
+   CCTK_INT, dimension(nx) :: hydro_excision_mask
+@@ -95,7 +95,7 @@ subroutine GRHydro_MP5Reconstruct1d(nx, v, vminus, vplus, trivial_rp, &
+ #define MINMOD4(w,x,y,z) \
+      0.125d0*( sign(one,w)+sign(one,x) )*abs( (sign(one,w)+sign(one,y)) * (sign(one,w)+sign(one,z)) )*min(abs(w), abs(x), abs(y), abs(z))
+ 
+-#define MP5(am2, am1, a, ap1, ap2, arecon) \    
++#define MP5(am2, am1, a, ap1, ap2, arecon) \
+       vl = (2.0d0*am2 - 13.0d0*am1 + 47.0d0*a + 27.0d0*ap1 - 3.0d0*ap2)/60.0d0  &&\
+       vmp = a + MINMOD( ap1-a, mp5_alpha*(a-am1) )  &&\
+       if ((vl-a)*(vl-vmp) .le. mp5_eps) then &&\
+diff --git a/src/GRHydro_Marquina.F90 b/src/GRHydro_Marquina.F90
+index 18621c9..3321ae9 100644
+--- a/src/GRHydro_Marquina.F90
++++ b/src/GRHydro_Marquina.F90
+@@ -45,13 +45,12 @@ subroutine GRHydro_Marquina(CCTK_ARGUMENTS)
+          consp,consm_i,fplus,fminus,f_marquina,primp,primm_i
+     CCTK_REAL :: avg_alp,avg_beta,gxxh,gxyh,gxzh,gyyh,gyzh,gzzh, &
+          avg_det,uxxh,uxyh,uxzh,uyyh,uyzh,uzzh,&
+-         pressp,pressm_i, &
+          tmp_w_lorentzp, tmp_w_lorentzm_i, w_lorentzp,w_lorentzm_i, usendh, psi4h
+     integer :: m
+     integer :: i,j,k
+     integer :: keytemp
+     
+-    CCTK_INT :: type_bits, trivial, not_trivial
++    CCTK_INT :: type_bits, trivial
+ 
+     if(evolve_temper.eq.1.and.reconstruct_temper.eq.1) then
+        keytemp = 1
+diff --git a/src/GRHydro_PPM.F90 b/src/GRHydro_PPM.F90
+index f71a0e1..892d453 100644
+--- a/src/GRHydro_PPM.F90
++++ b/src/GRHydro_PPM.F90
+@@ -73,13 +73,6 @@ subroutine SimplePPM_1d(handle,poly,&
+   CCTK_REAL, dimension(nx) :: rho,velx,vely,velz,eps
+   CCTK_REAL, dimension(nx) :: rhominus,velxminus,velyminus,velzminus,epsminus
+   CCTK_REAL, dimension(nx) :: rhoplus,velxplus,velyplus,velzplus,epsplus
+-  CCTK_REAL, dimension(nx) :: rhominusl,velxminusl,velyminusl,velzminusl
+-  CCTK_REAL, dimension(nx) :: epsminusl
+-  CCTK_REAL, dimension(nx) :: rhoplusl,velxplusl,velyplusl,velzplusl,epsplusl
+-  CCTK_REAL, dimension(nx) :: rhominusr,velxminusr,velyminusr,velzminusr
+-  CCTK_REAL, dimension(nx) :: epsminusr
+-  CCTK_REAL, dimension(nx) :: rhoplusr,velxplusr,velyplusr,velzplusr,epsplusr
+-  CCTK_REAL, dimension(nx) :: atmosphere_mask
+ 
+   CCTK_INT :: i,s
+   CCTK_REAL, dimension(nx) :: drho,dvelx,dvely,dvelz,deps
+@@ -98,7 +91,6 @@ subroutine SimplePPM_1d(handle,poly,&
+ 
+   CCTK_REAL :: uxx, uxy, uxz, uyy, uyz, uzz, det
+   CCTK_REAL, dimension(5) :: lam
+-  CCTK_REAL :: dupw, dloc, delta
+   CCTK_REAL :: agxx, agxy, agxz, agyy, agyz, agzz
+   CCTK_REAL, dimension(nx) :: xwind, l_ev_l, l_ev_r
+ 
+@@ -1046,17 +1038,12 @@ subroutine SimplePPM_temperature_1d(&
+   CCTK_REAL, dimension(nx) :: temperature, velx
+   CCTK_REAL, dimension(nx) :: tempminus
+   CCTK_REAL, dimension(nx) :: tempplus
+-  CCTK_REAL, dimension(nx) :: tempminusl
+-  CCTK_REAL, dimension(nx) :: tempplusl
+-  CCTK_REAL, dimension(nx) :: tempminusr
+-  CCTK_REAL, dimension(nx) :: tempplusr
+-  CCTK_REAL, dimension(nx) :: atmosphere_mask
+ 
+   CCTK_INT :: i,s
+   CCTK_REAL, dimension(nx) :: dtemp
+   CCTK_REAL, dimension(nx) :: dmtemp
+   CCTK_REAL, dimension(nx) :: press,dpress,tilde_flatten
+-  CCTK_REAL :: dpress2,dvel,w,flatten,eta,etatilde
++  CCTK_REAL :: dpress2,dvel,w,flatten
+ 
+   CCTK_INT, dimension(nx) :: hydro_excision_mask
+ 
+@@ -1569,7 +1556,6 @@ subroutine SimplePPM_tracer_1d(nx,dx,rho,velx,vely,velz, &
+   CCTK_REAL, dimension(nx) :: press,dpress,tilde_flatten
+   CCTK_REAL, dimension(nx,number_of_tracers) :: dmtracer, dtracer, tracerflat!, d2tracer
+   CCTK_REAL :: dpress2,w,flatten,dvel
+-  CCTK_REAL :: eta, etatilde
+ 
+ !!$  Average slopes delta_m(a). See (1.7) of Colella and Woodward, p.178
+ !!$  This is the expression for an even grid.
+@@ -1777,14 +1763,12 @@ subroutine SimplePPM_ye_1d(nx,dx,rho,velx,vely,velz, &
+   CCTK_REAL :: dx
+   CCTK_REAL, dimension(nx) :: rho,velx,vely,velz
+   CCTK_REAL, dimension(nx) :: Y_e,Y_e_minus,Y_e_plus
+-  CCTK_REAL :: Y_eflatomega
+ 
+ 
+   CCTK_INT :: i,s
+   CCTK_REAL, dimension(nx) :: press,dpress,tilde_flatten
+-  CCTK_REAL, dimension(nx) :: dmY_e, dY_e, Y_eflat!, d2tracer
++  CCTK_REAL, dimension(nx) :: dmY_e, dY_e
+   CCTK_REAL :: dpress2,w,flatten,dvel
+-  CCTK_REAL :: eta, etatilde
+ 
+   CCTK_REAL :: D2a, D2aL, D2aR, D2aC, D2aLim, rhi, daplus, daminus, D3a, D3aLL, D3aL, D3aR, D2aLL, D2aRR, D3aMin, D3aMax
+ 
+diff --git a/src/GRHydro_PPMM.F90 b/src/GRHydro_PPMM.F90
+index 60e01a7..017f472 100644
+--- a/src/GRHydro_PPMM.F90
++++ b/src/GRHydro_PPMM.F90
+@@ -73,7 +73,6 @@ subroutine SimplePPM_1dM(handle,poly,nx,dx,&
+ 
+   CCTK_REAL :: uxx, uxy, uxz, uyy, uyz, uzz, det
+   CCTK_REAL, dimension(5) :: lam
+-  CCTK_REAL :: dupw, dloc, delta
+   CCTK_REAL :: agxx, agxy, agxz, agyy, agyz, agzz
+   CCTK_REAL, dimension(nx) :: xwind, l_ev_l, l_ev_r
+ 
+diff --git a/src/GRHydro_PPMMReconstruct_drv.F90 b/src/GRHydro_PPMMReconstruct_drv.F90
+index 4d77b76..096d056 100644
+--- a/src/GRHydro_PPMMReconstruct_drv.F90
++++ b/src/GRHydro_PPMMReconstruct_drv.F90
+@@ -60,7 +60,7 @@ subroutine GRHydro_PPMMReconstruct_drv(CCTK_ARGUMENTS)
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+ 
+-  integer :: nx, ny, nz, i, j, k, itracer
++  integer :: nx, ny, nz, i, j, k
+ 
+   logical, dimension(:,:,:), allocatable :: trivial_rp
+ 
+diff --git a/src/GRHydro_PPMReconstruct_drv.F90 b/src/GRHydro_PPMReconstruct_drv.F90
+index 2191b08..fd29560 100644
+--- a/src/GRHydro_PPMReconstruct_drv.F90
++++ b/src/GRHydro_PPMReconstruct_drv.F90
+@@ -53,7 +53,7 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+ 
+-  integer :: nx, ny, nz, i, j, k, itracer
++  integer :: nx, ny, nz, i, j, k
+ 
+   logical, dimension(:,:,:), allocatable :: trivial_rp
+ 
+diff --git a/src/GRHydro_Particle.F90 b/src/GRHydro_Particle.F90
+index 464bf78..dc078ff 100644
+--- a/src/GRHydro_Particle.F90
++++ b/src/GRHydro_Particle.F90
+@@ -36,14 +36,13 @@ subroutine GRHydroParticleRHS(CCTK_ARGUMENTS)
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_FUNCTIONS
+ 
+-  CCTK_INT :: i, l
++  CCTK_INT :: i
+   CCTK_INT :: interp_handle, table_handle, status, coord_system_handle
+ 
+   character(len=200) :: particle_interp
+   character(len=128) :: warn_message
+   CCTK_INT :: particle_interp_len
+   character(len=7) :: particle_order
+-  character(len=15) :: vname
+ 
+   CCTK_INT, dimension(1) :: lsh
+   CCTK_POINTER, dimension(3) :: interp_coords
+diff --git a/src/GRHydro_Prim2Con.F90 b/src/GRHydro_Prim2Con.F90
+index 6d03e05..7323cdf 100644
+--- a/src/GRHydro_Prim2Con.F90
++++ b/src/GRHydro_Prim2Con.F90
+@@ -441,7 +441,6 @@ subroutine Primitive2ConservativeCells(CCTK_ARGUMENTS)
+   CCTK_INT :: i, j, k
+   CCTK_INT :: keytemp
+   CCTK_REAL :: det
+-  character(len=512) :: warnline
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+diff --git a/src/GRHydro_Prim2ConAM.F90 b/src/GRHydro_Prim2ConAM.F90
+index 35b2619..7bda654 100644
+--- a/src/GRHydro_Prim2ConAM.F90
++++ b/src/GRHydro_Prim2ConAM.F90
+@@ -438,7 +438,6 @@ subroutine Primitive2ConservativeCellsAM(CCTK_ARGUMENTS)
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+-  CCTK_REAL :: xtemp(1)
+   CCTK_INT :: i, j, k
+   CCTK_REAL :: det
+   CCTK_REAL :: maxtau0
+@@ -631,7 +630,7 @@ subroutine prim2conpolytypeAM(handle, gxx, gxy, gxz, gyy, gyz, &
+   CCTK_REAL :: gxx, gxy, gxz, gyy, gyz, gzz, det
+   CCTK_REAL :: ddens, dsx, dsy, dsz, dtau, &
+        drho, dvelx, dvely, dvelz, deps, dpress, dBvcx, dBvcy, dBvcz, &
+-       w_tmp, w, vlowx, vlowy, vlowz, sqrtdet   
++       w_tmp, w, vlowx, vlowy, vlowz
+   CCTK_INT :: handle
+   CCTK_REAL :: Bdotv,ab0,b2,blowx,blowy,blowz
+   character(len=256) NaN_WarnLine
+diff --git a/src/GRHydro_Prim2ConM.F90 b/src/GRHydro_Prim2ConM.F90
+index 78c31bb..a71cf93 100644
+--- a/src/GRHydro_Prim2ConM.F90
++++ b/src/GRHydro_Prim2ConM.F90
+@@ -455,7 +455,6 @@ subroutine Primitive2ConservativeCellsM(CCTK_ARGUMENTS)
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+-  CCTK_REAL :: xtemp(1)
+   CCTK_INT :: i, j, k
+   CCTK_REAL :: det
+   CCTK_REAL :: maxtau0
+@@ -654,7 +653,7 @@ subroutine prim2conpolytypeM(handle, gxx, gxy, gxz, gyy, gyz, &
+   CCTK_REAL :: gxx, gxy, gxz, gyy, gyz, gzz, det
+   CCTK_REAL :: ddens, dsx, dsy, dsz, dtau, dBconsx, dBconsy, dBconsz, &
+        drho, dvelx, dvely, dvelz, deps, dpress, dBvcx, dBvcy, dBvcz, &
+-       w_tmp, w, vlowx, vlowy, vlowz, sqrtdet   
++       w_tmp, w, vlowx, vlowy, vlowz
+   CCTK_INT :: handle
+   CCTK_REAL :: Bdotv,ab0,b2,blowx,blowy,blowz
+   character(len=256) NaN_WarnLine
+diff --git a/src/GRHydro_Reconstruct.F90 b/src/GRHydro_Reconstruct.F90
+index 04290ab..56336f0 100644
+--- a/src/GRHydro_Reconstruct.F90
++++ b/src/GRHydro_Reconstruct.F90
+@@ -49,7 +49,6 @@ subroutine Reconstruction(CCTK_ARGUMENTS)
+   CCTK_REAL :: local_min_tracer, dummy1, dummy2
+   CCTK_INT :: type_bits, not_trivial
+   CCTK_REAL :: agxx, agxy, agxz, agyy, agyz, agzz, w
+-  character*256 :: warnline
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+diff --git a/src/GRHydro_RiemannSolve.F90 b/src/GRHydro_RiemannSolve.F90
+index be2c2d4..05a8220 100644
+--- a/src/GRHydro_RiemannSolve.F90
++++ b/src/GRHydro_RiemannSolve.F90
+@@ -36,8 +36,6 @@ subroutine RiemannSolve(CCTK_ARGUMENTS)
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+ 
+-  CCTK_INT :: i,j,k
+-  
+   if (CCTK_EQUALS(riemann_solver,"HLLE")) then
+ 
+     call GRHydro_HLLE(CCTK_PASS_FTOF)
+@@ -93,8 +91,6 @@ subroutine RiemannSolvePolytype(CCTK_ARGUMENTS)
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+ 
+-  CCTK_INT :: i,j,k
+-  
+   if (CCTK_EQUALS(riemann_solver,"HLLE")) then
+     
+     call GRHydro_HLLE(CCTK_PASS_FTOF)
+diff --git a/src/GRHydro_RiemannSolveAM.F90 b/src/GRHydro_RiemannSolveAM.F90
+index b51105c..5784430 100644
+--- a/src/GRHydro_RiemannSolveAM.F90
++++ b/src/GRHydro_RiemannSolveAM.F90
+@@ -36,8 +36,6 @@ subroutine RiemannSolveAM(CCTK_ARGUMENTS)
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+ 
+-  CCTK_INT :: i,j,k
+-  
+   if (CCTK_EQUALS(riemann_solver,"HLLE").or.CCTK_EQUALS(riemann_solver,"LLF")) then
+      
+      call GRHydro_HLLE_AM(CCTK_PASS_FTOF)
+@@ -100,8 +98,6 @@ subroutine RiemannSolvePolytypeAM(CCTK_ARGUMENTS)
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+ 
+-  CCTK_INT :: i,j,k
+-  
+   if (CCTK_EQUALS(riemann_solver,"HLLE")) then
+     
+      call GRHydro_HLLE_AM(CCTK_PASS_FTOF)
+diff --git a/src/GRHydro_RiemannSolveM.F90 b/src/GRHydro_RiemannSolveM.F90
+index 25f2006..5c5eb57 100644
+--- a/src/GRHydro_RiemannSolveM.F90
++++ b/src/GRHydro_RiemannSolveM.F90
+@@ -36,8 +36,6 @@ subroutine RiemannSolveM(CCTK_ARGUMENTS)
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+ 
+-  CCTK_INT :: i,j,k
+-  
+   if (CCTK_EQUALS(riemann_solver,"HLLE").or.CCTK_EQUALS(riemann_solver,"LLF")) then
+      
+      call GRHydro_HLLEM(CCTK_PASS_FTOF)
+@@ -100,8 +98,6 @@ subroutine RiemannSolvePolytypeM(CCTK_ARGUMENTS)
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+ 
+-  CCTK_INT :: i,j,k
+-  
+   if (CCTK_EQUALS(riemann_solver,"HLLE")) then
+     
+      call GRHydro_HLLEM(CCTK_PASS_FTOF)
+diff --git a/src/GRHydro_RoeSolver.F90 b/src/GRHydro_RoeSolver.F90
+index 18d2f4d..04a9e84 100644
+--- a/src/GRHydro_RoeSolver.F90
++++ b/src/GRHydro_RoeSolver.F90
+@@ -38,15 +38,15 @@ subroutine GRHydro_RoeSolve(CCTK_ARGUMENTS)
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   CCTK_REAL, dimension(5) :: roeflux,roeave,qdiff,consp,consm_i,&
+-       fplus,fminus,f_roe,primp,primm_i,consh
++       fplus,fminus,f_roe,primp,primm_i
+   CCTK_REAL :: avg_alp,avg_beta,gxxh,gxyh,gxzh,gyyh,gyzh,gzzh, &
+        avg_det,uxxh,uxyh,uxzh,uyyh,uyzh,uzzh,&
+-       rhoave, velxave, velyave, velzave, pressave, epsave, &
+-       w_lorentzave, usendh, alp_l, alp_r, psi4h
++       rhoave, velxave, velyave, velzave, epsave, &
++       w_lorentzave, usendh
+   integer :: m
+   integer :: i,j,k
+   
+-  CCTK_INT :: type_bits, trivial, not_trivial
++  CCTK_INT :: type_bits, trivial
+ 
+   if (flux_direction == 1) then
+     call SpaceMask_GetTypeBits(type_bits, "Hydro_RiemannProblemX")
+diff --git a/src/GRHydro_WENOReconstruct.F90 b/src/GRHydro_WENOReconstruct.F90
+index 9c40d95..5f368c0 100644
+--- a/src/GRHydro_WENOReconstruct.F90
++++ b/src/GRHydro_WENOReconstruct.F90
+@@ -40,8 +40,7 @@ subroutine GRHydro_WENOSetup(CCTK_ARGUMENTS)
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+ 
+-  CCTK_INT :: i, j, k, l, m, q, allocstat
+-  CCTK_REAL :: denominator, numerator, numerator_product
++  CCTK_INT :: allocstat
+ 
+   if(.not.coeffs_allocated) then
+      ! Right now we hardcode to 5th order
+@@ -156,7 +155,7 @@ subroutine GRHydro_WENOReconstruct1d(order, nx, v, vminus, vplus, trivial_rp, &
+ 
+   DECLARE_CCTK_PARAMETERS
+ 
+-  CCTK_INT :: order, nx, i, j, k, r
++  CCTK_INT :: order, nx, i, j
+   CCTK_REAL, dimension(nx) :: v, vplus, vminus
+ 
+   CCTK_INT, dimension(nx) :: hydro_excision_mask
+@@ -164,7 +163,7 @@ subroutine GRHydro_WENOReconstruct1d(order, nx, v, vminus, vplus, trivial_rp, &
+   logical, dimension(nx) :: excise
+   logical :: normal_weno
+ 
+-  CCTK_REAL :: large = 1.d10, gamma1, gamma2, gamma3, beta1, beta2, beta3, vnorm, betanorm
++  CCTK_REAL :: beta1, beta2, beta3, vnorm, betanorm
+   CCTK_REAL :: wplus1, wplus2, wplus3, wbarplus1, wbarplus2, wbarplus3
+   CCTK_REAL :: wminus1, wminus2, wminus3, wbarminus1, wbarminus2, wbarminus3
+ 
+-- 
+1.7.10.4
+

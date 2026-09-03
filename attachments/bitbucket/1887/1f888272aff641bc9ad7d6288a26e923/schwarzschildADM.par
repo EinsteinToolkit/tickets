@@ -1,0 +1,80 @@
+
+#################################################
+#   Simple example of Schwarzschild using ADM   #
+#################################################
+
+# Required thorns
+
+ActiveThorns = "MoL ADMBase ADMAnalysis ADMMacros ADMConstraints ADMCoupling TmunuBase Boundary CartGrid3D CoordBase CoordGauge SymBase StaticConformal IDanalyticBH IOBasic IOUtil IOASCII PUGH PUGHreduce PUGHslab Time LocalReduce SpaceMask MPI hwloc zlib"
+
+# Grid
+
+grid::domain = "octant"				# Domain type (octant,quadrant,full)
+grid::type = "BySpacing"			# Grid type
+grid::dxyz = 0.2				# Space increment
+
+driver::global_nsize = 50			# Number of points in x, y and z.
+
+# Time stepping
+
+time::dtfac = 0.25 				# Courant parameter
+cactus::cctk_itlast = 100			# Number of time steps
+
+# Initial data
+
+admbase::initial_data = "schwarzschild"		# Type of initial data, in this case schwarzschild
+idanalyticbh::mass = 1.0			# Mass of BH.
+
+# Evolution
+
+admbase::metric_type      = "static conformal"  # factor out static conformal factor
+#admbase::evolution_method = "static"
+admbase::evolution_method = "ADM"		# Use ADM
+
+MoL::ODE_Method             = "icn"
+# adm::method = "icn"				# Numerical method (leapfrog,stagleap,icn)
+
+# Slicing
+
+#admbase::initial_lapse="one"
+admbase::initial_lapse="schwarz"
+#admbase::lapse_evolution_method = "1+log"	# Slicing condition (geodesic,harmonic,1+log)
+#adm::harmonic_f = 2.0				# Coefficient for Bona-Masso slicing
+
+# Boundaries
+
+#methodoﬂines::boundary = "static"			# Boundary condition (static,flat,radiative)
+MoL::boundary = "register_static"
+
+# Output to screen
+
+IOBasic::outInfo_every = 20			# How often to send info to screen
+#IOBasic::outInfo_vars  = "admbase::alp"		# Info to screen for what variables
+#IOBasic::outInfo_vars  = "admbase::gxx admbase::gxy admbase::gxz admbase::gyy admbase::gyz admbase::gzz"# Info to screen for what variables
+#IOBasic::outInfo_vars  = "admbase::kxx admbase::kxy admbase::kxz admbase::kyy admbase::kyz admbase::kzz"# Info to screen for what variables
+#IOBasic::outInfo_vars  = "admconstraints::ham admconstraints::momx admconstraints::momy admconstraints::momz"# Info to screen for what variables
+#IOBasic::outInfo_reductions  = "norm2"		# The list of global reduction operations
+
+# 0D output
+
+#IOBasic::outScalar_every = 20			# How often to save scalar (0D) data
+#IOBasic::outScalar_vars  = "admbase::alp admanalysis::grr admconstraints::ham admconstraints::momx"
+#IOBasic::outScalar_vars  = "admbase::gxx admbase::gxy admbase::gxz admbase::gyy admbase::gyz admbase::gzz"
+#IOBasic::outScalar_vars  = "admbase::kxx admbase::kxy admbase::kxz admbase::kyy admbase::kyz admbase::kzz"
+#IOBasic::outScalar_reductions  = "average"
+
+# 1D output
+
+#IOASCII::out1D_every = 20			# How often to save 1D data
+#IOASCII::out1D_vars  = "admbase::alp admanalysis::grr admconstraints::ham admconstraints::momx"
+
+# 3D output
+
+IOASCII::out3D_every = 100			# How often to save 1D data
+#IOASCII::out3D_vars  = "admbase::alp admanalysis::grr admconstraints::ham admconstraints::momx admbase::gxx admbase::gxy admbase::gxz admbase::gyy admbase::gyz admbase::gzz"
+IOASCII::out3D_vars  = "admconstraints::momx"
+
+# Name of output directory
+ 
+IO::out_dir = "schwarzschildADM"		# Output directory
+

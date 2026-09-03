@@ -1,0 +1,265 @@
+From eee141de6155b923eb3c6644da8184b488c788b3 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Fri, 7 Feb 2014 19:27:24 -0800
+Subject: [PATCH 35/36] GRHydro: make routine to compute speed of sound
+ callable from F90 MHD p2c
+
+the code is long and complicated enough that it should better not be
+copied and pasted.
+---
+ src/GRHydro_Prim2Con.c    | 139 +++++++++++++++++++++++++---------------------
+ src/GRHydro_Prim2ConM.F90 |  12 +++-
+ 2 files changed, 88 insertions(+), 63 deletions(-)
+
+diff --git a/src/GRHydro_Prim2Con.c b/src/GRHydro_Prim2Con.c
+index 7bf8ec4..805584c 100644
+--- a/src/GRHydro_Prim2Con.c
++++ b/src/GRHydro_Prim2Con.c
+@@ -25,7 +25,7 @@ static inline __attribute__((always_inline)) void prim2conC(double *w, double *d
+ 			     const double rho, const double vx,
+ 			     const double vy, const double vz, 
+ 			     const double eps, const double press); 
+-
++static inline void GRHydro_SpeedOfSound(CCTK_ARGUMENTS);
+ 
+ 
+ 
+@@ -35,6 +35,10 @@ CCTK_FCALL void CCTK_FNAME(Primitive2ConservativeCforF)(cGH ** p_cctkGH) {
+   Primitive2ConservativeC(*p_cctkGH);
+ }
+ 
++CCTK_FCALL void CCTK_FNAME(GRHydro_SpeedOfSound)(cGH ** p_cctkGH) {
++  GRHydro_SpeedOfSound(*p_cctkGH);
++}
++
+ 
+ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+ {
+@@ -61,6 +65,67 @@ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+      g33 = gzz;
+    }
+ 
++   GRHydro_SpeedOfSound(CCTK_PASS_CTOC);
++
++   // if padding is used the the "extra" vector elements could contain junk
++   // which we do not know how to handle
++   assert(cctk_lsh[0] == cctk_ash[0]);
++   assert(cctk_lsh[1] == cctk_ash[1]);
++   assert(cctk_lsh[2] == cctk_ash[2]);
++
++#pragma omp parallel for
++     for(int k = GRHydro_stencil-1; k < cctk_lsh[2]-GRHydro_stencil+1; k++)
++       for(int j = GRHydro_stencil-1; j < cctk_lsh[1]-GRHydro_stencil+1; j++)
++#pragma ivdep // force compiler to vectorize the goddamn loop
++         for(int i = GRHydro_stencil-1; i < cctk_lsh[0]-GRHydro_stencil+1; i++) {
++
++           const int idx = CCTK_GFINDEX3D(cctkGH,i,j,k);
++
++           const int idxl = CCTK_GFINDEX3D(cctkGH,i-*xoffset,j-*yoffset,k-*zoffset);
++           const int idxr = CCTK_GFINDEX3D(cctkGH,i+*xoffset,j+*yoffset,k+*zoffset);
++
++           const double g11l = 0.5 * (g11[idx] + g11[idxl]);
++           const double g12l = 0.5 * (g12[idx] + g12[idxl]);
++           const double g13l = 0.5 * (g13[idx] + g13[idxl]);
++           const double g22l = 0.5 * (g22[idx] + g22[idxl]);
++           const double g23l = 0.5 * (g23[idx] + g23[idxl]);
++           const double g33l = 0.5 * (g33[idx] + g33[idxl]);
++
++           const double g11r = 0.5 * (g11[idx] + g11[idxr]);
++           const double g12r = 0.5 * (g12[idx] + g12[idxr]);
++           const double g13r = 0.5 * (g13[idx] + g13[idxr]);
++           const double g22r = 0.5 * (g22[idx] + g22[idxr]);
++           const double g23r = 0.5 * (g23[idx] + g23[idxr]);
++           const double g33r = 0.5 * (g33[idx] + g33[idxr]);
++
++           const double savg_detl =
++             sqrt(SpatialDeterminantC(g11l,g12l,g13l,g22l,g23l,g33l));
++           const double savg_detr =
++             sqrt(SpatialDeterminantC(g11r,g12r,g13r,g22r,g23r,g33r));
++
++           // minus call to p2c
++           prim2conC(&w_lorentzminus[idx], &densminus[idx], &sxminus[idx],
++                     &syminus[idx], &szminus[idx], &tauminus[idx],
++                     g11l,g12l,g13l,g22l,g23l,g33l,
++                     savg_detl,rhominus[idx], velxminus[idx], velyminus[idx],
++                     velzminus[idx], epsminus[idx], pressminus[idx]);
++
++
++           // plus call to p2c
++           prim2conC(&w_lorentzplus[idx], &densplus[idx], &sxplus[idx],
++                     &syplus[idx], &szplus[idx], &tauplus[idx],
++                     g11r,g12r,g13r,g22r,g23r,g33r,
++                     savg_detr,rhoplus[idx], velxplus[idx], velyplus[idx],
++                     velzplus[idx], epsplus[idx], pressplus[idx]);
++         }
++
++} // end function Conservative2PrimitiveC
++
++static inline void GRHydro_SpeedOfSound(CCTK_ARGUMENTS)
++{
++   DECLARE_CCTK_PARAMETERS;
++   DECLARE_CCTK_ARGUMENTS;
++
+    // if padding is used the the "extra" vector elements could contain junk
+    // which we do not know how to handle
+    assert(cctk_lsh[0] == cctk_ash[0]);
+@@ -92,7 +157,7 @@ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+    } else {
+      if(reconstruct_temper) {
+        int n = cctk_ash[0]*cctk_ash[1]*cctk_ash[2];
+-       int nx = cctk_lsh[0] - (GRHydro_stencil - 1) - (GRHydro_stencil) + 1;
++       int nx = cctk_lsh[0] - (GRHydro_stencil - 1) - (GRHydro_stencil) + 1 + (transport_constraints && !*xoffset);
+        int *keyerr = malloc(sizeof(*keyerr)*n);
+        int keytemp = 1;
+        // ensure Y_e and temperature within bounds
+@@ -107,8 +172,8 @@ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+ 
+        // call the EOS with slices
+ #pragma omp parallel for 
+-       for(int k=GRHydro_stencil-1;k<cctk_lsh[2]-GRHydro_stencil+1;k++) 
+-	 for(int j=GRHydro_stencil-1;j<cctk_lsh[1]-GRHydro_stencil+1;j++) {
++       for(int k=GRHydro_stencil-1;k<cctk_lsh[2]-GRHydro_stencil+1 + (transport_constraints && !*zoffset);k++)
++         for(int j=GRHydro_stencil-1;j<cctk_lsh[1]-GRHydro_stencil+1 + (transport_constraints && !*yoffset);j++) {
+ 	   int anyerr = 0;
+ 	   int i = CCTK_GFINDEX3D(cctkGH,GRHydro_stencil-1,j,k);
+ 	   EOS_Omni_press_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,nx,
+@@ -136,8 +201,8 @@ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+        
+ 
+ #pragma omp parallel for 
+-       for(int k=GRHydro_stencil-1;k<cctk_lsh[2]-GRHydro_stencil+1;k++) 
+-	 for(int j=GRHydro_stencil-1;j<cctk_lsh[1]-GRHydro_stencil+1;j++) {
++       for(int k=GRHydro_stencil-1;k<cctk_lsh[2]-GRHydro_stencil+1 + (transport_constraints && !*zoffset);k++)
++         for(int j=GRHydro_stencil-1;j<cctk_lsh[1]-GRHydro_stencil+1 + (transport_constraints && !*yoffset);j++) {
+ 	   int anyerr = 0;
+ 	   int i = CCTK_GFINDEX3D(cctkGH,GRHydro_stencil-1,j,k);
+ 	   EOS_Omni_press_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,nx,
+@@ -166,7 +231,7 @@ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+      } else {
+        // ******************** EPS RECONSTRUCTION BRANCH ******************
+        int n = cctk_ash[0]*cctk_ash[1]*cctk_ash[2];
+-       int nx = cctk_lsh[0] - (GRHydro_stencil - 1) - (GRHydro_stencil) + 1;
++       int nx = cctk_lsh[0] - (GRHydro_stencil - 1) - (GRHydro_stencil) + 1 + (transport_constraints && !*xoffset);
+        int *keyerr = malloc(sizeof(*keyerr)*n);
+        int keytemp = 0;
+ 
+@@ -183,8 +248,8 @@ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+ 
+        // call the EOS with slices for minus states
+ #pragma omp parallel for 
+-       for(int k=GRHydro_stencil-1;k<cctk_lsh[2]-GRHydro_stencil+1;k++) 
+-	 for(int j=GRHydro_stencil-1;j<cctk_lsh[1]-GRHydro_stencil+1;j++) {
++       for(int k=GRHydro_stencil-1;k<cctk_lsh[2]-GRHydro_stencil+1 + (transport_constraints && !*zoffset);k++)
++         for(int j=GRHydro_stencil-1;j<cctk_lsh[1]-GRHydro_stencil+1 + (transport_constraints && !*yoffset);j++) {
+ 	   int i = CCTK_GFINDEX3D(cctkGH,GRHydro_stencil-1,j,k);
+ 	   int anyerr = 0;
+ 	   EOS_Omni_press_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,nx,
+@@ -233,8 +298,8 @@ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+ 
+        // call the EOS with slices for plus states
+ #pragma omp parallel for 
+-       for(int k=GRHydro_stencil-1;k<cctk_lsh[2]-GRHydro_stencil+1;k++) 
+-	 for(int j=GRHydro_stencil-1;j<cctk_lsh[1]-GRHydro_stencil+1;j++) {
++       for(int k=GRHydro_stencil-1;k<cctk_lsh[2]-GRHydro_stencil+1 + (transport_constraints && !*zoffset);k++)
++         for(int j=GRHydro_stencil-1;j<cctk_lsh[1]-GRHydro_stencil+1 + (transport_constraints && !*yoffset);j++) {
+ 	   int i = CCTK_GFINDEX3D(cctkGH,GRHydro_stencil-1,j,k);
+ 	   int anyerr = 0;
+ 	   EOS_Omni_press_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,nx,
+@@ -278,63 +343,13 @@ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+ 		 } // omp critical pragma
+ 	       } // if keyerr
+ 	     } // loop ii
+-	     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-			"Aborting!");
+ 	   } // if (anyerr)
+ 	 } // big loop over plus states
+ 
+        free(keyerr);
+      } // end branch for no temp reconsturction
+    } // end of evolve temper branch
+-
+-
+-#pragma omp parallel for
+-     for(int k = GRHydro_stencil-1; k < cctk_lsh[2]-GRHydro_stencil+1; k++)
+-       for(int j = GRHydro_stencil-1; j < cctk_lsh[1]-GRHydro_stencil+1; j++) 
+-#pragma ivdep // force compiler to vectorize the goddamn loop
+-	 for(int i = GRHydro_stencil-1; i < cctk_lsh[0]-GRHydro_stencil+1; i++) {
+-
+-	   const int idx = CCTK_GFINDEX3D(cctkGH,i,j,k);
+-
+-	   const int idxl = CCTK_GFINDEX3D(cctkGH,i-*xoffset,j-*yoffset,k-*zoffset);
+-	   const int idxr = CCTK_GFINDEX3D(cctkGH,i+*xoffset,j+*yoffset,k+*zoffset);
+-
+-	   const double g11l = 0.5 * (g11[idx] + g11[idxl]);
+-	   const double g12l = 0.5 * (g12[idx] + g12[idxl]);
+-	   const double g13l = 0.5 * (g13[idx] + g13[idxl]);
+-	   const double g22l = 0.5 * (g22[idx] + g22[idxl]);
+-	   const double g23l = 0.5 * (g23[idx] + g23[idxl]);
+-	   const double g33l = 0.5 * (g33[idx] + g33[idxl]);
+-
+-	   const double g11r = 0.5 * (g11[idx] + g11[idxr]);
+-	   const double g12r = 0.5 * (g12[idx] + g12[idxr]);
+-	   const double g13r = 0.5 * (g13[idx] + g13[idxr]);
+-	   const double g22r = 0.5 * (g22[idx] + g22[idxr]);
+-	   const double g23r = 0.5 * (g23[idx] + g23[idxr]);
+-	   const double g33r = 0.5 * (g33[idx] + g33[idxr]);
+-
+-	   const double savg_detl = 
+-	     sqrt(SpatialDeterminantC(g11l,g12l,g13l,g22l,g23l,g33l));
+-	   const double savg_detr = 
+-	     sqrt(SpatialDeterminantC(g11r,g12r,g13r,g22r,g23r,g33r));
+-
+-	   // minus call to p2c
+-	   prim2conC(&w_lorentzminus[idx], &densminus[idx], &sxminus[idx],
+-		     &syminus[idx], &szminus[idx], &tauminus[idx],
+-		     g11l,g12l,g13l,g22l,g23l,g33l,
+-		     savg_detl,rhominus[idx], velxminus[idx], velyminus[idx],
+-		     velzminus[idx], epsminus[idx], pressminus[idx]);
+-
+-
+-	   // plus call to p2c
+-	   prim2conC(&w_lorentzplus[idx], &densplus[idx], &sxplus[idx],
+-		     &syplus[idx], &szplus[idx], &tauplus[idx],
+-		     g11r,g12r,g13r,g22r,g23r,g33r,
+-		     savg_detr,rhoplus[idx], velxplus[idx], velyplus[idx],
+-		     velzplus[idx], epsplus[idx], pressplus[idx]);
+-	 }       
+-
+-} // end function Conservative2PrimitiveC
++}
+ 
+ static inline double SpatialDeterminantC(double gxx, double gxy,
+ 					 double gxz, double gyy,
+diff --git a/src/GRHydro_Prim2ConM.F90 b/src/GRHydro_Prim2ConM.F90
+index 6d099fd..0d6f680 100644
+--- a/src/GRHydro_Prim2ConM.F90
++++ b/src/GRHydro_Prim2ConM.F90
+@@ -85,6 +85,17 @@ subroutine primitive2conservativeM(CCTK_ARGUMENTS)
+     pBprim = loc(Bvec)
+   end if
+   
++  ! currently only the C++ code uses the speed-of-sound grid function, however
++  ! in the MHD code, both C++ and F90 code share the same prim2con routine (this
++  ! one). GRHydro_SpeedOfSound is a misnomer since it computes both cs2 and
++  ! pressure so we call it first so that the actual prim2con below overwrites
++  ! the pressur again. This is certainly not the "right" way of doing this but
++  ! it lets us have a working version for now.
++  ! TODO: extend prim2con in GRHydro_Prim2Con.c to handle MHD.
++  if (use_cxx_code .ne. 0) then
++    call GRHydro_SpeedOfSound(cctkGH)
++  end if
++
+   ! constraint transport needs to be able to average fluxes in the directions
+   ! other that flux_direction, which in turn need the primitives on interfaces
+ 
+@@ -211,7 +222,6 @@ subroutine primitive2conservativeM(CCTK_ARGUMENTS)
+      !$OMP END PARALLEL DO
+   endif
+ 
+-
+ end subroutine primitive2conservativeM
+ 
+  /*@@
+-- 
+1.9.0
+

@@ -1,0 +1,312 @@
+From daa99a3041d5e276284dde48fe3958bc35eef340 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Wed, 31 Jul 2013 23:36:18 -0700
+Subject: [PATCH] CarpetIOHDF5: support IO->alias option in reader
+
+this allows the reader to read a dataset into a different variable than
+which one was written. Eg. GRHydro::dens in PPAnalysis::dens.
+---
+ Carpet/CarpetIOHDF5/src/Input.cc                   |   33 +++++++++--
+ Carpet/CarpetIOHDF5/test/alias_datasets.par        |   61 ++++++++++++++++++++
+ .../test/alias_datasets/phi.average.asc            |    3 +
+ .../CarpetIOHDF5/test/alias_datasets/phi.count.asc |    3 +
+ .../test/alias_datasets/phi.maximum.asc            |    3 +
+ .../test/alias_datasets/phi.minimum.asc            |    3 +
+ .../CarpetIOHDF5/test/alias_datasets/phi.norm1.asc |    3 +
+ .../CarpetIOHDF5/test/alias_datasets/phi.norm2.asc |    3 +
+ .../test/alias_datasets/phi.norm_inf.asc           |    3 +
+ .../test/alias_datasets/psi.average.asc            |    3 +
+ .../CarpetIOHDF5/test/alias_datasets/psi.count.asc |    3 +
+ .../test/alias_datasets/psi.maximum.asc            |    3 +
+ .../test/alias_datasets/psi.minimum.asc            |    3 +
+ .../CarpetIOHDF5/test/alias_datasets/psi.norm1.asc |    3 +
+ .../CarpetIOHDF5/test/alias_datasets/psi.norm2.asc |    3 +
+ .../test/alias_datasets/psi.norm_inf.asc           |    3 +
+ 16 files changed, 132 insertions(+), 4 deletions(-)
+ create mode 100644 Carpet/CarpetIOHDF5/test/alias_datasets.par
+ create mode 100644 Carpet/CarpetIOHDF5/test/alias_datasets/phi.average.asc
+ create mode 100644 Carpet/CarpetIOHDF5/test/alias_datasets/phi.count.asc
+ create mode 100644 Carpet/CarpetIOHDF5/test/alias_datasets/phi.maximum.asc
+ create mode 100644 Carpet/CarpetIOHDF5/test/alias_datasets/phi.minimum.asc
+ create mode 100644 Carpet/CarpetIOHDF5/test/alias_datasets/phi.norm1.asc
+ create mode 100644 Carpet/CarpetIOHDF5/test/alias_datasets/phi.norm2.asc
+ create mode 100644 Carpet/CarpetIOHDF5/test/alias_datasets/phi.norm_inf.asc
+ create mode 100644 Carpet/CarpetIOHDF5/test/alias_datasets/psi.average.asc
+ create mode 100644 Carpet/CarpetIOHDF5/test/alias_datasets/psi.count.asc
+ create mode 100644 Carpet/CarpetIOHDF5/test/alias_datasets/psi.maximum.asc
+ create mode 100644 Carpet/CarpetIOHDF5/test/alias_datasets/psi.minimum.asc
+ create mode 100644 Carpet/CarpetIOHDF5/test/alias_datasets/psi.norm1.asc
+ create mode 100644 Carpet/CarpetIOHDF5/test/alias_datasets/psi.norm2.asc
+ create mode 100644 Carpet/CarpetIOHDF5/test/alias_datasets/psi.norm_inf.asc
+
+diff --git a/Carpet/CarpetIOHDF5/src/Input.cc b/Carpet/CarpetIOHDF5/src/Input.cc
+index 1670808..4c1f0cb 100644
+--- a/Carpet/CarpetIOHDF5/src/Input.cc
++++ b/Carpet/CarpetIOHDF5/src/Input.cc
+@@ -5,6 +5,8 @@
+ #include <sstream>
+ #include <string>
+ #include <vector>
++#include <map>
++#include <algorithm>
+ 
+ #include "util_Table.h"
+ #include "cctk.h"
+@@ -534,6 +536,20 @@ int Recover (cGH* cctkGH, const char *basefilename, int called_from)
+     }
+   }
+ 
++  // construct list of aliases for variable names. This is a global list even
++  // though the user gives a per-variable list.
++  std::map<string, unsigned int> alias;
++#ifdef IOUTIL_IOGH_HAS_ALIAS
++  for (unsigned int vindex = 0; vindex < read_completely.size(); vindex++) {
++    if (ioUtilGH->alias && ioUtilGH->alias[vindex]) {
++      string key(ioUtilGH->alias[vindex]);
++      // the explicit cast avoids ambiguity in the overloaded function pointer
++      transform(key.begin(), key.end(), key.begin(), (int(*)(int))toupper);
++      alias[key] = vindex;
++    }
++  }
++#endif
++
+   CarpetIOHDF5GH* myGH =
+                   (CarpetIOHDF5GH*) CCTK_GHExtension (cctkGH, CCTK_THORNSTRING);
+   // allocate list of recovery filenames
+@@ -599,8 +615,9 @@ int Recover (cGH* cctkGH, const char *basefilename, int called_from)
+       HDF5_ERROR (H5Pclose (fapl_id));
+ 
+       // browse through all datasets contained in this file
++      void *args[2] = {&file, &alias};
+       HDF5_ERROR (H5Giterate (file.indexfile >= 0 ? file.indexfile : file.file,
+-                              "/", NULL, BrowseDatasets, &file));
++                              "/", NULL, BrowseDatasets, args));
+     }
+     assert (file.patches.size() > 0);
+     if (myGH->recovery_filename_list and not myGH->recovery_filename_list[i]) {
+@@ -1178,10 +1195,12 @@ static void ReadMetadata (fileset_t& fileset, hid_t file)
+ // Browses through all the datasets in a checkpoint/data file
+ // and stores this information in a list of patch_t objects
+ //////////////////////////////////////////////////////////////////////////////
+-static herr_t BrowseDatasets (hid_t group, const char *objectname, void *arg)
++static herr_t BrowseDatasets (hid_t group, const char *objectname, void *args)
+ {
+   int error_count = 0;
+-  file_t *file = (file_t *) arg;
++  file_t *file = ((file_t **) args)[0];
++  std::map<string, unsigned int>& alias =
++    *((std::map<string, unsigned int>**)args)[1];
+   patch_t patch;
+   hid_t dataset, dataspace, attr, attrtype;
+   H5G_stat_t object_info;
+@@ -1217,7 +1236,13 @@ static herr_t BrowseDatasets (hid_t group, const char *objectname, void *arg)
+   HDF5_ERROR (H5Aread (attr, attrtype, &varname[0]));
+   HDF5_ERROR (H5Tclose (attrtype));
+   HDF5_ERROR (H5Aclose (attr));
+-  patch.vindex = CCTK_VarIndex (&varname[0]);
++  string key(&varname[0]);
++  transform(key.begin(), key.end(), key.begin(), (int(*)(int))toupper);
++  if (alias.count(key)) {
++    patch.vindex = alias[key];
++  } else {
++    patch.vindex = CCTK_VarIndex (&varname[0]);
++  }
+   HDF5_ERROR (attr = H5Aopen_name (dataset, "carpet_mglevel"));
+   HDF5_ERROR (H5Aread (attr, H5T_NATIVE_INT, &patch.mglevel));
+   HDF5_ERROR (H5Aclose (attr));
+diff --git a/Carpet/CarpetIOHDF5/test/alias_datasets.par b/Carpet/CarpetIOHDF5/test/alias_datasets.par
+new file mode 100644
+index 0000000..689703f
+--- /dev/null
++++ b/Carpet/CarpetIOHDF5/test/alias_datasets.par
+@@ -0,0 +1,61 @@
++# deactivate the IDScalarWaveMoL thorn
++# initial data is read from files using the filereader
++ActiveThorns = "Carpet CarpetLib CarpetRegrid CarpetInterp CarpetReduce LoopControl GSL Boundary CoordBase InitBase SymBase CartGrid3D Periodic LocalInterp NaNChecker Slab Time MoL WaveToyMoL IOUtil CarpetIOBasic CarpetIOScalar HDF5 CarpetIOHDF5"
++#ActiveThorns = "Carpet CarpetLib CarpetRegrid CarpetInterp CarpetReduce LoopControl GSL Boundary CoordBase InitBase SymBase CartGrid3D Periodic LocalInterp NaNChecker Slab Time MoL WaveToyMoL IOUtil CarpetIOBasic CarpetIOScalar HDF5 CarpetIOHDF5 IDScalarWaveMoL"
++
++
++Cactus::cctk_itlast = 0
++
++Driver::global_nx  = 24
++Driver::global_ny  = 5
++Driver::global_nz  = 5
++Driver::ghost_size = 2
++
++InitBase::initial_data_setup_method = "init_all_levels"
++
++Carpet::max_refinement_levels    = 3
++Carpet::prolongation_order_space = 3
++Carpet::prolongation_order_time  = 2
++
++CarpetRegrid::refinement_levels = 1
++CarpetRegrid::refined_regions   = "manual-gridpoint-list"
++CarpetRegrid::gridpoints        = "[[ ([28,4,4]:[68,12,12]:[2,2,2]) ]]"
++CarpetRegrid::outerbounds       = "[[ [[0,0],[1,1],[1,1]] ]]"
++
++NaNChecker::check_every     = 16
++NaNChecker::check_vars      = "wavetoymol::phi wavetoymol::psi"
++NaNChecker::action_if_found = "terminate"
++
++Grid::domain = full
++Grid::type   = byrange
++Grid::xmin   = -0.1
++Grid::ymin   = -0.15
++Grid::zmin   = -0.15
++Grid::xmax   = +1.05
++Grid::ymax   = +0.15
++Grid::zmax   = +0.15
++
++Periodic::periodic = "yes"
++
++Time::dtfac = 0.25
++
++MoL::ODE_Method = "ICN"
++
++IO::out_dir       = $parfile
++IO::out_fileinfo  = "none"
++IO::parfile_write = "no"
++IO::out_every     = 1
++IO::out_yline_x   = 0.5
++IO::out_zline_x   = 0.5
++ 
++IOBasic::outInfo_vars          = "WaveToyMoL::scalarevolve"
++IOScalar::outScalar_vars       = "WaveToyMoL::scalarevolve"
++IOScalar::outScalar_reductions = "average count maximum minimum  norm1 norm2 norm_inf"
++
++# filereader input files and directory
++IO::filereader_ID_files = "psi phi"
++# to generate use
++#IO::filereader_ID_dir   = "../../../../../arrangements/Carpet/CarpetIOHDF5/test/input_initial_data"
++IO::filereader_ID_dir   = "../../../arrangements/Carpet/CarpetIOHDF5/test/input_initial_data"
++IO::filereader_ID_vars  = "WaveToyMoL::psi{alias='WaveToyMoL::phi'}
++                           WaveToyMoL::phi{alias='WaveToyMoL::psi'}"
+diff --git a/Carpet/CarpetIOHDF5/test/alias_datasets/phi.average.asc b/Carpet/CarpetIOHDF5/test/alias_datasets/phi.average.asc
+new file mode 100644
+index 0000000..057e09b
+--- /dev/null
++++ b/Carpet/CarpetIOHDF5/test/alias_datasets/phi.average.asc
+@@ -0,0 +1,3 @@
++# Scalar ASCII output created by CarpetIOScalar
++#
++0 0 0.12249510216753
+diff --git a/Carpet/CarpetIOHDF5/test/alias_datasets/phi.count.asc b/Carpet/CarpetIOHDF5/test/alias_datasets/phi.count.asc
+new file mode 100644
+index 0000000..5eda0a7
+--- /dev/null
++++ b/Carpet/CarpetIOHDF5/test/alias_datasets/phi.count.asc
+@@ -0,0 +1,3 @@
++# Scalar ASCII output created by CarpetIOScalar
++#
++0 0 368
+diff --git a/Carpet/CarpetIOHDF5/test/alias_datasets/phi.maximum.asc b/Carpet/CarpetIOHDF5/test/alias_datasets/phi.maximum.asc
+new file mode 100644
+index 0000000..0c3f4aa
+--- /dev/null
++++ b/Carpet/CarpetIOHDF5/test/alias_datasets/phi.maximum.asc
+@@ -0,0 +1,3 @@
++# Scalar ASCII output created by CarpetIOScalar
++#
++0 0 6.28318530717959
+diff --git a/Carpet/CarpetIOHDF5/test/alias_datasets/phi.minimum.asc b/Carpet/CarpetIOHDF5/test/alias_datasets/phi.minimum.asc
+new file mode 100644
+index 0000000..c6ca2be
+--- /dev/null
++++ b/Carpet/CarpetIOHDF5/test/alias_datasets/phi.minimum.asc
+@@ -0,0 +1,3 @@
++# Scalar ASCII output created by CarpetIOScalar
++#
++0 0 -6.28318530717959
+diff --git a/Carpet/CarpetIOHDF5/test/alias_datasets/phi.norm1.asc b/Carpet/CarpetIOHDF5/test/alias_datasets/phi.norm1.asc
+new file mode 100644
+index 0000000..bc9e777
+--- /dev/null
++++ b/Carpet/CarpetIOHDF5/test/alias_datasets/phi.norm1.asc
+@@ -0,0 +1,3 @@
++# Scalar ASCII output created by CarpetIOScalar
++#
++0 0 3.65651912560683
+diff --git a/Carpet/CarpetIOHDF5/test/alias_datasets/phi.norm2.asc b/Carpet/CarpetIOHDF5/test/alias_datasets/phi.norm2.asc
+new file mode 100644
+index 0000000..5fed128
+--- /dev/null
++++ b/Carpet/CarpetIOHDF5/test/alias_datasets/phi.norm2.asc
+@@ -0,0 +1,3 @@
++# Scalar ASCII output created by CarpetIOScalar
++#
++0 0 4.20795667182769
+diff --git a/Carpet/CarpetIOHDF5/test/alias_datasets/phi.norm_inf.asc b/Carpet/CarpetIOHDF5/test/alias_datasets/phi.norm_inf.asc
+new file mode 100644
+index 0000000..0c3f4aa
+--- /dev/null
++++ b/Carpet/CarpetIOHDF5/test/alias_datasets/phi.norm_inf.asc
+@@ -0,0 +1,3 @@
++# Scalar ASCII output created by CarpetIOScalar
++#
++0 0 6.28318530717959
+diff --git a/Carpet/CarpetIOHDF5/test/alias_datasets/psi.average.asc b/Carpet/CarpetIOHDF5/test/alias_datasets/psi.average.asc
+new file mode 100644
+index 0000000..ae3b0aa
+--- /dev/null
++++ b/Carpet/CarpetIOHDF5/test/alias_datasets/psi.average.asc
+@@ -0,0 +1,3 @@
++# Scalar ASCII output created by CarpetIOScalar
++#
++0 0 0.123091011810009
+diff --git a/Carpet/CarpetIOHDF5/test/alias_datasets/psi.count.asc b/Carpet/CarpetIOHDF5/test/alias_datasets/psi.count.asc
+new file mode 100644
+index 0000000..5eda0a7
+--- /dev/null
++++ b/Carpet/CarpetIOHDF5/test/alias_datasets/psi.count.asc
+@@ -0,0 +1,3 @@
++# Scalar ASCII output created by CarpetIOScalar
++#
++0 0 368
+diff --git a/Carpet/CarpetIOHDF5/test/alias_datasets/psi.maximum.asc b/Carpet/CarpetIOHDF5/test/alias_datasets/psi.maximum.asc
+new file mode 100644
+index 0000000..d9860b2
+--- /dev/null
++++ b/Carpet/CarpetIOHDF5/test/alias_datasets/psi.maximum.asc
+@@ -0,0 +1,3 @@
++# Scalar ASCII output created by CarpetIOScalar
++#
++0 0 1
+diff --git a/Carpet/CarpetIOHDF5/test/alias_datasets/psi.minimum.asc b/Carpet/CarpetIOHDF5/test/alias_datasets/psi.minimum.asc
+new file mode 100644
+index 0000000..c3bbf65
+--- /dev/null
++++ b/Carpet/CarpetIOHDF5/test/alias_datasets/psi.minimum.asc
+@@ -0,0 +1,3 @@
++# Scalar ASCII output created by CarpetIOScalar
++#
++0 0 -1
+diff --git a/Carpet/CarpetIOHDF5/test/alias_datasets/psi.norm1.asc b/Carpet/CarpetIOHDF5/test/alias_datasets/psi.norm1.asc
+new file mode 100644
+index 0000000..1751841
+--- /dev/null
++++ b/Carpet/CarpetIOHDF5/test/alias_datasets/psi.norm1.asc
+@@ -0,0 +1,3 @@
++# Scalar ASCII output created by CarpetIOScalar
++#
++0 0 0.672112882651314
+diff --git a/Carpet/CarpetIOHDF5/test/alias_datasets/psi.norm2.asc b/Carpet/CarpetIOHDF5/test/alias_datasets/psi.norm2.asc
+new file mode 100644
+index 0000000..091b839
+--- /dev/null
++++ b/Carpet/CarpetIOHDF5/test/alias_datasets/psi.norm2.asc
+@@ -0,0 +1,3 @@
++# Scalar ASCII output created by CarpetIOScalar
++#
++0 0 0.742616320690188
+diff --git a/Carpet/CarpetIOHDF5/test/alias_datasets/psi.norm_inf.asc b/Carpet/CarpetIOHDF5/test/alias_datasets/psi.norm_inf.asc
+new file mode 100644
+index 0000000..d9860b2
+--- /dev/null
++++ b/Carpet/CarpetIOHDF5/test/alias_datasets/psi.norm_inf.asc
+@@ -0,0 +1,3 @@
++# Scalar ASCII output created by CarpetIOScalar
++#
++0 0 1
+-- 
+1.7.10.4
+

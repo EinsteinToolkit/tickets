@@ -1,0 +1,454 @@
+Index: src/interpolate.c
+===================================================================
+--- src/interpolate.c	(revision 88)
++++ src/interpolate.c	(working copy)
+@@ -292,15 +292,19 @@
+   for (gi=0; gi<CCTK_NumGroups(); ++gi) {
+     
+     char tensortypealias[100];
+-    int numvars, firstvar;
++    int numvars, firstvar, vectorlength;
+     int table;
+     int ierr;
++    cGroup group;
+     
+     numvars = CCTK_NumVarsInGroupI(gi);
+     if (numvars == 0) continue;
+     assert (numvars>0);
+     firstvar = CCTK_FirstVarIndexI(gi);
+     assert (firstvar>=0);
++    ierr = CCTK_GroupData (gi, &group);
++    assert (!ierr);
++    vectorlength = group.vectorlength;
+     table = CCTK_GroupTagsTableI(gi);
+     assert (table>=0);
+     
+@@ -348,30 +352,31 @@
+     } else if (CCTK_EQUALS (tensortypealias, "u")
+                || CCTK_EQUALS (tensortypealias, "d"))
+     {
+-      /* vector */
+-      assert (numvars == DIM);
++      /* vector, special case */
++      assert ((numvars == DIM*vectorlength) ||
++              (numvars == DIM && vectorlength == DIM));
+     } else if (CCTK_EQUALS (tensortypealias, "4u")
+                || CCTK_EQUALS (tensortypealias, "4d"))
+     {
+       /* 4-vector */
+-      assert (numvars == DIM+1);
++      assert (numvars == (DIM+1)*vectorlength);
+     } else if (CCTK_EQUALS (tensortypealias, "uu")
+                || CCTK_EQUALS (tensortypealias, "ud")
+                || CCTK_EQUALS (tensortypealias, "du")
+                || CCTK_EQUALS (tensortypealias, "dd")) {
+       /* tensor */
+-      assert (numvars == DIM*DIM);
++      assert (numvars == DIM*DIM*vectorlength);
+     } else if (CCTK_EQUALS (tensortypealias, "uu_sym")
+                || CCTK_EQUALS (tensortypealias, "dd_sym")) {
+       /* symmetric tensor */
+-      assert (numvars == DIM*(DIM+1)/2);
++      assert (numvars == DIM*(DIM+1)/2*vectorlength);
+     } else if (CCTK_EQUALS (tensortypealias, "ddd_sym")) {
+       /* 3rd rank tensor, symmetric in last 2 indices */
+-      assert (numvars == DIM*DIM*(DIM+1)/2);
++      assert (numvars == DIM*DIM*(DIM+1)/2*vectorlength);
+     } else if (CCTK_EQUALS (tensortypealias, "4uu_sym")
+                || CCTK_EQUALS (tensortypealias, "4dd_sym")) {
+       /* symmetric 4-tensor */
+-      assert (numvars == (DIM+1)*(DIM+2)/2);
++      assert (numvars == (DIM+1)*(DIM+2)/2*vectorlength);
+     } else {
+       char * groupname = CCTK_GroupName(gi);
+       assert (groupname);
+@@ -617,7 +622,8 @@
+   if (output_array_indices[m]!=-1) {
+     
+     int vi, gi;
+-    int numvars, firstvar;
++    int numvars, firstvar, vectorlength;
++    cGroup group;
+     int table;
+     
+     char tensortypealias[100];
+@@ -630,7 +636,7 @@
+     int num_time_derivs;
+     int num_derivs;
+     int time_level;
+-    
++
+     /* Get some variable information */
+     vi = output_array_indices[m];
+     assert (vi>=0 && vi<CCTK_NumVars());
+@@ -642,6 +648,9 @@
+     assert (firstvar>=0);
+     table = CCTK_GroupTagsTableI(gi);
+     assert (table>=0);
++    ierr = CCTK_GroupData (gi, &group);
++    assert (!ierr);
++    vectorlength = group.vectorlength;
+     
+     /* Get the tensor type alias */
+     ierr = Util_TableGetString
+@@ -697,72 +706,73 @@
+                || CCTK_EQUALS (tensortypealias, "d"))
+     {
+       /* vector */
+-      assert (numvars == DIM);
++      assert ((numvars == DIM*vectorlength) ||
++              (numvars == DIM && vectorlength == DIM));
+       tensortype = &vector;
+       basevar = firstvar;
+-      var = vi - basevar;
++      var = (vi - basevar) / vectorlength;
+     } else if (CCTK_EQUALS (tensortypealias, "4u")
+                || CCTK_EQUALS (tensortypealias, "4d"))
+     {
+       /* 4-vector */
+-      assert (numvars == DIM+1);
+-      if (vi == firstvar) {
++      assert (numvars == (DIM+1)*vectorlength);
++      if ((vi - firstvar) / vectorlength == 0) {
+         /* temporal component */
+         int const off = 0;
+         tensortype = &scalar;
+-        basevar = firstvar + off;
+-        var = vi - basevar;
++        basevar = firstvar + off * vectorlength;
++        var = (vi - basevar) / vectorlength;
+       } else {
+         /* spatial components */
+         int const off = 1;
+         tensortype = &vector;
+-        basevar = firstvar + off;
+-        var = vi - basevar;
++        basevar = firstvar + off * vectorlength;
++        var = (vi - basevar) / vectorlength;
+       }
+     } else if (CCTK_EQUALS (tensortypealias, "uu")
+                || CCTK_EQUALS (tensortypealias, "ud")
+                || CCTK_EQUALS (tensortypealias, "du")
+                || CCTK_EQUALS (tensortypealias, "dd")) {
+       /* tensor */
+-      assert (numvars == DIM*DIM);
++      assert (numvars == DIM*DIM*vectorlength);
+       tensortype = &tensor;
+       basevar = firstvar;
+-      var = vi - basevar;
++      var = (vi - basevar) / vectorlength;
+     } else if (CCTK_EQUALS (tensortypealias, "uu_sym")
+                || CCTK_EQUALS (tensortypealias, "dd_sym")) {
+       /* symmetric tensor */
+-      assert (numvars == DIM*(DIM+1)/2);
++      assert (numvars == DIM*(DIM+1)/2*vectorlength);
+       tensortype = &symmtensor;
+       basevar = firstvar;
+-      var = vi - basevar;
++      var = (vi - basevar) / vectorlength;
+     } else if (CCTK_EQUALS (tensortypealias, "ddd_sym")) {
+       /* 3rd rank tensor, symmetric in last 2 indices */
+-      assert (numvars == DIM*DIM*(DIM+1)/2);
++      assert (numvars == DIM*DIM*(DIM+1)/2*vectorlength);
+       tensortype = &symmtensor3b;
+       basevar = firstvar;
+-      var = vi - basevar;
++      var = (vi - basevar) / vectorlength;
+     } else if (CCTK_EQUALS (tensortypealias, "4uu_sym")
+                || CCTK_EQUALS (tensortypealias, "4dd_sym")) {
+       /* symmetric 4-tensor */
+-      assert (numvars == (DIM+1)*(DIM+2)/2);
+-      if (vi == firstvar) {
++      assert (numvars == (DIM+1)*(DIM+2)/2*vectorlength);
++      if ((vi - firstvar) / vectorlength == 0) {
+         /* temporal-temporal component */
+         int const off = 0;
+         tensortype = &scalar;
+-        basevar = firstvar + off;
+-        var = vi - basevar;
++        basevar = firstvar + off * vectorlength;
++        var = (vi - basevar) / vectorlength;
+       } else if (vi < firstvar+DIM+1) {
+         /* temporal-spatial components */
+         int const off = 1;
+         tensortype = &vector;
+-        basevar = firstvar + off;
+-        var = vi - basevar;
++        basevar = firstvar + off * vectorlength;
++        var = (vi - basevar) / vectorlength;
+       } else {
+         /* spatial-spatial components */
+         int const off = DIM+1;
+         tensortype = &symmtensor;
+-        basevar = firstvar + off;
+-        var = vi - basevar;
++        basevar = firstvar + off * vectorlength;
++        var = (vi - basevar) / vectorlength;
+       }
+     } else {
+       char * groupname = CCTK_GroupName(gi);
+Index: src/rotatingsymmetry90.c
+===================================================================
+--- src/rotatingsymmetry90.c	(revision 88)
++++ src/rotatingsymmetry90.c	(working copy)
+@@ -78,6 +78,7 @@
+   char * restrict fullname;
+   void * restrict * restrict varptrs;
+   int * restrict vartypes;
++  int * restrict vectorlengths;
+   int firstvar;
+   
+   char tensortypealias[100];
+@@ -139,6 +140,8 @@
+   assert (nvars==0 || varptrs);
+   vartypes = malloc (nvars * sizeof  *vartypes);
+   assert (nvars==0 || vartypes);
++  vectorlengths = malloc (nvars * sizeof  *vectorlengths);
++  assert (nvars==0 || vectorlengths);
+   for (var=0; var<nvars; ++var) {
+     gis[var] = CCTK_GroupIndexFromVarI (vis[var]);
+     assert (gis[var]>=0 && gis[var]<CCTK_NumGroups());
+@@ -156,6 +159,10 @@
+     
+     vartypes[var] = group.vartype;
+     assert (vartypes[var] >= 0);
++
++    vectorlengths[var] = group.vectorlength;
++    assert (vectorlengths[var]>=0);
++    assert (vectorlengths[var]==1 || group.vectorgroup);
+   }
+   
+   for (d=0; d<group.dim; ++d) {
+@@ -227,10 +234,19 @@
+     
+     for (var=0; var<nvars; ++var) {
+       
++      /* Cactus lays out variables of a group
++       * CCTK_REAL vel[3] {vx,vy,vz}
++       * like this:
++       * vx[0], vx[1], vx[2], vy[0], vy[1], ...
++       * so the component x,y,z is given by index / vectorlength and the
++       * vector index vx[i] by index % vectorlength.
++       */
++      const int vectorlength = vectorlengths[var];
++
+       /* Find tensor type, source variable, and parity */
+       {
+         int table;
+-        
++
+         numvars = CCTK_NumVarsInGroupI(gis[var]);
+         assert (numvars>0);
+         firstvar = CCTK_FirstVarIndexI(gis[var]);
+@@ -239,7 +255,7 @@
+         assert (index>=0 && index<numvars);
+         table = CCTK_GroupTagsTableI(gis[var]);
+         assert (table>=0);
+-        
++
+         ierr = Util_TableGetString
+           (table, sizeof tensortypealias, tensortypealias, "tensortypealias");
+         if (ierr == UTIL_ERROR_TABLE_NO_SUCH_KEY) {
+@@ -276,31 +292,32 @@
+         } else if (CCTK_EQUALS (tensortypealias, "u")
+                    || CCTK_EQUALS (tensortypealias, "d")) {
+           /* vector */
+-          assert (numvars == DIM);
++          assert ((numvars == DIM*vectorlength) ||
++                  (numvars == DIM && vectorlength == DIM));
+         } else if (CCTK_EQUALS (tensortypealias, "4u")
+                    || CCTK_EQUALS (tensortypealias, "4d")) {
+           /* 4-vector */
+-          assert (numvars == DIM+1);
++          assert (numvars == (DIM+1)*vectorlength);
+         } else if (CCTK_EQUALS (tensortypealias, "uu")
+                    || CCTK_EQUALS (tensortypealias, "ud")
+                    || CCTK_EQUALS (tensortypealias, "du")
+                    || CCTK_EQUALS (tensortypealias, "dd")) {
+           /* tensor */
+-          assert (numvars == DIM*DIM);
++          assert (numvars == DIM*DIM*vectorlength);
+         } else if (CCTK_EQUALS (tensortypealias, "uu_sym")
+                    || CCTK_EQUALS (tensortypealias, "dd_sym")) {
+           /* symmetric tensor */
+-          assert (numvars == DIM*(DIM+1)/2);
++          assert (numvars == DIM*(DIM+1)/2*vectorlength);
+         } else if (CCTK_EQUALS (tensortypealias, "ddd_sym")) {
+           /* 3rd rank tensor, symmetric in last 2 indices */
+-          assert (numvars == DIM*DIM*(DIM+1)/2);
++          assert (numvars == DIM*DIM*(DIM+1)/2*vectorlength);
+         } else if (CCTK_EQUALS (tensortypealias, "4uu_sym")
+                    || CCTK_EQUALS (tensortypealias, "4dd_sym")) {
+           /* symmetric 4-tensor */
+-          assert (numvars == (DIM+1)*(DIM+2)/2);
++          assert (numvars == (DIM+1)*(DIM+2)/2*vectorlength);
+         } else if (CCTK_EQUALS (tensortypealias, "weylscalars_real")) {
+           /* Weyl scalars, stored as 10 real numbers */
+-          assert (numvars == 10);
++          assert (numvars == 10*vectorlength);
+         } else {
+           char * groupname = CCTK_GroupName(gis[var]);
+           assert (groupname);
+@@ -324,22 +341,28 @@
+                  || CCTK_EQUALS (tensortypealias, "d")) {
+         /* vector */
+         int srcindex;
+-        assert (index>=0 && index<DIM);
+-        srcindex = convert_index (step, index, alldirs, &parities[var]);
++        /* special case for vel[i] */
++        assert (index>=0 && index<DIM*vectorlength);
++        if(numvars == DIM && vectorlength == DIM) {
++          srcindex = convert_index (step, index, alldirs, &parities[var]);
++        } else {
++          srcindex = index % vectorlength + vectorlength *
++                     convert_index (step, index/vectorlength, alldirs, &parities[var]);
++        }
+         srcvi = firstvar + srcindex;
+       } else if (CCTK_EQUALS (tensortypealias, "4u")
+                  || CCTK_EQUALS (tensortypealias, "4d")) {
+         /* 4-vector */
+-        assert (index>=0 && index<DIM+1);
+-        if (index==0) {
++        assert (index>=0 && index<(DIM+1)*vectorlength);
++        if (index/vectorlength==0) {
+           /* temporal component */
+           srcvi = firstvar;
+         } else {
+           /* spatial components */
+           int srcindex;
+           int const off = 1;
+-          srcindex
+-            = off + convert_index (step, index-off, alldirs, &parities[var]);
++          srcindex = index % vectorlength + vectorlength * (off +
++                     convert_index (step, index/vectorlength-off, alldirs, &parities[var]));
+           srcvi = firstvar + srcindex;
+         }
+       } else if (CCTK_EQUALS (tensortypealias, "uu")
+@@ -351,12 +374,13 @@
+         int index1, index2;
+         int srcindex1, srcindex2;
+         int srcindex;
+-        assert (index>=0 && index<DIM*DIM);
+-        index1 = index / DIM;
+-        index2 = index % DIM;
++        assert (index>=0 && index<DIM*DIM*vectorlength);
++        index1 = (index / vectorlength) / DIM;
++        index2 = (index / vectorlength) % DIM;
+         srcindex1 = convert_index (step, index1, alldirs, &parities[var]);
+         srcindex2 = convert_index (step, index2, alldirs, &parities[var]);
+-        srcindex = srcindex1 * DIM + srcindex2;
++        srcindex = index % vectorlength +
++                   (srcindex1 * DIM + srcindex2) * vectorlength;
+         srcvi = firstvar + srcindex;
+       } else if (CCTK_EQUALS (tensortypealias, "uu_sym")
+                  || CCTK_EQUALS (tensortypealias, "dd_sym")) {
+@@ -364,18 +388,19 @@
+         int index1, index2;
+         int srcindex1, srcindex2;
+         int srcindex;
+-        assert (index>=0 && index<DIM*(DIM+1)/2);
++        assert (index>=0 && index<DIM*(DIM+1)/2*vectorlength);
+         {
+           int const expand1[DIM*(DIM+1)/2] = { 0,0,0,1,1,2 };
+           int const expand2[DIM*(DIM+1)/2] = { 0,1,2,1,2,2 };
+-          index1 = expand1[index];
+-          index2 = expand2[index];
++          index1 = expand1[index/vectorlength];
++          index2 = expand2[index/vectorlength];
+         }
+         srcindex1 = convert_index (step, index1, alldirs, &parities[var]);
+         srcindex2 = convert_index (step, index2, alldirs, &parities[var]);
+         {
+           int const compact[DIM][DIM] = { { 0,1,2 }, { 1,3,4 }, { 2,4,5 } };
+-          srcindex = compact[srcindex1][srcindex2];
++          srcindex = index % vectorlength +
++                     compact[srcindex1][srcindex2]*vectorlength;
+         }
+         srcvi = firstvar + srcindex;
+       } else if (CCTK_EQUALS (tensortypealias, "ddd_sym")) {
+@@ -383,7 +408,7 @@
+         int index1, index2, index3;
+         int srcindex1, srcindex2, srcindex3;
+         int srcindex;
+-        assert (index>=0 && index<DIM*DIM*(DIM+1)/2);
++        assert (index>=0 && index<DIM*DIM*(DIM+1)/2*vectorlength);
+         {
+           int const expand1[DIM*DIM*(DIM+1)/2] =
+             { 0,0,0,0,0,0, 1,1,1,1,1,1, 2,2,2,2,2,2 };
+@@ -391,9 +416,9 @@
+             { 0,0,0,1,1,2, 0,0,0,1,1,2, 0,0,0,1,1,2 };
+           int const expand3[DIM*DIM*(DIM+1)/2] =
+             { 0,1,2,1,2,2, 0,1,2,1,2,2, 0,1,2,1,2,2 };
+-          index1 = expand1[index];
+-          index2 = expand2[index];
+-          index3 = expand3[index];
++          index1 = expand1[index/vectorlength];
++          index2 = expand2[index/vectorlength];
++          index3 = expand3[index/vectorlength];
+         }
+         srcindex1 = convert_index (step, index1, alldirs, &parities[var]);
+         srcindex2 = convert_index (step, index2, alldirs, &parities[var]);
+@@ -403,22 +428,23 @@
+             { { {  0, 1, 2 }, {  1, 3, 4 }, {  2, 4, 5 } },
+               { {  6, 7, 8 }, {  7, 9,10 }, {  8,10,11 } },
+               { { 12,13,14 }, { 13,15,16 }, { 14,16,17 } } };
+-          srcindex = compact[srcindex1][srcindex2][srcindex3];
++          srcindex = index % vectorlength +
++                     compact[srcindex1][srcindex2][srcindex3]*vectorlength;
+         }
+         srcvi = firstvar + srcindex;
+       } else if (CCTK_EQUALS (tensortypealias, "4uu_sym")
+                  || CCTK_EQUALS (tensortypealias, "4dd_sym")) {
+         /* symmetric 4-tensor */
+-        assert (index>=0 && index<(DIM+1)*(DIM+2)/2);
+-        if (index==0) {
++        assert (index>=0 && index<(DIM+1)*(DIM+2)/2*vectorlength);
++        if (index/vectorlength==0) {
+           /* temporal-temporal component */
+           srcvi = firstvar;
+-        } else if (index<DIM+1) {
++        } else if (index<(DIM+1)*vectorlength) {
+           /* temporal-spatial components */
+           int srcindex;
+           int const off = 1;
+-          srcindex
+-            = off + convert_index (step, index-off, alldirs, &parities[var]);
++          srcindex = index % vectorlength + vectorlength * (off +
++                     convert_index (step, index/vectorlength-off, alldirs, &parities[var]));
+           srcvi = firstvar + srcindex;
+         } else {
+           /* spatial-spatial components */
+@@ -429,20 +455,21 @@
+           {
+             int const expand1[DIM*(DIM+1)/2] = { 0,0,0,1,1,2 };
+             int const expand2[DIM*(DIM+1)/2] = { 0,1,2,1,2,2 };
+-            index1 = expand1[index-off];
+-            index2 = expand2[index-off];
++            index1 = expand1[index/vectorlength-off];
++            index2 = expand2[index/vectorlength-off];
+           }
+           srcindex1 = convert_index (step, index1, alldirs, &parities[var]);
+           srcindex2 = convert_index (step, index2, alldirs, &parities[var]);
+           {
+             int const compact[DIM][DIM] = { { 0,1,2 }, { 1,3,4 }, { 2,4,5 } };
+-            srcindex = off + compact[srcindex1][srcindex2];
++            srcindex = index % vectorlength + vectorlength *
++                       (off + compact[srcindex1][srcindex2]);
+           }
+           srcvi = firstvar + srcindex;
+         }
+       } else if (CCTK_EQUALS (tensortypealias, "weylscalars_real")) {
+         /* Weyl scalars, stored as 10 reals */
+-        assert (index>=0 && index<10);
++        assert (index>=0 && index<10*vectorlength);
+         srcvi = vis[var];
+       } else {
+         assert (0);
+@@ -803,6 +830,7 @@
+   
+   free (gis);
+   free (varptrs);
++  free (vectorlengths);
+   free (vartypes);
+   free (parities);
+   free (srcptrs);

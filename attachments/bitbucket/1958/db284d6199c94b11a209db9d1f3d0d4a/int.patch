@@ -1,0 +1,45 @@
+diff --git a/src/piraha/Call.cc b/src/piraha/Call.cc
+index 3bc8699..174b00a 100644
+--- a/src/piraha/Call.cc
++++ b/src/piraha/Call.cc
+@@ -446,15 +446,15 @@ smart_ptr<Value> meval(smart_ptr<Group> gr,ExpressionEvaluationData *eedata) {
+         if(val->type == PIR_REAL || val->type == PIR_INT) {
+             if(fn == "trunc") {
+                 val->ddata = trunc(val->realValue());
+-                val->type = PIR_REAL;
++                val->integerize();
+                 return val;
+             } else if(fn == "floor") {
+                 val->ddata = floor(val->realValue());
+-                val->type = PIR_REAL;
++                val->integerize();
+                 return val;
+             } else if(fn == "ceil") {
+                 val->ddata = ceil(val->realValue());
+-                val->type = PIR_REAL;
++                val->integerize();
+                 return val;
+             } else if(fn == "sqrt") {
+                 val->ddata = sqrt(val->realValue());
+@@ -1061,10 +1061,7 @@ extern "C" int cctk_PirahaParser(const char *buffer,unsigned long buffersize,int
+                         smart_ptr<Value> smv = meval(aexpr,0);
+                         val = smv->copy();
+                         assert(smv.valid());
+-                        smv->integerize();
+                         if(data != NULL) {
+-                            if(data->type == PARAMETER_REAL)
+-                                smv->integerize();
+                             if(data->type == PARAMETER_BOOLEAN)
+                                 smv->booleanize(gr);
+                             check_types(thorn.c_str(),aexpr->line(),smv,data->type);
+@@ -1089,8 +1086,6 @@ extern "C" int cctk_PirahaParser(const char *buffer,unsigned long buffersize,int
+                             smart_ptr<Value> smv = meval(aexpr,0);
+                             val = smv->copy();
+                             if(data != NULL) {
+-                                if(data->type == PARAMETER_REAL)
+-                                    smv->integerize();
+                                 if(data->type == PARAMETER_BOOLEAN)
+                                     smv->booleanize(gr);
+                                 check_types(thorn.c_str(),aexpr->line(),smv,data->type);
+/home/sbrandt/cactus/Cactus/repos/flesh/src/piraha Call.cc
+Found git! /home/sbrandt/cactus/Cactus/repos/flesh src/piraha/Call.cc

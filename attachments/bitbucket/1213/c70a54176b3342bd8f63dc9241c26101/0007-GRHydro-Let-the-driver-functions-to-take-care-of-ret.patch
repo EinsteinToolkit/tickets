@@ -1,0 +1,27 @@
+From abf8156de05bad3adb2a0c764671cfa9b5455167 Mon Sep 17 00:00:00 2001
+From: Bruno Coutinho Mundim <bcmsma@astro.rit.edu>
+Date: Wed, 31 Oct 2012 14:09:04 -0700
+Subject: [PATCH 07/25] GRHydro: Let the driver functions to take care of
+ retval initialization
+
+---
+ src/GRHydro_Con2PrimM_pt.c |    3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/GRHydro_Con2PrimM_pt.c b/src/GRHydro_Con2PrimM_pt.c
+index fe95cbe..865defa 100644
+--- a/src/GRHydro_Con2PrimM_pt.c
++++ b/src/GRHydro_Con2PrimM_pt.c
+@@ -229,7 +229,8 @@ void CCTK_FCALL CCTK_FNAME(GRHydro_Con2PrimM_pt)  (
+   gammaeos = *gamma_eos;
+ 
+   /* Assume ok initially: */
+-  *retval = 0.;
++  // BCM: But let the driver function take care of its initialization
++  //*retval = 0.; 
+   *epsnegative = 0; 
+ 
+ #if(DEBUG_CON2PRIMM)
+-- 
+1.7.10.4
+

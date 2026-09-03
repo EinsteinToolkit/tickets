@@ -1,0 +1,262 @@
+From 64f65e2aeaf8c0b9b4620e77e85201a3cc537b42 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Mon, 15 Oct 2012 16:11:47 -0700
+Subject: [PATCH 4/9] GRhydro: add recovstruct_Wv to magnetized PPM routine
+
+---
+ src/GRHydro_PPMM.F90 |  158 +++++++++++++++++++++++++++++++++++---------------
+ 1 file changed, 110 insertions(+), 48 deletions(-)
+
+diff --git a/src/GRHydro_PPMM.F90 b/src/GRHydro_PPMM.F90
+index c6e3656..60e01a7 100644
+--- a/src/GRHydro_PPMM.F90
++++ b/src/GRHydro_PPMM.F90
+@@ -79,6 +79,24 @@ subroutine SimplePPM_1dM(handle,poly,nx,dx,&
+ 
+   logical :: cond
+ 
++  CCTK_REAL, dimension(nx) :: vx,vy,vz
++  
++  
++  !!$ reconstruct w^i = w_lorentz*v^i to ensure slower than light
++  !!$ speeds?
++  if (reconstruct_Wv.ne.0) then
++    ! all velocity like quantities are now w_lorentz*velocity. We will convert
++    ! back to ordinary velocity at the end, using w_lorentz = sqrt(1 + g_{ij}
++    ! w^i w^j). 
++    vx = w_lorentz*velx
++    vy = w_lorentz*vely
++    vz = w_lorentz*velz
++  else
++    vx = velx
++    vy = vely
++    vz = velz
++  end if
++
+ 
+ !!$  Initially, all the Riemann problems will be trivial
+ 
+@@ -89,9 +107,9 @@ trivial_rp = .true.
+ 
+   do i = 2, nx - 1
+     drho(i) = 0.5d0 * (rho(i+1) - rho(i-1))
+-    dvelx(i) = 0.5d0 * (velx(i+1) - velx(i-1))
+-    dvely(i) = 0.5d0 * (vely(i+1) - vely(i-1))
+-    dvelz(i) = 0.5d0 * (velz(i+1) - velz(i-1))
++    dvelx(i) = 0.5d0 * (vx(i+1) - vx(i-1))
++    dvely(i) = 0.5d0 * (vy(i+1) - vy(i-1))
++    dvelz(i) = 0.5d0 * (vz(i+1) - vz(i-1))
+     dBvcx(i) = 0.5d0 * (Bvcx(i+1) - Bvcx(i-1))
+     dBvcy(i) = 0.5d0 * (Bvcy(i+1) - Bvcy(i-1))
+     dBvcz(i) = 0.5d0 * (Bvcz(i+1) - Bvcz(i-1))
+@@ -143,13 +161,13 @@ trivial_rp = .true.
+     rhoplus(i) = 0.5d0 * (rho(i) + rho(i+1)) + &
+          (dmrho(i) - dmrho(i+1)) / 6.d0
+     rhominus(i+1) = rhoplus(i)
+-    velxplus(i) = 0.5d0 * (velx(i) + velx(i+1)) + &
++    velxplus(i) = 0.5d0 * (vx(i) + vx(i+1)) + &
+          (dmvelx(i) - dmvelx(i+1)) / 6.d0
+     velxminus(i+1) = velxplus(i)
+-    velyplus(i) = 0.5d0 * (vely(i) + vely(i+1)) + &
++    velyplus(i) = 0.5d0 * (vy(i) + vy(i+1)) + &
+          (dmvely(i) - dmvely(i+1)) / 6.d0
+     velyminus(i+1) = velyplus(i)
+-    velzplus(i) = 0.5d0 * (velz(i) + velz(i+1)) + &
++    velzplus(i) = 0.5d0 * (vz(i) + vz(i+1)) + &
+          (dmvelz(i) - dmvelz(i+1)) / 6.d0
+     velzminus(i+1) = velzplus(i)
+ 
+@@ -371,12 +389,12 @@ trivial_rp = .true.
+       end if
+       rhoplus(i) = flatten * rhoplus(i) + (1.d0 - flatten) * rho(i)
+       rhominus(i) = flatten * rhominus(i) + (1.d0 - flatten) * rho(i)
+-      velxplus(i) = flatten * velxplus(i) + (1.d0 - flatten) * velx(i)
+-      velxminus(i) = flatten * velxminus(i) + (1.d0 - flatten) * velx(i)
+-      velyplus(i) = flatten * velyplus(i) + (1.d0 - flatten) * vely(i)
+-      velyminus(i) = flatten * velyminus(i) + (1.d0 - flatten) * vely(i)
+-      velzplus(i) = flatten * velzplus(i) + (1.d0 - flatten) * velz(i)
+-      velzminus(i) = flatten * velzminus(i) + (1.d0 - flatten) * velz(i)
++      velxplus(i) = flatten * velxplus(i) + (1.d0 - flatten) * vx(i)
++      velxminus(i) = flatten * velxminus(i) + (1.d0 - flatten) * vx(i)
++      velyplus(i) = flatten * velyplus(i) + (1.d0 - flatten) * vy(i)
++      velyminus(i) = flatten * velyminus(i) + (1.d0 - flatten) * vy(i)
++      velzplus(i) = flatten * velzplus(i) + (1.d0 - flatten) * vz(i)
++      velzminus(i) = flatten * velzminus(i) + (1.d0 - flatten) * vz(i)
+       Bvcxplus(i) = flatten * Bvcxplus(i) + (1.d0 - flatten) * Bvcx(i)
+       Bvcxminus(i) = flatten * Bvcxminus(i) + (1.d0 - flatten) * Bvcx(i)
+       Bvcyplus(i) = flatten * Bvcyplus(i) + (1.d0 - flatten) * Bvcy(i)
+@@ -402,12 +420,12 @@ trivial_rp = .true.
+       end if
+       rhoplus(i) = flatten * rhoplus(i) + (1.d0 - flatten) * rho(i)
+       rhominus(i) = flatten * rhominus(i) + (1.d0 - flatten) * rho(i)
+-      velxplus(i) = flatten * velxplus(i) + (1.d0 - flatten) * velx(i)
+-      velxminus(i) = flatten * velxminus(i) + (1.d0 - flatten) * velx(i)
+-      velyplus(i) = flatten * velyplus(i) + (1.d0 - flatten) * vely(i)
+-      velyminus(i) = flatten * velyminus(i) + (1.d0 - flatten) * vely(i)
+-      velzplus(i) = flatten * velzplus(i) + (1.d0 - flatten) * velz(i)
+-      velzminus(i) = flatten * velzminus(i) + (1.d0 - flatten) * velz(i)
++      velxplus(i) = flatten * velxplus(i) + (1.d0 - flatten) * vx(i)
++      velxminus(i) = flatten * velxminus(i) + (1.d0 - flatten) * vx(i)
++      velyplus(i) = flatten * velyplus(i) + (1.d0 - flatten) * vy(i)
++      velyminus(i) = flatten * velyminus(i) + (1.d0 - flatten) * vy(i)
++      velzplus(i) = flatten * velzplus(i) + (1.d0 - flatten) * vz(i)
++      velzminus(i) = flatten * velzminus(i) + (1.d0 - flatten) * vz(i)
+       Bvcxplus(i) = flatten * Bvcxplus(i) + (1.d0 - flatten) * Bvcx(i)
+       Bvcxminus(i) = flatten * Bvcxminus(i) + (1.d0 - flatten) * Bvcx(i)
+       Bvcyplus(i) = flatten * Bvcyplus(i) + (1.d0 - flatten) * Bvcy(i)
+@@ -494,12 +512,12 @@ do i = GRHydro_stencil, nx - GRHydro_stencil + 1
+       if (cond) then
+         rhominus(i)=rho(i)
+         rhoplus(i)=rho(i)
+-        velxminus(i)=velx(i)
+-        velxplus(i)=velx(i)
+-        velyminus(i)=vely(i)
+-        velyplus(i)=vely(i)
+-        velzminus(i)=velz(i)
+-        velzplus(i)=velz(i)
++        velxminus(i)=vx(i)
++        velxplus(i)=vx(i)
++        velyminus(i)=vy(i)
++        velyplus(i)=vy(i)
++        velzminus(i)=vz(i)
++        velzplus(i)=vz(i)
+         Bvcxminus(i)=Bvcx(i)  
+         Bvcxplus(i)=Bvcx(i)
+         Bvcyminus(i)=Bvcy(i)
+@@ -508,12 +526,12 @@ do i = GRHydro_stencil, nx - GRHydro_stencil + 1
+         Bvczplus(i)=Bvcz(i)
+         rhominus(i-1)=rho(i)
+         rhoplus(i-1)=rho(i)
+-        velxminus(i-1)=velx(i)
+-        velxplus(i-1)=velx(i)
+-        velyminus(i-1)=vely(i)
+-        velyplus(i-1)=vely(i)
+-        velzminus(i-1)=velz(i)
+-        velzplus(i-1)=velz(i)
++        velxminus(i-1)=vx(i)
++        velxplus(i-1)=vx(i)
++        velyminus(i-1)=vy(i)
++        velyplus(i-1)=vy(i)
++        velzminus(i-1)=vz(i)
++        velzplus(i-1)=vz(i)
+         Bvcxminus(i-1)=Bvcx(i)
+         Bvcxplus(i-1)=Bvcx(i)
+         Bvcyminus(i-1)=Bvcy(i)
+@@ -539,9 +557,9 @@ do i = GRHydro_stencil, nx - GRHydro_stencil + 1
+         end if
+         if (cond) then
+           call PPM_TVD(rho(i-1), rho(i), rho(i+1), rhominus(i), rhoplus(i))
+-          call PPM_TVD(velx(i-1), velx(i), velx(i+1), velxminus(i), velxplus(i))
+-          call PPM_TVD(vely(i-1), vely(i), vely(i+1), velyminus(i), velyplus(i))
+-          call PPM_TVD(velz(i-1), velz(i), velz(i+1), velzminus(i), velzplus(i))
++          call PPM_TVD(vx(i-1), vx(i), vx(i+1), velxminus(i), velxplus(i))
++          call PPM_TVD(vy(i-1), vy(i), vy(i+1), velyminus(i), velyplus(i))
++          call PPM_TVD(vz(i-1), vz(i), vz(i+1), velzminus(i), velzplus(i))
+           call PPM_TVD(Bvcx(i-1), Bvcx(i), Bvcx(i+1), Bvcxminus(i), Bvcxplus(i))
+           call PPM_TVD(Bvcy(i-1), Bvcy(i), Bvcy(i+1), Bvcyminus(i), Bvcyplus(i))
+           call PPM_TVD(Bvcz(i-1), Bvcz(i), Bvcz(i+1), Bvczminus(i), Bvczplus(i))
+@@ -560,12 +578,12 @@ do i = GRHydro_stencil, nx - GRHydro_stencil + 1
+       if (cond) then
+         rhominus(i)=rho(i)
+         rhoplus(i)=rho(i)
+-        velxminus(i)=velx(i)
+-        velxplus(i)=velx(i)
+-        velyminus(i)=vely(i)
+-        velyplus(i)=vely(i)
+-        velzminus(i)=velz(i)
+-        velzplus(i)=velz(i)
++        velxminus(i)=vx(i)
++        velxplus(i)=vx(i)
++        velyminus(i)=vy(i)
++        velyplus(i)=vy(i)
++        velzminus(i)=vz(i)
++        velzplus(i)=vz(i)
+         Bvcxminus(i)=Bvcx(i)
+         Bvcxplus(i)=Bvcx(i)
+         Bvcyminus(i)=Bvcy(i)
+@@ -574,12 +592,12 @@ do i = GRHydro_stencil, nx - GRHydro_stencil + 1
+         Bvczplus(i)=Bvcz(i)
+         rhominus(i+1)=rho(i)
+         rhoplus(i+1)=rho(i)
+-        velxminus(i+1)=velx(i)
+-        velxplus(i+1)=velx(i)
+-        velyminus(i+1)=vely(i)
+-        velyplus(i+1)=vely(i)
+-        velzminus(i+1)=velz(i)
+-        velzplus(i+1)=velz(i)
++        velxminus(i+1)=vx(i)
++        velxplus(i+1)=vx(i)
++        velyminus(i+1)=vy(i)
++        velyplus(i+1)=vy(i)
++        velzminus(i+1)=vz(i)
++        velzplus(i+1)=vz(i)
+         Bvcxminus(i+1)=Bvcx(i)
+         Bvcxplus(i+1)=Bvcx(i)
+         Bvcyminus(i+1)=Bvcy(i)
+@@ -605,9 +623,9 @@ do i = GRHydro_stencil, nx - GRHydro_stencil + 1
+         end if
+         if (cond) then
+           call PPM_TVD(rho(i-1), rho(i), rho(i+1), rhominus(i), rhoplus(i))
+-          call PPM_TVD(velx(i-1), velx(i), velx(i+1), velxminus(i), velxplus(i))
+-          call PPM_TVD(vely(i-1), vely(i), vely(i+1), velyminus(i), velyplus(i))
+-          call PPM_TVD(velz(i-1), velz(i), velz(i+1), velzminus(i), velzplus(i))
++          call PPM_TVD(vx(i-1), vx(i), vx(i+1), velxminus(i), velxplus(i))
++          call PPM_TVD(vy(i-1), vy(i), vy(i+1), velyminus(i), velyplus(i))
++          call PPM_TVD(vz(i-1), vz(i), vz(i+1), velzminus(i), velzplus(i))
+           call PPM_TVD(Bvcx(i-1), Bvcx(i), Bvcx(i+1), Bvcxminus(i), Bvcxplus(i))
+           call PPM_TVD(Bvcy(i-1), Bvcy(i), Bvcy(i+1), Bvcyminus(i), Bvcyplus(i))
+           call PPM_TVD(Bvcz(i-1), Bvcz(i), Bvcz(i+1), Bvczminus(i), Bvczplus(i))
+@@ -621,6 +639,50 @@ do i = GRHydro_stencil, nx - GRHydro_stencil + 1
+       end if
+     end if
+   end do
++
++  !!$ transform back to vel if Wv was used!
++  if (reconstruct_Wv.ne.0) then
++    do i = grhydro_stencil, nx - grhydro_stencil + 1
++      ! divide out the Loretnz factor obtained from w_lorentz =
++      ! sqrt(1+g_{ij} w^i w^j) for both the
++      ! plus and minus quantities this should by construction ensure
++      ! that any Lorentz factor calculated from them later on is
++      ! physical (ie. > 1.d0)
++      agxx = 0.5d0*( gxx(i) + gxx(i-1) )
++      agxy = 0.5d0*( gxy(i) + gxy(i-1) )
++      agxz = 0.5d0*( gxz(i) + gxz(i-1) )
++      agyy = 0.5d0*( gyy(i) + gyy(i-1) )
++      agyz = 0.5d0*( gyz(i) + gyz(i-1) )
++      agzz = 0.5d0*( gzz(i) + gzz(i-1) )
++      w = sqrt( 1.d0 + agxx*velxminus(i)*velxminus(i) + &
++                       agyy*velyminus(i)*velyminus(i) &
++              + agzz*velzminus(i)*velzminus(i) + &
++                2.d0*agxy*velxminus(i)*velyminus(i) &
++              + 2.d0*agxz*velxminus(i)*velzminus(i) + &
++                2.d0*agyz*velyminus(i)*velzminus(i) )
++      velxminus(i) = velxminus(i)/w
++      velyminus(i) = velyminus(i)/w
++      velzminus(i) = velzminus(i)/w
++      
++      agxx = 0.5d0*( gxx(i) + gxx(i+1) )
++      agxy = 0.5d0*( gxy(i) + gxy(i+1) )
++      agxz = 0.5d0*( gxz(i) + gxz(i+1) )
++      agyy = 0.5d0*( gyy(i) + gyy(i+1) )
++      agyz = 0.5d0*( gyz(i) + gyz(i+1) )
++      agzz = 0.5d0*( gzz(i) + gzz(i+1) )
++      w = sqrt( 1.d0 + agxx*velxplus(i)*velxplus(i) + &
++                agyy*velyplus(i)*velyplus(i) &
++              + agzz*velzplus(i)*velzplus(i) + &
++               2.d0*agxy*velxplus(i)*velyplus(i) &
++              + 2.d0*agxz*velxplus(i)*velzplus(i) + &
++               2.d0*agyz*velyplus(i)*velzplus(i) )
++      velxplus(i) = velxplus(i)/w
++      velyplus(i) = velyplus(i)/w
++      velzplus(i) = velzplus(i)/w
++    end do
++  end if
++  
++  
+ return
+ 
+ end subroutine SimplePPM_1dM
+-- 
+1.7.10.4
+

@@ -1,0 +1,85 @@
+Index: interface.ccl
+===================================================================
+--- interface.ccl	(revision 61)
++++ interface.ccl	(working copy)
+@@ -5,6 +5,14 @@
+ inherits: grid
+ USES INCLUDE HEADER: Symmetry.h
+ 
++CCTK_INT FUNCTION GetBoundarySpecification \
++  (CCTK_INT IN size, \
++   CCTK_INT OUT ARRAY nboundaryzones, \
++   CCTK_INT OUT ARRAY is_internal, \
++   CCTK_INT OUT ARRAY is_staggered, \
++   CCTK_INT OUT ARRAY shiftout)
++REQUIRES FUNCTION GetBoundarySpecification
++
+ public:
+ 
+ INT shift_state TYPE = SCALAR "state of storage for shift"
+Index: src/InitSymBound.c
+===================================================================
+--- src/InitSymBound.c	(revision 61)
++++ src/InitSymBound.c	(working copy)
+@@ -123,35 +123,53 @@
+ }
+ 
+ /* A macro for selecting boundary conditions and checking for errors */
+-#define ADMBASE_BC(NAME)                                                             \
+-    {if (Boundary_SelectGroupForBC(cctkGH, CCTK_ALL_FACES, 1, -1, NAME, "none") < 0) \
++#define ADMBASE_BC(NAME, STENCIL)                                               \
++    {if (Boundary_SelectGroupForBC(cctkGH, CCTK_ALL_FACES, STENCIL, -1, NAME, "flat") < 0) \
+         CCTK_WARN(0, "Failed to register BC for "NAME"!");}
+ /* Select boundary conditions on ADMBase variables */
+ void ADMBase_Boundaries(CCTK_ARGUMENTS)
+ {
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
++
++  CCTK_INT width[6];
++  CCTK_INT ierr;
++  CCTK_INT is_internal[6];
++  CCTK_INT is_staggered[6];
++  CCTK_INT shiftout[6];
++  CCTK_INT stencil = 0, i;
++
++  ierr = GetBoundarySpecification
++    (6, width, is_internal, is_staggered, shiftout);
++  if (ierr < 0)
++  {
++    CCTK_WARN (0, "Could not get the boundary specification");
++  }
++  for (i = 0; i < 6; i++)
++  {
++    stencil = stencil > width[i] ? stencil : width[i];
++  }
+   
+   if (CCTK_EQUALS(evolution_method, "none"  ) ||
+       CCTK_EQUALS(evolution_method, "static")) 
+   {
+-    ADMBASE_BC("ADMBase::metric");
+-    ADMBASE_BC("ADMBase::curv");
++    ADMBASE_BC("ADMBase::metric", stencil);
++    ADMBASE_BC("ADMBase::curv", stencil);
+   }
+ 
+   if (CCTK_EQUALS(lapse_evolution_method, "static"))
+-    ADMBASE_BC("ADMBase::lapse");
++    ADMBASE_BC("ADMBase::lapse", stencil);
+ 
+   if (!CCTK_EQUALS(initial_dtlapse, "none") &&
+        CCTK_EQUALS(dtlapse_evolution_method, "static"))
+-    ADMBASE_BC("ADMBase::dtlapse");
++    ADMBASE_BC("ADMBase::dtlapse", stencil);
+ 
+   if (!CCTK_EQUALS(initial_shift, "none") &&
+        CCTK_EQUALS(shift_evolution_method, "static"))
+-    ADMBASE_BC("ADMBase::shift");
++    ADMBASE_BC("ADMBase::shift", stencil);
+ 
+   if (!CCTK_EQUALS(initial_dtshift, "none") &&
+        CCTK_EQUALS(dtshift_evolution_method, "static"))
+-    ADMBASE_BC("ADMBase::dtshift");
++    ADMBASE_BC("ADMBase::dtshift", stencil);
+ }
+ #undef ADMBase_BC

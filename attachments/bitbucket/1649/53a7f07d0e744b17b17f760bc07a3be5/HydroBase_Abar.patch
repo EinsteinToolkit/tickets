@@ -1,0 +1,137 @@
+Index: interface.ccl
+===================================================================
+--- interface.ccl	(revision 74)
++++ interface.ccl	(working copy)
+@@ -38,6 +38,7 @@
+ CCTK_REAL w_lorentz  type = GF Timelevels = 3 tags='ProlongationParameter="HydroBase::prolongation_type" tensortypealias="Scalar" interpolator="matter"' "Lorentz Factor"
+ 
+ CCTK_REAL Y_e         type = GF Timelevels = 3 tags='ProlongationParameter="HydroBase::prolongation_type" tensortypealias="Scalar" interpolator="matter"' "Electron Fraction"
++CCTK_REAL Abar        type = GF Timelevels = 3 tags='ProlongationParameter="HydroBase::prolongation_type" tensortypealias="Scalar" interpolator="matter"' "Average atomic mass [atomic mass unit]"
+ CCTK_REAL temperature type = GF Timelevels = 3 tags='ProlongationParameter="HydroBase::prolongation_type" tensortypealias="Scalar" interpolator="matter"' "Temperature [MeV]"
+ CCTK_REAL entropy     type = GF Timelevels = 3 tags='ProlongationParameter="HydroBase::prolongation_type" tensortypealias="Scalar" interpolator="matter"' "Specific Entropy [k_b/baryon]"
+ 
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 74)
++++ param.ccl	(working copy)
+@@ -42,11 +42,23 @@
+   "read from file" :: "Read the initial data using the IOUtil file reader.  Note that this only allows you to read the data from a file, it does not actually do it.  You still have to programme the IOUtil file reader accordingly."
+ } "none"
+ 
++KEYWORD initial_Abar "Initial value for Abar"
++{
++  "none" :: "inactive"
++  "zero" :: "initially set to zero"
++  "read from file" :: "Read the initial data using the IOUtil file reader.  Note that this only allows you to read the data from a file, it does not actually do it.  You still have to programme the IOUtil file reader accordingly."
++} "none"
++
+ KEYWORD Y_e_evolution_method "Evolution method for Y_e"
+ {
+   "none" :: "Evolution for Y_e is disabled"
+ } "none"
+ 
++KEYWORD Abar_evolution_method "Evolution method for Abar"
++{
++  "none" :: "Evolution for Abar is disabled"
++} "none"
++
+ KEYWORD temperature_evolution_method "Evolution method for temperature"
+ {
+   "none" :: "Evolution for temperature is disabled"
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 74)
++++ schedule.ccl	(working copy)
+@@ -11,6 +11,10 @@
+   {
+     STORAGE: Y_e[1]
+   }
++  if (!CCTK_EQUALS(initial_Abar, "none"))
++  {
++    STORAGE: Abar[1]
++  }
+   if (!CCTK_EQUALS(initial_Bvec, "none"))
+   {
+     STORAGE: Bvec[1]
+@@ -43,6 +47,10 @@
+   {
+     STORAGE: Y_e[2]
+   }
++  if (!CCTK_EQUALS(initial_Abar, "none"))
++  {
++    STORAGE: Abar[2]
++  }
+   if (!CCTK_EQUALS(initial_Bvec, "none"))
+   {
+     STORAGE: Bvec[2]
+@@ -75,6 +83,10 @@
+   {
+     STORAGE: Y_e[3]
+   }
++  if (!CCTK_EQUALS(initial_Abar, "none"))
++  {
++    STORAGE: Abar[3]
++  }
+   if (!CCTK_EQUALS(initial_Bvec, "none"))
+   {
+     STORAGE: Bvec[3]
+Index: src/Initialisation.c
+===================================================================
+--- src/Initialisation.c	(revision 74)
++++ src/Initialisation.c	(working copy)
+@@ -20,7 +20,14 @@
+     w_lorentz[i] = 1.0;
+     eps[i     ]  = 0.0;
+   }
+-  
++
++  if (CCTK_ActiveTimeLevels(cctkGH, "HydroBase::Abar") >= 1) {
++#pragma omp parallel for
++    for (int i=0; i<np; ++i) {
++      Abar[i     ] = 0.0;
++    }
++  }
++
+   if (CCTK_ActiveTimeLevels(cctkGH, "HydroBase::temperature") >= 1) {
+ #pragma omp parallel for
+     for (int i=0; i<np; ++i) {
+@@ -55,6 +62,13 @@
+       }
+     }
+ 
++    if (CCTK_ActiveTimeLevels(cctkGH, "HydroBase::Abar") >= 2) {
++#pragma omp parallel for
++      for (int i=0; i<np; ++i) {
++        Abar_p[i     ] = 0.0;
++      }
++    }
++
+     if (CCTK_ActiveTimeLevels(cctkGH, "HydroBase::temperature") >= 2) {
+ #pragma omp parallel for
+       for (int i=0; i<np; ++i) {
+@@ -86,6 +100,13 @@
+                  "Too many active time levels for HydroBase variables");
+     }
+ 
++    if (CCTK_ActiveTimeLevels(cctkGH, "HydroBase::Abar") >= 3) {
++#pragma omp parallel for
++      for (int i=0; i<np; ++i) {
++        Abar_p_p[i     ] = 0.0;
++      }
++    }
++
+     if (CCTK_ActiveTimeLevels(cctkGH, "HydroBase::temperature") >= 3) {
+ #pragma omp parallel for
+       for (int i=0; i<np; ++i) {
+Index: src/ParamCheck.c
+===================================================================
+--- src/ParamCheck.c	(revision 74)
++++ src/ParamCheck.c	(working copy)
+@@ -35,6 +35,7 @@
+     {"initial_Bvec", initial_Bvec, "HydroBase::Bvec[1]"},
+     {"initial_Bvec", initial_Bvec, "HydroBase::Bvec[2]"},
+     {"initial_Y_e", initial_Y_e, "HydroBase::Y_e"},
++    {"initial_Abar", initial_Abar, "HydroBase::Abar"},
+     {"initial_temperature", initial_temperature, "HydroBase::temperature"},
+     {"initial_entropy", initial_entropy, "HydroBase::entropy"},
+   };

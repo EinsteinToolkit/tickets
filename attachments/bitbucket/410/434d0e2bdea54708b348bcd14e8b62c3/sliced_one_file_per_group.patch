@@ -1,0 +1,54 @@
+# HG changeset patch
+# User Roland Haas <rhaas@caltech.edu>
+# Date 1320884713 28800
+# Node ID 049fbbb1c76dbe96eeeee4857833c1362adff643
+# Parent  b3ca7d192ff41f1167f2f9421cf37fc8ebc9a35c
+CarpetIOHDF5: additional check ensuring that a default request is used if the
+current request does not exist for one_file_per_group output
+
+this is re #410:
+--8<-- by Erik Schnetter --8<--
+The corresponding code in CarpetIOHDF5.cc, which outputs data that are not
+slices, uses the same algorithm. However, it contains an additional check
+ensuring that a default request is used if the corresponding request does not
+exist. Look for calls to IOUtil_DefaultIORequest to find this code. I believe
+that an equivalent logic would correct this problem in OutputSlice.cc.
+--8<-- by Erik Schnetter --8<--
+
+diff -r b3ca7d192ff4 -r 049fbbb1c76d Carpet/CarpetIOHDF5/src/OutputSlice.cc
+--- a/Carpet/CarpetIOHDF5/src/OutputSlice.cc	Wed Nov 09 16:53:20 2011 -0500
++++ b/Carpet/CarpetIOHDF5/src/OutputSlice.cc	Wed Nov 09 16:25:13 2011 -0800
+@@ -1420,7 +1420,15 @@
+         datasetname.append (datasetname_suffix.str());
+   
+         // remove an already existing dataset of the same name
+-        if (slice_requests.at(vi + n)->check_exist) {
++        ioRequest* request = slice_requests.at(vi + n);
++        if (not request) {
++#ifdef IOUTIL_PARSER_HAS_OUT_DT
++        request = IOUtil_DefaultIORequest (cctkGH, vi + n, 1, -1.0);
++#else
++        request = IOUtil_DefaultIORequest (cctkGH, vi + n, 1);
++#endif
++        }
++        if (request->check_exist) {
+           H5E_BEGIN_TRY {
+             H5Gunlink(file, datasetname.c_str());
+           } H5E_END_TRY;
+@@ -1516,7 +1524,15 @@
+         datasetname.append (datasetname_suffix.str());
+ 
+         // remove an already existing dataset of the same name
+-        if (slice_requests[vi + n]->check_exist) {
++        ioRequest* request = slice_requests.at(vi + n);
++        if (not request) {
++#ifdef IOUTIL_PARSER_HAS_OUT_DT
++        request = IOUtil_DefaultIORequest (cctkGH, vi + n, 1, -1.0);
++#else
++        request = IOUtil_DefaultIORequest (cctkGH, vi + n, 1);
++#endif
++        }
++        if (request->check_exist) {
+           H5E_BEGIN_TRY {
+             H5Gunlink(file, datasetname.c_str());
+           } H5E_END_TRY;

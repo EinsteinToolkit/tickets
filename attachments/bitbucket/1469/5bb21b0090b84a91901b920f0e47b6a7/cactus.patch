@@ -1,0 +1,24 @@
+Index: src/piraha/Call.cc
+===================================================================
+--- src/piraha/Call.cc	(revision 5050)
++++ src/piraha/Call.cc	(working copy)
+@@ -324,10 +324,17 @@
+ 		s = mklower(s);
+ 		ret->ddata = atof(s.c_str());
+ 		ret->idata = ret->ddata;
+-		if(ret->idata == ret->ddata && (s.find('.') == std::string::npos))
++		if(s.find('.') == std::string::npos) {
+ 			ret->type = PIR_INT;
+-		else
++            if(ret->ddata != ret->idata) {
++                std::ostringstream msg;
++                msg << "Integer value is not valid " << s << std::endl;
++                std::string par = get_parfile();
++                CCTK_Error(gr->line(),par.c_str(),current_thorn.c_str(),msg.str().c_str());
++            }
++        } else {
+ 			ret->type = PIR_REAL;
++        }
+ 	} else if(pn == "paren" || pn == "parindex") {
+ 		return meval(gr->group(0));
+ 	} else if(pn == "func") {

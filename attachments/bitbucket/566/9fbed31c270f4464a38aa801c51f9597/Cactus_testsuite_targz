@@ -1,0 +1,123 @@
+Index: RunTestUtils.pl
+===================================================================
+--- RunTestUtils.pl	(revision 4724)
++++ RunTestUtils.pl	(working copy)
+@@ -262,20 +262,25 @@
+   return ($Test, $ABSTOL, $RELTOL, $NPROCS, $line_number);
+ }
+ 
++# Find archive files for one particular test
+ sub FindTestArchiveFiles
+ {
+-  my($testdata) = @_;
+-  my($thorn,$test);
++  my($test,$thorn,$testdata) = @_;
+ 
+-  foreach $thorn (split(" ",$testdata->{"THORNS"}))
++  my $dir = "$testdata->{\"$thorn TESTSDIR\"}/$test";
++  my $unpackdir = $config_data->{"TESTS_DIR"}.$sep.$config_data->{"CONFIG"}.$sep.$thorn;
++  system("mkdir -p $unpackdir");
++  if ( !-d "$dir" and -f "$dir.tar.gz")
+   {
+-    foreach $test (split(" ",$testdata->{"$thorn TESTS"}))
+-    {
+-      $dir = "$testdata->{\"$thorn TESTSDIR\"}/$test";
+-      ($testdata->{"$thorn $test UNKNOWNFILES"},$testdata->{"$thorn $test DATAFILES"}) = &FindFiles($dir,$testdata);
+-      $testdata->{"$thorn $test NDATAFILES"} = scalar(split(" ",$testdata->{"$thorn $test DATAFILES"}));
+-    }
++    print("  Decompressing testsuite data\n");
++    my $basename = `basename $dir`; chomp($basename);
++    system("cd $unpackdir && rm -rf $basename $basename.orig");
++    system("cd $unpackdir && tar -xzf $dir.tar.gz && mv $basename $basename.orig");
++    $testdata->{"$thorn $test UNCOMPRESSED"} = "$unpackdir$sep$basename.orig"; # why?
++    $dir = "$unpackdir$sep$basename.orig";
+   }
++  ($testdata->{"$thorn $test UNKNOWNFILES"},$testdata->{"$thorn $test DATAFILES"}) = &FindFiles($dir,$testdata);
++  $testdata->{"$thorn $test NDATAFILES"} = scalar(split(" ",$testdata->{"$thorn $test DATAFILES"}));
+   return $testdata;
+ }
+ 
+@@ -332,7 +337,7 @@
+       {
+         $file =~ m:^(.*)\.par$:;
+         $filedir = $1;
+-        if (-d $filedir)
++        if (-d $filedir or -f "$filedir.tar.gz")
+         {
+           $testdata->{"$thorn TESTS"} .= "$filedir ";
+           $testdata->{"$thorn NTESTS"}++;
+@@ -970,6 +975,8 @@
+   my ($test_dir,$config);
+   my ($retcode);
+ 
++  $testdata = &FindTestArchiveFiles($test,$thorn,$testdata);
++
+   my $arrangement = $testdata->{"$thorn ARRANGEMENT"};
+ 
+   $testdata->{"$thorn $test TESTRUNDIR"} = $config_data->{"TESTS_DIR"}.$sep.$config_data->{"CONFIG"}.$sep.$thorn;
+@@ -1008,6 +1015,7 @@
+   return $testdata;
+ }
+ 
++# Compares output from one particular testsuite
+ sub CompareTestFiles
+ {
+   my ($test,$thorn,$runconfig,$rundata,$config_data,$testdata) = @_;
+@@ -1058,7 +1066,17 @@
+       my (@maxabsdiff, @absdiff, @valmax) = ();
+ 
+       $newfile = "$test_dir$sep$file";
++      # This is the standard location of test data files
+       $oldfile = "$testdata->{\"$thorn TESTSDIR\"}${sep}${test}${sep}$file";
++      # If there is no data in the standard location, see if it got
++      # decompressed to some place else
++      if (!-d "$testdata->{\"$thorn TESTSDIR\"}${sep}${test}")
++      {
++        if (-d "$testdata->{\"$thorn $test UNCOMPRESSED\"}")
++        {
++          $oldfile = "$testdata->{\"$thorn $test UNCOMPRESSED\"}${sep}$file";
++        }
++      }
+ 
+       $rundata->{"$thorn $test $file NINF"}=0;
+       $rundata->{"$thorn $test $file NNAN"}=0;
+@@ -1201,7 +1219,7 @@
+       }
+       else
+       {
+-        print "     TESTSUITE ERROR: $newfile not compared\n";
++        print "     TESTSUITE ERROR: $newfile not compared to $oldfile\n";
+       }
+ 
+       my $havediffs = 0;
+@@ -1241,7 +1259,7 @@
+   return $rundata;
+ }
+ 
+-
++# Reports on one particular test
+ sub ReportOnTest
+ {
+   my($test,$thorn,$rundata,$testdata) = @_;
+@@ -1496,6 +1514,7 @@
+ 
+ }
+ 
++# Views results from one particular test
+ sub ViewResults
+ {
+   my($test,$thorn,$runconfig,$rundata,$testdata) = @_;
+Index: RunTest.pl
+===================================================================
+--- RunTest.pl	(revision 4724)
++++ RunTest.pl	(working copy)
+@@ -53,9 +53,6 @@
+ # Parse test config files
+ $testdata = &ParseTestConfigs($testdata,$config_data,\%runconfig);
+ 
+-# Find the Archive Datafiles
+-$testdata = &FindTestArchiveFiles($testdata);
+-
+ # Parse test parameter files
+ $testdata = &ParseAllParameterFiles($testdata,$config_data,\%runconfig);
+ 

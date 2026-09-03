@@ -1,0 +1,28 @@
+From 137954148690b577b3a2b1c581c2d1dc48afe487 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Mon, 23 Apr 2012 15:04:33 -0700
+Subject: [PATCH 11/11] GRHydro: correct vector type of Bcons to match Bvec
+
+---
+ interface.ccl |    4 ++--
+ 1 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/interface.ccl b/interface.ccl
+index bcba8da..d7aea0c 100644
+--- a/interface.ccl
++++ b/interface.ccl
+@@ -345,9 +345,9 @@ real tau  type = GF Timelevels = 3 tags='ProlongationParameter="HydroBase::prolo
+ 
+ real scon[3] type = GF Timelevels = 3 tags='ProlongationParameter="HydroBase::prolongation_type" tensortypealias="D" tensorweight=+1.0 jacobian="inverse_jacobian" interpolator="matter"' "generalized momenta"
+ 
+-real Bcons[3] type = GF Timelevels = 3 tags='ProlongationParameter="HydroBase::prolongation_type" tensortypealias="D" tensorparity=-1 tensorweight=+1.0 jacobian="inverse_jacobian" interpolator="matter"' "B-field conservative variable"
++real Bcons[3] type = GF Timelevels = 3 tags='ProlongationParameter="HydroBase::prolongation_type" tensortypealias="U" tensorparity=-1 tensorweight=+1.0 jacobian="jacobian" interpolator="matter"' "B-field conservative variable"
+ 
+-real Evec[3] type = GF Timelevels = 1 tags='ProlongationParameter="HydroBase::prolongation_type" tensortypealias="D" tensorweight=+1.0 jacobian="inverse_jacobian" interpolator="matter"' "Electric field at edges"
++real Evec[3] type = GF Timelevels = 1 tags='ProlongationParameter="HydroBase::prolongation_type" tensortypealias="U" tensorweight=+1.0 jacobian="jacobian" interpolator="matter"' "Electric field at edges"
+ 
+ real Y_e_con type = GF Timelevels = 3 tags='ProlongationParameter="HydroBase::prolongation_type" tensortypealias="Scalar" tensorweight=+1.0 jacobian="inverse_jacobian" interpolator="matter"' "Conserved electron fraction"
+ 
+-- 
+1.7.8
+

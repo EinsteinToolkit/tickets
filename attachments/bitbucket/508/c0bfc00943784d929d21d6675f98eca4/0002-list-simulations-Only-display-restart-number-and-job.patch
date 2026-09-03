@@ -1,0 +1,30 @@
+From 6a9b4b723212736bf7076714e76333f13b4501b6 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Wed, 17 Aug 2011 14:05:55 +0200
+Subject: [PATCH 2/2] list-simulations: Only display restart number and job ID
+ if simulation is active and there is a job in the queue
+
+---
+ lib/sim-info.py |    6 +++++-
+ 1 files changed, 5 insertions(+), 1 deletions(-)
+
+diff --git a/lib/sim-info.py b/lib/sim-info.py
+index 4e0b262..e186ae3 100755
+--- a/lib/sim-info.py
++++ b/lib/sim-info.py
+@@ -125,7 +125,11 @@ def list_simulations():
+             state = 'INACTIVE'
+             
+         if not simenv.OptionsManager.GetOption('long'):
+-            display("   %-21s   [%-9s, restart %04d, job id %s]" % (sim, state, int(activeId), job_id))
++            if active and job_status in ['H', 'Q', 'R']:
++                extra = ", restart %04d, job id %s" % (int(activeId), job_id)
++            else:
++                extra = ""
++            display("   %-21s   [%-9s%s]" % (sim, state, extra))
+         else:
+             display("   %-21s= %s" % (sim, state))
+ 
+-- 
+1.7.5.4
+

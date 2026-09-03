@@ -1,0 +1,64 @@
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 217)
++++ param.ccl	(working copy)
+@@ -462,6 +462,11 @@
+   (0:*  :: "Anything positive."
+ } 1.0e-8
+ 
++CCTK_INT poloidal_P_p "Index of pressure factor"
++{
++ (0:* :: "Any non-negative integer"
++} 1
++
+ CCTK_REAL poloidal_rho_max  "Maximum initial density"
+ {
+   (0:*  :: "Anything positive."
+Index: src/GRHydro_PoloidalMagFieldM.F90
+===================================================================
+--- src/GRHydro_PoloidalMagFieldM.F90	(revision 217)
++++ src/GRHydro_PoloidalMagFieldM.F90	(working copy)
+@@ -88,6 +88,10 @@
+ ! Initialize to zero
+   Bvec = 0.0d0
+ 
++  Aphi_dx = 0.0
++  Aphi_dy = 0.0
++  Aphi_dz = 0.0
++
+   do i=2,nx-1
+    do j=2,ny-1
+     do k=2,nz-1
+@@ -95,7 +99,7 @@
+      rhofac = 1.0d0-rho(i,j,k)/poloidal_rho_max
+      delPcut = press(i,j,k)-poloidal_P_cut
+      maxP_Pcut = max(delPcut,0.0d0)
+-     AphiL = poloidal_A_b*rhofac**poloidal_n_p*maxP_Pcut
++     AphiL = poloidal_A_b*rhofac**poloidal_n_p*maxP_Pcut**poloidal_P_p
+      Ax = -y(i,j,k)*AphiL
+      Ay =  x(i,j,k)*AphiL
+      Az = 0.0
+@@ -115,12 +119,17 @@
+      press_dy = 0.5d0*(press(i,j+1,k)-press(i,j-1,k))/dy 
+      press_dz = 0.5d0*(press(i,j,k+1)-press(i,j,k-1))/dz 
+ 
+-     Aphi_dx = poloidal_A_b*rhofac**(poloidal_n_p-1)*maxP_Pcut* &
+-              ( rhofac*press_dx/delPcut - poloidal_n_p*rho_dx/poloidal_rho_max )
+-     Aphi_dy = poloidal_A_b*rhofac**(poloidal_n_p-1)*maxP_Pcut* &
+-              ( rhofac*press_dy/delPcut - poloidal_n_p*rho_dy/poloidal_rho_max )
+-     Aphi_dz = poloidal_A_b*rhofac**(poloidal_n_p-1)*maxP_Pcut* &
+-              ( rhofac*press_dz/delPcut - poloidal_n_p*rho_dz/poloidal_rho_max )
++     if (maxP_Pcut > 0.0) then
++       Aphi_dx = poloidal_A_b*( &
++                   -poloidal_n_p*rho_dx/poloidal_rho_max*maxP_Pcut**poloidal_P_p &
++                   +rhofac**poloidal_n_p*press_dx*poloidal_P_p*maxP_Pcut**(poloidal_P_p-1))
++       Aphi_dy = poloidal_A_b*( &
++                   -poloidal_n_p*rho_dy/poloidal_rho_max*maxP_Pcut**poloidal_P_p &
++                   +rhofac**poloidal_n_p*press_dy*poloidal_P_p*maxP_Pcut**(poloidal_P_p-1))
++       Aphi_dz = poloidal_A_b*( &
++                   -poloidal_n_p*rho_dz/poloidal_rho_max*maxP_Pcut**poloidal_P_p &
++                   +rhofac**poloidal_n_p*press_dz*poloidal_P_p*maxP_Pcut**(poloidal_P_p-1))
++     endif
+ 
+      Ax_dy = -AphiL - y(i,j,k)*Aphi_dy
+      Ax_dz = -y(i,j,k)*Aphi_dz

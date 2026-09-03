@@ -1,0 +1,63 @@
+From 62db033b9bb49024001f6505769d3e226edbed20 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Fri, 7 Feb 2014 19:25:34 -0800
+Subject: [PATCH 34/36] GRHydro: remove unused variables
+
+---
+ src/GRHydro_HLLEM.F90 | 12 +++---------
+ 1 file changed, 3 insertions(+), 9 deletions(-)
+
+diff --git a/src/GRHydro_HLLEM.F90 b/src/GRHydro_HLLEM.F90
+index a0de209..f7ecf23 100644
+--- a/src/GRHydro_HLLEM.F90
++++ b/src/GRHydro_HLLEM.F90
+@@ -52,7 +52,7 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+   CCTK_REAL, dimension(3) :: vtp,vtm,blowp,blowm,Bveclowp,Bveclowm
+   CCTK_REAL, dimension(3) :: vellowp,vellowm
+   CCTK_REAL :: ab0p,ab0m,b2p,b2m,bdotvp,bdotvm
+-  CCTK_REAL :: wp,wm,v2p,v2m,vA2m,vA2p
++  CCTK_REAL :: wp,wm,v2p,v2m
+   CCTK_REAL :: pressstarp,pressstarm
+ 
+   CCTK_REAL :: entropyconsp,entropyconsm,entropyp,entropym,entropyf,entropydiff,entropyfp,entropyfm
+@@ -133,7 +133,7 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+   !$OMP vtp,vtm,vellowp,vellowm,Bveclowp,Bveclowm,&
+   !$OMP bdotvp,bdotvm,b2p,b2m,v2p,v2m,wp,wm,&
+   !$OMP blowp,blowm,&
+-  !$OMP rhoenth_p,rhoenth_m,ab0p,ab0m,vA2p,vA2m,pressstarp,pressstarm,&
++  !$OMP rhoenth_p,rhoenth_m,ab0p,ab0m,pressstarp,pressstarm,&
+   !$OMP usendh,psidcdiff,psidcfp,psidcfm,charmin,charmax,chartop,charpm,&
+   !$OMP charmin_dc,charmax_dc,charpm_dc,m,xtemp,&
+   !$OMP entropyconsp,entropyconsm,entropyp,entropym,entropyf,entropydiff,entropyfp,entropyfm)
+@@ -271,9 +271,6 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+         ab0p = wp*bdotvp
+         ab0m = wm*bdotvm
+ 
+-        vA2p = b2p/(rhoenth_p+b2p)
+-        vA2m = b2m/(rhoenth_m+b2m)
+-
+ !!$ p^*  = p+b^2/2  in Anton et al.
+         pressstarp = prim_p(6)+0.5d0*b2p
+         pressstarm = prim_m(6)+0.5d0*b2m        
+@@ -555,7 +552,7 @@ subroutine GRHydro_HLLE_TracerM(CCTK_ARGUMENTS)
+   CCTK_REAL ::  charmin, charmax, charpm,avg_alp,avg_det
+   CCTK_REAL :: gxxh, gxyh, gxzh, gyyh, gyzh, gzzh, uxxh, uxyh, &
+        uxzh, uyyh, uyzh, uzzh, avg_beta, usendh
+-  CCTK_REAL :: b2p,b2m,vA2m,vA2p
++  CCTK_REAL :: b2p,b2m
+     
+   CCTK_INT :: type_bits, trivial
+ 
+@@ -707,9 +704,6 @@ subroutine GRHydro_HLLE_TracerM(CCTK_ARGUMENTS)
+         b2m=DOTP2(gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,mag_m(1),mag_m(2),mag_m(3))/prim_m(7)**2 + &
+              (DOTP(gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,prim_m(2),prim_m(3),prim_m(4),mag_m(1),mag_m(2),mag_m(3)))**2
+         
+-        vA2p = b2p/(prim_p(1)*(1.0d0+prim_p(5))+prim_p(6)+b2p)
+-        vA2m = b2m/(prim_m(1)*(1.0d0+prim_m(5))+prim_m(6)+b2m)
+-          
+ !!$        Calculate the jumps in the conserved variables
+           
+         qdiff = cons_m - cons_p
+-- 
+1.9.0
+

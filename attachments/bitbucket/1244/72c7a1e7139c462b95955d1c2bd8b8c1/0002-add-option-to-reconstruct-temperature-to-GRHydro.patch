@@ -1,0 +1,2303 @@
+From 36e3e9d8fbb191faa105386ec816d8f75e77558b Mon Sep 17 00:00:00 2001
+From: Christian Ott <cott@bethe.tapir.caltech.edu>
+Date: Thu, 10 Jan 2013 16:12:49 -0800
+Subject: [PATCH 02/11]  * add option to reconstruct temperature to GRHydro   
+ This does not yet work with the MHD part of the code,
+    but Philipp is going to change this.
+
+ * Improve TOVSolverHot; in particular, give functions unique
+   names to avoid duplicate symbols with TOVSolverC
+---
+ interface.ccl                         |    2 +
+ param.ccl                             |    4 +
+ schedule.ccl                          |    4 +
+ src/GRHydro_Con2Prim.F90              |    6 +-
+ src/GRHydro_ENOReconstruct_drv.F90    |   48 ++-
+ src/GRHydro_Eigenproblem.F90          |    4 +-
+ src/GRHydro_Eigenproblem_Marquina.F90 |  708 +--------------------------------
+ src/GRHydro_HLLE.F90                  |   45 ++-
+ src/GRHydro_Marquina.F90              |   29 +-
+ src/GRHydro_PPM.F90                   |  519 ++++++++++++++++++++++++
+ src/GRHydro_PPMReconstruct_drv.F90    |   40 ++
+ src/GRHydro_Prim2Con.F90              |  295 ++++++++------
+ src/GRHydro_TVDReconstruct_drv.F90    |   12 +
+ src/GRHydro_UpdateMask.F90            |    8 +-
+ src/GRHydro_WENOReconstruct_drv.F90   |   47 ++-
+ 15 files changed, 902 insertions(+), 869 deletions(-)
+
+diff --git a/interface.ccl b/interface.ccl
+index 0d67929..301c4c3 100644
+--- a/interface.ccl
++++ b/interface.ccl
+@@ -640,6 +640,8 @@ real Y_e_con_flux TYPE=GF tags='Prolongation="None" checkpoint="no"' "Flux for t
+ private:
+ real Y_e_plus TYPE=GF tags='Prolongation="None" checkpoint="no"' "Plus state  for the electron fraction"
+ real Y_e_minus TYPE=GF tags='Prolongation="None" checkpoint="no"' "Minus state for the electron fraction"
++real tempplus TYPE=GF tags='Prolongation="None" checkpoint="no"' "Plus state  for the temperature"
++real tempminus TYPE=GF tags='Prolongation="None" checkpoint="no"' "Minus state for the temperature"
+ 
+ real GRHydro_tracer_rhs[number_of_tracers] TYPE=GF tags='Prolongation="None" checkpoint="no"'
+ {
+diff --git a/param.ccl b/param.ccl
+index 1ebcd58..9f5c3eb 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -348,6 +348,10 @@ boolean GRHydro_eos_hot_prim2con_warn "Warn about temperature workaround in prim
+ boolean GRHydro_c2p_reset_eps_tau_hot_eos "As a last resort, reset tau" STEERABLE=ALWAYS
+ {
+ } "no"
++
++boolean reconstruct_temper "if set to true, temperature will be reconstructed" STEERABLE=ALWAYS
++{
++} "no"
+  
+ REAL GRHydro_hot_atmo_temp "Temperature of the hot atmosphere in MeV" STEERABLE=ALWAYS
+ {
+diff --git a/schedule.ccl b/schedule.ccl
+index fb017da..013ed60 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -61,6 +61,10 @@ if(CCTK_Equals(Y_e_evolution_method,"GRHydro"))
+   STORAGE: Y_e_con[timelevels]	
+   STORAGE: Y_e_con_rhs, Y_e_con_flux, Y_e_plus, Y_e_minus
+ }
++if(CCTK_Equals(temperature_evolution_method,"GRHydro"))
++{
++  STORAGE: tempplus, tempminus
++}
+ if(CCTK_Equals(Bvec_evolution_method,"GRHydro"))
+ {
+   STORAGE: HydroBase::Bvec[timelevels]	
+diff --git a/src/GRHydro_Con2Prim.F90 b/src/GRHydro_Con2Prim.F90
+index 81afb02..b1e4c5f 100644
+--- a/src/GRHydro_Con2Prim.F90
++++ b/src/GRHydro_Con2Prim.F90
+@@ -307,7 +307,11 @@ subroutine Conservative2Primitive(CCTK_ARGUMENTS)
+         end if
+ 
+ 
+-#if 1
++#if 0
++        ! cott, 2013/01/09: disabled this for the time being; should be taken
++        ! care of by other fixed in C2P and reconstruction of temperature.
++        !
++        ! old justification:
+         ! this is needed in the current implementation of refluxing -- in this implementation,
+         ! the entire correction is applied to the coarse grid cell.
+         ! This leads to the cell getting too cold.
+diff --git a/src/GRHydro_ENOReconstruct_drv.F90 b/src/GRHydro_ENOReconstruct_drv.F90
+index 3fb0c8f..26bbb58 100644
+--- a/src/GRHydro_ENOReconstruct_drv.F90
++++ b/src/GRHydro_ENOReconstruct_drv.F90
+@@ -161,6 +161,15 @@ subroutine GRHydro_ENOReconstruct_drv(CCTK_ARGUMENTS)
+               Y_e_minus(i,j,k) = 0.0d0
+            endif
+ 
++           if (evolve_temper .ne. 0) then
++              ! initialize with cell-center values
++              ! to make sure we have safe initial
++              ! guesses at interfaces even if
++              ! temperature is not reconstructed
++              tempplus(i,j,k) = temperature(i,j,k)
++              tempminus(i,j,k) = temperature(i,j,k)
++           endif
++
+         enddo
+      enddo
+   enddo
+@@ -176,13 +185,6 @@ subroutine GRHydro_ENOReconstruct_drv(CCTK_ARGUMENTS)
+         enddo
+      end if
+ 
+-     if (evolve_Y_e .ne. 0) then
+-        call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
+-             Y_e(:,:,:), Y_e_plus(:,:,:), &
+-             Y_e_minus(:,:,:), &
+-             trivial_rp, hydro_excision_mask)
+-     endif
+-
+     if (flux_direction == 1) then
+       ! constraint transport needs to be able to average fluxes in the directions
+       ! other that flux_direction, which in turn need the primitives on interfaces
+@@ -221,6 +223,16 @@ subroutine GRHydro_ENOReconstruct_drv(CCTK_ARGUMENTS)
+                     entropy(:,j,k),entropyminus(:,j,k),entropyplus(:,j,k),&
+                     trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+             endif
++            if (evolve_Y_e.ne.0) then
++               call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
++                    Y_e(:,j,k),Y_e_minus(:,j,k),Y_e_plus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            endif
++            if (evolve_temper.ne.0.and.reconstruct_temper.ne.0) then
++               call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
++                    temperature(:,j,k),tempminus(:,j,k),tempplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            endif
+           else if (CCTK_EQUALS(recon_vars,"conservative")) then
+             call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
+                  dens(:,j,k),densminus(:,j,k),densplus(:,j,k),&
+@@ -313,6 +325,16 @@ subroutine GRHydro_ENOReconstruct_drv(CCTK_ARGUMENTS)
+                     entropy(j,:,k),entropyminus(j,:,k),entropyplus(j,:,k),&
+                     trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+             endif
++            if (evolve_Y_e.ne.0) then
++               call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
++                    Y_e(j,:,k),Y_e_minus(j,:,k),Y_e_plus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            endif
++            if (evolve_temper.ne.0.and.reconstruct_temper.ne.0) then
++               call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
++                    temperature(j,:,k),tempminus(j,:,k),tempplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            endif
+          else if (CCTK_EQUALS(recon_vars,"conservative")) then
+             call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
+                  dens(j,:,k),densminus(j,:,k),densplus(j,:,k),&
+@@ -401,10 +423,20 @@ subroutine GRHydro_ENOReconstruct_drv(CCTK_ARGUMENTS)
+                     trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+             endif
+             if (evolve_entropy .ne. 0) then
+-               call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
++               call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
+                     entropy(j,k,:),entropyminus(j,k,:),entropyplus(j,k,:),&
+                     trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+             endif
++            if (evolve_Y_e.ne.0) then
++               call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
++                    Y_e(j,k,:),Y_e_minus(j,k,:),Y_e_plus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            endif
++            if (evolve_temper.ne.0.and.reconstruct_temper.ne.0) then
++               call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
++                    temperature(j,k,:),tempminus(j,k,:),tempplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            endif
+           else if (CCTK_EQUALS(recon_vars,"conservative")) then
+             call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
+                  dens(j,k,:),densminus(j,k,:),densplus(j,k,:),&
+diff --git a/src/GRHydro_Eigenproblem.F90 b/src/GRHydro_Eigenproblem.F90
+index 69a6232..1a69403 100644
+--- a/src/GRHydro_Eigenproblem.F90
++++ b/src/GRHydro_Eigenproblem.F90
+@@ -129,7 +129,7 @@ subroutine eigenvalues(handle,rho,velx,vely,velz,eps, &
+ end subroutine eigenvalues
+ 
+ 
+-subroutine eigenvalues_hot(handle,ii,jj,kk,rho,velx,vely,velz,eps, &
++subroutine eigenvalues_hot(handle,keytemp,ii,jj,kk,rho,velx,vely,velz,eps, &
+      temp,ye,w_lorentz,lam,gxx,gxy,gxz,gyy,gyz,gzz,u,alp,beta)
+   implicit none
+ 
+@@ -150,7 +150,7 @@ subroutine eigenvalues_hot(handle,ii,jj,kk,rho,velx,vely,velz,eps, &
+ ! begin EOS Omni vars
+   integer :: n,keytemp,anyerr,keyerr(1)
+   real*8  :: xpress,xeps
+-  n=1;keytemp=0;anyerr=0;keyerr(1)=0
++  n=1;anyerr=0;keyerr(1)=0
+   xpress=0.0d0;xeps=0.0d0
+ ! end EOS Omni vars
+ 
+diff --git a/src/GRHydro_Eigenproblem_Marquina.F90 b/src/GRHydro_Eigenproblem_Marquina.F90
+index 9aa3765..79c7390 100644
+--- a/src/GRHydro_Eigenproblem_Marquina.F90
++++ b/src/GRHydro_Eigenproblem_Marquina.F90
+@@ -97,7 +97,7 @@ subroutine eigenproblem_marquina(handle,rhor,velxr,velyr,&
+   integer :: keyerr(1) 
+   real*8  :: xpress 
+   real*8  :: xeps 
+-  real*8  :: xtemp 
++  real*8  :: xtemp
+   real*8  :: xye 
+ ! end EOS Omni vars
+   n=1;keytemp=0;anyerr=0;keyerr(1)=0
+@@ -763,8 +763,8 @@ subroutine eigenproblem_marquina(handle,rhor,velxr,velyr,&
+ 
+ end subroutine eigenproblem_marquina
+ 
+-subroutine eigenproblem_marquina_hot(handle,rhor,velxr,velyr,&
+-     velzr,epsr,rhol,velxl,velyl,velzl,epsl,temp,ye_l,ye_r,gxx,gxy,gxz,&
++subroutine eigenproblem_marquina_hot(handle,keytemp,rhor,velxr,velyr,&
++     velzr,epsr,rhol,velxl,velyl,velzl,epsl,templ,tempr,ye_l,ye_r,gxx,gxy,gxz,&
+      gyy,gyz,gzz,u,det,alp,beta,densl,sxl,syl,szl,taul,&
+      densr,sxr,syr,szr,taur,flux1,flux2,flux3,flux4,flux5)
+ 
+@@ -778,7 +778,7 @@ subroutine eigenproblem_marquina_hot(handle,rhor,velxr,velyr,&
+   CCTK_REAL rhol,velxl,velyl,velzl,epsl,w_lorentzl
+   CCTK_REAL densl,sxl,syl,szl,taul
+   CCTK_REAL densr,sxr,syr,szr,taur
+-  CCTK_REAL temp,ye_l,ye_r
++  CCTK_REAL templ,tempr,ye_l,ye_r
+ 
+   CCTK_REAL lam(5),p(5,5),q(5,5),dw(5)
+   CCTK_REAL rfluxr(5),rfluxl(5)
+@@ -827,7 +827,7 @@ subroutine eigenproblem_marquina_hot(handle,rhor,velxr,velyr,&
+   real*8  :: xtemp
+   real*8  :: xye
+ ! end EOS Omni vars
+-  n=1;keytemp=0;anyerr=0;keyerr(1)=0
++  n=1;anyerr=0;keyerr(1)=0
+   xpress=0.0d0;xeps=0.0d0;xtemp=0.0d0;xye=0.0d0
+ 
+   one = 1.0d0
+@@ -838,11 +838,11 @@ subroutine eigenproblem_marquina_hot(handle,rhor,velxr,velyr,&
+ !!$  Set required fluid quantities
+   invrhol = one / rhol
+   call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-       rhol,epsl,temp,ye_l,pressl,keyerr,anyerr)
++       rhol,epsl,templ,ye_l,pressl,keyerr,anyerr)
+   call EOS_Omni_cs2(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-       rhol,epsl,temp,ye_l,cs2l,keyerr,anyerr)
++       rhol,epsl,templ,ye_l,cs2l,keyerr,anyerr)
+   call EOS_Omni_DPressByDEps(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-       rhol,epsl,temp,ye_l,dpdepsl,keyerr,anyerr)
++       rhol,epsl,templ,ye_l,dpdepsl,keyerr,anyerr)
+ 
+   enthalpyl = one + epsl + pressl * invrhol
+ 
+@@ -881,11 +881,11 @@ subroutine eigenproblem_marquina_hot(handle,rhor,velxr,velyr,&
+   invrhor = one / rhor
+ 
+   call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-       rhor,epsr,temp,ye_r,pressr,keyerr,anyerr)
++       rhor,epsr,tempr,ye_r,pressr,keyerr,anyerr)
+   call EOS_Omni_cs2(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-       rhor,epsr,temp,ye_r,cs2r,keyerr,anyerr)
++       rhor,epsr,tempr,ye_r,cs2r,keyerr,anyerr)
+   call EOS_Omni_DPressByDEps(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-       rhor,epsr,temp,ye_r,dpdepsr,keyerr,anyerr)
++       rhor,epsr,tempr,ye_r,dpdepsr,keyerr,anyerr)
+ 
+   enthalpyr = one + epsr + pressr * invrhor
+ 
+@@ -1481,689 +1481,3 @@ subroutine eigenproblem_marquina_hot(handle,rhor,velxr,velyr,&
+ 
+ end subroutine eigenproblem_marquina_hot
+ 
+- /*@@
+-   @routine    eigenproblem_marquina
+-   @date       Wed Feb 13 12:27:59 2002
+-   @author     Pedro Montero, Toni Font, Joachim Frieben
+-   @desc
+-   Computes the eigenvectors (p) and eigenvalues (lam) for
+-   Marquina flux formula
+-   for the input primitive state.
+-   @enddesc
+-   @calls
+-   @calledby
+-   @history
+-   Follows the routines by Toni Font and GR3D of Mark Miller.
+-   @endhistory
+-
+-@@*/
+-
+-subroutine eigenproblem_marquina_general(&
+-     rhor,velxr,velyr,velzr,epsr,pressr,cs2r,dpdepsr,&
+-     rhol,velxl,velyl,velzl,epsl,pressl,cs2l,dpdepsl,&
+-     gxx,gxy,gxz,gyy,gyz,gzz,u,det,alp,beta,&
+-     densl,sxl,syl,szl,taul,&
+-     densr,sxr,syr,szr,taur,&
+-     flux1,flux2,flux3,flux4,flux5)
+-
+-  USE GRHydro_Scalars
+-
+-  implicit none
+-
+-  DECLARE_CCTK_PARAMETERS
+-
+-  CCTK_REAL rhor,velxr,velyr,velzr,epsr
+-  CCTK_REAL rhol,velxl,velyl,velzl,epsl
+-  CCTK_REAL densl,sxl,syl,szl,taul
+-  CCTK_REAL densr,sxr,syr,szr,taur
+-
+-  CCTK_REAL lam(5),p(5,5),q(5,5),dw(5)
+-  CCTK_REAL rfluxr(5),rfluxl(5)
+-  CCTK_REAL gxx,gxy,gxz,gyy,gyz,gzz,u,det
+-  CCTK_REAL alp,beta,flux1r,flux2r,flux3r,flux4r,flux5r
+-  CCTK_REAL flux1l,flux2l,flux3l,flux4l,flux5l
+-  CCTK_REAL flux1,flux2,flux3,flux4,flux5
+-
+-!!$  LOCAL VARS
+-
+-  CCTK_REAL du(5),aa(5,5),qdiff1,qdiff2,qdiff3,qdiff4,qdiff5
+-  integer i,j,k,l
+-  CCTK_REAL paug(5,6),tmp1,tmp2,sump,summ,f_du(5)
+-  CCTK_REAL leivec1l(5),leivec2l(5),leivec3l(5),leivecpl(5),leivecml(5)
+-  CCTK_REAL leivec1r(5),leivec2r(5),leivec3r(5),leivecpr(5),leivecmr(5)
+-  CCTK_REAL reivec1l(5),reivec2l(5),reivec3l(5),reivecpl(5),reivecml(5)
+-  CCTK_REAL reivec1r(5),reivec2r(5),reivec3r(5),reivecpr(5),reivecmr(5)
+-  CCTK_REAL lam1l,lam2l,lam3l,lamml,lampl,lamm_nobetal,lamp_nobetal
+-  CCTK_REAL lam1r,lam2r,lam3r,lammr,lampr,lamm_nobetar,lamp_nobetar
+-  CCTK_REAL lam1,lam2,lam3,lamm,lamp
+-
+-  CCTK_REAL cs2l,cs2r,one,two
+-  CCTK_REAL vlowxr,vlowyr,vlowzr,v2r,wr
+-  CCTK_REAL vlowxl,vlowyl,vlowzl,v2l,wl
+-
+-  CCTK_REAL lamp_nobeta,lamm_nobeta
+-
+-  CCTK_REAL pressl,dpdepsl,enthalpyl,kappal
+-  CCTK_REAL pressr,dpdepsr,enthalpyr,kappar
+-  CCTK_REAL axpl,axml,vxpl,vxml,xsil,dltl
+-  CCTK_REAL axpr,axmr,vxpr,vxmr,xsir,dltr
+-  CCTK_REAL cxx,cxy,cxz,gam,vxa,vxb
+-
+-  one = 1.0d0
+-  two = 2.0d0
+-
+-!!$  LEFT
+-
+-!!$  Set required fluid quantities
+-
+-  enthalpyl = one + epsl + pressl / rhol
+-
+-  vlowxl = gxx*velxl + gxy*velyl + gxz*velzl
+-  vlowyl = gxy*velxl + gyy*velyl + gyz*velzl
+-  vlowzl = gxz*velxl + gyz*velyl + gzz*velzl
+-  v2l = vlowxl*velxl + vlowyl*velyl + vlowzl*velzl
+-
+-!!$  Assume consistent primitive data
+-
+-  wl = one / sqrt(one - v2l)
+-
+-!!$  EIGENVALUES
+-
+-  lam1l = velxl - beta/alp
+-  lam2l = lam1l
+-  lam3l = lam1l
+-  lamp_nobetal = (velxl*(one-cs2l) + sqrt(cs2l*(one-v2l)* &
+-       (u*(one-v2l*cs2l) - velxl**2*(one-cs2l))))/(one-v2l*cs2l)
+-  lamm_nobetal = (velxl*(one-cs2l) - sqrt(cs2l*(one-v2l)* &
+-       (u*(one-v2l*cs2l) - velxl**2*(one-cs2l))))/(one-v2l*cs2l)
+-
+-  lampl = lamp_nobetal - beta/alp
+-  lamml = lamm_nobetal - beta/alp
+-
+-!!$  RIGHT
+-
+-!!$  Set required fluid quantities
+-
+-  enthalpyr = one + epsr + pressr / rhor
+-
+-  vlowxr = gxx*velxr + gxy*velyr + gxz*velzr
+-  vlowyr = gxy*velxr + gyy*velyr + gyz*velzr
+-  vlowzr = gxz*velxr + gyz*velyr + gzz*velzr
+-  v2r = vlowxr*velxr + vlowyr*velyr + vlowzr*velzr
+-
+-!!$  Assume consistent primitive data
+-
+-  wr = one / sqrt(one - v2r)
+-
+-!!$  EIGENVALUES
+-
+-  lam1r = velxr - beta/alp
+-  lam2r = lam1r
+-  lam3r = lam1r
+-  lamp_nobetar = (velxr*(one-cs2r) + sqrt(cs2r*(one-v2r)* &
+-       (u*(one-v2r*cs2r) - velxr**2*(one-cs2r))))/(one-v2r*cs2r)
+-  lamm_nobetar = (velxr*(one-cs2r) - sqrt(cs2r*(one-v2r)* &
+-       (u*(one-v2r*cs2r) - velxr**2*(one-cs2r))))/(one-v2r*cs2r)
+-
+-  lampr = lamp_nobetar - beta/alp
+-  lammr = lamm_nobetar - beta/alp
+-
+-!!$  FINAL
+-
+-  lam1 = max(abs(lam1l),abs(lam1r))
+-  lam2 = lam1
+-  lam3 = lam1
+-  lamp = max(abs(lampl),abs(lampr))
+-  lamm = max(abs(lamml),abs(lammr))
+-
+-!!$  lam(1) = lamm
+-!!$  lam(2) = lam1
+-!!$  lam(3) = lam2
+-!!$  lam(4) = lam3
+-!!$  lam(5) = lamp
+-
+-  lam(1) = lamm
+-  lam(5) = lam1
+-  lam(3) = lam2
+-  lam(4) = lam3
+-  lam(2) = lamp
+-  
+-!!$  LEFT
+-
+-!!$  Compute some auxiliary quantities
+-
+-  axpl = (u - velxl*velxl)/(u - velxl*lamp_nobetal)
+-  axml = (u - velxl*velxl)/(u - velxl*lamm_nobetal)
+-  vxpl = (velxl - lamp_nobetal)/(u - velxl * lamp_nobetal)
+-  vxml = (velxl - lamm_nobetal)/(u - velxl * lamm_nobetal)
+-
+-!!$  Calculate associated right eigenvectors
+-
+-  kappal = dpdepsl / (dpdepsl - rhol * cs2l)
+-
+-!!$  Right eigenvector # 1
+-
+-  reivec1l(1) = kappal / (enthalpyl * wl)
+-  reivec1l(2) = vlowxl
+-  reivec1l(3) = vlowyl
+-  reivec1l(4) = vlowzl
+-  reivec1l(5) = one - reivec1l(1)
+-
+-!!$  Right eigenvector # 2
+-
+-  reivec2l(1) = wl * vlowyl
+-  reivec2l(2) = enthalpyl * (gxy + two * wl * wl * vlowxl * vlowyl)
+-  reivec2l(3) = enthalpyl * (gyy + two * wl * wl * vlowyl * vlowyl)
+-  reivec2l(4) = enthalpyl * (gyz + two * wl * wl * vlowyl * vlowzl)
+-  reivec2l(5) = vlowyl * wl * (two * wl * enthalpyl - one)
+-
+-!!$  Right eigenvector # 3
+-
+-  reivec3l(1) = wl * vlowzl
+-  reivec3l(2) = enthalpyl * (gxz + two * wl * wl * vlowxl * vlowzl)
+-  reivec3l(3) = enthalpyl * (gyz + two * wl * wl * vlowyl * vlowzl)
+-  reivec3l(4) = enthalpyl * (gzz + two * wl * wl * vlowzl * vlowzl)
+-  reivec3l(5) = vlowzl * wl * (two * wl * enthalpyl - one)
+-
+-!!$  Right + eigenvector
+-
+-  reivecpl(1) = one
+-  reivecpl(2) = enthalpyl * wl * (vlowxl - vxpl)
+-  reivecpl(3) = enthalpyl * wl * vlowyl
+-  reivecpl(4) = enthalpyl * wl * vlowzl
+-  reivecpl(5) = enthalpyl * wl * axpl - one
+-
+-!!$  Right - eigenvector
+-
+-  reivecml(1) = one
+-  reivecml(2) = enthalpyl * wl * (vlowxl - vxml)
+-  reivecml(3) = enthalpyl * wl * vlowyl
+-  reivecml(4) = enthalpyl * wl * vlowzl
+-  reivecml(5) = enthalpyl * wl * axml - one
+-
+-!!$  RIGHT
+-
+-!!$  Compute some auxiliary quantities
+-
+-  axpr = (u - velxr*velxr)/(u - velxr*lamp_nobetar)
+-  axmr = (u - velxr*velxr)/(u - velxr*lamm_nobetar)
+-  vxpr = (velxr - lamp_nobetar)/(u - velxr * lamp_nobetar)
+-  vxmr = (velxr - lamm_nobetar)/(u - velxr * lamm_nobetar)
+-
+-!!$  Calculate associated right eigenvectors
+-
+-  kappar = dpdepsr / (dpdepsr - rhor * cs2r)
+-
+-!!$  Right eigenvector # 1
+-
+-  reivec1r(1) = kappar / (enthalpyr * wr)
+-  reivec1r(2) = vlowxr
+-  reivec1r(3) = vlowyr
+-  reivec1r(4) = vlowzr
+-  reivec1r(5) = one - reivec1r(1)
+-
+-!!$  Right eigenvector # 2
+-
+-  reivec2r(1) = wr * vlowyr
+-  reivec2r(2) = enthalpyr * (gxy + two * wr * wr * vlowxr * vlowyr)
+-  reivec2r(3) = enthalpyr * (gyy + two * wr * wr * vlowyr * vlowyr)
+-  reivec2r(4) = enthalpyr * (gyz + two * wr * wr * vlowyr * vlowzr)
+-  reivec2r(5) = vlowyr * wr * (two * wr * enthalpyr - one)
+-
+-!!$  Right eigenvector # 3
+-
+-  reivec3r(1) = wr * vlowzr
+-  reivec3r(2) = enthalpyr * (gxz + two * wr * wr * vlowxr * vlowzr)
+-  reivec3r(3) = enthalpyr * (gyz + two * wr * wr * vlowyr * vlowzr)
+-  reivec3r(4) = enthalpyr * (gzz + two * wr * wr * vlowzr * vlowzr)
+-  reivec3r(5) = vlowzr * wr * (two * wr * enthalpyr - one)
+-
+-!!$  Right + eigenvector
+-
+-  reivecpr(1) = one
+-  reivecpr(2) = enthalpyr * wr * (vlowxr - vxpr)
+-  reivecpr(3) = enthalpyr * wr * vlowyr
+-  reivecpr(4) = enthalpyr * wr * vlowzr
+-  reivecpr(5) = enthalpyr * wr * axpr - one
+-
+-!!$  Right - eigenvector
+-
+-  reivecmr(1) = one
+-  reivecmr(2) = enthalpyr * wr * (vlowxr - vxmr)
+-  reivecmr(3) = enthalpyr * wr * vlowyr
+-  reivecmr(4) = enthalpyr * wr * vlowzr
+-  reivecmr(5) = enthalpyr * wr * axmr - one
+-
+-!!$  Calculate associated left eigenvectors if requested
+-
+-  if (ANALYTICAL) then
+-
+-    cxx = gyy * gzz - gyz * gyz
+-    cxy = gxz * gyz - gxy * gzz
+-    cxz = gxy * gyz - gxz * gyy
+-    gam = gxx * cxx + gxy * cxy + gxz * cxz
+-
+-!!$  LEFT
+-
+-    xsil = cxx - gam * velxl * velxl
+-    dltl = enthalpyl**3 * wl * (kappal - one) * (vxml - vxpl) * xsil
+-
+-!!$  Left eigenvector # 1
+-
+-    tmp1 = wl / (kappal - one)
+-
+-    leivec1l(1) = tmp1 * (enthalpyl - wl)
+-    leivec1l(2) = tmp1 * wl * velxl
+-    leivec1l(3) = tmp1 * wl * velyl
+-    leivec1l(4) = tmp1 * wl * velzl
+-    leivec1l(5) =-tmp1 * wl
+-
+-!!$  Left eigenvector # 2
+-
+-    tmp1 = one / (xsil * enthalpyl)
+-
+-    leivec2l(1) = (gyz * vlowzl - gzz * vlowyl) * tmp1
+-    leivec2l(2) = (gzz * vlowyl - gyz * vlowzl) * tmp1 * velxl
+-    leivec2l(3) = (gzz * (one - velxl * vlowxl) + gxz * vlowzl * velxl ) * tmp1
+-    leivec2l(4) = (gyz * (velxl * vlowxl - one) - gxz * velxl * vlowyl) * tmp1
+-    leivec2l(5) = (gyz * vlowzl - gzz * vlowyl) * tmp1
+-
+-!!$  Left eigenvector # 3
+-
+-    leivec3l(1) = (gyz * vlowyl - gyy * vlowzl) * tmp1
+-    leivec3l(2) = (gyy * vlowzl - gyz * vlowyl) * tmp1 * velxl
+-    leivec3l(3) = (gyz * (velxl * vlowxl - one) - gxy * velxl * vlowzl) * tmp1
+-    leivec3l(4) = (gyy * (one - velxl * vlowxl) + gxy * velxl * vlowyl) * tmp1
+-    leivec3l(5) = (gyz * vlowyl - gyy * vlowzl) * tmp1
+-
+-!!$  Left + eigenvector
+-
+-    tmp1 = enthalpyl * enthalpyl / dltl
+-    tmp2 = wl * wl * xsil
+-
+-    leivecpl(1) = - (enthalpyl * wl * vxml * xsil + (one - kappal) * &
+-      (vxml * (tmp2 - cxx) - gam * velxl) - kappal * tmp2 * vxml) * tmp1
+-    leivecpl(2) = - (cxx * (one - kappal * axml) + (two * kappal - one) * &
+-      vxml * (tmp2 * velxl - cxx * velxl)) * tmp1
+-    leivecpl(3) = - (cxy * (one - kappal * axml) + (two * kappal - one) * &
+-      vxml * (tmp2 * velyl - cxy * velxl)) * tmp1
+-    leivecpl(4) = - (cxz * (one - kappal * axml) + (two * kappal - one) * &
+-      vxml * (tmp2 * velzl - cxz * velxl)) * tmp1
+-    leivecpl(5) = - ((one - kappal) * (vxml * (tmp2 - cxx) - gam * velxl) - &
+-      kappal * tmp2 * vxml) * tmp1
+-
+-!!$  Left - eigenvector
+-
+-    leivecml(1) = (enthalpyl * wl * vxpl * xsil + (one - kappal) * &
+-      (vxpl * (tmp2 - cxx) - gam * velxl) - kappal * tmp2 * vxpl) * tmp1
+-    leivecml(2) = (cxx * (one - kappal * axpl) + (two * kappal - one) * &
+-      vxpl * (tmp2 * velxl - cxx * velxl)) * tmp1
+-    leivecml(3) = (cxy * (one - kappal * axpl) + (two * kappal - one) * &
+-      vxpl * (tmp2 * velyl - cxy * velxl)) * tmp1
+-    leivecml(4) = (cxz * (one - kappal * axpl) + (two * kappal - one) * &
+-      vxpl * (tmp2 * velzl - cxz * velxl)) * tmp1
+-    leivecml(5) = ((one - kappal) * (vxpl * (tmp2 - cxx) - gam * &
+-      velxl) - kappal * tmp2 * vxpl) * tmp1
+-
+-!!$  RIGHT
+-
+-    xsir = cxx - gam * velxr * velxr
+-    dltr = enthalpyr**3 * wr * (kappar - one) * (vxmr - vxpr) * xsir
+-
+-!!$  Left eigenvector # 1
+-
+-    tmp1 = wr / (kappar - one)
+-
+-    leivec1r(1) = tmp1 * (enthalpyr - wr)
+-    leivec1r(2) = tmp1 * wr * velxr
+-    leivec1r(3) = tmp1 * wr * velyr
+-    leivec1r(4) = tmp1 * wr * velzr
+-    leivec1r(5) =-tmp1 * wr
+-
+-!!$  Left eigenvector # 2
+-
+-    tmp1 = one / (xsir * enthalpyr)
+-
+-    leivec2r(1) = (gyz * vlowzr - gzz * vlowyr) * tmp1
+-    leivec2r(2) = (gzz * vlowyr - gyz * vlowzr) * tmp1 * velxr
+-    leivec2r(3) = (gzz * (one - velxr * vlowxr) + gxz * vlowzr * velxr) * tmp1
+-    leivec2r(4) = (gyz * (velxr * vlowxr - one) - gxz * velxr * vlowyr) * tmp1
+-    leivec2r(5) = (gyz * vlowzr - gzz * vlowyr) * tmp1
+-
+-!!$  Left eigenvector # 3
+-
+-    leivec3r(1) = (gyz * vlowyr - gyy * vlowzr) * tmp1
+-    leivec3r(2) = (gyy * vlowzr - gyz * vlowyr) * tmp1 * velxr
+-    leivec3r(3) = (gyz * (velxr * vlowxr - one) - gxy * velxr * vlowzr) * tmp1
+-    leivec3r(4) = (gyy * (one - velxr * vlowxr) + gxy * velxr * vlowyr) * tmp1
+-    leivec3r(5) = (gyz * vlowyr - gyy * vlowzr) * tmp1
+-
+-!!$  Left + eigenvector
+-
+-    tmp1 = enthalpyr * enthalpyr / dltr
+-    tmp2 = wr * wr * xsir
+-
+-    leivecpr(1) = - (enthalpyr * wr * vxmr * xsir + (one - kappar) * &
+-      (vxmr * (tmp2 - cxx) - gam * velxr) - kappar * tmp2 * vxmr) * tmp1
+-    leivecpr(2) = - (cxx * (one - kappar * axmr) + (two * kappar - one) * &
+-      vxmr * (tmp2 * velxr - cxx * velxr)) * tmp1
+-    leivecpr(3) = - (cxy * (one - kappar * axmr) + (two * kappar - one) * &
+-      vxmr * (tmp2 * velyr - cxy * velxr)) * tmp1
+-    leivecpr(4) = - (cxz * (one - kappar * axmr) + (two * kappar - one) * &
+-      vxmr * (tmp2 * velzr - cxz * velxr)) * tmp1
+-    leivecpr(5) = - ((one - kappar) * (vxmr * (tmp2 - cxx) - gam * velxr) - &
+-      kappar * tmp2 * vxmr) * tmp1
+-
+-!!$  Left - eigenvector
+-
+-    leivecmr(1) = (enthalpyr * wr * vxpr * xsir + (one - kappar) * &
+-      (vxpr * (tmp2 - cxx) - gam * velxr) - kappar * tmp2 * vxpr) * tmp1
+-    leivecmr(2) = (cxx * (one - kappar * axpr) + (two * kappar - one) * &
+-      vxpr * (tmp2 * velxr - cxx * velxr)) * tmp1
+-    leivecmr(3) = (cxy * (one - kappar * axpr) + (two * kappar - one) * &
+-      vxpr * (tmp2 * velyr - cxy * velxr)) * tmp1
+-    leivecmr(4) = (cxz * (one - kappar * axpr) + (two * kappar - one) * &
+-      vxpr * (tmp2 * velzr - cxz * velxr)) * tmp1
+-    leivecmr(5) = ((one - kappar) * (vxpr * (tmp2 - cxx) - gam * &
+-      velxr) - kappar * tmp2 * vxpr) * tmp1
+-
+-  endif
+-
+-!!$  LEFT
+-!!$  PUT RIGHT EIGENVECTORS IN THE P MATRIX
+-
+-!!$  p(:,1) = reivecml(:)
+-!!$  p(:,2) = reivec1l(:)
+-!!$  p(:,3) = reivec2l(:)
+-!!$  p(:,4) = reivec3l(:)
+-!!$  p(:,5) = reivecpl(:)
+-
+-  p(:,1) = reivecml(:)
+-  p(:,2) = reivecpl(:)
+-  p(:,3) = reivec2l(:)
+-  p(:,4) = reivec3l(:)
+-  p(:,5) = reivec1l(:)
+-
+-!!$  Calculate change in u:
+-
+-  du(1) = densl
+-  du(2) = sxl
+-  du(3) = syl
+-  du(4) = szl
+-  du(5) = taul
+-
+-  if (ANALYTICAL) then
+-
+-    if (FAST) then
+-
+-      sump = 0.0d0
+-      summ = 0.0d0
+-
+-      do i=1,5
+-         sump = sump + (lamp - lam1) * leivecpl(i) * du(i)
+-         summ = summ + (lamm - lam1) * leivecml(i) * du(i)
+-      enddo
+-
+-      vxa = sump + summ
+-      vxb =-(sump * vxpl + summ * vxml)
+-
+-      rfluxl(1) = lam1 * du(1) + vxa
+-      rfluxl(2) = lam1 * du(2) + enthalpyl * wl * (vlowxl * vxa + vxb)
+-      rfluxl(3) = lam1 * du(3) + enthalpyl * wl * (vlowyl * vxa)
+-      rfluxl(4) = lam1 * du(4) + enthalpyl * wl * (vlowzl * vxa)
+-      rfluxl(5) = lam1 * du(5) + enthalpyl * wl * (velxl  * vxb + vxa) - vxa
+-
+-    else
+-
+-!!$  PUT LEFT EIGENVECTORS IN THE Q MATRIX
+-
+-      q(1,:) = leivecml(:)
+-      q(2,:) = leivecpl(:)
+-      q(3,:) = leivec2l(:)
+-      q(4,:) = leivec3l(:)
+-      q(5,:) = leivec1l(:)
+-
+-      do i=1,5
+-        dw(i) = 0.0d0
+-        do j=1,5
+-          dw(i) = dw(i) + q(i,j) * du(j)
+-        enddo
+-      enddo
+-
+-      do i = 1, 5
+-        rfluxl(i) = 0.d0
+-        do j = 1, 5
+-          rfluxl(i) = rfluxl(i) + p(i,j) * lam(j) * dw(j)
+-        end do
+-      end do
+-
+-    endif
+-
+-  else
+-
+-!!$  Solve for characteristic variable change, dw
+-
+-    dw=du
+-    aa = p
+-
+-    do i=1,5
+-      paug(:,i) = p(:,i)
+-    enddo
+-
+-!same, but in old F77 style!
+-!!$    do i=1,5
+-!!$      dw(i) = du(i)
+-!!$      do j=1,5
+-!!$        aa(i,j) = p(i,j)
+-!!$      end do
+-!!$    enddo
+-!!$
+-!!$    do i=1,5
+-!!$      paug(i,1) = p(i,1)
+-!!$      paug(i,2) = p(i,2)
+-!!$      paug(i,3) = p(i,3)
+-!!$      paug(i,4) = p(i,4)
+-!!$      paug(i,5) = p(i,5)
+-!!$    enddo
+-
+-    paug(1,6) = du(1)
+-    paug(2,6) = du(2)
+-    paug(3,6) = du(3)
+-    paug(4,6) = du(4)
+-    paug(5,6) = du(5)
+-
+-!!$  Get lower left triangle to be all zeros
+-    do i=1,5
+-!!$  First, make diagonal element 1
+-      tmp1 = paug(i,i)
+-      do j=i,6
+-        paug(i,j) = paug(i,j)/tmp1
+-      enddo
+-!!$  Now, get rid of everything below that diagonal
+-      do j=i+1,5
+-        tmp1 = - (paug(j,i))
+-        do k=i,6
+-          paug(j,k) = paug(j,k) + tmp1*paug(i,k)
+-        enddo
+-      enddo
+-    enddo
+-!!$  Back substitute
+-    f_du(5) = paug(5,6)
+-    do i=4,1,-1
+-      f_du(i) = paug(i,6)
+-      do j=i+1,5
+-        f_du(i) = f_du(i) - paug(i,j)*f_du(j)
+-      enddo
+-    enddo
+-
+-    dw(1) = f_du(1)
+-    dw(2) = f_du(2)
+-    dw(3) = f_du(3)
+-    dw(4) = f_du(4)
+-    dw(5) = f_du(5)
+-
+-    do i = 1, 5
+-      rfluxl(i) = 0.d0
+-      do j = 1, 5
+-        rfluxl(i) = rfluxl(i) + p(i,j) * lam(j) * dw(j)
+-      end do
+-    end do
+-
+-  endif
+-
+-    flux1l = rfluxl(1)
+-    flux2l = rfluxl(2)
+-    flux3l = rfluxl(3)
+-    flux4l = rfluxl(4)
+-    flux5l = rfluxl(5)
+-
+-!!$  RIGHT
+-
+-!!$  PUT RIGHT EIGENVECTORS IN THE P MATRIX
+-
+-!!$  p(:,1) = reivecmr(:)
+-!!$  p(:,2) = reivec1r(:)
+-!!$  p(:,3) = reivec2r(:)
+-!!$  p(:,4) = reivec3r(:)
+-!!$  p(:,5) = reivecpr(:)
+-
+-  p(:,1) = reivecmr(:)
+-  p(:,2) = reivecpr(:)
+-  p(:,3) = reivec2r(:)
+-  p(:,4) = reivec3r(:)
+-  p(:,5) = reivec1r(:)
+-
+-  du(1) = densr
+-  du(2) = sxr
+-  du(3) = syr
+-  du(4) = szr
+-  du(5) = taur
+-
+-  if (ANALYTICAL) then
+-
+-    if (FAST) then
+-
+-      sump = 0.0d0
+-      summ = 0.0d0
+-
+-      do i=1,5
+-         sump = sump + (lamp - lam1) * leivecpr(i) * du(i)
+-         summ = summ + (lamm - lam1) * leivecmr(i) * du(i)
+-      enddo
+-
+-      vxa = sump + summ
+-      vxb =-(sump * vxpr + summ * vxmr)
+-
+-      rfluxr(1) = lam1 * du(1) + vxa
+-      rfluxr(2) = lam1 * du(2) + enthalpyr * wr * (vlowxr * vxa + vxb)
+-      rfluxr(3) = lam1 * du(3) + enthalpyr * wr * (vlowyr * vxa)
+-      rfluxr(4) = lam1 * du(4) + enthalpyr * wr * (vlowzr * vxa)
+-      rfluxr(5) = lam1 * du(5) + enthalpyr * wr * (velxr  * vxb + vxa) - vxa
+-
+-    else
+-
+-!!$  PUT LEFT EIGENVECTORS IN THE Q MATRIX
+-
+-      q(1,:) = leivecmr(:)
+-      q(2,:) = leivecpr(:)
+-      q(3,:) = leivec2r(:)
+-      q(4,:) = leivec3r(:)
+-      q(5,:) = leivec1r(:)
+-
+-      do i=1,5
+-        dw(i) = 0.0d0
+-        do j=1,5
+-          dw(i) = dw(i) + q(i,j) * du(j)
+-        enddo
+-      enddo
+-
+-      do i = 1, 5
+-        rfluxr(i) = 0.d0
+-        do j = 1, 5
+-          rfluxr(i) = rfluxr(i) + p(i,j) * lam(j) * dw(j)
+-        end do
+-      end do
+-
+-    endif
+-
+-  else
+-
+-!!$  Solve for characteristic variable change, dw
+-
+-    do i=1,5
+-      dw(i) = du(i)
+-      do j=1,5
+-        aa(i,j) = p(i,j)
+-      end do
+-    enddo
+-
+-    do i=1,5
+-      paug(i,1) = p(i,1)
+-      paug(i,2) = p(i,2)
+-      paug(i,3) = p(i,3)
+-      paug(i,4) = p(i,4)
+-      paug(i,5) = p(i,5)
+-    enddo
+-
+-    paug(1,6) = du(1)
+-    paug(2,6) = du(2)
+-    paug(3,6) = du(3)
+-    paug(4,6) = du(4)
+-    paug(5,6) = du(5)
+-
+-!!$  Get lower left triangle to be all zeros
+-
+-    do i=1,5
+-!!$  First, make diagonal element 1
+-      tmp1 = paug(i,i)
+-      do j=i,6
+-        paug(i,j) = paug(i,j)/tmp1
+-      enddo
+-!!$  Now, get rid of everything below that diagonal
+-      do j=i+1,5
+-        tmp1 = - (paug(j,i))
+-        do k=i,6
+-          paug(j,k) = paug(j,k) + tmp1*paug(i,k)
+-        enddo
+-      enddo
+-    enddo
+-!!$  Back substitute
+-
+-    f_du(5) = paug(5,6)
+-    do i=4,1,-1
+-      f_du(i) = paug(i,6)
+-      do j=i+1,5
+-        f_du(i) = f_du(i) - paug(i,j)*f_du(j)
+-      enddo
+-    enddo
+-
+-    dw(1) = f_du(1)
+-    dw(2) = f_du(2)
+-    dw(3) = f_du(3)
+-    dw(4) = f_du(4)
+-    dw(5) = f_du(5)
+-
+-    do i = 1, 5
+-      rfluxr(i) = 0.d0
+-      do j = 1, 5
+-        rfluxr(i) = rfluxr(i) + p(i,j) * lam(j) * dw(j)
+-      end do
+-    end do
+-
+-  endif
+-
+-  flux1r = rfluxr(1)
+-  flux2r = rfluxr(2)
+-  flux3r = rfluxr(3)
+-  flux4r = rfluxr(4)
+-  flux5r = rfluxr(5)
+-
+-  flux1 = flux1r - flux1l 
+-  flux2 = flux2r - flux2l 
+-  flux3 = flux3r - flux3l 
+-  flux4 = flux4r - flux4l 
+-  flux5 = flux5r - flux5l 
+-
+-  return
+-
+-end subroutine eigenproblem_marquina_general
+diff --git a/src/GRHydro_HLLE.F90 b/src/GRHydro_HLLE.F90
+index 7bf70e7..3271ff9 100644
+--- a/src/GRHydro_HLLE.F90
++++ b/src/GRHydro_HLLE.F90
+@@ -47,13 +47,13 @@ subroutine GRHydro_HLLE(CCTK_ARGUMENTS)
+   DECLARE_CCTK_PARAMETERS
+   
+   integer :: i, j, k, m
++  integer :: keytemp
+   CCTK_REAL, dimension(5) :: consp,consm_i,fplus,fminus,lamplus
+   CCTK_REAL, dimension(5) :: f1,lamminus
+   CCTK_REAL, dimension(5) :: qdiff
+   CCTK_REAL ::  charmin, charmax, charpm,avg_alp,avg_det
+   CCTK_REAL :: gxxh, gxyh, gxzh, gyyh, gyzh, gzzh, uxxh, uxyh, &
+        uxzh, uyyh, uyzh, uzzh, avg_beta, usendh, alp_l, alp_r
+-  CCTK_REAL :: xtemp
+     
+   CCTK_INT :: type_bits, trivial, not_trivial
+ 
+@@ -100,11 +100,17 @@ subroutine GRHydro_HLLE(CCTK_ARGUMENTS)
+     call CCTK_WARN(0, "Flux direction not x,y,z")
+   end if
+ 
++  if(evolve_temper.eq.1.and.reconstruct_temper.eq.1) then
++     keytemp = 1
++  else
++     keytemp = 0
++  endif
++
+   !$OMP PARALLEL DO PRIVATE(k,j,i,f1,lamminus,lamplus,consp,consm_i, &
+   !$OMP                     fplus,fminus,qdiff,avg_beta,avg_alp,   &
+   !$OMP                     avg_det,gxxh,gxyh,gxzh,gyyh,gyzh,gzzh, &
+   !$OMP                     uxxh,uxyh,uxzh,uyyh,uyzh,uzzh,         &
+-  !$OMP                     usendh, xtemp, charmin, charmax, charpm, &
++  !$OMP                     usendh, charmin, charmax, charpm, &
+   !$OMP                     m)
+   do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil
+     do j = GRHydro_stencil, cctk_lsh(2) - GRHydro_stencil
+@@ -234,25 +240,26 @@ subroutine GRHydro_HLLE(CCTK_ARGUMENTS)
+                      gyzh,gzzh,&
+                      usendh,avg_alp,avg_beta)
+              else
+-                xtemp = temperature(i,j,k)
+-                call eigenvalues_hot(GRHydro_eos_handle,i,j,k,&
++                call eigenvalues_hot(GRHydro_eos_handle,keytemp,&
++                     i,j,k,&
+                      rhominus(i+xoffset,j+yoffset,k+zoffset),&
+                      velxminus(i+xoffset,j+yoffset,k+zoffset),&
+                      velyminus(i+xoffset,j+yoffset,k+zoffset),&
+                      velzminus(i+xoffset,j+yoffset,k+zoffset),&
+                      epsminus(i+xoffset,j+yoffset,k+zoffset),&
+-                     xtemp,&
++                     tempminus(i+xoffset,j+yoffset,k+zoffset),&
+                      y_e_minus(i+xoffset,j+yoffset,k+zoffset),&
+                      w_lorentzminus(i+xoffset,j+yoffset,k+zoffset),&
+                      lamminus,gxxh,gxyh,gxzh,gyyh,&
+                      gyzh,gzzh,&
+                      usendh,avg_alp,avg_beta)
+-                xtemp = temperature(i,j,k)
+-                call eigenvalues_hot(GRHydro_eos_handle,i,j,k,&
++                call eigenvalues_hot(GRHydro_eos_handle,keytemp,&
++                     i,j,k,&
+                      rhoplus(i,j,k),&
+                      velxplus(i,j,k),velyplus(i,j,k),&
+                      velzplus(i,j,k),epsplus(i,j,k), &
+-                     xtemp,y_e_plus(i,j,k),&
++                     tempplus(i+xoffset,j+yoffset,k+zoffset),&
++                     y_e_plus(i,j,k),&
+                      w_lorentzplus(i,j,k),&
+                      lamplus,gxxh,gxyh,gxzh,gyyh,&
+                      gyzh,gzzh,&
+@@ -287,25 +294,23 @@ subroutine GRHydro_HLLE(CCTK_ARGUMENTS)
+                      gxzh,gxxh,&
+                      usendh,avg_alp,avg_beta)
+              else
+-                xtemp = temperature(i,j,k)
+-                call eigenvalues_hot(GRHydro_eos_handle,i,j,k,&
++                call eigenvalues_hot(GRHydro_eos_handle,keytemp,i,j,k,&
+                      rhominus(i+xoffset,j+yoffset,k+zoffset),&
+                      velyminus(i+xoffset,j+yoffset,k+zoffset),&
+                      velzminus(i+xoffset,j+yoffset,k+zoffset),&
+                      velxminus(i+xoffset,j+yoffset,k+zoffset),&
+                      epsminus(i+xoffset,j+yoffset,k+zoffset),&
+-                     xtemp,&
++                     tempminus(i+xoffset,j+yoffset,k+zoffset),&
+                      y_e_minus(i+xoffset,j+yoffset,k+zoffset),&
+                      w_lorentzminus(i+xoffset,j+yoffset,k+zoffset),&
+                      lamminus,gyyh,gyzh,gxyh,gzzh,&
+                      gxzh,gxxh,&
+                      usendh,avg_alp,avg_beta)
+-                xtemp = temperature(i,j,k)
+-                call eigenvalues_hot(GRHydro_eos_handle,i,j,k,&
++                call eigenvalues_hot(GRHydro_eos_handle,keytemp,i,j,k,&
+                      rhoplus(i,j,k),&
+                      velyplus(i,j,k),velzplus(i,j,k),&
+                      velxplus(i,j,k),epsplus(i,j,k),&
+-                     xtemp,y_e_plus(i,j,k),&
++                     tempplus(i,j,k),y_e_plus(i,j,k),&
+                      w_lorentzplus(i,j,k),&
+                      lamplus,gyyh,gyzh,gxyh,gzzh,&
+                      gxzh,gxxh,&
+@@ -340,24 +345,24 @@ subroutine GRHydro_HLLE(CCTK_ARGUMENTS)
+                      gxxh,gxyh,gyyh,&
+                      usendh,avg_alp,avg_beta)
+              else
+-                xtemp = temperature(i,j,k)
+-                call eigenvalues_hot(GRHydro_eos_handle,i,j,k,&
++                call eigenvalues_hot(GRHydro_eos_handle,keytemp,i,j,k,&
+                      rhominus(i+xoffset,j+yoffset,k+zoffset),&
+                      velzminus(i+xoffset,j+yoffset,k+zoffset),&
+                      velxminus(i+xoffset,j+yoffset,k+zoffset),&
+                      velyminus(i+xoffset,j+yoffset,k+zoffset),&
+                      epsminus(i+xoffset,j+yoffset,k+zoffset),&
+-                     xtemp,y_e_minus(i+xoffset,j+yoffset,k+zoffset),&
++                     tempminus(i+xoffset,j+yoffset,k+zoffset),&
++                     y_e_minus(i+xoffset,j+yoffset,k+zoffset),&
+                      w_lorentzminus(i+xoffset,j+yoffset,k+zoffset),&
+                      lamminus,gzzh,gxzh,gyzh,&
+                      gxxh,gxyh,gyyh,&
+                      usendh,avg_alp,avg_beta)
+-                xtemp = temperature(i,j,k)
+-                call eigenvalues_hot(GRHydro_eos_handle,i,j,k,&
++                call eigenvalues_hot(GRHydro_eos_handle,keytemp,&
++                     i,j,k,&
+                      rhoplus(i,j,k),&
+                      velzplus(i,j,k),velxplus(i,j,k),&
+                      velyplus(i,j,k),epsplus(i,j,k),&
+-                     xtemp,y_e_plus(i,j,k),&
++                     tempplus(i,j,k),y_e_plus(i,j,k),&
+                      w_lorentzplus(i,j,k),&
+                      lamplus,gzzh,gxzh,gyzh,&
+                      gxxh,gxyh,gyyh,&
+diff --git a/src/GRHydro_Marquina.F90 b/src/GRHydro_Marquina.F90
+index ac54b0a..18621c9 100644
+--- a/src/GRHydro_Marquina.F90
++++ b/src/GRHydro_Marquina.F90
+@@ -47,12 +47,18 @@ subroutine GRHydro_Marquina(CCTK_ARGUMENTS)
+          avg_det,uxxh,uxyh,uxzh,uyyh,uyzh,uzzh,&
+          pressp,pressm_i, &
+          tmp_w_lorentzp, tmp_w_lorentzm_i, w_lorentzp,w_lorentzm_i, usendh, psi4h
+-    CCTK_REAL :: xtemp
+     integer :: m
+     integer :: i,j,k
++    integer :: keytemp
+     
+     CCTK_INT :: type_bits, trivial, not_trivial
+ 
++    if(evolve_temper.eq.1.and.reconstruct_temper.eq.1) then
++       keytemp = 1
++    else
++       keytemp = 0
++    endif
++
+     if (flux_direction == 1) then
+       call SpaceMask_GetTypeBits(type_bits, "Hydro_RiemannProblemX")
+       call SpaceMask_GetStateBits(trivial, "Hydro_RiemannProblemX", &
+@@ -222,12 +228,13 @@ subroutine GRHydro_Marquina(CCTK_ARGUMENTS)
+                        marquinaflux(2),marquinaflux(3),marquinaflux(4), &
+                        marquinaflux(5))
+                else
+-                  xtemp = temperature(i,j,k)
+-                  call eigenproblem_marquina_hot(GRHydro_eos_handle,&
++                  call eigenproblem_marquina_hot(GRHydro_eos_handle,keytemp,&
+                        primm_i(1),primm_i(2), & 
+                        primm_i(3),primm_i(4),primm_i(5),primp(1), &
+                        primp(2),primp(3),primp(4),primp(5), &
+-                       xtemp,y_e_minus(i+xoffset,j+yoffset,k+zoffset),y_e_plus(i,j,k),&
++                       tempminus(i+xoffset,j+yoffset,k+zoffset),&
++                       tempplus(i,j,k),&
++                       y_e_minus(i+xoffset,j+yoffset,k+zoffset),y_e_plus(i,j,k),&
+                        gxxh,gxyh,gxzh,gyyh,gyzh,gzzh, &
+                        usendh,avg_det,avg_alp,avg_beta,consp(1),consp(2),&
+                        consp(3), consp(4), consp(5),consm_i(1),consm_i(2), &
+@@ -251,12 +258,13 @@ subroutine GRHydro_Marquina(CCTK_ARGUMENTS)
+                        marquinaflux(3),marquinaflux(4),marquinaflux(2), &
+                        marquinaflux(5))
+                else
+-                  xtemp = temperature(i,j,k)
+-                  call eigenproblem_marquina_hot(GRHydro_eos_handle,&
++                  call eigenproblem_marquina_hot(GRHydro_eos_handle,keytemp,&
+                        primm_i(1),primm_i(3), & 
+                        primm_i(4),primm_i(2),primm_i(5),primp(1), &
+                        primp(3),primp(4),primp(2),primp(5), &
+-                       xtemp,y_e_minus(i+xoffset,j+yoffset,k+zoffset),y_e_plus(i,j,k),&
++                       tempminus(i+xoffset,j+yoffset,k+zoffset),&
++                       tempplus(i,j,k),&
++                       y_e_minus(i+xoffset,j+yoffset,k+zoffset),y_e_plus(i,j,k),&
+                        gyyh,gyzh,gxyh,gzzh,gxzh,gxxh, &
+                        usendh,avg_det,avg_alp,avg_beta,consp(1),consp(3),&
+                        consp(4), consp(2), consp(5),consm_i(1),consm_i(3), &
+@@ -280,12 +288,13 @@ subroutine GRHydro_Marquina(CCTK_ARGUMENTS)
+                        marquinaflux(4),marquinaflux(2),marquinaflux(3), &
+                        marquinaflux(5))
+                else
+-                  xtemp = temperature(i,j,k)
+-                  call eigenproblem_marquina_hot(GRHydro_eos_handle,&
++                  call eigenproblem_marquina_hot(GRHydro_eos_handle,keytemp,&
+                        primm_i(1),primm_i(4), & 
+                        primm_i(2),primm_i(3),primm_i(5),primp(1), &
+                        primp(4),primp(2),primp(3),primp(5), &
+-                       xtemp,y_e_minus(i+xoffset,j+yoffset,k+zoffset),y_e_plus(i,j,k),&
++                       tempminus(i+xoffset,j+yoffset,k+zoffset),&
++                       tempplus(i,j,k),&
++                       y_e_minus(i+xoffset,j+yoffset,k+zoffset),y_e_plus(i,j,k),&
+                        gzzh,gxzh,gyzh,gxxh,gxyh,gyyh, &
+                        usendh,avg_det,avg_alp,avg_beta,consp(1),consp(4),&
+                        consp(2), consp(3), consp(5),consm_i(1),consm_i(4), &
+diff --git a/src/GRHydro_PPM.F90 b/src/GRHydro_PPM.F90
+index 50da41c..a6c46dc 100644
+--- a/src/GRHydro_PPM.F90
++++ b/src/GRHydro_PPM.F90
+@@ -1026,6 +1026,525 @@ return
+ 
+ end subroutine SimplePPM_1d
+ 
++!!!! routine for doing PPM to temperature
++subroutine SimplePPM_temperature_1d(&
++     nx,dx,velx,temperature,press,&
++     tempminus,&
++     tempplus, hydro_excision_mask)
++
++  USE GRHydro_Scalars
++  USE GRHydro_Eigenproblem
++
++  implicit none
++
++  DECLARE_CCTK_PARAMETERS
++
++  CCTK_REAL, parameter :: one = 1.0d0
++
++  CCTK_INT :: nx
++  CCTK_REAL :: dx
++  CCTK_REAL, dimension(nx) :: temperature, velx
++  CCTK_REAL, dimension(nx) :: tempminus
++  CCTK_REAL, dimension(nx) :: tempplus
++  CCTK_REAL, dimension(nx) :: tempminusl
++  CCTK_REAL, dimension(nx) :: tempplusl
++  CCTK_REAL, dimension(nx) :: tempminusr
++  CCTK_REAL, dimension(nx) :: tempplusr
++  CCTK_REAL, dimension(nx) :: atmosphere_mask
++
++  CCTK_INT :: i,s
++  CCTK_REAL, dimension(nx) :: dtemp
++  CCTK_REAL, dimension(nx) :: dmtemp
++  CCTK_REAL, dimension(nx) :: press,dpress,tilde_flatten
++  CCTK_REAL :: dpress2,dvel,w,flatten,eta,etatilde
++
++  CCTK_INT, dimension(nx) :: hydro_excision_mask
++
++
++  CCTK_REAL :: D2a, D2aL, D2aR, D2aC, D2aLim, rhi, daplus, daminus, D3a, D3aLL, D3aL, D3aR, D2aLL, D2aRR, D3aMin, D3aMax
++
++  logical :: cond
++  
++
++#define STEEP(x,dx,dmx)                                              \
++	 if ( (x(i+1) - x(i)) * (x(i) - x(i-1)) > 0.d0 ) then           &&\
++	    dmx(i) = sign(one, dx(i)) *                                   \
++	       min(abs(dx(i)), 2.d0 * abs(x(i) - x(i-1)),                \
++				 2.d0 * abs(x(i+1) - x(i)))              &&\
++	 else                                                           &&\
++	    dmx(i) = 0.d0                                                &&\
++	 end if
++
++
++  if (use_enhanced_ppm .eq. 0) then
++      !! This is the original PPM algorithm by Colella & Woodward 1984.
++
++      !!$  Average slopes delta_m(a). See (1.7) of Colella and Woodward, p.178
++      !!$  This is the expression for an even grid.
++
++     do i = 2, nx - 1
++        dpress(i) = press(i+1) - press(i-1)
++        ! the denominator is not necessary
++        dtemp(i) = 0.5d0 * (temperature(i+1) - temperature(i-1))
++     end do
++
++      !!$  Steepened slope. See (1.8) of Colella and Woodward, p.178
++
++     do i = 2, nx - 1
++        STEEP(temperature, dtemp, dmtemp)
++     enddo
++      
++
++!!$  Initial boundary states. See (1.9) of Colella and Woodward, p.178
++
++     do i = 2, nx-2
++        tempplus(i) = 0.5d0 * (temperature(i) + temperature(i+1)) + &
++             (dmtemp(i) - dmtemp(i+1)) / 6.d0
++        tempminus(i+1) = tempplus(i)
++     enddo
++  else
++     !! This is the modified PPM algorithm by Colella & Sekora 2008 and McCorquodale & Colella 2011.
++     !! This uses a better limiter based on second derivatives that preserves
++     !! accuracy at local extrema. It also uses a higher-order interpolation polynomial.
++
++      !!$  Initial boundary states (sixth order accurate). See (17) of Colella and Sekora 2008, p.7071
++#define APPROX_AT_CELL_INTERFACE_STENCIL4T(a, ah)  \
++      ah = 37.0d0/60.0d0*(a(i)+a(i+1)) - 2.0d0/15.0d0*(a(i-1)+a(i+2)) + 1.0d0/60.0d0*(a(i-2)+a(i+3))
++      
++      !!$  Initial boundary states (4th order accurate). See (16) of Colella and Sekora 2008, p.7071
++#define APPROX_AT_CELL_INTERFACET(a, ah)  \
++      ah = 7.0d0/12.0d0*(a(i)+a(i+1)) - 1.0d0/12.0d0*(a(i-1)+a(i+2))
++      
++#define LIMITT(a,ah,C, alim) \
++      if ((min(a(i),a(i+1)) .le. ah) .and. (ah .le. max(a(i),a(i+1)))) then       &&\
++	 alim = ah   &&\
++      else &&\
++	 D2a  = 3.0d0 * (a(i)   - 2.0d0*ah     + a(i+1))                                     &&\
++	 D2aL =         (a(i-1) - 2.0d0*a(i)   + a(i+1))                                     &&\
++	 D2aR =         (a(i)   - 2.0d0*a(i+1) + a(i+2))                                     &&\
++	 D2aLim = sign(one, D2a)*min(C*abs(D2aL), C*abs(D2aR), abs(D2a))/3.0d0             &&\
++	 if (D2a*D2aR .ge. 0 .and. D2a*D2aL .ge. 0) then                     &&\
++	    alim = 0.5d0*(a(i)+a(i+1)) - D2aLim &&\
++	 else                                                                             &&\
++	    alim = 0.5d0*(a(i)+a(i+1))                                                    &&\
++	 end if                                                                           &&\
++      endif
++
++#define LIMITT_EPS(a,ah,C, alim) \
++      if ((min(a(i),a(i+1)) .le. ah) .and. (ah .le. max(a(i),a(i+1)))) then       &&\
++	 alim = ah   &&\
++      else &&\
++	 D2a  = 3.0d0 * (a(i)   - 2.0d0*ah     + a(i+1))                                     &&\
++	 D2aL =         (a(i-1) - 2.0d0*a(i)   + a(i+1))                                     &&\
++	 D2aR =         (a(i)   - 2.0d0*a(i+1) + a(i+2))                                     &&\
++	 D2aLim = sign(one, D2a)*min(C*abs(D2aL), C*abs(D2aR), abs(D2a))/3.0d0             &&\
++	 if (D2a*D2aR .ge. 0 .and. D2a*D2aL .ge. 0 .and. abs(D2aLim) .lt. abs(0.5d0*(a(i)+a(i+1)))) then                     &&\
++	    alim = 0.5d0*(a(i)+a(i+1)) - D2aLim &&\
++	 else                                                                             &&\
++	    alim = 0.5d0*(a(i)+a(i+1))                                                    &&\
++	 end if&&\
++      endif
++
++
++
++      if (PPM3) then
++      
++      !! We initialize "plus" \equiv a_j+1/2 with (16) via APPROX_AT_CELL_INTERFACE, 
++      !! then checking for (13) of Colella & Sekora 2008 and applying
++      !! (18) and (19) if (13) is not satisfied. This is done with LIMIT.
++         do i = 2, nx-2
++
++            APPROX_AT_CELL_INTERFACET(temperature, tempplus(i))
++            LIMITT_EPS(temperature, tempplus(i), enhanced_ppm_C2, tempplus(i))
++            tempminus(i+1) = tempplus(i)
++
++         enddo
++      
++      else
++
++         !! Same as above but for 4 stencil points using (17) of Colella & Sekora 2008 as
++         !! initial states.
++         do i = 3, nx-3
++         
++            APPROX_AT_CELL_INTERFACE_STENCIL4T(temperature, tempplus(i))
++            LIMITT_EPS(temperature, tempplus(i), enhanced_ppm_C2, tempplus(i))
++            tempminus(i+1) = tempplus(i)
++            
++         enddo
++    
++         !! Finally compute pressure gradient needed for flattening and shock detection
++         do i = 2, nx-1
++            dpress(i) = press(i+1) - press(i-1)
++         end do
++    
++      endif
++   endif
++
++!!$  Zone flattening. See appendix of C&W, p. 197-8.
++  do i = 3, nx - 2
++    dpress2 = press(i+2) - press(i-2)
++    dvel = velx(i+1) - velx(i-1)
++    if ( (abs(dpress(i)) >  ppm_epsilon * min(press(i-1),press(i+1))) .and. &
++         (dvel < 0.d0) ) then
++      w = 1.d0
++    else
++      w = 0.d0
++    end if
++    if (abs(dpress2) < ppm_small) then
++      tilde_flatten(i) = 1.d0
++    else
++      tilde_flatten(i) = max(0.d0, 1.d0 - w * max(0.d0, ppm_omega2 * &
++           (dpress(i) / dpress2 - ppm_omega1)))
++    end if
++  end do
++
++
++   if (use_enhanced_ppm .eq. 0) then
++      ! In 1984 PPM, flattening is applied before constraining parabolic profiles.
++      if (PPM3) then !!$ Implement C&W, page 197, but with a workaround which allows to use stencil=3.
++	 do i = 3, nx - 2
++	    flatten = tilde_flatten(i)
++            tempplus(i) = flatten * tempplus(i) + (1.d0 - flatten) * temperature(i)
++            tempminus(i) = flatten * tempminus(i) + (1.d0 - flatten) * temperature(i)
++	 end do
++      else  !!$ Really implement C&W, page 197; which requires stencil 4.
++	 do i = 4, nx - 3
++	    s=sign(one, -dpress(i))
++	    flatten = max(tilde_flatten(i), tilde_flatten(i+s))  
++            tempplus(i) = flatten * tempplus(i) + (1.d0 - flatten) * temperature(i)
++            tempminus(i) = flatten * tempminus(i) + (1.d0 - flatten) * temperature(i)
++	 end do
++      end if
++   endif
++
++!!$ Monotonicity. See (1.10) of C&W.
++#define MONT(xminus,x,xplus)                                       \
++    if (.not.( (xplus(i).eq.x(i)) .and. (x(i).eq.xminus(i)) )     \
++        .and. ((xplus(i)-x(i))*(x(i)-xminus(i)) .le. 0.d0)) then&&\
++      xminus(i) = x(i)                                          &&\
++      xplus(i) = x(i)                                           &&\
++    else if (6.d0 * (xplus(i) - xminus(i)) * (x(i) - 0.5d0 *      \
++                (xplus(i) + xminus(i))) >                         \
++                (xplus(i) - xminus(i))**2) then                 &&\
++      xminus(i) = 3.d0 * x(i) - 2.d0 * xplus(i)                 &&\
++    else if (6.d0 * (xplus(i) - xminus(i)) * (x(i) - 0.5d0 *      \
++                (xplus(i) + xminus(i))) <                         \
++               -(xplus(i) - xminus(i))**2) then                 &&\
++      xplus(i) = 3.d0 * x(i) - 2.d0 * xminus(i)                 &&\
++    end if                                                      &&\
++
++
++!! Monotonicity of PPM 2011 (McCorquodale & Colella 2011), Sec. 2.4.1, Eq. 23-34
++!! This requires 4 stencil points.
++#define MONT_WITH_LOCAL_EXTREMUM_STENCIL4(aminus, a, aplus, C, C3) \
++      daplus = aplus(i)-a(i)   &&\
++      daminus = a(i)-aminus(i) &&\
++      if (daplus*daminus .le. 0 .or. (a(i-2)-a(i))*(a(i)-a(i+2)) .le. 0) then &&\
++	 D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                                           && \
++	 D2aC = a(i-1) - 2.0d0*a(i)   + a(i+1)                                                     &&\
++	 D2aL = a(i-2) - 2.0d0*a(i-1) + a(i)                                                       &&\
++	 D2aLL = a(i-3) - 2.0d0*a(i-2) + a(i-1)                                                       &&\
++	 D2aR = a(i)   - 2.0d0*a(i+1) + a(i+2)                                                     &&\
++	 D2aRR = a(i+1)   - 2.0d0*a(i+2) + a(i+3)                                                     &&\
++	 D3a = D2aR - D2aC   &&\
++	 D3aL = D2aC - D2aL  &&\
++	 D3aR = D2aRR - D2aR &&\
++	 D3aLL = D2aL - D2aLL &&\
++	 if (sign(one, D2a) .eq. sign(one, D2aC) .and. sign(one, D2a) .eq. sign(one, D2aL) .and. sign(one, D2a) .eq. sign(one, D2aR)) then &&\
++	    D2aLim = sign(one, D2a) * min(C*abs(D2aL), C*abs(D2aR), C*abs(D2aC), abs(D2a))  &&\
++	 else                                                      &&\
++	    D2aLim = 0  &&\
++	 end if                                                    &&\
++	 if (abs(D2a) .le. 1.d-12*max(abs(a(i-2)), abs(a(i-1)), abs(a(i)), abs(a(i+1)), abs(a(i+2)))) then  &&\
++	    rhi = 0  &&\
++	 else        &&\
++	    rhi = D2aLim / D2a   &&\
++	 endif  &&\
++	 if (.not. (rhi .ge. 1.0d0 - 1.d-12)) then   &&\
++	    D3aMin = min(D3aLL, D3aL, D3a, D3aR)   &&\
++	    D3aMax = max(D3aLL, D3aL, D3a, D3aR)   &&\
++	    if (C3 * max(abs(D3aMin), abs(D3aMax)) .le. D3aMax-D3aMin) then &&\
++		  if (daplus*daminus .lt. 0) then        &&\
++		     aplus(i)  = a(i) + daplus * rhi     &&\
++		     aminus(i) = a(i) - daminus * rhi    &&\
++		  else if (abs(daminus) .ge. 2.0d0*abs(daplus)) then   &&\
++		     aminus(i)  = a(i) - 2.0d0*(1.0d0-rhi)*daplus - rhi*daminus   &&\
++		  else if (abs(daplus) .ge. 2.0d0*abs(daminus)) then &&\
++		     aplus(i)  = a(i) + 2.0d0*(1.0d0-rhi)*daminus + rhi*daplus   &&\
++		  endif &&\
++	    endif &&\
++	 endif &&\
++      else                                                         &&\
++	    if (abs(daplus) .ge. 2.0d0*abs(daminus)) then     &&\
++	       aplus(i) = a(i) + 2.0d0*daminus               &&\
++	    else if (abs(daminus) .ge. 2.0d0*abs(daplus)) then &&\
++	       aminus(i) = a(i) - 2.0d0*daplus               &&\
++	    end if                                                    &&\
++      endif
++
++!! Monotonicity of PPM 2011 (McCorquodale & Colella 2011), Sec. 2.4.1, Eq. 23-34.
++!! This contains an additional limiter in case the correction becomes larger than
++!! the corrected value. This is to avoid negative values for epsilon.
++!! This requires 4 stencil points.
++#define MONT_WITH_LOCAL_EXTREMUM_STENCIL4_EPS(aminus, a, aplus, C, C3) \
++      daplus = aplus(i)-a(i)   &&\
++      daminus = a(i)-aminus(i) &&\
++      if (daplus*daminus .le. 0 .or. (a(i-2)-a(i))*(a(i)-a(i+2)) .le. 0) then &&\
++	 D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                                           && \
++	 D2aC = a(i-1) - 2.0d0*a(i)   + a(i+1)                                                     &&\
++	 D2aL = a(i-2) - 2.0d0*a(i-1) + a(i)                                                       &&\
++	 D2aLL = a(i-3) - 2.0d0*a(i-2) + a(i-1)                                                       &&\
++	 D2aR = a(i)   - 2.0d0*a(i+1) + a(i+2)                                                     &&\
++	 D2aRR = a(i+1)   - 2.0d0*a(i+2) + a(i+3)                                                     &&\
++	 D3a = D2aR - D2aC   &&\
++	 D3aL = D2aC - D2aL  &&\
++	 D3aR = D2aRR - D2aR &&\
++	 D3aLL = D2aL - D2aLL &&\
++	 if (sign(one, D2a) .eq. sign(one, D2aC) .and. sign(one, D2a) .eq. sign(one, D2aL) .and. sign(one, D2a) .eq. sign(one, D2aR)) then &&\
++	    D2aLim = sign(one, D2a) * min(C*abs(D2aL), C*abs(D2aR), C*abs(D2aC), abs(D2a))  &&\
++	 else                                                      &&\
++	    D2aLim = 0  &&\
++	 end if                                                    &&\
++	 if (abs(D2a) .le. 1.d-12*max(abs(a(i-2)), abs(a(i-1)), abs(a(i)), abs(a(i+1)), abs(a(i+2)))) then  &&\
++	    rhi = 0  &&\
++	 else        &&\
++	    rhi = D2aLim / D2a   &&\
++	 endif  &&\
++	 if (.not. (rhi .ge. 1.0d0 - 1.d-12)) then   &&\
++	    D3aMin = min(D3aLL, D3aL, D3a, D3aR)   &&\
++	    D3aMax = max(D3aLL, D3aL, D3a, D3aR)   &&\
++	    if (C3 * max(abs(D3aMin), abs(D3aMax)) .le. D3aMax-D3aMin) then &&\
++	       if (abs(daplus) .le. abs(a(i)) .and. abs(daminus) .le. abs(a(i))) then &&\
++		  if (daplus*daminus .lt. 0) then        &&\
++		     aplus(i)  = a(i) + daplus * rhi     &&\
++		     aminus(i) = a(i) - daminus * rhi    &&\
++		  else if (abs(daminus) .ge. 2.0d0*abs(daplus)) then   &&\
++		     aminus(i)  = a(i) - 2.0d0*(1.0d0-rhi)*daplus - rhi*daminus   &&\
++		  else if (abs(daplus) .ge. 2.0d0*abs(daminus)) then &&\
++		     aplus(i)  = a(i) + 2.0d0*(1.0d0-rhi)*daminus + rhi*daplus   &&\
++		  endif &&\
++	       else &&\
++		  if (daplus*daminus .lt. 0) then        &&\
++		     aplus(i)  = a(i) &&\
++		     aminus(i) = a(i) &&\
++		  else if (abs(daminus) .ge. 2.0d0*abs(daplus)) then   &&\
++		     aminus(i)  = a(i) &&\
++		  else if (abs(daplus) .ge. 2.0d0*abs(daminus)) then &&\
++		     aplus(i)  = a(i) &&\
++		  endif &&\
++	       endif &&\
++	    endif &&\
++	 endif &&\
++      else                                                         &&\
++	 if (abs(daplus) .le. abs(a(i)) .and. abs(daminus) .le. abs(a(i))) then &&\
++	    if (abs(daplus) .ge. 2.0d0*abs(daminus)) then     &&\
++	       aplus(i) = a(i) + 2.0d0*daminus               &&\
++	    else if (abs(daminus) .ge. 2.0d0*abs(daplus)) then &&\
++	       aminus(i) = a(i) - 2.0d0*daplus               &&\
++	    end if                                                    &&\
++	 else &&\
++	    if (abs(daplus) .ge. 2.0d0*abs(daminus)) then     &&\
++	       aplus(i) = a(i)               &&\
++	    else if (abs(daminus) .ge. 2.0d0*abs(daplus)) then &&\
++	       aminus(i) = a(i)               &&\
++	    end if                                                    &&\
++	 endif &&\
++      endif
++
++
++!! Monotonicity of PPM 2011 (McCorquodale & Colella 2011), Sec. 2.4.1, Eq. 23-34.
++!! This does not use the check for deviations from a cubic. Thus, it gets away with only 3 stencil points!
++#define MONT_WITH_LOCAL_EXTREMUM(aminus, a, aplus, C) \
++      daplus = aplus(i)-a(i)   &&\
++      daminus = a(i)-aminus(i) &&\
++      if (daplus*daminus .le. 0 .or. (a(i-2)-a(i))*(a(i)-a(i+2)) .le. 0) then &&\
++	 D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                                           && \
++	 D2aC = a(i-1) - 2.0d0*a(i)   + a(i+1)                                                     &&\
++	 D2aL = a(i-2) - 2.0d0*a(i-1) + a(i)                                                       &&\
++	 D2aR = a(i)   - 2.0d0*a(i+1) + a(i+2)                                                     &&\
++	 if (sign(one, D2a) .eq. sign(one, D2aC) .and. sign(one, D2a) .eq. sign(one, D2aL) .and. sign(one, D2a) .eq. sign(one, D2aR)) then &&\
++	    D2aLim = sign(one, D2a) * min(C*abs(D2aL), C*abs(D2aR), C*abs(D2aC), abs(D2a))  &&\
++	 else                                                      &&\
++	    D2aLim = 0  &&\
++	 end if                                                    &&\
++	 if (abs(D2a) .le. 1.d-12*max(abs(a(i-2)), abs(a(i-1)), abs(a(i)), abs(a(i+1)), abs(a(i+2)))) then  &&\
++	    rhi = 0  &&\
++	 else        &&\
++	    rhi = D2aLim / D2a   &&\
++	 endif  &&\
++	 if (.not. (rhi .ge. 1.0d0 - 1.d-12)) then   &&\
++	       if (daplus*daminus .lt. 0) then        &&\
++		  aplus(i)  = a(i) + daplus * rhi     &&\
++		  aminus(i) = a(i) - daminus * rhi    &&\
++	       else if (abs(daminus) .ge. 2.0d0*abs(daplus)) then   &&\
++		  aminus(i)  = a(i) - 2.0d0*(1.0d0-rhi)*daplus - rhi*daminus   &&\
++	       else if (abs(daplus) .ge. 2.0d0*abs(daminus)) then &&\
++		  aplus(i)  = a(i) + 2.0d0*(1.0d0-rhi)*daminus + rhi*daplus   &&\
++	       endif &&\
++	 endif &&\
++      else                                                         &&\
++	    if (abs(daplus) .ge. 2.0d0*abs(daminus)) then     &&\
++	       aplus(i) = a(i) + 2.0d0*daminus               &&\
++	    else if (abs(daminus) .ge. 2.0d0*abs(daplus)) then &&\
++	       aminus(i) = a(i) - 2.0d0*daplus               &&\
++	    end if                                                    &&\
++      endif   
++      
++
++!! Monotonicity of PPM 2011 (McCorquodale & Colella 2011), Sec. 2.4.1, Eq. 23-34.
++!! This does not use the check for deviations from a cubic. Thus, it gets away with only 3 stencil points!
++!! This contains an additional limiter in case the correction becomes larger than
++!! the corrected value. This is to avoid negative values for epsilon.
++#define MONT_WITH_LOCAL_EXTREMUM_EPS(aminus, a, aplus, C) \
++      daplus = aplus(i)-a(i)   &&\
++      daminus = a(i)-aminus(i) &&\
++      if (daplus*daminus .le. 0 .or. (a(i-2)-a(i))*(a(i)-a(i+2)) .le. 0) then &&\
++	 D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                                           && \
++	 D2aC = a(i-1) - 2.0d0*a(i)   + a(i+1)                                                     &&\
++	 D2aL = a(i-2) - 2.0d0*a(i-1) + a(i)                                                       &&\
++	 D2aR = a(i)   - 2.0d0*a(i+1) + a(i+2)                                                     &&\
++	 if (sign(one, D2a) .eq. sign(one, D2aC) .and. sign(one, D2a) .eq. sign(one, D2aL) .and. sign(one, D2a) .eq. sign(one, D2aR)) then &&\
++	    D2aLim = sign(one, D2a) * min(C*abs(D2aL), C*abs(D2aR), C*abs(D2aC), abs(D2a))  &&\
++	 else                                                      &&\
++	    D2aLim = 0  &&\
++	 end if                                                    &&\
++	 if (abs(D2a) .le. 1.d-12*max(abs(a(i-2)), abs(a(i-1)), abs(a(i)), abs(a(i+1)), abs(a(i+2)))) then  &&\
++	    rhi = 0  &&\
++	 else        &&\
++	    rhi = D2aLim / D2a   &&\
++	 endif  &&\
++	 if (.not. (rhi .ge. 1.0d0 - 1.d-12)) then   &&\
++	    if (abs(daplus) .le. abs(a(i)) .and. abs(daminus) .le. abs(a(i))) then &&\
++	       if (daplus*daminus .lt. 0) then        &&\
++		  aplus(i)  = a(i) + daplus * rhi     &&\
++		  aminus(i) = a(i) - daminus * rhi    &&\
++	       else if (abs(daminus) .ge. 2.0d0*abs(daplus)) then   &&\
++		  aminus(i)  = a(i) - 2.0d0*(1.0d0-rhi)*daplus - rhi*daminus   &&\
++	       else if (abs(daplus) .ge. 2.0d0*abs(daminus)) then &&\
++		  aplus(i)  = a(i) + 2.0d0*(1.0d0-rhi)*daminus + rhi*daplus   &&\
++	       endif &&\
++	    else &&\
++	       if (daplus*daminus .lt. 0) then        &&\
++		  aplus(i)  = a(i) &&\
++		  aminus(i) = a(i) &&\
++	       else if (abs(daminus) .ge. 2.0d0*abs(daplus)) then   &&\
++		  aminus(i)  = a(i) &&\
++	       else if (abs(daplus) .ge. 2.0d0*abs(daminus)) then &&\
++		  aplus(i)  = a(i) &&\
++	       endif &&\
++	    endif &&\
++	 endif &&\
++      else                                                         &&\
++	 if (abs(daplus) .le. abs(a(i)) .and. abs(daminus) .le. abs(a(i))) then &&\
++	    if (abs(daplus) .ge. 2.0d0*abs(daminus)) then     &&\
++	       aplus(i) = a(i) + 2.0d0*daminus               &&\
++	    else if (abs(daminus) .ge. 2.0d0*abs(daplus)) then &&\
++	       aminus(i) = a(i) - 2.0d0*daplus               &&\
++	    end if                                                    &&\
++	 else &&\
++	    if (abs(daplus) .ge. 2.0d0*abs(daminus)) then     &&\
++	       aplus(i) = a(i)               &&\
++	    else if (abs(daminus) .ge. 2.0d0*abs(daplus)) then &&\
++	       aminus(i) = a(i)               &&\
++	    end if                                                    &&\
++	 endif &&\
++      endif   
++
++
++   if (use_enhanced_ppm .eq. 1) then
++      !! Constrain parabolic profiles, PPM 2011/2008
++      if (PPM3) then
++	    do i = 3, nx - 2
++               MONT_WITH_LOCAL_EXTREMUM_EPS(tempminus,temperature,tempplus, enhanced_ppm_C2)
++            enddo
++      else
++	    do i = 4, nx - 3
++               MONT_WITH_LOCAL_EXTREMUM_STENCIL4_EPS(tempminus,temperature,tempplus, enhanced_ppm_C2, enhanced_ppm_C3)
++            enddo
++      end if 
++      
++      ! Apply flattening after constraining the parabolic profiles
++      if (PPM3) then !!$ Implement C&W, page 197, but with a workaround which allows to use stencil=3.
++	 do i = 3, nx - 2
++	    flatten = tilde_flatten(i)
++            tempplus(i) = flatten * tempplus(i) + (1.d0 - flatten) * temperature(i)
++            tempminus(i) = flatten * tempminus(i) + (1.d0 - flatten) * temperature(i)
++	 end do
++      else  !!$ Really implement C&W, page 197; which requires stencil 4.
++	 do i = 4, nx - 3
++	    s=sign(one, -dpress(i))
++	    flatten = max(tilde_flatten(i), tilde_flatten(i+s))  
++            tempplus(i) = flatten * tempplus(i) + (1.d0 - flatten) * temperature(i)
++            tempminus(i) = flatten * tempminus(i) + (1.d0 - flatten) * temperature(i)
++	 end do
++      end if
++    
++  endif
++
++  if (use_enhanced_ppm .eq. 0) then
++     !! Constrain parabolic profiles, PPM 1984
++     do i = GRHydro_stencil, nx - GRHydro_stencil + 1
++	 ! original Colella&Woodward monotonicity preservation
++        MONT(tempminus,temperature,tempplus)
++     enddo
++  endif
++
++  !!$ excision
++  do i = 1, nx
++    if (GRHydro_enable_internal_excision /= 0 .and. &
++        (hydro_excision_mask(i) .ne. 0)) then
++       ! do nothing
++    else
++      !!$ Do not optimize cond away by combining the 'if's. Fortran does not
++      !!$  have to follow the order of sub-expressions given here and might
++      !!$  access outside the array range
++      cond = .false.
++      if (i .gt. 1 .and. GRHydro_enable_internal_excision /= 0) then
++        cond = hydro_excision_mask(i-1) .ne. 0
++      end if
++      if (cond) then
++        tempminus(i) = temperature(i)
++        tempplus(i) = temperature(i)
++        tempminus(i-1) = temperature(i)
++        tempplus(i-1) = temperature(i)
++      else
++        cond = .false.
++        if ((i.gt.2) .and. (i.lt.nx) .and. GRHydro_enable_internal_excision /= 0) then
++          cond = (ppm_mppm .eq. 0) .and. (hydro_excision_mask(i-2) .ne. 0)
++        end if
++        if (cond) then
++          call PPM_TVD(temperature(i-1), temperature(i), temperature(i+1), tempminus(i), tempplus(i))
++        end if
++      end if
++      cond = .false.
++      if (i .lt. nx .and. GRHydro_enable_internal_excision /= 0) then
++        cond = hydro_excision_mask(i+1) .ne. 0
++      end if
++      if (cond) then
++        tempminus(i) = temperature(i)
++        tempplus(i) = temperature(i)
++        tempminus(i-1) = temperature(i)
++        tempplus(i-1) = temperature(i)
++      else
++        cond = .false.
++        if ((i.lt.nx-1) .and. (i.gt.1) .and. GRHydro_enable_internal_excision /= 0) then
++          cond = (ppm_mppm .eq. 0) .and. (hydro_excision_mask(i+2) .ne. 0)
++        end if
++        if (cond) then
++          call PPM_TVD(temperature(i-1), temperature(i), temperature(i+1), tempminus(i), tempplus(i))
++        end if
++      end if
++    end if
++  end do
++  
++  
++  
++return
++
++end subroutine SimplePPM_temperature_1d
++
++
++
+ 
+ 
+ subroutine SimplePPM_tracer_1d(nx,dx,rho,velx,vely,velz, &
+diff --git a/src/GRHydro_PPMReconstruct_drv.F90 b/src/GRHydro_PPMReconstruct_drv.F90
+index 0a6bcb6..2191b08 100644
+--- a/src/GRHydro_PPMReconstruct_drv.F90
++++ b/src/GRHydro_PPMReconstruct_drv.F90
+@@ -146,6 +146,13 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+               Y_e_minus(i,j,k) = 0.0d0
+            endif
+ 
++           if (evolve_temper .ne. 0) then
++              ! set this to temperature (piecewise constant), because we won't
++              ! set it if reconstruct_temper .eq. 0
++              tempplus(i,j,k) = temperature(i,j,k)
++              tempminus(i,j,k) = temperature(i,j,k)
++           endif
++
+         enddo
+      enddo
+   enddo
+@@ -178,6 +185,17 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+            end do
+          end do
+          !$OMP END PARALLEL DO
++      if(evolve_temper.ne.0.and.reconstruct_temper.ne.0) then
++         !$OMP PARALLEL DO PRIVATE(j, k)
++         do k = GRHydro_stencil, nz - GRHydro_stencil + 1
++            do j = GRHydro_stencil, ny - GRHydro_stencil + 1
++               call SimplePPM_temperature_1d(nx,CCTK_DELTA_SPACE(1),velx(:,j,k), & 
++                    temperature(:,j,k),press(:,j,k),&
++                    tempminus(:,j,k),tempplus(:,j,k), hydro_excision_mask)
++            end do
++         end do
++         !$OMP END PARALLEL DO
++      endif
+       if(evolve_tracer.ne.0) then
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+@@ -229,6 +247,17 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+           end do
+         end do
+         !$OMP END PARALLEL DO
++      if(evolve_temper.ne.0.and.reconstruct_temper.ne.0) then
++         !$OMP PARALLEL DO PRIVATE(j, k)
++         do k = GRHydro_stencil, nz - GRHydro_stencil + 1
++            do j = GRHydro_stencil, nx - GRHydro_stencil + 1
++               call SimplePPM_temperature_1d(ny,CCTK_DELTA_SPACE(2),vely(j,:,k), & 
++                    temperature(j,:,k),press(j,:,k),&
++                    tempminus(j,:,k),tempplus(j,:,k), hydro_excision_mask)
++            end do
++         end do
++         !$OMP END PARALLEL DO
++      endif
+       if(evolve_tracer.ne.0) then
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+@@ -280,6 +309,17 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+           end do
+         end do
+         !$OMP END PARALLEL DO
++      if(evolve_temper.ne.0.and.reconstruct_temper.ne.0) then
++         !$OMP PARALLEL DO PRIVATE(j, k)
++         do k = GRHydro_stencil, ny - GRHydro_stencil + 1
++            do j = GRHydro_stencil, nx - GRHydro_stencil + 1
++               call SimplePPM_temperature_1d(nz,CCTK_DELTA_SPACE(3),velz(j,k,:), & 
++                    temperature(j,k,:),press(j,k,:),&
++                    tempminus(j,k,:),tempplus(j,k,:), hydro_excision_mask)
++            end do
++         end do
++         !$OMP END PARALLEL DO
++      endif
+       if(evolve_tracer.ne.0) then
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+diff --git a/src/GRHydro_Prim2Con.F90 b/src/GRHydro_Prim2Con.F90
+index 805e486..6d03e05 100644
+--- a/src/GRHydro_Prim2Con.F90
++++ b/src/GRHydro_Prim2Con.F90
+@@ -50,6 +50,7 @@ subroutine primitive2conservative(CCTK_ARGUMENTS)
+   DECLARE_CCTK_PARAMETERS
+   
+   integer :: i, j, k
++  integer :: keytemp
+   CCTK_REAL :: g11l,g12l,g13l,g22l,g23l,g33l,avg_detl,&
+        g11r,g12r,g13r,g22r,g23r,g33r,avg_detr
+   CCTK_REAL :: xtemp(1)
+@@ -122,71 +123,118 @@ subroutine primitive2conservative(CCTK_ARGUMENTS)
+      end do
+      !$OMP END PARALLEL DO
+   else
+-     !$OMP PARALLEL DO PRIVATE(i, j, k, avg_detl, avg_detr, xtemp,&
+-     !$OMP                      g11l,g12l,g13l,g22l,g23l,g33l, &
+-     !$OMP                      g11r,g12r,g13r,g22r,g23r,g33r)
+-     do k = GRHydro_stencil,cctk_lsh(3)-GRHydro_stencil+1
+-        do j = GRHydro_stencil,cctk_lsh(2)-GRHydro_stencil+1
+-           do i = GRHydro_stencil,cctk_lsh(1)-GRHydro_stencil+1
++     if(reconstruct_temper.ne.0) then
++        keytemp = 1
++        !$OMP PARALLEL DO PRIVATE(i, j, k, avg_detl, avg_detr, xtemp,&
++        !$OMP                      g11l,g12l,g13l,g22l,g23l,g33l, &
++        !$OMP                      g11r,g12r,g13r,g22r,g23r,g33r)
++        do k = GRHydro_stencil,cctk_lsh(3)-GRHydro_stencil+1
++           do j = GRHydro_stencil,cctk_lsh(2)-GRHydro_stencil+1
++              do i = GRHydro_stencil,cctk_lsh(1)-GRHydro_stencil+1
++                 
++                 g11l = 0.5d0 * (g11(i,j,k) + g11(i-xoffset,j-yoffset,k-zoffset))
++                 g12l = 0.5d0 * (g12(i,j,k) + g12(i-xoffset,j-yoffset,k-zoffset))
++                 g13l = 0.5d0 * (g13(i,j,k) + g13(i-xoffset,j-yoffset,k-zoffset))
++                 g22l = 0.5d0 * (g22(i,j,k) + g22(i-xoffset,j-yoffset,k-zoffset))
++                 g23l = 0.5d0 * (g23(i,j,k) + g23(i-xoffset,j-yoffset,k-zoffset))
++                 g33l = 0.5d0 * (g33(i,j,k) + g33(i-xoffset,j-yoffset,k-zoffset))
++                 g11r = 0.5d0 * (g11(i,j,k) + g11(i+xoffset,j+yoffset,k+zoffset))
++                 g12r = 0.5d0 * (g12(i,j,k) + g12(i+xoffset,j+yoffset,k+zoffset))
++                 g13r = 0.5d0 * (g13(i,j,k) + g13(i+xoffset,j+yoffset,k+zoffset))
++                 g22r = 0.5d0 * (g22(i,j,k) + g22(i+xoffset,j+yoffset,k+zoffset))
++                 g23r = 0.5d0 * (g23(i,j,k) + g23(i+xoffset,j+yoffset,k+zoffset))
++                 g33r = 0.5d0 * (g33(i,j,k) + g33(i+xoffset,j+yoffset,k+zoffset))
+               
+-              g11l = 0.5d0 * (g11(i,j,k) + g11(i-xoffset,j-yoffset,k-zoffset))
+-              g12l = 0.5d0 * (g12(i,j,k) + g12(i-xoffset,j-yoffset,k-zoffset))
+-              g13l = 0.5d0 * (g13(i,j,k) + g13(i-xoffset,j-yoffset,k-zoffset))
+-              g22l = 0.5d0 * (g22(i,j,k) + g22(i-xoffset,j-yoffset,k-zoffset))
+-              g23l = 0.5d0 * (g23(i,j,k) + g23(i-xoffset,j-yoffset,k-zoffset))
+-              g33l = 0.5d0 * (g33(i,j,k) + g33(i-xoffset,j-yoffset,k-zoffset))
+-              g11r = 0.5d0 * (g11(i,j,k) + g11(i+xoffset,j+yoffset,k+zoffset))
+-              g12r = 0.5d0 * (g12(i,j,k) + g12(i+xoffset,j+yoffset,k+zoffset))
+-              g13r = 0.5d0 * (g13(i,j,k) + g13(i+xoffset,j+yoffset,k+zoffset))
+-              g22r = 0.5d0 * (g22(i,j,k) + g22(i+xoffset,j+yoffset,k+zoffset))
+-              g23r = 0.5d0 * (g23(i,j,k) + g23(i+xoffset,j+yoffset,k+zoffset))
+-              g33r = 0.5d0 * (g33(i,j,k) + g33(i+xoffset,j+yoffset,k+zoffset))
++                 avg_detl = SPATIAL_DETERMINANT(g11l,g12l,g13l,g22l, g23l,g33l)
++                 avg_detr = SPATIAL_DETERMINANT(g11r,g12r,g13r,g22r, g23r,g33r)
++
++                 call prim2con_hot(GRHydro_eos_handle, keytemp, GRHydro_reflevel,&
++                      cctk_iteration,i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),&
++                      r(i,j,k),&
++                      g11l,g12l,g13l,g22l,& 
++                      g23l,g33l, &
++                      avg_detl,densminus(i,j,k),sxminus(i,j,k),&
++                      syminus(i,j,k),szminus(i,j,k),tauminus(i,j,k),&
++                      rhominus(i,j,k), &
++                      velxminus(i,j,k),velyminus(i,j,k),velzminus(i,j,k),&
++                      epsminus(i,j,k),pressminus(i,j,k),w_lorentzminus(i, j, k),&
++                      tempminus(i,j,k),y_e_minus(i,j,k))
++
++                 call prim2con_hot(GRHydro_eos_handle, keytemp, GRHydro_reflevel, &
++                      cctk_iteration,i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),&
++                      r(i,j,k),&
++                      g11r,g12r,g13r,&
++                      g22r,g23r,g33r,&
++                      avg_detr, densplus(i,j,k),sxplus(i,j,k),&
++                      syplus(i,j,k),szplus(i,j ,k),tauplus(i,j,k),&
++                      rhoplus(i,j,k),velxplus(i,j,k),velyplus(i,j,k),&
++                      velzplus(i,j,k),epsplus(i,j,k),pressplus(i,j,k),&
++                      w_lorentzplus(i,j,k),tempplus(i,j,k), &
++                      y_e_plus(i,j,k)) 
++                 
++              end do
++           end do
++        end do
++        !$OMP END PARALLEL DO
++     else
++        keytemp = 0
++        !$OMP PARALLEL DO PRIVATE(i, j, k, avg_detl, avg_detr, xtemp,&
++        !$OMP                      g11l,g12l,g13l,g22l,g23l,g33l, &
++        !$OMP                      g11r,g12r,g13r,g22r,g23r,g33r)
++        do k = GRHydro_stencil,cctk_lsh(3)-GRHydro_stencil+1
++           do j = GRHydro_stencil,cctk_lsh(2)-GRHydro_stencil+1
++              do i = GRHydro_stencil,cctk_lsh(1)-GRHydro_stencil+1
++                 
++                 g11l = 0.5d0 * (g11(i,j,k) + g11(i-xoffset,j-yoffset,k-zoffset))
++                 g12l = 0.5d0 * (g12(i,j,k) + g12(i-xoffset,j-yoffset,k-zoffset))
++                 g13l = 0.5d0 * (g13(i,j,k) + g13(i-xoffset,j-yoffset,k-zoffset))
++                 g22l = 0.5d0 * (g22(i,j,k) + g22(i-xoffset,j-yoffset,k-zoffset))
++                 g23l = 0.5d0 * (g23(i,j,k) + g23(i-xoffset,j-yoffset,k-zoffset))
++                 g33l = 0.5d0 * (g33(i,j,k) + g33(i-xoffset,j-yoffset,k-zoffset))
++                 g11r = 0.5d0 * (g11(i,j,k) + g11(i+xoffset,j+yoffset,k+zoffset))
++                 g12r = 0.5d0 * (g12(i,j,k) + g12(i+xoffset,j+yoffset,k+zoffset))
++                 g13r = 0.5d0 * (g13(i,j,k) + g13(i+xoffset,j+yoffset,k+zoffset))
++                 g22r = 0.5d0 * (g22(i,j,k) + g22(i+xoffset,j+yoffset,k+zoffset))
++                 g23r = 0.5d0 * (g23(i,j,k) + g23(i+xoffset,j+yoffset,k+zoffset))
++                 g33r = 0.5d0 * (g33(i,j,k) + g33(i+xoffset,j+yoffset,k+zoffset))
+               
+-              avg_detl = SPATIAL_DETERMINANT(g11l,g12l,g13l,g22l, g23l,g33l)
+-              avg_detr = SPATIAL_DETERMINANT(g11r,g12r,g13r,g22r, g23r,g33r)
+-
+-              ! we do not have plus/minus vars for temperature since
+-              ! eps is reconstructed. Hence, we do not update the
+-              ! variable 'temperature' in prim2con at the interfaces 
+-              ! We will instead use an average temperature as an initial
+-              ! guess.
+-              xtemp(1) = 0.5d0*(temperature(i,j,k) + &
+-                   temperature(i-xoffset,j-yoffset,k-zoffset))
+-              call prim2con_hot(GRHydro_eos_handle, GRHydro_reflevel,&
+-                   cctk_iteration,i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),&
+-                   r(i,j,k),&
+-                   g11l,g12l,g13l,g22l,& 
+-                   g23l,g33l, &
+-                   avg_detl,densminus(i,j,k),sxminus(i,j,k),&
+-                   syminus(i,j,k),szminus(i,j,k),tauminus(i,j,k),&
+-                   rhominus(i,j,k), &
+-                   velxminus(i,j,k),velyminus(i,j,k),velzminus(i,j,k),&
+-                   epsminus(i,j,k),pressminus(i,j,k),w_lorentzminus(i, j, k),&
+-                   xtemp,y_e_minus(i,j,k))
+-
+-              ! we do not have plus/minus vars for temperature since
+-              ! eps is reconstructed. Hence, we do not update the
+-              ! variable 'temperature' in prim2con at the interfaces
+-              ! We will instead use an average temperature as an initial
+-              ! guess.
+-              xtemp(1) = 0.5d0*(temperature(i,j,k) + &
+-                   temperature(i+xoffset,j+yoffset,k+zoffset))
+-              call prim2con_hot(GRHydro_eos_handle, GRHydro_reflevel, &
+-                   cctk_iteration,i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),&
+-                   r(i,j,k),&
+-                   g11r,g12r,g13r,&
+-                   g22r,g23r,g33r,&
+-                   avg_detr, densplus(i,j,k),sxplus(i,j,k),&
+-                   syplus(i,j,k),szplus(i,j ,k),tauplus(i,j,k),&
+-                   rhoplus(i,j,k),velxplus(i,j,k),velyplus(i,j,k),&
+-                   velzplus(i,j,k),epsplus(i,j,k),pressplus(i,j,k),&
+-                   w_lorentzplus(i,j,k),xtemp, &
+-                   y_e_plus(i,j,k)) 
++                 avg_detl = SPATIAL_DETERMINANT(g11l,g12l,g13l,g22l, g23l,g33l)
++                 avg_detr = SPATIAL_DETERMINANT(g11r,g12r,g13r,g22r, g23r,g33r)
++
++                 xtemp(1) = 0.5d0*(temperature(i,j,k) + &
++                      temperature(i-xoffset,j-yoffset,k-zoffset))
++                 call prim2con_hot(GRHydro_eos_handle, keytemp, GRHydro_reflevel,&
++                      cctk_iteration,i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),&
++                      r(i,j,k),&
++                      g11l,g12l,g13l,g22l,& 
++                      g23l,g33l, &
++                      avg_detl,densminus(i,j,k),sxminus(i,j,k),&
++                      syminus(i,j,k),szminus(i,j,k),tauminus(i,j,k),&
++                      rhominus(i,j,k), &
++                      velxminus(i,j,k),velyminus(i,j,k),velzminus(i,j,k),&
++                      epsminus(i,j,k),pressminus(i,j,k),w_lorentzminus(i, j, k),&
++                      xtemp,y_e_minus(i,j,k))
++
++                 xtemp(1) = 0.5d0*(temperature(i,j,k) + &
++                      temperature(i-xoffset,j-yoffset,k-zoffset))
++                 call prim2con_hot(GRHydro_eos_handle, keytemp, GRHydro_reflevel, &
++                      cctk_iteration,i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),&
++                      r(i,j,k),&
++                      g11r,g12r,g13r,&
++                      g22r,g23r,g33r,&
++                      avg_detr, densplus(i,j,k),sxplus(i,j,k),&
++                      syplus(i,j,k),szplus(i,j ,k),tauplus(i,j,k),&
++                      rhoplus(i,j,k),velxplus(i,j,k),velyplus(i,j,k),&
++                      velzplus(i,j,k),epsplus(i,j,k),pressplus(i,j,k),&
++                      w_lorentzplus(i,j,k),xtemp, &
++                      y_e_plus(i,j,k)) 
++                 tempminus(i,j,k) = xtemp(1)
+               
++              end do
+            end do
+         end do
+-     end do
+-     !$OMP END PARALLEL DO
++        !$OMP END PARALLEL DO
++     endif
+   endif
+ 
+ end subroutine primitive2conservative
+@@ -245,7 +293,7 @@ subroutine prim2con(handle, gxx, gxy, gxz, gyy, gyz, gzz, det, ddens, &
+ end subroutine prim2con
+ 
+ 
+-subroutine prim2con_hot(handle, GRHydro_reflevel, cctk_iteration, ii, jj, kk, &
++subroutine prim2con_hot(handle, keytemp, GRHydro_reflevel, cctk_iteration, ii, jj, kk, &
+      x, y, z, r, gxx, gxy, gxz, gyy, gyz, gzz, det, ddens, &
+      dsx, dsy, dsz, dtau , drho, dvelx, dvely, dvelz, deps, dpress, w, &
+      temp,ye) 
+@@ -264,9 +312,9 @@ subroutine prim2con_hot(handle, GRHydro_reflevel, cctk_iteration, ii, jj, kk, &
+   character(len=512) warnline
+ 
+ ! begin EOS Omni vars
+-  integer :: n,keytemp,anyerr,keyerr(1)
++  integer :: n,keytemp,lkeytemp,anyerr,keyerr(1)
+   real*8  :: temp0(1)
+-  n = 1;keytemp = 0;anyerr = 0;keyerr(1) = 0
++  n = 1;lkeytemp=keytemp;anyerr = 0;keyerr(1) = 0
+ ! end EOS Omni vars
+ 
+   temp0 = temp
+@@ -276,66 +324,70 @@ subroutine prim2con_hot(handle, GRHydro_reflevel, cctk_iteration, ii, jj, kk, &
+ 
+   ye = max(min(ye,GRHydro_Y_e_max),GRHydro_Y_e_min)
+ 
+-  call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
++  call EOS_Omni_press(handle,lkeytemp,GRHydro_eos_rf_prec,n,&
+        drho,deps,temp,ye,dpress,keyerr,anyerr)  
+   ! error handling
+   if(anyerr.ne.0) then
+-     if(GRHydro_reflevel.lt.GRHydro_c2p_warn_from_reflevel) then
+-        ! in this case (coarse grid error that is hopefully restricted
+-        ! away), we use the average temperature between cells and call
+-        ! the EOS with keytemp=1
+-        keytemp=1
+-        call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-             drho,deps,temp,ye,dpress,keyerr,anyerr)  
+-        keytemp=0
+-        if(anyerr.ne.0) then
+-           !$OMP CRITICAL
+-           call CCTK_WARN(1,"EOS error in prim2con_hot: lev 2")
+-           write(warnline,"(i8,3i5,1P10E15.6)") cctk_iteration,ii,jj,kk,x,y,z,r
+-           call CCTK_WARN(1,warnline)
+-           write(warnline,"(1P10E15.6)") drho,deps,temp,ye
+-           call CCTK_WARN(1,warnline)
+-           write(warnline,"(A7,i8)") "code: ",keyerr(1)
+-           call CCTK_WARN(1,warnline)
+-           write(warnline,"(A10,i5)") "reflevel: ", GRHydro_reflevel
+-           call CCTK_WARN(1,warnline)
+-           !$OMP END CRITICAL
+-        endif
++     if(reconstruct_temper.ne.0) then
++
+      else
+-        ! This is a way of recovering even on finer refinement levels:
+-        ! Use the average temperature at the interface instead of the
+-        ! reconstructed specific internal energy.
+-        if(GRHydro_eos_hot_prim2con_warn.ne.0) then
+-        !$OMP CRITICAL
+-           call CCTK_WARN(1,"EOS error in prim2con_hot: NOW using averaged temp!")
+-           write(warnline,"(i8,3i5,1P10E15.6)") cctk_iteration,ii,jj,kk,x,y,z,r
+-           call CCTK_WARN(1,warnline)
+-           write(warnline,"(1P10E15.6)") drho,deps,temp0,ye
+-           call CCTK_WARN(1,warnline)
+-           write(warnline,"(A7,i8)") "code: ",keyerr(1)
+-           call CCTK_WARN(1,warnline)
+-           write(warnline,"(A10,i5)") "reflevel: ", GRHydro_reflevel
+-           call CCTK_WARN(1,warnline)
+-        !$OMP END CRITICAL
+-        endif
+-        keytemp=1
+-        temp = temp0
+-        call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-             drho,deps,temp,ye,dpress,keyerr,anyerr)  
+-        keytemp=0
+-        if(anyerr.ne.0) then
+-           !$OMP CRITICAL
+-           call CCTK_WARN(1,"EOS error in prim2con_hot")
+-           write(warnline,"(i8,3i5,1P10E15.6)") cctk_iteration,ii,jj,kk,x,y,z,r
+-           call CCTK_WARN(1,warnline)
+-           write(warnline,"(1P10E15.6)") drho,deps,temp,ye
+-           call CCTK_WARN(1,warnline)
+-           write(warnline,"(A7,i8)") "code: ",keyerr(1)
+-           call CCTK_WARN(1,warnline)
+-           write(warnline,"(A10,i5)") "reflevel: ", GRHydro_reflevel
+-           call CCTK_WARN(1,warnline)
+-           call CCTK_WARN(0,"Aborting!!!")
+-           !$OMP END CRITICAL
++        if(GRHydro_reflevel.lt.GRHydro_c2p_warn_from_reflevel) then
++           ! in this case (coarse grid error that is hopefully restricted
++           ! away), we use the average temperature between cells and call
++           ! the EOS with keytemp=1
++           lkeytemp=1
++           call EOS_Omni_press(handle,lkeytemp,GRHydro_eos_rf_prec,n,&
++                drho,deps,temp,ye,dpress,keyerr,anyerr)  
++           lkeytemp=0
++           if(anyerr.ne.0) then
++              !$OMP CRITICAL
++              call CCTK_WARN(1,"EOS error in prim2con_hot: lev 2")
++              write(warnline,"(i8,3i5,1P10E15.6)") cctk_iteration,ii,jj,kk,x,y,z,r
++              call CCTK_WARN(1,warnline)
++              write(warnline,"(1P10E15.6)") drho,deps,temp,ye
++              call CCTK_WARN(1,warnline)
++              write(warnline,"(A7,i8)") "code: ",keyerr(1)
++              call CCTK_WARN(1,warnline)
++              write(warnline,"(A10,i5)") "reflevel: ", GRHydro_reflevel
++              call CCTK_WARN(1,warnline)
++              !$OMP END CRITICAL
++           endif
++        else
++           ! This is a way of recovering even on finer refinement levels:
++           ! Use the average temperature at the interface instead of the
++           ! reconstructed specific internal energy.
++           if(GRHydro_eos_hot_prim2con_warn.ne.0) then
++              !$OMP CRITICAL
++              call CCTK_WARN(1,"EOS error in prim2con_hot: NOW using averaged temp!")
++              write(warnline,"(i8,3i5,1P10E15.6)") cctk_iteration,ii,jj,kk,x,y,z,r
++              call CCTK_WARN(1,warnline)
++              write(warnline,"(1P10E15.6)") drho,deps,temp0,ye
++              call CCTK_WARN(1,warnline)
++              write(warnline,"(A7,i8)") "code: ",keyerr(1)
++              call CCTK_WARN(1,warnline)
++              write(warnline,"(A10,i5)") "reflevel: ", GRHydro_reflevel
++              call CCTK_WARN(1,warnline)
++              !$OMP END CRITICAL
++           endif
++           lkeytemp=1
++           temp = temp0
++           call EOS_Omni_press(handle,lkeytemp,GRHydro_eos_rf_prec,n,&
++                drho,deps,temp,ye,dpress,keyerr,anyerr)  
++           lkeytemp=0
++           if(anyerr.ne.0) then
++              !$OMP CRITICAL
++              call CCTK_WARN(1,"EOS error in prim2con_hot")
++              write(warnline,"(i8,3i5,1P10E15.6)") cctk_iteration,ii,jj,kk,x,y,z,r
++              call CCTK_WARN(1,warnline)
++              write(warnline,"(1P10E15.6)") drho,deps,temp,ye
++              call CCTK_WARN(1,warnline)
++              write(warnline,"(A7,i8)") "code: ",keyerr(1)
++              call CCTK_WARN(1,warnline)
++              write(warnline,"(A10,i5)") "reflevel: ", GRHydro_reflevel
++              call CCTK_WARN(1,warnline)
++              call CCTK_WARN(0,"Aborting!!!")
++              !$OMP END CRITICAL
++           endif
+         endif
+      endif
+   endif
+@@ -387,6 +439,7 @@ subroutine Primitive2ConservativeCells(CCTK_ARGUMENTS)
+   DECLARE_CCTK_PARAMETERS
+   
+   CCTK_INT :: i, j, k
++  CCTK_INT :: keytemp
+   CCTK_REAL :: det
+   character(len=512) :: warnline
+ 
+@@ -433,6 +486,7 @@ subroutine Primitive2ConservativeCells(CCTK_ARGUMENTS)
+      end do
+      !$OMP END PARALLEL DO
+   else
++     keytemp = 0
+      !$OMP PARALLEL DO PRIVATE(i, j, k, det)
+      do k = 1,cctk_lsh(3)
+         do j = 1,cctk_lsh(2)
+@@ -441,7 +495,8 @@ subroutine Primitive2ConservativeCells(CCTK_ARGUMENTS)
+               det = SPATIAL_DETERMINANT(g11(i,j,k),g12(i,j,k),g13(i,j,k), \
+               g22(i,j,k),g23(i,j,k),g33(i,j,k))
+ 
+-              call prim2con_hot(GRHydro_eos_handle,GRHydro_reflevel,cctk_iteration,&
++              call prim2con_hot(GRHydro_eos_handle,keytemp,&
++                   GRHydro_reflevel,cctk_iteration,&
+                    i,j,k,&
+                    x(i,j,k),y(i,j,k),z(i,j,k),r(i,j,k),g11(i,j,k),&
+                    g12(i,j,k),g13(i,j,k),&
+diff --git a/src/GRHydro_TVDReconstruct_drv.F90 b/src/GRHydro_TVDReconstruct_drv.F90
+index a51da93..8ab09ba 100644
+--- a/src/GRHydro_TVDReconstruct_drv.F90
++++ b/src/GRHydro_TVDReconstruct_drv.F90
+@@ -149,6 +149,14 @@ subroutine GRHydro_TVDReconstruct_drv(CCTK_ARGUMENTS)
+               Y_e_plus(i,j,k) = 0.0d0
+               Y_e_minus(i,j,k) = 0.0d0
+            endif
++           
++           if(evolve_temper .ne. 0) then
++              ! set this to cell center value to have
++              ! good initial guesses at interfaces 
++              ! in case we don't reconstruct temp
++              tempplus(i,j,k) = temperature(i,j,k)
++              tempminus(i,j,k) = temperature(i,j,k)
++           endif
+ 
+         enddo
+      enddo
+@@ -196,6 +204,10 @@ subroutine GRHydro_TVDReconstruct_drv(CCTK_ARGUMENTS)
+          call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
+               entropy, entropyplus, entropyminus, trivial_rp, hydro_excision_mask)
+       endif
++      if (evolve_temper .ne. 0 .and. reconstruct_temper .ne. 0) then
++         call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
++              temperature, tempplus, tempminus, trivial_rp, hydro_excision_mask)
++      endif
+ 
+     else if (CCTK_EQUALS(recon_vars,"conservative")) then
+       call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
+diff --git a/src/GRHydro_UpdateMask.F90 b/src/GRHydro_UpdateMask.F90
+index a93872b..a679dfb 100644
+--- a/src/GRHydro_UpdateMask.F90
++++ b/src/GRHydro_UpdateMask.F90
+@@ -309,7 +309,7 @@ subroutine GRHydro_AtmosphereReset(CCTK_ARGUMENTS)
+                   rho(i,j,k),eps(i,j,k),temperature(i,j,k),y_e(i,j,k),&
+                   press(i,j,k),keyerr,anyerr)
+ 
+-             call prim2con_hot(GRHydro_eos_handle, GRHydro_reflevel,&
++             call prim2con_hot(GRHydro_eos_handle, keytemp, GRHydro_reflevel,&
+                   cctk_iteration,i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),r(i,j,k),&
+                   g11(i,j,k),g12(i,j,k),&
+                   g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k), &
+@@ -476,7 +476,7 @@ subroutine GRHydro_InitialAtmosphereReset(CCTK_ARGUMENTS)
+                   rho(i,j,k),eps(i,j,k),temperature(i,j,k),y_e(i,j,k),&
+                   press(i,j,k),keyerr,anyerr)
+ 
+-             call prim2con_hot(GRHydro_eos_handle, GRHydro_reflevel,&
++             call prim2con_hot(GRHydro_eos_handle, keytemp, GRHydro_reflevel,&
+                   cctk_iteration,i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),r(i,j,k),&
+                   g11(i,j,k),g12(i,j,k),&
+                   g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k), &
+@@ -518,7 +518,7 @@ subroutine GRHydro_InitialAtmosphereReset(CCTK_ARGUMENTS)
+                   rho_p(i,j,k),eps_p(i,j,k),temperature_p(i,j,k),y_e_p(i,j,k),&
+                   press_p(i,j,k),keyerr,anyerr)
+ 
+-             call prim2con_hot(GRHydro_eos_handle, GRHydro_reflevel,&
++             call prim2con_hot(GRHydro_eos_handle, keytemp, GRHydro_reflevel,&
+                   cctk_iteration,i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),r(i,j,k),&
+                   g11_p(i,j,k),g12_p(i,j,k),&
+                   g13_p(i,j,k),g22_p(i,j,k),g23_p(i,j,k),g33_p(i,j,k), &
+@@ -560,7 +560,7 @@ subroutine GRHydro_InitialAtmosphereReset(CCTK_ARGUMENTS)
+              call EOS_Omni_press(GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,n,&
+                   rho_p_p(i,j,k),eps_p_p(i,j,k),temperature_p_p(i,j,k),y_e_p_p(i,j,k),&
+                   press_p_p(i,j,k),keyerr,anyerr)
+-             call prim2con_hot(GRHydro_eos_handle, GRHydro_reflevel,&
++             call prim2con_hot(GRHydro_eos_handle, keytemp, GRHydro_reflevel,&
+                   cctk_iteration,i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),r(i,j,k),&
+                   g11_p_p(i,j,k),g12_p_p(i,j,k),&
+                   g13_p_p(i,j,k),g22_p_p(i,j,k),g23_p_p(i,j,k),g33_p_p(i,j,k), &
+diff --git a/src/GRHydro_WENOReconstruct_drv.F90 b/src/GRHydro_WENOReconstruct_drv.F90
+index 2c748c5..0a6374c 100644
+--- a/src/GRHydro_WENOReconstruct_drv.F90
++++ b/src/GRHydro_WENOReconstruct_drv.F90
+@@ -161,6 +161,14 @@ subroutine GRHydro_WENOReconstruct_drv(CCTK_ARGUMENTS)
+               Y_e_minus(i,j,k) = 0.0d0
+            endif
+ 
++           if (evolve_temper .ne. 0) then
++              ! set this to cell center value to have
++              ! good initial guesses at interfaces
++              ! in case we don't reconstruct temp
++              tempplus(i,j,k) = temperature(i,j,k)
++              tempminus(i,j,k) = temperature(i,j,k)
++           endif
++
+         enddo
+      enddo
+   enddo
+@@ -176,13 +184,6 @@ subroutine GRHydro_WENOReconstruct_drv(CCTK_ARGUMENTS)
+         enddo
+      end if
+ 
+-     if (evolve_Y_e .ne. 0) then
+-        call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
+-             Y_e(:,:,:), Y_e_plus(:,:,:), &
+-             Y_e_minus(:,:,:), &
+-             trivial_rp, hydro_excision_mask)
+-     endif
+-
+     if (flux_direction == 1) then
+       ! constraint transport needs to be able to average fluxes in the directions
+       ! other that flux_direction, which in turn need the primitives on interfaces
+@@ -205,6 +206,16 @@ subroutine GRHydro_WENOReconstruct_drv(CCTK_ARGUMENTS)
+             call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
+                  eps(:,j,k),epsminus(:,j,k),epsplus(:,j,k),&
+                  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            if(evolve_Y_e.ne.0) then
++               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
++                    Y_e(:,j,k),Y_e_minus(:,j,k),Y_e_plus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            endif
++            if(evolve_temper.ne.0.and.reconstruct_temper.ne.0) then 
++               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
++                    temperature(:,j,k),tempminus(:,j,k),tempplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            endif
+             if(evolve_mhd.ne.0) then
+                call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
+                     Bvecx(:,j,k),Bvecxminus(:,j,k),Bvecxplus(:,j,k),&
+@@ -297,6 +308,16 @@ subroutine GRHydro_WENOReconstruct_drv(CCTK_ARGUMENTS)
+             call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
+                  eps(j,:,k),epsminus(j,:,k),epsplus(j,:,k),&
+                  trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            if(evolve_Y_e.ne.0) then
++            call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
++                 Y_e(j,:,k),Y_e_minus(j,:,k),Y_e_plus(j,:,k),&
++                 trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            endif
++            if(evolve_temper.ne.0.and.reconstruct_temper.ne.0) then 
++               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
++                    temperature(j,:,k),tempminus(j,:,k),tempplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            endif
+             if(evolve_mhd.ne.0) then
+                call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
+                     Bvecx(j,:,k),Bvecxminus(j,:,k),Bvecxplus(j,:,k),&
+@@ -389,6 +410,16 @@ subroutine GRHydro_WENOReconstruct_drv(CCTK_ARGUMENTS)
+             call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
+                  eps(j,k,:),epsminus(j,k,:),epsplus(j,k,:),&
+                  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            if(evolve_Y_e.ne.0) then
++               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
++                    Y_e(j,k,:),Y_e_minus(j,k,:),Y_e_plus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            endif
++            if(evolve_temper.ne.0.and.reconstruct_temper.ne.0) then 
++               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
++                    temperature(j,k,:),tempminus(j,k,:),tempplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            endif
+             if(evolve_mhd.ne.0) then
+                call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
+                     Bvecx(j,k,:),Bvecxminus(j,k,:),Bvecxplus(j,k,:),&
+@@ -464,8 +495,10 @@ subroutine GRHydro_WENOReconstruct_drv(CCTK_ARGUMENTS)
+     end if
+ !!$ WENO ends.
+ 
++
+   deallocate(trivial_rp)
+   deallocate(dum,dump,dumm)
+ 
++
+ end subroutine GRHydro_WENOReconstruct_drv
+ 
+-- 
+1.7.10.4
+

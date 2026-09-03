@@ -1,0 +1,104 @@
+From 025bb63305a60bb8320ebb714808e91d852d1e3a Mon Sep 17 00:00:00 2001
+From: Josh Faber <jfaberrit@jfaber3.local>
+Date: Thu, 18 Oct 2012 11:14:26 -0400
+Subject: [PATCH 11/13] ng the interface for magentized con2prim for
+ consistency
+
+---
+ interface.ccl          |   21 ++-------------------
+ src/GRHydro_C2P2CM.F90 |    7 ++++---
+ src/GRHydro_P2C2PM.F90 |    4 ++--
+ 3 files changed, 8 insertions(+), 24 deletions(-)
+
+diff --git a/interface.ccl b/interface.ccl
+index fce7f6c..0fb3ffc 100644
+--- a/interface.ccl
++++ b/interface.ccl
+@@ -114,10 +114,10 @@ void FUNCTION Con2PrimGen(CCTK_INT INOUT handle, CCTK_REAL INOUT dens, \
+                            CCTK_INT INOUT GRHydro_reflevel, \
+                            CCTK_REAL OUT retval)
+ 
+-void FUNCTION Con2PrimGenM(CCTK_INT INOUT handle, CCTK_REAL INOUT gamma_eos, CCTK_REAL INOUT dens, \
++void FUNCTION Con2PrimGenM(CCTK_INT INOUT handle, CCTK_INT INOUT keytemp, CCTK_REAL INOUT prec, CCTK_REAL INOUT gamma_eos, CCTK_REAL INOUT dens, \
+                            CCTK_REAL INOUT sx, CCTK_REAL INOUT sy, CCTK_REAL INOUT sz, \
+                            CCTK_REAL INOUT tau, CCTK_REAL INOUT Bconsx, CCTK_REAL INOUT Bconsy, CCTK_REAL INOUT Bconsz, \
+-			   CCTK_REAL INOUT rho, \
++			   CCTK_REAL INOUT y_e, CCTK_REAL INOUT temp, CCTK_REAL INOUT rho, \
+                            CCTK_REAL INOUT velx, CCTK_REAL INOUT vely, CCTK_REAL INOUT velz, \
+                            CCTK_REAL INOUT epsilon, CCTK_REAL INOUT pressure, \
+                            CCTK_REAL INOUT Bvecx, CCTK_REAL INOUT Bvecy, CCTK_REAL INOUT Bvecz, \
+@@ -131,23 +131,6 @@ void FUNCTION Con2PrimGenM(CCTK_INT INOUT handle, CCTK_REAL INOUT gamma_eos, CCT
+                            CCTK_INT OUT epsnegative, \
+                            CCTK_REAL OUT retval)
+ 
+-#void FUNCTION Con2PrimGenM(CCTK_INT INOUT handle, CCTK_INT INOUT keytemp, CCTK_REAL INOUT prec, CCTK_REAL INOUT gamma_eos, CCTK_REAL INOUT dens, \
+-#                           CCTK_REAL INOUT sx, CCTK_REAL INOUT sy, CCTK_REAL INOUT sz, \
+-#                           CCTK_REAL INOUT tau, CCTK_REAL INOUT Bconsx, CCTK_REAL INOUT Bconsy, CCTK_REAL INOUT Bconsz, \
+-#			   CCTK_REAL INOUT y_e, CCTK_REAL INOUT temp, CCTK_REAL INOUT rho, \
+-#                           CCTK_REAL INOUT velx, CCTK_REAL INOUT vely, CCTK_REAL INOUT velz, \
+-#                           CCTK_REAL INOUT epsilon, CCTK_REAL INOUT pressure, \
+-#                           CCTK_REAL INOUT Bvecx, CCTK_REAL INOUT Bvecy, CCTK_REAL INOUT Bvecz, \
+-#                           CCTK_REAL INOUT Bvecsq, \
+-#                           CCTK_REAL INOUT w_lorentz, \
+-#                           CCTK_REAL INOUT gxx, CCTK_REAL INOUT gxy, CCTK_REAL INOUT gxz, \
+-#                           CCTK_REAL INOUT gyy, CCTK_REAL INOUT gyz, CCTK_REAL INOUT gzz, \
+-#                           CCTK_REAL INOUT uxx, CCTK_REAL INOUT uxy, CCTK_REAL INOUT uxz, \
+-#                           CCTK_REAL INOUT uyy, CCTK_REAL INOUT uyz, CCTK_REAL INOUT uzz, \
+-#                           CCTK_REAL INOUT det, \
+-#                           CCTK_INT OUT epsnegative, \
+-#                           CCTK_REAL OUT retval)
+-
+ void FUNCTION Con2PrimPolyM(CCTK_INT INOUT handle, CCTK_REAL INOUT gamma_eos, CCTK_REAL INOUT dens, \
+                            CCTK_REAL INOUT sx, CCTK_REAL INOUT sy, CCTK_REAL INOUT sz, \
+                            CCTK_REAL INOUT sc, CCTK_REAL INOUT Bconsx, CCTK_REAL INOUT Bconsy, CCTK_REAL INOUT Bconsz, \
+diff --git a/src/GRHydro_C2P2CM.F90 b/src/GRHydro_C2P2CM.F90
+index dcea38f..c167504 100644
+--- a/src/GRHydro_C2P2CM.F90
++++ b/src/GRHydro_C2P2CM.F90
+@@ -90,7 +90,7 @@ subroutine c2p2cM(CCTK_ARGUMENTS)
+   sy_send   = 0.166666658d0
+   sz_send   = 0.166666658d0
+   tau_send  = 0.484123939d0
+-  
++
+   bvcx_send   = Bx_init
+   bvcy_send   = By_init
+   bvcz_send   = Bz_init
+@@ -98,6 +98,7 @@ subroutine c2p2cM(CCTK_ARGUMENTS)
+   bconsy_send   = By_init
+   bconsz_send   = Bz_init
+ 
++  rho_send=1.0d-6
+   eps_send = 1.0d-6
+   press_send = 6.666666666666667d-7
+   w_lorentz_send = 1.0d0
+@@ -138,8 +139,8 @@ subroutine c2p2cM(CCTK_ARGUMENTS)
+   write(*,*) '   Bvecz  : ',bvcz_send
+   
+   write(*,*) 'C2P2CM test: getting the associated primitive variables.'
+-  call Con2PrimGenM(GRHydro_eos_handle,local_gam(1),dens_send,sx_send,sy_send,sz_send, &
+-       tau_send,bconsx_send,bconsy_send,bconsz_send,rho_send,velx_send,vely_send,velz_send, &
++  call Con2PrimGenM(GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,local_gam(1),dens_send,sx_send,sy_send,sz_send, &
++       tau_send,bconsx_send,bconsy_send,bconsz_send,xtemp(1),xye(1),rho_send,velx_send,vely_send,velz_send, &
+        eps_send,press_send,bvcx_send,bvcy_send,bvcz_send,b2_send,w_lorentz_send, &
+        gxx_send,gxy_send,gxz_send,gyy_send,gyz_send,gzz_send,&
+        uxx,uxy,uxz,uyy,uyz,uzz,det,&
+diff --git a/src/GRHydro_P2C2PM.F90 b/src/GRHydro_P2C2PM.F90
+index 1c1a9c7..8658cd6 100644
+--- a/src/GRHydro_P2C2PM.F90
++++ b/src/GRHydro_P2C2PM.F90
+@@ -153,9 +153,9 @@ subroutine p2c2pm(CCTK_ARGUMENTS)
+   
+   write(*,*) 'P2C2PM test: getting the associated primitive variables.'
+   
+-  call Con2PrimGenM(GRHydro_eos_handle,local_gam(1),dens_send,sx_send,sy_send,sz_send, &
++  call Con2PrimGenM(GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,local_gam(1),dens_send,sx_send,sy_send,sz_send, &
+        tau_send,bconsx_send,bconsy_send,bconsz_send,&
+-       rho_send(1),velx_send,vely_send,velz_send, &
++       xtemp(1),xye(1),rho_send(1),velx_send,vely_send,velz_send, &
+        eps_send(1),press_send(1), &      
+        bvcx_send,bvcy_send,bvcz_send,b2_send,&
+        w_lorentz_send, &
+-- 
+1.7.10.4
+

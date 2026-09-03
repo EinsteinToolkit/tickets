@@ -1,0 +1,534 @@
+From 86929832602c8f929f80265681228e8cc66b2706 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Sat, 27 Jul 2013 10:41:21 -0700
+Subject: [PATCH 03/18] EOS_Omni: re-add poly_gamma_initial
+
+---
+ param.ccl                       |   6 ++
+ src/EOS_Omni_Module.F90         |   9 +++
+ src/EOS_Omni_MultiVarCalls.F90  |  64 ++++++++++----------
+ src/EOS_Omni_SingleVarCalls.F90 | 126 ++++++++++++++++++++--------------------
+ src/EOS_Omni_Startup.F90        |  16 ++++-
+ 5 files changed, 124 insertions(+), 97 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index 4392c30..b2e3a97 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -9,6 +9,12 @@ REAL poly_gamma "Adiabatic Index for poly EOS" STEERABLE=RECOVER
+  : :: ""
+ } 2.0
+ 
++REAL poly_gamma_initial "Initial Adiabatic Index for poly EOS" STEERABLE=RECOVER
++{
++ -1   :: "use poly_gamma, ie no change in gamma during ID"
++ (0:* :: "assume that ID used this adiabiatic index"
++} -1
++
+ REAL poly_k "Polytropic constant in c=G=Msun=1"  STEERABLE=RECOVER
+ {
+  : :: ""
+diff --git a/src/EOS_Omni_Module.F90 b/src/EOS_Omni_Module.F90
+index 2855e9f..ef7472b 100644
+--- a/src/EOS_Omni_Module.F90
++++ b/src/EOS_Omni_Module.F90
+@@ -26,6 +26,12 @@ module EOS_Omni_Module
+ 
+   ! These values are set by EOS_Omni_Startup
+   real*8 :: hybrid_k2 = 0.0d0
++  real*8 :: poly_k_cgs = 0.0d0
++  real*8 :: gl_k_cgs   = 0.0d0
++ 
++  real*8 :: hybrid_k1_cgs = 0.0d0
++  real*8 :: hybrid_k2_cgs = 0.0d0
++
+ 
+   ! stuff for the cold, tabulated EOS with a gamma law
+   ! set by the reader routine
+@@ -63,4 +69,7 @@ module EOS_Omni_Module
+   real*8, allocatable :: barotropiceos_temp(:)
+   real*8, allocatable :: barotropiceos_ye(:)
+ 
++  ! actual poly_gamma_ini used when using different EOS for initial data and run
++  real*8 :: poly_gamma_ini
++
+ end module EOS_Omni_Module
+diff --git a/src/EOS_Omni_MultiVarCalls.F90 b/src/EOS_Omni_MultiVarCalls.F90
+index 5d4a67d..6c18831 100644
+--- a/src/EOS_Omni_MultiVarCalls.F90
++++ b/src/EOS_Omni_MultiVarCalls.F90
+@@ -104,7 +104,7 @@ subroutine EOS_Omni_EOS_dpderho_dpdrhoe(eoskey,keytemp,rf_precision,npoints,&
+   integer          :: i
+   character(256)   :: warnstring
+   real*8           :: hybrid_local_gamma
+-  real*8           :: hybrid_local_k
++  real*8           :: hybrid_local_k_cgs
+   real*8           :: hybrid_dp_poly,hybrid_dp_th1,hybrid_dp_th2
+   ! temporary vars for nuc_eos
+   real*8           :: xrho,xye,xtemp,xenr,xent
+@@ -119,23 +119,23 @@ subroutine EOS_Omni_EOS_dpderho_dpdrhoe(eoskey,keytemp,rf_precision,npoints,&
+      ! polytropic EOS                                                                                      
+         if(keytemp.eq.1) then
+            do i=1,npoints
+-              eps(i) = poly_k * &
+-                   rho(i)**(poly_gamma) / &
++              eps(i) = press_gf * poly_k_cgs * &
++                   (rho(i)*inv_rho_gf)**(poly_gamma) / &
+                    (poly_gamma - 1.0d0) / rho(i)
+            enddo
+         endif
+         do i=1,npoints
+-           dpdrhoe(i) = poly_k *  &
+-                poly_gamma *        &
+-                rho(i) ** (poly_gamma - 1.d0)
++           dpdrhoe(i) = press_gf * poly_k_cgs *  &
++                poly_gamma * inv_rho_gf *        &
++                (rho(i)*inv_rho_gf) ** (poly_gamma - 1.d0)
+            dpderho(i) = 0.0d0
+         enddo
+   case (2)
+      ! gamma-law EOS                                                                                       
+         if(keytemp.eq.1) then
+            do i=1,npoints
+-              eps(i) = gl_k * &
+-                   rho(i)**(gl_gamma) / &
++              eps(i) = press_gf * gl_k_cgs * &
++                   (rho(i)*inv_rho_gf)**(gl_gamma) / &
+                    (gl_gamma - 1.0d0) / rho(i)
+            enddo
+         endif
+@@ -150,23 +150,23 @@ subroutine EOS_Omni_EOS_dpderho_dpdrhoe(eoskey,keytemp,rf_precision,npoints,&
+         do i=1,npoints
+            if(rho(i).gt.hybrid_rho_nuc) then
+               hybrid_local_gamma = hybrid_gamma2
+-              hybrid_local_k = hybrid_k2
++              hybrid_local_k_cgs = hybrid_k2_cgs
+            else
+               hybrid_local_gamma = hybrid_gamma1
+-              hybrid_local_k = hybrid_k1
++              hybrid_local_k_cgs = hybrid_k1_cgs
+            endif
+-           hybrid_dp_poly = hybrid_local_gamma *                 &
+-                hybrid_local_k * rho(i)**(hybrid_local_gamma - 1.0d0)
+-                
++           hybrid_dp_poly = hybrid_local_gamma * press_gf *                 &
++                hybrid_local_k_cgs * rho(i)**(hybrid_local_gamma - 1.0d0) * &
++                inv_rho_gf**hybrid_local_gamma
+ 
+-           hybrid_dp_th1 = - hybrid_local_gamma * hybrid_local_k * &
++           hybrid_dp_th1 = - hybrid_local_gamma * press_gf * hybrid_local_k_cgs * &
+                 (hybrid_gamma_th - 1.d0) / (hybrid_local_gamma - 1.d0) *      &
+-                rho(i)**(hybrid_local_gamma - 1.d0)
++                rho(i)**(hybrid_local_gamma - 1.d0) * inv_rho_gf**hybrid_local_gamma
+ 
+            hybrid_dp_th2  = (hybrid_gamma_th - 1.d0) * eps(i)                        &
+                 - (hybrid_gamma_th - 1.d0) * (hybrid_local_gamma - hybrid_gamma1) /  &
+                 (hybrid_gamma1 - 1.d0) / (hybrid_gamma2 - 1.d0) *                    &
+-                hybrid_k1 *                &
++                press_gf * hybrid_k1_cgs * inv_rho_gf**hybrid_gamma1 *               &
+                 hybrid_rho_nuc**(hybrid_gamma1 - 1.d0)
+ 
+            dpdrhoe(i) = hybrid_dp_poly + hybrid_dp_th1 + hybrid_dp_th2
+@@ -223,7 +223,7 @@ subroutine EOS_Omni_EOS_dpderho_dpdrhoe(eoskey,keytemp,rf_precision,npoints,&
+   integer          :: i
+   character(256)   :: warnstring
+   real*8           :: hybrid_local_gamma
+-  real*8           :: hybrid_local_k
++  real*8           :: hybrid_local_k_cgs
+   real*8           :: hybrid_dp_poly,hybrid_dp_th1,hybrid_dp_th2
+   ! temporary vars for nuc_eos
+   real*8           :: xrho,xye,xtemp,xenr,xent
+@@ -239,23 +239,23 @@ subroutine EOS_Omni_EOS_dpderho_dpdrhoe(eoskey,keytemp,rf_precision,npoints,&
+      ! polytropic EOS                                                                                      
+         if(keytemp.eq.1) then
+            do i=1,npoints
+-              eps(i) = poly_k * &
+-                   rho(i)**(poly_gamma) / &
++              eps(i) = press_gf * poly_k_cgs * &
++                   (rho(i)*inv_rho_gf)**(poly_gamma) / &
+                    (poly_gamma - 1.0d0) / rho(i)
+            enddo
+         endif
+         do i=1,npoints
+            depsdpress(i) = 1.0d0/(poly_gamma - 1.0d0)/rho(i)
+-           depsdrho(i) = depsdpress(i) * poly_k *  &
+-                poly_gamma *         &
+-                rho(i) ** (poly_gamma - 1.d0)
++           depsdrho(i) = depsdpress(i) * press_gf * poly_k_cgs *  &
++                poly_gamma * inv_rho_gf *        &
++                (rho(i)*inv_rho_gf) ** (poly_gamma - 1.d0)
+         enddo
+   case (2)
+      ! gamma-law EOS                                                                                       
+         if(keytemp.eq.1) then
+            do i=1,npoints
+-              eps(i) = gl_k * &
+-                   rho(i)**(gl_gamma) / &
++              eps(i) = press_gf * gl_k_cgs * &
++                   (rho(i)*inv_rho_gf)**(gl_gamma) / &
+                    (gl_gamma - 1.0d0) / rho(i)
+            enddo
+         endif
+@@ -269,23 +269,23 @@ subroutine EOS_Omni_EOS_dpderho_dpdrhoe(eoskey,keytemp,rf_precision,npoints,&
+         do i=1,npoints
+            if(rho(i).gt.hybrid_rho_nuc) then
+               hybrid_local_gamma = hybrid_gamma2
+-              hybrid_local_k = hybrid_k2
++              hybrid_local_k_cgs = hybrid_k2_cgs
+            else
+               hybrid_local_gamma = hybrid_gamma1
+-              hybrid_local_k = hybrid_k1
++              hybrid_local_k_cgs = hybrid_k1_cgs
+            endif
+-           hybrid_dp_poly = hybrid_local_gamma *                 &
+-                hybrid_local_k * rho(i)**(hybrid_local_gamma - 1.0d0)
+-                
++           hybrid_dp_poly = hybrid_local_gamma * press_gf *                 &
++                hybrid_local_k_cgs * rho(i)**(hybrid_local_gamma - 1.0d0) * &
++                inv_rho_gf**hybrid_local_gamma
+ 
+-           hybrid_dp_th1 = - hybrid_local_gamma * hybrid_local_k * &
++           hybrid_dp_th1 = - hybrid_local_gamma * press_gf * hybrid_local_k_cgs * &
+                 (hybrid_gamma_th - 1.d0) / (hybrid_local_gamma - 1.d0) *      &
+-                rho(i)**(hybrid_local_gamma - 1.d0)
++                rho(i)**(hybrid_local_gamma - 1.d0) * inv_rho_gf**hybrid_local_gamma
+ 
+            hybrid_dp_th2  = (hybrid_gamma_th - 1.d0) * eps(i)                        &
+                 - (hybrid_gamma_th - 1.d0) * (hybrid_local_gamma - hybrid_gamma1) /  &
+                 (hybrid_gamma1 - 1.d0) / (hybrid_gamma2 - 1.d0) *                    &
+-                hybrid_k1 *               &
++                press_gf * hybrid_k1_cgs * inv_rho_gf**hybrid_gamma1 *               &
+                 hybrid_rho_nuc**(hybrid_gamma1 - 1.d0)
+ 
+            xdpdrhoe = hybrid_dp_poly + hybrid_dp_th1 + hybrid_dp_th2
+diff --git a/src/EOS_Omni_SingleVarCalls.F90 b/src/EOS_Omni_SingleVarCalls.F90
+index 85e20c6..82e3782 100644
+--- a/src/EOS_Omni_SingleVarCalls.F90
++++ b/src/EOS_Omni_SingleVarCalls.F90
+@@ -27,7 +27,7 @@ subroutine EOS_Omni_EOS_Press(eoskey,keytemp,rf_precision,npoints,&
+   ! local vars
+   integer          :: i
+   character(256)   :: warnstring
+-  real*8           :: hybrid_local_gamma, hybrid_local_k, &
++  real*8           :: hybrid_local_gamma, hybrid_local_k_cgs, &
+                       hybrid_p_poly, hybrid_p_th
+   real*8,parameter :: zero = 0.0d0
+   ! temporary vars for nuc_eos
+@@ -48,21 +48,21 @@ subroutine EOS_Omni_EOS_Press(eoskey,keytemp,rf_precision,npoints,&
+         ! polytropic EOS
+         if(keytemp.eq.1) then
+            do i=1,npoints
+-              eps(i) =  poly_k * &
+-                   rho(i)**(poly_gamma) / &
++              eps(i) = press_gf * poly_k_cgs * &
++                   (rho(i)*inv_rho_gf)**(poly_gamma) / &
+                    (poly_gamma - 1.0d0) / rho(i)
+            enddo
+         endif
+         do i=1,npoints
+-           press(i) = poly_k * &
+-                rho(i)**poly_gamma
++           press(i) = press_gf * poly_k_cgs * &
++                (rho(i)*inv_rho_gf)**poly_gamma
+         enddo
+      case (2)
+         ! gamma-law EOS
+         if(keytemp.eq.1) then
+            do i=1,npoints
+-              eps(i) = gl_k * &
+-                   rho(i)**(gl_gamma) / &
++              eps(i) = press_gf * gl_k_cgs * &
++                   (rho(i)*inv_rho_gf)**(gl_gamma) / &
+                    (gl_gamma - 1.0d0) / rho(i)
+            enddo
+         endif
+@@ -75,19 +75,19 @@ subroutine EOS_Omni_EOS_Press(eoskey,keytemp,rf_precision,npoints,&
+         do i=1,npoints
+            if(rho(i).gt.hybrid_rho_nuc) then
+               hybrid_local_gamma = hybrid_gamma2
+-              hybrid_local_k = hybrid_k2
++              hybrid_local_k_cgs = hybrid_k2_cgs
+            else
+               hybrid_local_gamma = hybrid_gamma1
+-              hybrid_local_k = hybrid_k1
++              hybrid_local_k_cgs = hybrid_k1_cgs
+            endif
+-           hybrid_p_poly = hybrid_local_k * &
+-                     rho(i)**hybrid_local_gamma
+-           hybrid_p_th = - hybrid_local_k * (hybrid_gamma_th - 1.d0) /      &
+-                (hybrid_local_gamma - 1.0d0) * rho(i)**hybrid_local_gamma + &
++           hybrid_p_poly = press_gf * hybrid_local_k_cgs * &
++                     (rho(i) * inv_rho_gf)**hybrid_local_gamma
++           hybrid_p_th = - press_gf * hybrid_local_k_cgs * (hybrid_gamma_th - 1.d0) /      &
++                (hybrid_local_gamma - 1.0d0) * (rho(i) * inv_rho_gf)**hybrid_local_gamma + &
+                 (hybrid_gamma_th - 1.0d0) * rho(i) * eps(i) -                              &
+                 (hybrid_gamma_th - 1.d0) * (hybrid_local_gamma - hybrid_gamma1) /          &
+                 (hybrid_gamma1 - 1.d0) / (hybrid_gamma2 - 1.d0) *                          &
+-                hybrid_k1 *                     &
++                press_gf * hybrid_k1_cgs * inv_rho_gf**hybrid_gamma1 *                     &
+                 hybrid_rho_nuc**(hybrid_gamma1 - 1.d0) * rho(i)
+            hybrid_p_th = max(zero, hybrid_p_th)
+            press(i) = hybrid_p_poly + hybrid_p_th
+@@ -225,7 +225,7 @@ subroutine EOS_Omni_EOS_PressOMP(eoskey,keytemp,rf_precision,npoints,&
+   ! local vars
+   integer          :: i
+   character(256)   :: warnstring
+-  real*8           :: hybrid_local_gamma, hybrid_local_k, &
++  real*8           :: hybrid_local_gamma,  hybrid_local_k_cgs, &
+                       hybrid_p_poly, hybrid_p_th
+   real*8,parameter :: zero = 0.0d0
+   ! temporary vars for nuc_eos
+@@ -247,16 +247,16 @@ subroutine EOS_Omni_EOS_PressOMP(eoskey,keytemp,rf_precision,npoints,&
+         if(keytemp.eq.1) then
+            !$OMP PARALLEL DO
+            do i=1,npoints
+-              eps(i) =  poly_k * &
+-                   rho(i)**(poly_gamma) / &
++              eps(i) = press_gf * poly_k_cgs * &
++                   (rho(i)*inv_rho_gf)**(poly_gamma) / &
+                    (poly_gamma - 1.0d0) / rho(i)
+            enddo
+            !$OMP END PARALLEL DO
+         endif
+         !$OMP PARALLEL DO
+         do i=1,npoints
+-           press(i) = poly_k * &
+-                rho(i)**poly_gamma
++           press(i) = press_gf * poly_k_cgs * &
++                (rho(i)*inv_rho_gf)**poly_gamma
+         enddo
+         !$OMP END PARALLEL DO
+      case (2)
+@@ -264,8 +264,8 @@ subroutine EOS_Omni_EOS_PressOMP(eoskey,keytemp,rf_precision,npoints,&
+         if(keytemp.eq.1) then
+            !$OMP PARALLEL DO
+            do i=1,npoints
+-              eps(i) = gl_k * &
+-                   rho(i)**(gl_gamma) / &
++              eps(i) = press_gf * gl_k_cgs * &
++                   (rho(i)*inv_rho_gf)**(gl_gamma) / &
+                    (gl_gamma - 1.0d0) / rho(i)
+            enddo
+            !$OMP END PARALLEL DO
+@@ -278,24 +278,24 @@ subroutine EOS_Omni_EOS_PressOMP(eoskey,keytemp,rf_precision,npoints,&
+ 
+      case (3)
+         ! hybrid EOS
+-        !$OMP PARALLEL DO PRIVATE(hybrid_local_gamma,hybrid_local_k,&
++        !$OMP PARALLEL DO PRIVATE(hybrid_local_gamma,hybrid_local_k_cgs,&
+         !$OMP                     hybrid_p_poly, hybrid_p_th)                          
+         do i=1,npoints
+            if(rho(i).gt.hybrid_rho_nuc) then
+               hybrid_local_gamma = hybrid_gamma2
+-              hybrid_local_k = hybrid_k2
++              hybrid_local_k_cgs = hybrid_k2_cgs
+            else
+               hybrid_local_gamma = hybrid_gamma1
+-              hybrid_local_k = hybrid_k1
++              hybrid_local_k_cgs = hybrid_k1_cgs
+            endif
+-           hybrid_p_poly = hybrid_local_k * &
+-                     rho(i)**hybrid_local_gamma
+-           hybrid_p_th = - hybrid_local_k * (hybrid_gamma_th - 1.d0) /      &
+-                (hybrid_local_gamma - 1.0d0) * rho(i)**hybrid_local_gamma + &
++           hybrid_p_poly = press_gf * hybrid_local_k_cgs * &
++                     (rho(i) * inv_rho_gf)**hybrid_local_gamma
++           hybrid_p_th = - press_gf * hybrid_local_k_cgs * (hybrid_gamma_th - 1.d0) /      &
++                (hybrid_local_gamma - 1.0d0) * (rho(i) * inv_rho_gf)**hybrid_local_gamma + &
+                 (hybrid_gamma_th - 1.0d0) * rho(i) * eps(i) -                              &
+                 (hybrid_gamma_th - 1.d0) * (hybrid_local_gamma - hybrid_gamma1) /          &
+                 (hybrid_gamma1 - 1.d0) / (hybrid_gamma2 - 1.d0) *                          &
+-                hybrid_k1 *                     &
++                press_gf * hybrid_k1_cgs * inv_rho_gf**hybrid_gamma1 *                     &
+                 hybrid_rho_nuc**(hybrid_gamma1 - 1.d0) * rho(i)
+            hybrid_p_th = max(zero, hybrid_p_th)
+            press(i) = hybrid_p_poly + hybrid_p_th
+@@ -448,7 +448,7 @@ subroutine EOS_Omni_EOS_DPressByDRho(eoskey,keytemp,rf_precision,npoints,&
+   ! local vars
+   integer          :: i
+   character(256)   :: warnstring
+-  real*8           :: hybrid_local_gamma, hybrid_local_k, &
++  real*8           :: hybrid_local_gamma, hybrid_local_k_cgs, &
+                       hybrid_dp_poly, hybrid_dp_th1, hybrid_dp_th2
+   real*8,parameter :: zero = 0.0d0
+   ! temporary vars for nuc_eos
+@@ -469,22 +469,22 @@ subroutine EOS_Omni_EOS_DPressByDRho(eoskey,keytemp,rf_precision,npoints,&
+         ! polytropic EOS
+         if(keytemp.eq.1) then
+            do i=1,npoints
+-              eps(i) = poly_k * &
+-                   rho(i)**(poly_gamma) / &
++              eps(i) = press_gf * poly_k_cgs * &
++                   (rho(i)*inv_rho_gf)**(poly_gamma) / &
+                    (poly_gamma - 1.0d0) / rho(i)
+            enddo
+         endif
+         do i=1,npoints
+-           dpdrhoe(i) = poly_k *  &
+-                poly_gamma *         & 
+-                rho(i) ** (poly_gamma - 1.d0)
++           dpdrhoe(i) = press_gf * poly_k_cgs *  &
++                poly_gamma * inv_rho_gf *        & 
++                (rho(i)*inv_rho_gf) ** (poly_gamma - 1.d0)
+         enddo
+      case (2)
+         ! gamma-law EOS
+         if(keytemp.eq.1) then
+            do i=1,npoints
+-              eps(i) = gl_k * &
+-                   rho(i)**(gl_gamma) / &
++              eps(i) = press_gf * gl_k_cgs * &
++                   (rho(i)*inv_rho_gf)**(gl_gamma) / &
+                    (gl_gamma - 1.0d0) / rho(i)
+            enddo
+         endif
+@@ -497,23 +497,23 @@ subroutine EOS_Omni_EOS_DPressByDRho(eoskey,keytemp,rf_precision,npoints,&
+         do i=1,npoints
+            if(rho(i).gt.hybrid_rho_nuc) then
+               hybrid_local_gamma = hybrid_gamma2
+-              hybrid_local_k = hybrid_k2
++              hybrid_local_k_cgs = hybrid_k2_cgs
+            else
+               hybrid_local_gamma = hybrid_gamma1
+-              hybrid_local_k = hybrid_k1
++              hybrid_local_k_cgs = hybrid_k1_cgs
+            endif
+-           hybrid_dp_poly = hybrid_local_gamma *                 &
+-                hybrid_local_k * rho(i)**(hybrid_local_gamma - 1.0d0)
+-                
++           hybrid_dp_poly = hybrid_local_gamma * press_gf *                 &
++                hybrid_local_k_cgs * rho(i)**(hybrid_local_gamma - 1.0d0) * &
++                inv_rho_gf**hybrid_local_gamma
+ 
+-           hybrid_dp_th1 = - hybrid_local_gamma * hybrid_local_k * &
++           hybrid_dp_th1 = - hybrid_local_gamma * press_gf * hybrid_local_k_cgs * &
+                 (hybrid_gamma_th - 1.d0) / (hybrid_local_gamma - 1.d0) *      &
+-                rho(i)**(hybrid_local_gamma - 1.d0) 
++                rho(i)**(hybrid_local_gamma - 1.d0) * inv_rho_gf**hybrid_local_gamma
+ 
+            hybrid_dp_th2  = (hybrid_gamma_th - 1.d0) * eps(i)                        &
+                 - (hybrid_gamma_th - 1.d0) * (hybrid_local_gamma - hybrid_gamma1) /  &
+                 (hybrid_gamma1 - 1.d0) / (hybrid_gamma2 - 1.d0) *                    &
+-                hybrid_k1 *               &
++                press_gf * hybrid_k1_cgs * inv_rho_gf**hybrid_gamma1 *               &
+                 hybrid_rho_nuc**(hybrid_gamma1 - 1.d0)
+ 
+            dpdrhoe(i) = hybrid_dp_poly + max(0.0d0,hybrid_dp_th1 + hybrid_dp_th2)
+@@ -632,8 +632,8 @@ subroutine EOS_Omni_EOS_DPressByDEps(eoskey,keytemp,rf_precision,npoints,&
+         ! polytropic EOS
+         if(keytemp.eq.1) then
+            do i=1,npoints
+-              eps(i) = poly_k * &
+-                   rho(i)**(poly_gamma) / &
++              eps(i) = press_gf * poly_k_cgs * &
++                   (rho(i)*inv_rho_gf)**(poly_gamma) / &
+                    (poly_gamma - 1.0d0) / rho(i)
+            enddo
+         endif
+@@ -644,8 +644,8 @@ subroutine EOS_Omni_EOS_DPressByDEps(eoskey,keytemp,rf_precision,npoints,&
+         ! gamma-law EOS
+         if(keytemp.eq.1) then
+            do i=1,npoints
+-              eps(i) = gl_k * &
+-                   rho(i)**(gl_gamma) / &
++              eps(i) = press_gf * gl_k_cgs * &
++                   (rho(i)*inv_rho_gf)**(gl_gamma) / &
+                    (gl_gamma - 1.0d0) / rho(i)
+            enddo
+         endif
+@@ -741,7 +741,7 @@ subroutine EOS_Omni_EOS_cs2(eoskey,keytemp,rf_precision,npoints,&
+   integer          :: i
+   character(256)   :: warnstring
+   real*8           :: xpress,xdpdrhoe,xdpderho
+-  real*8           :: hybrid_local_gamma, hybrid_local_k, &
++  real*8           :: hybrid_local_gamma, hybrid_local_k_cgs, &
+                       hybrid_p_poly, hybrid_p_th
+   real*8,parameter :: zero = 0.0d0
+   ! temporary vars for nuc_eos
+@@ -762,14 +762,14 @@ subroutine EOS_Omni_EOS_cs2(eoskey,keytemp,rf_precision,npoints,&
+         ! polytropic EOS
+         if(keytemp.eq.1) then
+            do i=1,npoints
+-              eps(i) = poly_k * &
+-                   rho(i)**(poly_gamma) / &
++              eps(i) = press_gf * poly_k_cgs * &
++                   (rho(i)*inv_rho_gf)**(poly_gamma) / &
+                    (poly_gamma - 1.0d0) / rho(i)
+            enddo
+         endif
+         do i=1,npoints
+-           xpress = poly_k * &
+-                rho(i)**(poly_gamma)
++           xpress = press_gf*poly_k_cgs * &
++                (rho(i)*inv_rho_gf)**(poly_gamma)
+            cs2(i) = poly_gamma * xpress / rho(i) / &
+                 (1 + eps(i) + xpress/rho(i))
+         enddo
+@@ -777,8 +777,8 @@ subroutine EOS_Omni_EOS_cs2(eoskey,keytemp,rf_precision,npoints,&
+         ! gamma-law EOS
+         if(keytemp.eq.1) then
+            do i=1,npoints
+-              eps(i) = gl_k * &
+-                   rho(i)**(gl_gamma) / &
++              eps(i) = press_gf * gl_k_cgs * &
++                   (rho(i)*inv_rho_gf)**(gl_gamma) / &
+                    (gl_gamma - 1.0d0) / rho(i)
+            enddo
+         endif
+@@ -794,20 +794,20 @@ subroutine EOS_Omni_EOS_cs2(eoskey,keytemp,rf_precision,npoints,&
+         do i=1,npoints
+            if(rho(i).gt.hybrid_rho_nuc) then
+               hybrid_local_gamma = hybrid_gamma2
+-              hybrid_local_k = hybrid_k2
++              hybrid_local_k_cgs = hybrid_k2_cgs
+                  else
+               hybrid_local_gamma = hybrid_gamma1
+-              hybrid_local_k = hybrid_k1
++              hybrid_local_k_cgs = hybrid_k1_cgs
+            endif
+            ! first calculate the pressure
+-           hybrid_p_poly = hybrid_local_k * &
+-                     rho(i)**hybrid_local_gamma
+-           hybrid_p_th = - hybrid_local_k * (hybrid_gamma_th - 1.d0) /      &
+-                (hybrid_local_gamma - 1.0d0) * rho(i)**hybrid_local_gamma + &
++           hybrid_p_poly = press_gf * hybrid_local_k_cgs * &
++                     (rho(i) * inv_rho_gf)**hybrid_local_gamma
++           hybrid_p_th = - press_gf * hybrid_local_k_cgs * (hybrid_gamma_th - 1.d0) /      &
++                (hybrid_local_gamma - 1.0d0) * (rho(i) * inv_rho_gf)**hybrid_local_gamma + &
+                 (hybrid_gamma_th - 1.0d0) * rho(i) * eps(i) -                              &
+                 (hybrid_gamma_th - 1.d0) * (hybrid_local_gamma - hybrid_gamma1) /          &
+                 (hybrid_gamma1 - 1.d0) / (hybrid_gamma2 - 1.d0) *                          &
+-                hybrid_k1 *                     &
++                press_gf * hybrid_k1_cgs * inv_rho_gf**hybrid_gamma1 *                     &
+                 hybrid_rho_nuc**(hybrid_gamma1 - 1.d0) * rho(i)
+            hybrid_p_th = max(zero, hybrid_p_th)
+            xpress = hybrid_p_poly + hybrid_p_th 
+diff --git a/src/EOS_Omni_Startup.F90 b/src/EOS_Omni_Startup.F90
+index 2995393..1c11d75 100644
+--- a/src/EOS_Omni_Startup.F90
++++ b/src/EOS_Omni_Startup.F90
+@@ -11,7 +11,19 @@ subroutine EOS_Omni_Startup(CCTK_ARGUMENTS)
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_ARGUMENTS
+ 
+-  hybrid_k2 = hybrid_k1 * &
+-       hybrid_rho_nuc**(hybrid_gamma1-hybrid_gamma2)
++  if(poly_gamma_initial .gt. 0d0) then
++    poly_gamma_ini = poly_gamma_initial
++  else
++    poly_gamma_ini = poly_gamma
++  end if
++
++  poly_k_cgs = poly_k * rho_gf**poly_gamma_ini / press_gf
++
++  gl_k_cgs   = gl_k * rho_gf**poly_gamma_ini / press_gf
++
++  hybrid_k1_cgs = hybrid_k1 * rho_gf**poly_gamma_ini / press_gf
++
++  hybrid_k2_cgs = hybrid_k1_cgs * &
++       (hybrid_rho_nuc * inv_rho_gf)**(hybrid_gamma1-hybrid_gamma2)
+ 
+ end subroutine EOS_Omni_Startup
+-- 
+1.8.5.3
+

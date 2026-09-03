@@ -1,0 +1,55 @@
+#!/bin/sh
+
+echo "Preparing:"
+set -x                          # Output commands
+set -e                          # Abort on errors
+
+cd @RUNDIR@-active
+
+echo "Checking:"
+pwd
+hostname
+date
+
+echo "Environment:"
+export CACTUS_NUM_PROCS=@NUM_PROCS@
+export CACTUS_NUM_THREADS=@NUM_THREADS@
+###export GMON_OUT_PREFIX=gmon.out
+export OMP_NUM_THREADS=@NUM_THREADS@
+
+export OMP_PROC_BIND=true
+export OMP_WAIT_POLICY=active
+export I_MPI_PIN_DOMAIN=omp
+
+env | sort > SIMFACTORY/ENVIRONMENT
+
+
+export KMP_AFFINITY=compact
+
+export MPIDIR=/gpfs/apps/MN5/ACC/ONEAPI/2023.2.0/mpi/2021.10.0/bin/
+
+echo "Starting:"
+export CACTUS_STARTTIME=$(date +%s)
+
+echo "Job setup:"
+echo "   Allocated:"
+echo "      Nodes:                      @NODES@"
+echo "      Cores per node:             @PPN@"
+echo "      Wall time:                  @WALLTIME@"
+echo "   Running:"
+echo "      Procs Requested:            @PROCS_REQUESTED@"
+echo "      Node Procs Requested:       @NODE_PROCS@"
+echo "      MPI processes:              @NUM_PROCS@"
+echo "      OpenMP threads per process: @NUM_THREADS@"
+echo "      MPI processes per node:     @(1.0*@NUM_PROCS@/@NODES@)@"
+echo "      OpenMP threads per core:    @(1.0*(@NUM_PROCS@*@NUM_THREADS@)/(@NODES@*@PPN@))@"
+echo "      OpenMP threads per node:    @PPN_USED@"
+
+if [ @RUNDEBUG@ -eq 0 ]
+then
+   time /usr/bin/srun  -q acc_debug -A ice69 -t @WALLTIME@  -N @NODES@ -n @NUM_PROCS@ @EXECUTABLE@ -L 3 @PARFILE@  
+fi
+
+echo "Stopping:"
+date
+echo "Done."

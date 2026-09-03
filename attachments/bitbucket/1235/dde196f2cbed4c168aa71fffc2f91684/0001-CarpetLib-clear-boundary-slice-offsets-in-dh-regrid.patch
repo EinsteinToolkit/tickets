@@ -1,0 +1,26 @@
+From 8d1cd0dcf0757cd0557347170837786cab0e27b1 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Wed, 2 Jan 2013 15:04:33 -0800
+Subject: [PATCH] CarpetLib: clear boundary slice offsets in dh::regrid()
+
+this avoids assert() failures when regrid is called on a level that did
+not change it seems.
+---
+ Carpet/CarpetLib/src/dh.cc |    1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/Carpet/CarpetLib/src/dh.cc b/Carpet/CarpetLib/src/dh.cc
+index 8b5f779..9a0c072 100644
+--- a/Carpet/CarpetLib/src/dh.cc
++++ b/Carpet/CarpetLib/src/dh.cc
+@@ -284,6 +284,7 @@ regrid (bool const do_init)
+   full_mboxes full_boxes;
+   
+   fast_boxes.clear();
++  local_boxes.clear();
+   
+   
+   
+-- 
+1.7.10.4
+

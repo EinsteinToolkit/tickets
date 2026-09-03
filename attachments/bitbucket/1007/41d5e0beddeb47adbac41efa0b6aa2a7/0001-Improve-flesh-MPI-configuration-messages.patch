@@ -1,0 +1,35 @@
+From fa5488188bbf44ae5d97a8cda40ea7946f1dc5a5 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Fri, 3 Aug 2012 12:05:09 +0200
+Subject: [PATCH] Improve flesh MPI configuration messages
+
+Avoid confusion now that the flesh MPI support is deprecated.
+---
+ lib/make/extras/MPI/setup.sh |    5 +++--
+ 1 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/lib/make/extras/MPI/setup.sh b/lib/make/extras/MPI/setup.sh
+index 174b535..13dfb10 100755
+--- a/lib/make/extras/MPI/setup.sh
++++ b/lib/make/extras/MPI/setup.sh
+@@ -11,7 +11,8 @@
+ 
+ if test -n "$MPI" -a "$MPI" != 'none' ; then
+ 
+-echo 'Configuring with MPI'
++echo 'Configuring with flesh MPI'
++echo 'Warning: use of flesh MPI via MPI option is deprecated and should be replaced with the thorn ExternalLibraries/MPI and its MPI_DIR option'
+ 
+ # Work out which variation of MPI is installed
+ 
+@@ -41,6 +42,6 @@ CCTK_WriteLine make.extra.defn 'SYS_INC_DIRS += $(MPI_INC_DIRS)'
+ 
+ else
+ 
+-echo 'Configuring without MPI'
++echo 'Configuring without flesh MPI support (MPI may be provided by a thorn)'
+ 
+ fi
+-- 
+1.7.5.4
+

@@ -1,0 +1,61 @@
+Index: HDF5.sh
+===================================================================
+--- HDF5.sh	(revision 20)
++++ HDF5.sh	(working copy)
+@@ -57,29 +57,14 @@
+     echo "END MESSAGE"
+     
+     # Set locations
++    THORN=HDF5
+     NAME=hdf5-1.8.5-patch1
+     SRCDIR=$(dirname $0)
+-    BUILD_DIR=${SCRATCH_BUILD}/build/${NAME}
+-    INSTALL_DIR=${SCRATCH_BUILD}/external/${NAME}
+-    DONE_FILE=${SCRATCH_BUILD}/done/${NAME}
++    BUILD_DIR=${SCRATCH_BUILD}/build/${THORN}
++    INSTALL_DIR=${SCRATCH_BUILD}/external/${THORN}
++    DONE_FILE=${SCRATCH_BUILD}/done/${THORN}
+     HDF5_DIR=${INSTALL_DIR}
+     
+-    # Set up environment
+-    if [ "${F90}" = "none" ]; then
+-        echo 'BEGIN MESSAGE'
+-        echo 'No Fortran 90 compiler available. Building HDF5 library without Fortran support.'
+-        echo 'END MESSAGE'
+-        unset FC
+-        unset FCFLAGS
+-    else
+-        export FC="${F90}"
+-        export FCFLAGS="${F90FLAGS}"
+-    fi
+-    unset LIBS
+-    if echo '' ${ARFLAGS} | grep 64 > /dev/null 2>&1; then
+-        export OBJECT_MODE=64
+-    fi
+-    
+ (
+     exec >&2                    # Redirect stdout to stderr
+     set -x                      # Output commands
+@@ -97,6 +82,22 @@
+         # Should we use gtar or tar?
+         TAR=$(gtar --help > /dev/null 2> /dev/null && echo gtar || echo tar)
+         
++        # Set up environment
++        if [ "${F90}" = "none" ]; then
++            echo 'BEGIN MESSAGE'
++            echo 'No Fortran 90 compiler available. Building HDF5 library without Fortran support.'
++            echo 'END MESSAGE'
++            unset FC
++            unset FCFLAGS
++        else
++            export FC="${F90}"
++            export FCFLAGS="${F90FLAGS}"
++        fi
++        unset LIBS
++        if echo '' ${ARFLAGS} | grep 64 > /dev/null 2>&1; then
++            export OBJECT_MODE=64
++        fi
++        
+         echo "HDF5: Preparing directory structure..."
+         mkdir build external done 2> /dev/null || true
+         rm -rf ${BUILD_DIR} ${INSTALL_DIR}

@@ -1,0 +1,27 @@
+Index: lib/make/aclocal.m4
+===================================================================
+--- lib/make/aclocal.m4	(revision 4713)
++++ lib/make/aclocal.m4	(working copy)
+@@ -462,7 +462,8 @@
+ done
+ ])
+ case "$cctk_cv_c_inline" in
+-  inline | yes) ;;
++  inline | yes)
++      AC_DEFINE(HAVE_CCTK_C_INLINE, 1) ;;
+   no) AC_DEFINE(inline, ) ;;
+   *)  AC_DEFINE_UNQUOTED(inline, $cctk_cv_c_inline)
+       AC_DEFINE(HAVE_CCTK_C_INLINE, 1) ;;
+Index: src/include/cctk.h
+===================================================================
+--- src/include/cctk.h	(revision 4713)
++++ src/include/cctk.h	(working copy)
+@@ -177,7 +177,7 @@
+ #ifdef __cplusplus
+ #define HAVE_INLINE
+ #else
+-#ifndef inline
++#ifdef HAVE_CCTK_C_INLINE
+ #define HAVE_INLINE
+ #endif
+ #endif

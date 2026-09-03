@@ -1,0 +1,89 @@
+From a3b10b5039f7a5deda6bab1831ca192cddb1fb81 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Thu, 9 May 2013 00:58:35 -0700
+Subject: [PATCH 11/12] GRHydro: avoid implict save for ierr in boundary
+ registration
+
+---
+ src/GRHydro_Boundaries.F90 |   16 +++++++++++-----
+ 1 file changed, 11 insertions(+), 5 deletions(-)
+
+diff --git a/src/GRHydro_Boundaries.F90 b/src/GRHydro_Boundaries.F90
+index 0f6db02..6a3ed60 100644
+--- a/src/GRHydro_Boundaries.F90
++++ b/src/GRHydro_Boundaries.F90
+@@ -40,9 +40,10 @@ subroutine GRHydro_InitSymBound(CCTK_ARGUMENTS)
+   DECLARE_CCTK_FUNCTIONS
+ 
+   integer, dimension(3) :: sym
+-  integer :: ierr = 0
++  integer :: ierr
+   CCTK_INT :: GRHydro_UseGeneralCoordinates, general_coordinates
+ 
++  ierr = 0
+   sym(1) = 1
+   sym(2) = 1
+   sym(3) = 1
+@@ -173,12 +174,14 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+   DECLARE_CCTK_FUNCTIONS
+   
+   integer, dimension(3) :: sw
+-  integer :: ierr = 0
++  integer :: ierr
+   CCTK_INT :: GRHydro_UseGeneralCoordinates, general_coordinates
+ 
+   CCTK_INT, parameter :: faces=CCTK_ALL_FACES
+   CCTK_INT, parameter :: ione=1
+   
++  ierr = 0 
++
+   sw = GRHydro_stencil
+ 
+   general_coordinates = GRHydro_UseGeneralCoordinates(cctkGH)
+@@ -375,12 +378,13 @@ subroutine GRHydro_SelectPrimitiveInitialGuessesBoundaries(CCTK_ARGUMENTS)
+   DECLARE_CCTK_FUNCTIONS
+   
+   integer, dimension(3) :: sw
+-  integer :: ierr = 0
++  integer :: ierr
+   CCTK_INT :: GRHydro_UseGeneralCoordinates, general_coordinates
+ 
+   CCTK_INT, parameter :: faces=CCTK_ALL_FACES
+   CCTK_INT, parameter :: ione=1
+   
++  ierr = 0
+   sw = GRHydro_stencil
+ 
+   general_coordinates = GRHydro_UseGeneralCoordinates(cctkGH)
+@@ -513,12 +517,13 @@ subroutine GRHydro_SelectPrimitiveBoundaries(CCTK_ARGUMENTS)
+   DECLARE_CCTK_FUNCTIONS
+   
+   integer, dimension(3) :: sw
+-  integer :: ierr = 0
++  integer :: ierr
+   CCTK_INT :: GRHydro_UseGeneralCoordinates, general_coordinates
+ 
+   CCTK_INT, parameter :: faces=CCTK_ALL_FACES
+   CCTK_INT, parameter :: ione=1
+   
++  ierr = 0
+   sw = GRHydro_stencil
+ 
+   general_coordinates = GRHydro_UseGeneralCoordinates(cctkGH)
+@@ -648,11 +653,12 @@ subroutine GRHydro_SelectAtmosphereMaskBoundaries(CCTK_ARGUMENTS)
+   DECLARE_CCTK_FUNCTIONS
+   
+   integer, dimension(3) :: sw
+-  integer :: ierr = 0
++  integer :: ierr
+ 
+   CCTK_INT, parameter :: faces=CCTK_ALL_FACES
+   CCTK_INT, parameter :: ione=1
+   
++  ierr = 0
+   sw = GRHydro_stencil
+ 
+ 
+-- 
+1.7.10.4
+

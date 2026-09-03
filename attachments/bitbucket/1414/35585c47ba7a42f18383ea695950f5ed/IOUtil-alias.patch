@@ -1,0 +1,132 @@
+Index: src/CheckpointRecovery.c
+===================================================================
+--- src/CheckpointRecovery.c	(revision 303)
++++ src/CheckpointRecovery.c	(working copy)
+@@ -426,8 +426,12 @@
+ 
+   if (CCTK_NumVars () > 0)
+   {
++    void *calldata[2];
+     myGH->do_inVars = calloc (CCTK_NumVars (), sizeof (CCTK_INT));
+-    if (CCTK_TraverseString (in_vars, SetInputFlag, myGH->do_inVars,
++    myGH->alias = calloc (CCTK_NumVars (), sizeof (char *));
++    calldata[0] = myGH->do_inVars;
++    calldata[1] = myGH->alias;
++    if (CCTK_TraverseString (in_vars, SetInputFlag, calldata,
+                              CCTK_GROUP_OR_VAR) < 0)
+     {
+       CCTK_WARN (myGH->stop_on_parse_errors ? 0 : 1,
+@@ -437,6 +441,7 @@
+   else
+   {
+     myGH->do_inVars = NULL;
++    myGH->alias = NULL;
+   }
+ 
+   num_recovered_vars = 0;
+@@ -492,6 +497,18 @@
+     myGH->do_inVars = NULL;
+   }
+ 
++  if (myGH->alias)
++  {
++    const int numVars = CCTK_NumVars ();
++    for (int i = 0; i < numVars; i++)
++    {
++      if (myGH->alias[i])
++        free ((void*)myGH->alias[i]);
++    }
++    free (myGH->alias);
++    myGH->alias = NULL;
++  }
++
+   return (num_recovered_vars);
+ }
+ 
+@@ -1085,17 +1102,22 @@
+ 
+ /* callback for CCTK_TraverseString() to set the input flag
+    for the given variable */
+-static void SetInputFlag (int vindex, const char *optstring, void *flags)
++static void SetInputFlag (int vindex, const char *optstring, void *calldata)
+ {
+   int table, iterator;
+   char key[128];
+   CCTK_INT type, nelems;
+-  CCTK_INT *do_inVars = (CCTK_INT *) flags;
++  void **flags = (void**)calldata;
++  CCTK_INT *do_inVars = (CCTK_INT *) flags[0];
++  const char **alias = (const char **) flags[1];
+ 
+ 
+   /* default -1 is to read the last iteration number from the file */
+   do_inVars[vindex] = -1;
+ 
++  /* default is NULL to use CCTK_FullName() */
++  alias[vindex] = NULL;
++
+   if (optstring)
+   {
+     table = Util_TableCreateFromString (optstring);
+@@ -1124,6 +1146,36 @@
+         Util_TableDeleteKey (table, "cctk_iteration");
+       }
+ 
++      if (Util_TableQueryValueInfo (table, &type, &nelems, "alias") >0)
++      {
++        if (type == CCTK_VARIABLE_CHAR)
++        {
++          char *buf = malloc(nelems+1);
++          if (! (buf))
++          {
++            CCTK_VError (__LINE__, __FILE__,"IOUtil",
++                         "Could not allocate %d bytes", nelems+1);
++          }
++          int len = Util_TableGetString (table, nelems+1, buf, "alias");
++          if (len != nelems)
++          {
++            CCTK_VError (__LINE__, __FILE__,"IOUtil",
++                         "Unexpected length %d of 'alias' option value in '%s'. Expected length %d.",
++                         len, optstring, nelems);
++          }
++
++          alias[vindex] = buf;
++        }
++        else
++        {
++          CCTK_VWarn (1, __LINE__, __FILE__, CCTK_THORNSTRING,
++                      "Invalid value for option 'alias' in option "
++                      "string '%s' (must be a string)", optstring);
++          CCTK_WARN (1, "Option will be ignored by file reader routines");
++        }
++        Util_TableDeleteKey (table, "alias");
++      }
++
+       /* warn about other options */
+       for (iterator = Util_TableItCreate (table);
+            Util_TableItQueryIsNonNull (iterator) > 0 &&
+Index: src/ioGH.h
+===================================================================
+--- src/ioGH.h	(revision 303)
++++ src/ioGH.h	(working copy)
+@@ -16,7 +16,11 @@
+ {
+ #endif
+ 
++/* advertise that this is the new version of this API, which has 'alias'
++ * members in the grid extension */
++#define IOUTIL_IOGH_HAS_ALIAS 1
+ 
++
+ /* IOUtil's GH extension structure */
+ typedef struct
+ {
+@@ -36,6 +40,8 @@
+   CCTK_INT *do_inVars;   /* flags indicating to read in variable i with
+                             iteration number do_inVars[i] (or -1 to read
+                             the last iteration */
++  const char **alias;    /* name under which a variable appears in data files.
++                            If NULL, use CCTK_FullName() */
+ } ioGH;
+ 
+ 

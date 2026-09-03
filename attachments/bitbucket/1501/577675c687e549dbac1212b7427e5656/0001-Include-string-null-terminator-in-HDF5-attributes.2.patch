@@ -1,0 +1,66 @@
+From 68ba0010e053cfb1112732821c2d6731f3dc1645 Mon Sep 17 00:00:00 2001
+From: Barry Wardell <barry.wardell@gmail.com>
+Date: Mon, 9 Dec 2013 13:27:29 -0500
+Subject: [PATCH] Include string null terminator in HDF5 attributes
+
+Up to now, the "name" attribute was stored as a string, excluding the null
+terminator. This meant that when the attributed was read back, it could not
+be treated as a standard C string since it was missing the null terminator.
+
+Since strlen returns the length of the string excluding the null terminator,
+we must add one additional space for the null-terminator character when
+creating the attribute.
+---
+ Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc     | 2 +-
+ Carpet/CarpetIOHDF5/src/Output.cc           | 2 +-
+ Carpet/CarpetIOHDF5/src/util/hdf5_slicer.cc | 7 +++++--
+ 3 files changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc b/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
+index 09a953c..4a4b92e 100644
+--- a/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
++++ b/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
+@@ -1464,7 +1464,7 @@ static int WriteAttribute (hid_t const group,
+   int error_count = 0;
+   
+   HDF5_ERROR (datatype = H5Tcopy (H5T_C_S1));
+-  HDF5_ERROR (H5Tset_size (datatype, strlen (svalue)));
++  HDF5_ERROR (H5Tset_size (datatype, strlen (svalue) + 1));
+   HDF5_ERROR (dataspace = H5Screate (H5S_SCALAR));
+   HDF5_ERROR (attribute = H5Acreate (group, name, datatype,
+                                      dataspace, H5P_DEFAULT));
+diff --git a/Carpet/CarpetIOHDF5/src/Output.cc b/Carpet/CarpetIOHDF5/src/Output.cc
+index 5a8a8a0..0559b34 100644
+--- a/Carpet/CarpetIOHDF5/src/Output.cc
++++ b/Carpet/CarpetIOHDF5/src/Output.cc
+@@ -739,7 +739,7 @@ static int AddAttributes (const cGH *const cctkGH, const char *fullname,
+   HDF5_ERROR (H5Aclose (attr));
+ 
+   HDF5_ERROR (datatype = H5Tcopy (H5T_C_S1));
+-  HDF5_ERROR (H5Tset_size (datatype, strlen (fullname)));
++  HDF5_ERROR (H5Tset_size (datatype, strlen (fullname) + 1));
+   HDF5_ERROR (attr = H5Acreate (dataset, "name", datatype,
+                                 dataspace, H5P_DEFAULT));
+   HDF5_ERROR (H5Awrite (attr, datatype, fullname));
+diff --git a/Carpet/CarpetIOHDF5/src/util/hdf5_slicer.cc b/Carpet/CarpetIOHDF5/src/util/hdf5_slicer.cc
+index e63217e..3083855 100644
+--- a/Carpet/CarpetIOHDF5/src/util/hdf5_slicer.cc
++++ b/Carpet/CarpetIOHDF5/src/util/hdf5_slicer.cc
+@@ -315,9 +315,12 @@ static herr_t ProcessDataset (hid_t group, const char *datasetname, void *_file)
+   CHECK_HDF5 (attr = H5Aopen_name (dataset, "name"));
+   hid_t stringdatatype;
+   CHECK_HDF5 (stringdatatype = H5Aget_type (attr));
+-  string varname(H5Tget_size (stringdatatype) + 1, 0);
+-  CHECK_HDF5 (H5Aread (attr, stringdatatype, &varname[0]));
++  size_t length = H5Tget_size (stringdatatype);
++  assert (length > 0);
++  vector<char> varname_char(length + 1);
++  CHECK_HDF5 (H5Aread (attr, stringdatatype, &varname_char[0]));
+   CHECK_HDF5 (H5Aclose (attr));
++  string varname(&varname_char[0]);
+ 
+   // read the dimensions
+   hid_t dataspace = -1;
+-- 
+1.8.4.1
+

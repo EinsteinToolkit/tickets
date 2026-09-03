@@ -1,0 +1,86 @@
+Index: src/newrad.cc
+===================================================================
+--- src/newrad.cc	(revision 20)
++++ src/newrad.cc	(working copy)
+@@ -1,5 +1,6 @@
+ #include <cassert>
+ #include <cmath>
++#include <climits>
+ 
+ #include <cctk.h>
+ 
+@@ -272,6 +273,10 @@
+ 
+ // Adapted from Kranc's KrancNumericalTools/GenericFD's file
+ // GenericFD.c
++#if((defined __INTEL_COMPILER && __INTEL_COMPILER_BUILD_DATE == 20121010))
++// make bugger intel compiler push date into memory 
++#pragma optimize ("", off)
++#endif
+ static
+ void newrad_loop (cGH const* restrict const cctkGH,
+                   CCTK_REAL const* restrict const var,
+@@ -316,7 +321,10 @@
+             // ghost zones
+             bool all_physbnd_or_ghostbnd = true;
+             
+-            int bmin[3], bmax[3];
++            // intel 2013.1.117 has a bug where bmin is not updated in memory
++            // and extrap_kernel sees whatever happened to be on stack.
++            int bmin[3] = {-INT_MAX,-INT_MAX,-INT_MAX};
++            int bmax[3] = {INT_MAX,INT_MAX,INT_MAX};
+             for (int d=0; d<3; ++d) {
+               switch (dir[d]) {
+               case -1:
+@@ -412,3 +420,7 @@
+   
+   return 0;
+ }
++#if((defined __INTEL_COMPILER && __INTEL_COMPILER_BUILD_DATE == 20121010))
++// make bugger intel compiler push date into memory 
++#pragma optimize ("", on)
++#endif
+Index: src/extrap.cc
+===================================================================
+--- src/extrap.cc	(revision 20)
++++ src/extrap.cc	(working copy)
+@@ -1,5 +1,6 @@
+ #include <cassert>
+ #include <cmath>
++#include <climits>
+ 
+ #include <cctk.h>
+ 
+@@ -92,6 +93,10 @@
+ 
+ // Adapted from Kranc's KrancNumericalTools/GenericFD's file
+ // GenericFD.c
++#if((defined __INTEL_COMPILER && __INTEL_COMPILER_BUILD_DATE == 20121010))
++// make bugger intel compiler push date into memory 
++#pragma optimize ("", off)
++#endif
+ void newrad_extrap_loop (cGH const* restrict const cctkGH,
+ 			 CCTK_REAL* restrict const var)
+ {
+@@ -126,8 +131,11 @@
+             // all boundary faces are either physical boundaries or
+             // ghost zones
+             bool all_physbnd_or_ghostbnd = true;
+-            
+-            int bmin[3], bmax[3];
++
++            // intel 2013.1.117 has a bug where bmin is not updated in memory
++            // and extrap_kernel sees whatever happened to be on stack.
++            int bmin[3] = {-INT_MAX,-INT_MAX,-INT_MAX};
++            int bmax[3] = {INT_MAX,INT_MAX,INT_MAX};
+             for (int d=0; d<3; ++d) {
+               switch (dir[d]) {
+               case -1:
+@@ -196,3 +204,7 @@
+   
+   return 0;
+ }
++#if((defined __INTEL_COMPILER && __INTEL_COMPILER_BUILD_DATE == 20121010))
++// make bugger intel compiler push date into memory 
++#pragma optimize ("", on)
++#endif

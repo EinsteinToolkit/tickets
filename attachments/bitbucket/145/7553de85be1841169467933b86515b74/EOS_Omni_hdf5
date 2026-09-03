@@ -1,0 +1,530 @@
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 48)
++++ param.ccl	(working copy)
+@@ -58,7 +58,7 @@
+ 
+ ################ Finite-Temperature Nuclear EOS
+ 
+-BOOLEAN nuceos_read_table "Read in EOS table?" STEERABLE=ALWAYS
++BOOLEAN nuceos_read_table "Read in EOS table?" STEERABLE=RECOVERY
+ {
+ } "No"
+ 
+Index: src/EOS_Omni_Startup.F90
+===================================================================
+--- src/EOS_Omni_Startup.F90	(revision 48)
++++ src/EOS_Omni_Startup.F90	(working copy)
+@@ -22,15 +22,4 @@
+   hybrid_k2_cgs = hybrid_k1_cgs * &
+        (hybrid_rho_nuc * inv_rho_gf)**(hybrid_gamma1-hybrid_gamma2)
+ 
+-  if(nuceos_read_table.ne.0) then
+-     ! call EOS table reader
+-     call CCTK_FortranString(fslen,nuceos_table_name,eosfilename)
+-     call CCTK_INFO("##################################################")
+-     call CCTK_INFO("EOS_Omni: Reading finite-T nuclear EOS table")
+-     call CCTK_INFO(eosfilename)
+-     call CCTK_INFO("##################################################")
+-     call nuc_eos_readtable(eosfilename)
+-  endif
+-  
+-
+ end subroutine EOS_Omni_Startup
+Index: src/nuc_eos/readtable.F90
+===================================================================
+--- src/nuc_eos/readtable.F90	(revision 48)
++++ src/nuc_eos/readtable.F90	(working copy)
+@@ -1,264 +0,0 @@
+-#include "cctk.h"
+-#include "cctk_Parameters.h"
+-
+-
+-subroutine nuc_eos_readtable(eos_filename)
+-! This routine reads the table and initializes
+-! all variables in the module. 
+-
+-  use eosmodule
+-  use hdf5 
+-
+-  implicit none
+-
+-  DECLARE_CCTK_PARAMETERS
+-
+-  character(*) eos_filename
+-
+-  character(len=100) message
+-
+-! HDF5 vars
+-  integer(HID_T) file_id,dset_id,dspace_id
+-  integer(HSIZE_T) dims1(1), dims3(3)
+-  integer error,rank,accerr
+-  integer i,j,k
+-
+-  real*8 amu_cgs_andi
+-  real*8 buffer1,buffer2,buffer3,buffer4
+-  accerr=0
+-
+-!  write(*,*) "Reading Nuclear EOS Table"
+-
+-  call h5open_f(error)
+-
+-  call h5fopen_f (trim(adjustl(eos_filename)), H5F_ACC_RDONLY_F, file_id, error)
+-
+-!  write(6,*) trim(adjustl(eos_filename))
+-
+-! read scalars
+-  dims1(1)=1
+-  call h5dopen_f(file_id, "pointsrho", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_INTEGER, nrho, dims1, error)
+-  call h5dclose_f(dset_id,error)
+-
+-  if(error.ne.0) then
+-     call CCTK_WARN (0, "Could not read EOS table file")
+-  endif
+-
+-  dims1(1)=1
+-  call h5dopen_f(file_id, "pointstemp", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_INTEGER, ntemp, dims1, error)
+-  call h5dclose_f(dset_id,error)
+-
+-  if(error.ne.0) then
+-     call CCTK_WARN (0, "Could not read EOS table file")
+-  endif
+-
+-  dims1(1)=1
+-  call h5dopen_f(file_id, "pointsye", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_INTEGER, nye, dims1, error)
+-  call h5dclose_f(dset_id,error)
+-
+-  if(error.ne.0) then
+-     call CCTK_WARN (0, "Could not read EOS table file")
+-  endif
+-
+-!  write(message,"(a25,1P3i5)") "We have nrho ntemp nye: ", nrho,ntemp,nye
+-!  write(*,*) message
+-
+-  allocate(alltables(nrho,ntemp,nye,nvars))
+-
+-  ! index variable mapping:
+-  !  1 -> logpress
+-  !  2 -> logenergy
+-  !  3 -> entropy
+-  !  4 -> munu
+-  !  5 -> cs2
+-  !  6 -> dedT
+-  !  7 -> dpdrhoe
+-  !  8 -> dpderho
+-  !  9 -> muhat
+-  ! 10 -> mu_e
+-  ! 11 -> mu_p
+-  ! 12 -> mu_n
+-  ! 13 -> xa
+-  ! 14 -> xh
+-  ! 15 -> xn
+-  ! 16 -> xp
+-  ! 17 -> abar
+-  ! 18 -> zbar
+-
+-
+-  dims3(1)=nrho
+-  dims3(2)=ntemp
+-  dims3(3)=nye
+-  call h5dopen_f(file_id, "logpress", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,1), dims3, error)
+-  call h5dclose_f(dset_id,error)
+-  accerr=accerr+error
+-  call h5dopen_f(file_id, "logenergy", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,2), dims3, error)
+-  call h5dclose_f(dset_id,error)
+-  accerr=accerr+error
+-  call h5dopen_f(file_id, "entropy", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,3), dims3, error)
+-  call h5dclose_f(dset_id,error)
+-  accerr=accerr+error
+-  call h5dopen_f(file_id, "munu", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,4), dims3, error)
+-  call h5dclose_f(dset_id,error)
+-  accerr=accerr+error
+-  call h5dopen_f(file_id, "cs2", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,5), dims3, error)
+-  call h5dclose_f(dset_id,error)
+-  accerr=accerr+error
+-  call h5dopen_f(file_id, "dedt", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,6), dims3, error)
+-  call h5dclose_f(dset_id,error)
+-  accerr=accerr+error
+-  call h5dopen_f(file_id, "dpdrhoe", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,7), dims3, error)
+-  call h5dclose_f(dset_id,error)
+-  accerr=accerr+error
+-  call h5dopen_f(file_id, "dpderho", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,8), dims3, error)
+-  call h5dclose_f(dset_id,error)
+-  accerr=accerr+error
+-
+-! chemical potentials
+-  call h5dopen_f(file_id, "muhat", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,9), dims3, error)
+-  call h5dclose_f(dset_id,error)
+-  accerr=accerr+error
+-
+-  call h5dopen_f(file_id, "mu_e", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,10), dims3, error)
+-  call h5dclose_f(dset_id,error)
+-  accerr=accerr+error
+-
+-  call h5dopen_f(file_id, "mu_p", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,11), dims3, error)
+-  call h5dclose_f(dset_id,error)
+-  accerr=accerr+error
+-
+-  call h5dopen_f(file_id, "mu_n", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,12), dims3, error)
+-  call h5dclose_f(dset_id,error)
+-  accerr=accerr+error
+-
+-! compositions
+-  call h5dopen_f(file_id, "Xa", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,13), dims3, error)
+-  call h5dclose_f(dset_id,error)
+-  accerr=accerr+error
+-
+-  call h5dopen_f(file_id, "Xh", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,14), dims3, error)
+-  call h5dclose_f(dset_id,error)
+-  accerr=accerr+error
+-
+-  call h5dopen_f(file_id, "Xn", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,15), dims3, error)
+-  call h5dclose_f(dset_id,error)
+-  accerr=accerr+error
+-
+-  call h5dopen_f(file_id, "Xp", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,16), dims3, error)
+-  call h5dclose_f(dset_id,error)
+-  accerr=accerr+error
+-
+-
+-! average nucleus
+-  call h5dopen_f(file_id, "Abar", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,17), dims3, error)
+-  call h5dclose_f(dset_id,error)
+-  accerr=accerr+error
+-
+-  call h5dopen_f(file_id, "Zbar", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,18), dims3, error)
+-  call h5dclose_f(dset_id,error)
+-  accerr=accerr+error
+-
+-! Gamma
+-  call h5dopen_f(file_id, "gamma", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,19), dims3, error)
+-  call h5dclose_f(dset_id,error)
+-  accerr=accerr+error
+-
+-  allocate(logrho(nrho))
+-  dims1(1)=nrho
+-  call h5dopen_f(file_id, "logrho", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, logrho, dims1, error)
+-  call h5dclose_f(dset_id,error)
+-  accerr=accerr+error
+-
+-  allocate(logtemp(ntemp))
+-  dims1(1)=ntemp
+-  call h5dopen_f(file_id, "logtemp", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, logtemp, dims1, error)
+-  call h5dclose_f(dset_id,error)
+-  accerr=accerr+error
+-
+-  allocate(ye(nye))
+-  dims1(1)=nye
+-  call h5dopen_f(file_id, "ye", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, ye, dims1, error)
+-  call h5dclose_f(dset_id,error)
+-  accerr=accerr+error
+-
+-
+-  call h5dopen_f(file_id, "energy_shift", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, energy_shift, dims1, error)
+-  call h5dclose_f(dset_id,error)
+-  accerr=accerr+error
+-  
+-  if(accerr.ne.0) then
+-    call CCTK_WARN (0, "Problem reading EOS table file")
+-  endif
+-
+-  call h5fclose_f (file_id,error)
+-
+-  if(do_energy_shift.ne.1) then
+-     energy_shift = 0.0d0
+-  endif
+-
+-! not a good idea to call this function as it will screw recovery
+-!  call h5close_f (error)
+-
+-  ! set min-max values:
+-
+-  eos_rhomin = 10.0d0**logrho(1)
+-  eos_rhomax = 10.0d0**logrho(nrho)
+-
+-  eos_yemin = ye(1)
+-  eos_yemax = ye(nye)
+-
+-  eos_tempmin = 10.0d0**logtemp(1)
+-  eos_tempmax = 10.0d0**logtemp(ntemp)
+-
+-!  write(6,*) "Done reading eos tables"
+-
+-#if 0
+-! if using the actual garching table;                                                               
+-! keep this around for compatiblity and to                                                          
+-! reproduce 2006 results using the Garching Shen EOS table.                                         
+-  amu_cgs_andi = 1.66d-24
+-  do i=1,nrho
+-     do j=1,ntemp
+-        do k=1,nye
+-           buffer1 = 10.0d0**alltables(i,j,k,2)
+-           buffer1 = buffer1*amu_cgs_andi/mev_to_erg
+-           buffer2 = (buffer1 + 939.5731d0 - 10.8d0 - amu_mev)
+-           buffer3 = buffer2 - ye(k)*0.511d0
+-           buffer4 = buffer3/amu_cgs * mev_to_erg
+-           alltables(i,j,k,2) = log10(buffer4)
+-        enddo
+-     enddo
+-  enddo
+-#endif
+-
+-
+-
+-end subroutine nuc_eos_readtable
+-
+-
+Index: src/nuc_eos/make.code.defn
+===================================================================
+--- src/nuc_eos/make.code.defn	(revision 48)
++++ src/nuc_eos/make.code.defn	(working copy)
+@@ -1,5 +1,5 @@
+ SRCS = eosmodule.F90 nuc_eos.F90 bisection.F90 \
+-       findtemp.F90 findrho.F90 linterp_many.F90 readtable.F90 \
++       findtemp.F90 findrho.F90 linterp_many.F90 readtable.c \
+        linterp.F
+ 
+ SUBDIRS = 
+Index: src/nuc_eos/readtable.c
+===================================================================
+--- src/nuc_eos/readtable.c	(revision 0)
++++ src/nuc_eos/readtable.c	(revision 0)
+@@ -0,0 +1,137 @@
++#include <stdlib.h>
++
++#include "hdf5.h"
++
++#include "cctk.h"
++#include "cctk_Parameters.h"
++#include "cctk_Arguments.h"
++#include "cctk_Functions.h"
++
++// Interface of function for fortran module eostable
++void allocate_eosmodule_(CCTK_INT* , CCTK_INT* , CCTK_INT*, CCTK_REAL*,
++                         CCTK_REAL*, CCTK_REAL*, CCTK_REAL*, CCTK_REAL*);
++
++// Catch HDF5 errors
++#define HDF5_ERROR(fn_call)                                              \
++  do {                                                                   \
++    int _error_code = fn_call;                                           \
++    if (_error_code < 0)                                                 \
++      CCTK_VWarn (CCTK_WARN_ABORT, __LINE__, __FILE__, CCTK_THORNSTRING, \
++                  "HDF5 call '%s' returned error code %d",               \
++                  #fn_call, _error_code);                                \
++  } while (0)
++
++int file_is_readable(const char* filename);
++int file_is_readable(const char* filename)
++{
++    FILE* fp = NULL;
++    fp = fopen(filename, "r");
++    if(fp != NULL)
++    {
++        fclose(fp);
++        return 1;
++    }
++    return 0;
++}
++
++// Cactus calls this function. It reads in the table and calls a fortran
++// function to setup values for the fortran eos module
++void EOS_OMNI_ReadTable(CCTK_ARGUMENTS);
++void EOS_OMNI_ReadTable(CCTK_ARGUMENTS)
++{
++  DECLARE_CCTK_PARAMETERS
++  DECLARE_CCTK_ARGUMENTS
++
++  hid_t file;
++  if (!file_is_readable(nuceos_table_name))
++    CCTK_VWarn(CCTK_WARN_ABORT, __LINE__, __FILE__, CCTK_THORNSTRING,
++               "Could not read nuceos_table_name'%s'",
++               nuceos_table_name);
++  HDF5_ERROR(file = H5Fopen(nuceos_table_name, H5F_ACC_RDONLY, H5P_DEFAULT));
++
++// Use these two defines to easily read in a lot of variables in the same way
++// The first reads in one variable of a given type completely
++#define READ_EOS_HDF5(NAME,VAR,TYPE,MEM)                                      \
++  do {                                                                        \
++    hid_t dataset;                                                            \
++    HDF5_ERROR(dataset = H5Dopen(file, NAME, H5P_DEFAULT));                   \
++    HDF5_ERROR(H5Dread(dataset, TYPE, MEM, H5S_ALL, H5P_DEFAULT, VAR));       \
++    HDF5_ERROR(H5Dclose(dataset));                                            \
++  } while (0)
++// The second reads a given variable into a hyperslab of the alltables array
++#define READ_EOSTABLE_HDF5(NAME,OFF)                                     \
++  do {                                                                   \
++    hsize_t offset[2]     = {OFF,0};                                     \
++    H5Sselect_hyperslab(mem3, H5S_SELECT_SET, offset, NULL, var3, NULL); \
++    READ_EOS_HDF5(NAME,alltables,H5T_NATIVE_DOUBLE,mem3);                \
++  } while (0)
++
++  // Read size of tables
++  CCTK_INT nrho, ntemp, nye;
++
++  READ_EOS_HDF5("pointsrho",  &nrho,  H5T_NATIVE_INT, H5S_ALL);
++  READ_EOS_HDF5("pointstemp", &ntemp, H5T_NATIVE_INT, H5S_ALL);
++  READ_EOS_HDF5("pointsye",   &nye,   H5T_NATIVE_INT, H5S_ALL);
++
++  // Allocate memory for tables
++  CCTK_REAL *alltables, *logrho, *logtemp, *ye, energy_shift;
++
++  if (!(alltables = (CCTK_REAL*)malloc(nrho * ntemp * nye * 19 * sizeof(CCTK_REAL))))
++    CCTK_WARN(CCTK_WARN_ABORT, "Cannot allocate memory for EOS table\n");
++  if (!(logrho = (CCTK_REAL*)malloc(nrho * sizeof(CCTK_REAL))))
++    CCTK_WARN(CCTK_WARN_ABORT, "Cannot allocate memory for EOS table\n");
++  if (!(logtemp = (CCTK_REAL*)malloc(ntemp * sizeof(CCTK_REAL))))
++    CCTK_WARN(CCTK_WARN_ABORT, "Cannot allocate memory for EOS table\n");
++  if (!(ye = (CCTK_REAL*)malloc(nye * sizeof(CCTK_REAL))))
++    CCTK_WARN(CCTK_WARN_ABORT, "Cannot allocate memory for EOS table\n");
++
++  // Prepare HDF5 to read hyperslabs into alltables
++  hsize_t table_dims[2] = {19, nrho * ntemp * nye};
++  hsize_t var3[2]       = { 1, nrho * ntemp * nye};
++  hid_t mem3 =  H5Screate_simple(2, table_dims, NULL);
++
++  // Read alltables
++  READ_EOSTABLE_HDF5("logpress",  0);
++  READ_EOSTABLE_HDF5("logenergy", 1);
++  READ_EOSTABLE_HDF5("entropy",   2);
++  READ_EOSTABLE_HDF5("munu",      3);
++  READ_EOSTABLE_HDF5("cs2",       4);
++  READ_EOSTABLE_HDF5("dedt",      5);
++  READ_EOSTABLE_HDF5("dpdrhoe",   6);
++  READ_EOSTABLE_HDF5("dpderho",   7);
++  // chemical potentials
++  READ_EOSTABLE_HDF5("muhat",     8);
++  READ_EOSTABLE_HDF5("mu_e",      9);
++  READ_EOSTABLE_HDF5("mu_p",     10);
++  READ_EOSTABLE_HDF5("mu_n",     11);
++  // compositions
++  READ_EOSTABLE_HDF5("Xa",       12);
++  READ_EOSTABLE_HDF5("Xh",       13);
++  READ_EOSTABLE_HDF5("Xn",       14);
++  READ_EOSTABLE_HDF5("Xp",       15);
++  // average nucleus
++  READ_EOSTABLE_HDF5("Abar",     16);
++  READ_EOSTABLE_HDF5("Zbar",     17);
++  // Gamma
++  READ_EOSTABLE_HDF5("gamma",    18);
++
++  // Read additional tables and variables
++  READ_EOS_HDF5("logrho",       logrho,        H5T_NATIVE_DOUBLE, H5S_ALL);
++  READ_EOS_HDF5("logtemp",      logtemp,       H5T_NATIVE_DOUBLE, H5S_ALL);
++  READ_EOS_HDF5("ye",           ye,            H5T_NATIVE_DOUBLE, H5S_ALL);
++  READ_EOS_HDF5("energy_shift", &energy_shift, H5T_NATIVE_DOUBLE, H5S_ALL);
++
++  H5Fclose(file);
++
++  // Give all values to fortran - which will copy them until I can find out how
++  // I can tell Fortran to use those pointers inside the module
++  allocate_eosmodule_(&nrho, &ntemp, &nye, alltables, logrho, logtemp, ye, &energy_shift);
++
++  // Free the memory again because fortran copied the whole thing now
++  free(ye);
++  free(logtemp);
++  free(logrho);
++  free(alltables);
++
++}
++
+Index: src/nuc_eos/eosmodule.F90
+===================================================================
+--- src/nuc_eos/eosmodule.F90	(revision 48)
++++ src/nuc_eos/eosmodule.F90	(working copy)
+@@ -1,3 +1,8 @@
++#include "cctk.h"
++#include "cctk_Parameters.h"
++#include "cctk_Arguments.h"
++#include "cctk_Functions.h"
++
+  module eosmodule
+ 
+    implicit none
+@@ -58,3 +63,44 @@
+ 
+ 
+  end module eosmodule
++
++! This function is called from within readtable.c
++! It copies the values of the arrays given as parameters into arrays
++! of the eos module, until I can find out how I can use those arrays
++! directly.
++subroutine allocate_eosmodule(nrho_, ntemp_, nye_, alltables_, logrho_, logtemp_, ye_, energy_shift_)
++ use eosmodule
++ CCTK_INT  :: nrho_, ntemp_, nye_
++ CCTK_REAL :: alltables_(nrho_, ntemp_, nye_, 19)
++ CCTK_REAL :: logrho_(nrho_)
++ CCTK_REAL :: logtemp_(ntemp_)
++ CCTK_REAL :: ye_(nye_)
++ CCTK_REAL :: energy_shift_
++
++ nrho  = nrho_
++ ntemp = ntemp_
++ nye   = nye_
++
++ allocate(alltables(nrho,ntemp,nye,nvars))
++ allocate(logrho(nrho))
++ allocate(logtemp(ntemp))
++ allocate(ye(nye))
++ alltables = alltables_
++ logrho    = logrho_
++ logtemp   = logtemp_
++ ye        = ye_
++
++ energy_shift = energy_shift_
++
++ ! set min-max values:
++ eos_rhomin = 10.0d0**logrho(1)
++ eos_rhomax = 10.0d0**logrho(nrho)
++
++ eos_yemin = ye(1)
++ eos_yemax = ye(nye)
++
++ eos_tempmin = 10.0d0**logtemp(1)
++ eos_tempmax = 10.0d0**logtemp(ntemp)
++
++end subroutine allocate_eosmodule
++
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 48)
++++ schedule.ccl	(working copy)
+@@ -6,3 +6,12 @@
+  LANG: Fortran
+  OPTIONS: global
+ } "Set up conversion factors and other fun stuff"
++
++if (nuceos_read_table)
++{
++  SCHEDULE EOS_OMNI_ReadTable AT CCTK_INITIAL before ADMBase_InitialData
++  {
++    LANG: C
++  } "Read EOS HDF5 table"
++}
++

@@ -1,0 +1,56 @@
+From fa8b229854e5a855a59b33d76b8decb26af4f664 Mon Sep 17 00:00:00 2001
+From: Christian Ott <cott@tapir.caltech.edu>
+Date: Wed, 3 Jul 2013 06:12:46 -0700
+Subject: [PATCH 07/19] * recompute GRHydro reflevel in GRHydro_Con2PrimHot *
+ only output warnings if we want them
+
+---
+ src/GRHydro_Con2PrimHot.F90 |   25 ++++++++++++++-----------
+ 1 file changed, 14 insertions(+), 11 deletions(-)
+
+diff --git a/src/GRHydro_Con2PrimHot.F90 b/src/GRHydro_Con2PrimHot.F90
+index 76f903c..00bc3e3 100644
+--- a/src/GRHydro_Con2PrimHot.F90
++++ b/src/GRHydro_Con2PrimHot.F90
+@@ -42,6 +42,7 @@ subroutine Conservative2PrimitiveHot(CCTK_ARGUMENTS)
+ ! end EOS Omni vars
+ 
+   myproc = CCTK_MyProc(cctkGH)
++  GRHydro_reflevel = int(log10(dble(cctk_levfac(1)))/log10(2.0d0))
+ 
+   ! save memory when MP is not used
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+@@ -228,17 +229,19 @@ subroutine Conservative2PrimitiveHot(CCTK_ARGUMENTS)
+              ! the temperature of the atmosphere.
+              ! Now reset this point to minimum temperature.
+              GRHydro_C2P_failed(i,j,k) = 0
+-             !$OMP CRITICAL
+-             write(warnline,"(A10,i7,4i5,1P10E15.6)") "reset T:",&
+-                  cctk_iteration,GRHydro_Reflevel,&
+-                  i,j,k,rho(i,j,k),&
+-                  eps(i,j,k),temperature(i,j,k),y_e(i,j,k)
+-             call CCTK_WARN(1,warnline)
+-             write(warnline,"(A10,i7,4i5,1P10E15.6)") "reset T:",&
+-                  cctk_iteration,GRHydro_Reflevel,&
+-                  i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),r(i,j,k)
+-             call CCTK_WARN(1,warnline)
+-             !$OMP END CRITICAL
++             if (GRHydro_reflevel.ge.GRHydro_c2p_warn_from_reflevel) then
++                !$OMP CRITICAL
++                write(warnline,"(A10,i7,4i5,1P10E15.6)") "reset T:",&
++                     cctk_iteration,GRHydro_Reflevel,&
++                     i,j,k,rho(i,j,k),&
++                     eps(i,j,k),temperature(i,j,k),y_e(i,j,k)
++                call CCTK_WARN(1,warnline)
++                write(warnline,"(A10,i7,4i5,1P10E15.6)") "reset T:",&
++                     cctk_iteration,GRHydro_Reflevel,&
++                     i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),r(i,j,k)
++                call CCTK_WARN(1,warnline)
++                !$OMP END CRITICAL
++             endif
+              temperature(i,j,k) = GRHydro_hot_atmo_temp
+              keytemp = 1
+              call EOS_Omni_press(GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,n,&
+-- 
+1.7.10.4
+

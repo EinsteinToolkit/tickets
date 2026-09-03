@@ -1,0 +1,34 @@
+From 656526724c0dc8f58b1a4844b2a9c6f2251b6b0b Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Sun, 10 Mar 2013 12:04:44 -0700
+Subject: [PATCH 09/11] GRHydro: move critical section in prim2conM into if
+ statement
+
+otherwise the code will enter and leave the critical section during each
+loop iteration
+---
+ src/GRHydro_Prim2ConM.F90 |    4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/GRHydro_Prim2ConM.F90 b/src/GRHydro_Prim2ConM.F90
+index a71cf93..a6aa09a 100644
+--- a/src/GRHydro_Prim2ConM.F90
++++ b/src/GRHydro_Prim2ConM.F90
+@@ -159,12 +159,12 @@ subroutine primitive2conservativeM(CCTK_ARGUMENTS)
+               xtemp(1) = 0.5d0*(temperature(i,j,k) + &
+                    temperature(i-xoffset,j-yoffset,k-zoffset))
+ 
+-    !$OMP CRITICAL
+               if (y_e_minus(i,j,k) .le. 0.0d0 .or. y_e_plus(i,j,k) .le. 0.0d0) then
++              !$OMP CRITICAL
+                   write(NaN_WarnLine,'(a100,7g15.6)') '(y_e_minus,y_e_plus,x,y,z,rho)', y_e(i,j,k), y_e_minus(i,j,k), y_e_plus(i,j,k), x(i,j,k),y(i,j,k),z(i,j,k),rho(i,j,k)
+                   call CCTK_WARN(1, NaN_WarnLine)
++              !$OMP END CRITICAL
+               endif 
+-    !$OMP END CRITICAL
+               call prim2conM_hot(GRHydro_eos_handle, GRHydro_reflevel,&
+                    i,j,k,x(i,j,k),y(i,j,k),z(i,j,k), gxxl,gxyl,gxzl,gyyl,gyzl,gzzl, &
+                    avg_detl,densminus(i,j,k),sxminus(i,j,k),&
+-- 
+1.7.10.4
+

@@ -1,0 +1,47 @@
+Index: src/make.configuration.deps
+===================================================================
+--- src/make.configuration.deps	(revision 17)
++++ src/make.configuration.deps	(working copy)
+@@ -1,6 +1,6 @@
+ # make.configuration.deps file for thorn OpenMPI
+ 
+-$(UTIL_DIR)/%: $(OPENMPI_DIR)/bin/%
++$(UTIL_DIR)/%: $(MPI_DIR)/bin/%
+ 	@echo "Copying $* from $< to $(UTIL_DIR)"
+ 	-$(MKDIR) $(MKDIRFLAGS) $(UTIL_DIR) 2> /dev/null
+ 	cp $< $@
+Index: src/make.configuration.defn
+===================================================================
+--- src/make.configuration.defn	(revision 17)
++++ src/make.configuration.defn	(working copy)
+@@ -2,3 +2,8 @@
+ 
+ # Define the relevant OpenMPI utilities
+ #ALL_UTILS += mpirun ompi-clean ompi-iof ompi-ps ompi-server ompi_info orte-clean orte-iof orte-ps orted orterun
++
++# install mpirun if it exists
++ifneq ($(wildcard $(MPI_DIR)/bin/mpirun),)
++ALL_UTILS += mpirun
++endif
+Index: configure.sh
+===================================================================
+--- configure.sh	(revision 17)
++++ configure.sh	(working copy)
+@@ -153,7 +153,7 @@
+         
+         echo "MPI: Configuring..."
+         cd ${NAME}
+-        ./configure --prefix=${MPI_DIR}
++        ./configure --prefix=${MPI_DIR} --disable-shared --enable-static
+         
+         echo "MPI: Building..."
+         ${MAKE}
+@@ -191,7 +191,7 @@
+     : ${MPI_INC_DIRS="${MPI_DIR}/include"}
+     : ${MPI_LIB_DIRS="${MPI_DIR}/lib"}
+ fi
+-: ${MPI_LIBS='mpi mpi_cxx'}
++: ${MPI_LIBS='mpi_cxx mpi rt util'}
+ 
+ # Pass options to Cactus
+ 

@@ -1,0 +1,138 @@
+ActiveThorns = "boundary time"
+ActiveThorns = "Carpet CarpetLib CarpetReduce "
+ActiveThorns = "slab CartGrid3D CoordBase SymBase LocalReduce"
+ActiveThorns = "NaNChecker"
+ActiveThorns = "MoL"
+ActiveThorns = "SpaceMask aeilocalinterp CarpetInterp"
+ActiveThorns = "ADMBase"
+ActiveThorns = "TwoPunctures"
+ActiveThorns = "StaticConformal AHFinderDirect CarpetMask SphericalSurface"
+
+
+CarpetInterp::tree_search = true
+CarpetInterp::check_tree_search = true
+
+ADMBase::initial_data    = "twopunctures"
+ADMBase::initial_lapse   = "one"
+ADMBase::initial_shift   = "Zero"
+ADMBase::initial_dtlapse = "none"
+ADMBase::initial_dtshift = "none"
+
+TwoPunctures::schedule_in_ADMBase_InitialData = "yes"
+
+TwoPunctures::verbose            = "yes"
+
+TwoPunctures::npoints_A          = 4
+TwoPunctures::npoints_B          = 4
+TwoPunctures::npoints_phi        = 4
+TwoPunctures::Newton_tol         = 1.e-9
+TwoPunctures::grid_setup_method  = "evaluation"
+
+TwoPunctures::par_b              = 1.0
+
+TwoPunctures::par_m_plus         =  1.0
+TwoPunctures::par_m_minus        =  0.0
+
+TwoPunctures::Newton_maxit       = 10
+TwoPunctures::TP_Tiny            = 1.e-10
+TwoPunctures::center_offset[0]   = -1
+TwoPunctures::center_offset[1]   = 0
+TwoPunctures::center_offset[2]   = 0
+
+
+
+
+# grid parameters
+CartGrid3D::type         = "coordbase"
+CartGrid3D::domain       = "full"
+
+CoordBase::xmin = -1
+CoordBase::ymin = -1
+CoordBase::zmin = -1
+
+CoordBase::xmax = 1
+CoordBase::ymax = 1
+CoordBase::zmax = 1
+
+CoordBase::domainsize = "minmax"
+CoordBase::spacing = "numcells"
+
+CoordBase::ncells_x = 40
+CoordBase::ncells_y = 40
+CoordBase::ncells_z = 40
+
+CoordBase::boundary_size_x_lower      = 3
+CoordBase::boundary_size_y_lower      = 3
+CoordBase::boundary_size_z_lower      = 3
+
+CoordBase::boundary_size_x_upper      = 3
+CoordBase::boundary_size_y_upper      = 3
+CoordBase::boundary_size_z_upper      = 3
+
+Carpet::max_refinement_levels    = 1
+driver::ghost_size               = 3
+
+Carpet::domain_from_coordbase = "yes"
+
+Carpet::enable_all_storage       = no
+
+
+Carpet::init_3_timelevels        = "no"
+Carpet::init_fill_timelevels     = "yes"
+
+
+Carpet::processor_topology       = "manual"
+Carpet::processor_topology_3d_x  = 1
+Carpet::processor_topology_3d_y  = 1
+Carpet::processor_topology_3d_z  = 2
+
+
+AHFinderDirect::method = "find horizons"
+
+AHFinderDirect::patch_system_type[1] = "full sphere"
+
+AHFinderDirect::verbose_level = "physics details"
+AHFinderDirect::find_every = 16
+
+AHFinderDirect::run_at_CCTK_POST_RECOVER_VARIABLES = no
+AHFinderDirect::run_at_CCTK_ANALYSIS = no
+AHFinderDirect::run_at_CCTK_POSTSTEP = yes
+
+AHFinderDirect::move_origins            = no
+AHFinderDirect::reshape_while_moving    = no
+AHFinderDirect::predict_origin_movement = no
+
+AHFinderDirect::geometry_interpolator_name               = "Lagrange polynomial interpolation"
+AHFinderDirect::geometry_interpolator_pars               = "order=4"
+AHFinderDirect::surface_interpolator_name                = "Lagrange polynomial interpolation"
+AHFinderDirect::surface_interpolator_pars                = "order=4"
+
+AHFinderDirect::max_Newton_iterations__initial           = 30
+AHFinderDirect::max_Newton_iterations__subsequent        = 30
+AHFinderDirect::max_allowable_Theta_growth_iterations    = 30
+AHFinderDirect::max_allowable_Theta_nonshrink_iterations = 30
+AHFinderDirect::max_allowable_horizon_radius         [1] = 4
+
+
+
+AHFinderDirect::output_h_every = 16
+
+AHFinderDirect::N_horizons = 1
+
+AHFinderDirect::reset_horizon_after_not_finding      [1] = "yes"
+
+AHFinderDirect::origin_x[1] = 0.0
+AHFinderDirect::origin_y[1] = 0
+AHFinderDirect::origin_z[1] = 0
+
+AHFinderDirect::initial_guess_method[1] = "coordinate sphere"
+AHFinderDirect::initial_guess__coord_sphere__x_center[1] =  0.0
+AHFinderDirect::initial_guess__coord_sphere__y_center[1] =  0.0
+AHFinderDirect::initial_guess__coord_sphere__z_center[1] =  0.0
+AHFinderDirect::initial_guess__coord_sphere__radius[1]   =  0.25
+
+AHFinderDirect::which_surface_to_store_info        [1] = -1
+
+AHFinderDirect::find_after_individual_time      [1] = 0.0
+
+AHFinderDirect::max_N_zones_per_right_angle         = 36

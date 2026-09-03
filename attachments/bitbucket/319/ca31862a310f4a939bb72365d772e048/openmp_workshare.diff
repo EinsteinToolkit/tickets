@@ -1,0 +1,301 @@
+Index: src/GRHydro_ReconstructPolyM.F90
+===================================================================
+--- src/GRHydro_ReconstructPolyM.F90	(revision 219)
++++ src/GRHydro_ReconstructPolyM.F90	(working copy)
+@@ -607,7 +607,7 @@
+   deallocate(trivial_rp)
+   deallocate(psi4, lbetax, lbetay, lbetaz)
+ 
+-  !$OMP WORKSHARE
++  !$OMP PARALLEL WORKSHARE
+   where ( (rhoplus < GRHydro_rho_min).or.(rhominus < GRHydro_rho_min).or.&
+           (epsplus < 0.d0).or.(epsminus < 0.d0) )
+     rhoplus = rho
+@@ -628,7 +628,7 @@
+ !!$    Bveczminus = Bvec(:,:,:,3)
+ 
+   end where
+-  !$OMP END WORKSHARE
++  !$OMP END PARALLEL WORKSHARE
+ 
+   if (evolve_tracer .ne. 0) then
+     if (use_min_tracer .ne. 0) then
+@@ -637,13 +637,13 @@
+       local_min_tracer = 0d0
+     end if
+    
+-    !$OMP WORKSHARE
++    !$OMP PARALLEL WORKSHARE
+     where( (tracerplus  .le. local_min_tracer).or.&
+            (tracerminus .le. local_min_tracer) )
+       tracerplus = tracer
+       tracerminus = tracer
+     end where
+-    !$OMP END WORKSHARE
++    !$OMP END PARALLEL WORKSHARE
+     ! Call the conserved tracer routine in any case because (accord. to
+     ! Christian Ott) this is the only way this works
+ !!$ No special call in MHD
+Index: src/GRHydro_Reconstruct.F90
+===================================================================
+--- src/GRHydro_Reconstruct.F90	(revision 219)
++++ src/GRHydro_Reconstruct.F90	(working copy)
+@@ -105,24 +105,34 @@
+   ny = cctk_lsh(2)
+   nz = cctk_lsh(3)
+ 
++  !$OMP PARALLEL
++  !$OMP WORKSHARE
+   trivial_rp = .false.
++  !$OMP END WORKSHARE NOWAIT
+ 
+ !!$  Currently only option is reconstruction on primitive variables.
+ !!$  Should change this.
+ 
++  !$OMP WORKSHARE
+   psi4 = 1.d0
++  !$OMP END WORKSHARE NOWAIT
+   if (shift_state .ne. 0) then
++    !$OMP WORKSHARE
+     lbetax = betax
+     lbetay = betay
+     lbetaz = betaz
++    !$OMP END WORKSHARE NOWAIT
+   else
++    !$OMP WORKSHARE
+     lbetax = 0.d0
+     lbetay = 0.d0
+     lbetaz = 0.d0
++    !$OMP END WORKSHARE NOWAIT
+   end if
+ 
+ !!$ Initialize variables that store reconstructed quantities
+ 
++  !$OMP WORKSHARE
+   rhoplus = 0.0d0
+   rhominus = 0.0d0
+   epsplus = 0.0d0
+@@ -133,29 +143,39 @@
+   velyminus = 0.0d0
+   velzplus = 0.0d0
+   velzminus = 0.0d0
++  !$OMP END WORKSHARE NOWAIT
+ 
+   if(evolve_mhd.ne.0) then
++     !$OMP WORKSHARE
+      Bvecxplus = 0.0d0
+      Bvecxminus = 0.0d0
+      Bvecyplus = 0.0d0
+      Bvecyminus = 0.0d0
+      Bveczplus = 0.0d0
+      Bveczminus = 0.0d0
++     !$OMP END WORKSHARE NOWAIT
+      if(clean_divergence.ne.0) then
++        !$OMP WORKSHARE
+         psidcplus = 0.0d0
+         psidcminus = 0.0d0
++        !$OMP END WORKSHARE NOWAIT
+      endif
+   endif
+ 
+   if (evolve_tracer .ne. 0) then
++     !$OMP WORKSHARE
+      tracerplus = 0.0d0
+      tracerminus = 0.0d0
++     !$OMP END WORKSHARE NOWAIT
+   endif
+ 
+   if (evolve_Y_e .ne. 0) then
++     !$OMP WORKSHARE
+      Y_e_plus = 0.0d0
+      Y_e_minus = 0.0d0
++     !$OMP END WORKSHARE NOWAIT
+   endif
++  !$OMP END PARALLEL
+ 
+ 
+   if (CCTK_EQUALS(recon_method,"tvd")) then
+@@ -819,7 +839,7 @@
+   deallocate(psi4, lbetax, lbetay, lbetaz)
+   deallocate(dum,dump,dumm)
+ 
+-  !$OMP WORKSHARE
++  !$OMP PARALLEL WORKSHARE
+   where ( (rhoplus < GRHydro_rho_min).or.(rhominus < GRHydro_rho_min) )
+     rhoplus = rho
+     rhominus = rho
+@@ -832,7 +852,7 @@
+     epsplus = eps
+     epsminus = eps
+   end where
+-  !$OMP END WORKSHARE
++  !$OMP END PARALLEL WORKSHARE
+ 
+   if (evolve_tracer .ne. 0) then
+     if (use_min_tracer .ne. 0) then
+@@ -841,13 +861,13 @@
+       local_min_tracer = 0.0d0
+     end if
+ 
+-    !$OMP WORKSHARE
++    !$OMP PARALLEL WORKSHARE
+     where( (tracerplus  .le. local_min_tracer).or.&
+            (tracerminus .le. local_min_tracer) )
+       tracerplus = tracer
+       tracerminus = tracer
+     end where
+-    !$OMP END WORKSHARE
++    !$OMP END PARALLEL WORKSHARE
+     ! Call the conserved tracer routine in any case because (accord. to
+     ! Christian Ott) this is the only way this works
+     call Prim2ConservativeTracer(CCTK_PASS_FTOF)
+Index: src/GRHydro_ReconstructM.F90
+===================================================================
+--- src/GRHydro_ReconstructM.F90	(revision 219)
++++ src/GRHydro_ReconstructM.F90	(working copy)
+@@ -629,7 +629,7 @@
+   deallocate(trivial_rp)
+   deallocate(psi4, lbetax, lbetay, lbetaz)
+ 
+-  !$OMP WORKSHARE
++  !$OMP PARALLEL WORKSHARE
+   where ( (rhoplus < GRHydro_rho_min).or.(rhominus < GRHydro_rho_min).or.&
+           (epsplus < 0.d0).or.(epsminus < 0.d0) )
+     rhoplus = rho
+@@ -650,7 +650,7 @@
+ !!$    Bveczminus = Bvec(:,:,:,3)
+ 
+   end where
+-  !$OMP END WORKSHARE
++  !$OMP END PARALLEL WORKSHARE
+ 
+   if (evolve_tracer .ne. 0) then
+     if (use_min_tracer .ne. 0) then
+@@ -659,13 +659,13 @@
+       local_min_tracer = 0d0
+     end if
+ 
+-    !$OMP WORKSHARE
++    !$OMP PARALLEL WORKSHARE
+     where( (tracerplus  .le. local_min_tracer).or.&
+            (tracerminus .le. local_min_tracer) )
+       tracerplus = tracer
+       tracerminus = tracer
+     end where
+-    !$OMP END WORKSHARE
++    !$OMP END PARALLEL WORKSHARE
+     ! Call the conserved tracer routine in any case because (accord. to
+     ! Christian Ott) this is the only way this works
+ 
+Index: src/GRHydro_ReconstructPoly.F90
+===================================================================
+--- src/GRHydro_ReconstructPoly.F90	(revision 219)
++++ src/GRHydro_ReconstructPoly.F90	(working copy)
+@@ -104,24 +104,34 @@
+   ny = cctk_lsh(2)
+   nz = cctk_lsh(3)
+ 
++  !$OMP PARALLEL
++  !$OMP WORKSHARE
+   trivial_rp = .false.
++  !$OMP END WORKSHARE NOWAIT
+ 
+ !!$  Currently only option is reconstruction on primitive variables.
+ !!$  Should change this.
+ 
++  !$OMP WORKSHARE
+   psi4 = 1.0d0
++  !$OMP END WORKSHARE NOWAIT
+   if (shift_state .ne. 0) then
++    !$OMP WORKSHARE
+     lbetax = betax
+     lbetay = betay
+     lbetaz = betaz
++    !$OMP END WORKSHARE NOWAIT
+   else
++    !$OMP WORKSHARE
+     lbetax = 0.d0
+     lbetay = 0.d0
+     lbetaz = 0.d0
++    !$OMP END WORKSHARE NOWAIT
+   end if
+ 
+ !!$ Initialize variables that store reconstructed quantities
+ 
++  !$OMP WORKSHARE
+   rhoplus = 0.0d0
+   rhominus = 0.0d0
+   epsplus = 0.0d0
+@@ -132,28 +142,38 @@
+   velyminus = 0.0d0
+   velzplus = 0.0d0
+   velzminus = 0.0d0
++  !$OMP END WORKSHARE NOWAIT
+   if(evolve_mhd.ne.0) then
++     !$OMP WORKSHARE
+      Bvecxplus = 0.0d0
+      Bvecxminus = 0.0d0
+      Bvecyplus = 0.0d0
+      Bvecyminus = 0.0d0
+      Bveczplus = 0.0d0
+      Bveczminus = 0.0d0
++     !$OMP END WORKSHARE NOWAIT
+      if(clean_divergence.ne.0) then
++        !$OMP WORKSHARE
+         psidcplus = 0.0d0
+         psidcminus=0.0d0
++        !$OMP END WORKSHARE NOWAIT
+      endif
+   endif
+ 
+   if (evolve_tracer .ne. 0) then
++     !$OMP WORKSHARE
+      tracerplus = 0.0d0
+      tracerminus = 0.0d0
++     !$OMP END WORKSHARE NOWAIT
+   endif
+ 
+   if (evolve_Y_e .ne. 0) then
++     !$OMP WORKSHARE
+      Y_e_plus = 0.0d0
+      Y_e_minus = 0.0d0
++     !$OMP END WORKSHARE NOWAIT
+   endif
++  !$OMP END PARALLEL
+ 
+   if (CCTK_EQUALS(recon_method,"tvd")) then
+ 
+@@ -794,7 +814,7 @@
+   deallocate(psi4, lbetax, lbetay, lbetaz)
+   deallocate(dum, dump, dumm)
+ 
+-  !$OMP WORKSHARE
++  !$OMP PARALLEL WORKSHARE
+   where ( (rhoplus < GRHydro_rho_min).or.(rhominus < GRHydro_rho_min).or.&
+           (epsplus < 0.d0).or.(epsminus < 0.d0) )
+     rhoplus = rho
+@@ -808,7 +828,7 @@
+     epsplus = eps
+     epsminus = eps
+   end where
+-  !$OMP END WORKSHARE
++  !$OMP END PARALLEL WORKSHARE
+ 
+   if (evolve_tracer .ne. 0) then
+     if (use_min_tracer .ne. 0) then
+@@ -817,13 +837,13 @@
+       local_min_tracer = 0d0
+     end if
+    
+-    !$OMP WORKSHARE
++    !$OMP PARALLEL WORKSHARE
+     where( (tracerplus  .le. local_min_tracer).or.&
+            (tracerminus .le. local_min_tracer) )
+       tracerplus = tracer
+       tracerminus = tracer
+     end where
+-    !$OMP END WORKSHARE
++    !$OMP END PARALLEL WORKSHARE
+     ! Call the conserved tracer routine in any case because (accord. to
+     ! Christian Ott) this is the only way this works
+     call Prim2ConservativeTracer(CCTK_PASS_FTOF)

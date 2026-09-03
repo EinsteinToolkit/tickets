@@ -1,0 +1,54 @@
+From 120a39c47ec4c07e3177afebeb47a9e07132134c Mon Sep 17 00:00:00 2001
+From: Christian Reisswig <reisswig@scriwalker.(none)>
+Date: Tue, 9 Apr 2013 00:25:22 -0700
+Subject: [PATCH 06/24] GRHydro: Critical bugfix: Con2Prim was probably never
+ executed in post_recover_variables or for new points
+ in post_regrid since excision mask does typically not
+ get initialized before MoL_PostStep!
+
+Also: Instead of aborting Con2Prim, set points to atmopshere for a point where hydro_excision_mask > 0.
+---
+ src/GRHydro_Con2PrimHot.F90 |   11 +++++++----
+ 1 file changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/src/GRHydro_Con2PrimHot.F90 b/src/GRHydro_Con2PrimHot.F90
+index 58cfa29..a9e37f4 100644
+--- a/src/GRHydro_Con2PrimHot.F90
++++ b/src/GRHydro_Con2PrimHot.F90
+@@ -35,7 +35,7 @@ subroutine Conservative2PrimitiveHot(CCTK_ARGUMENTS)
+   CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
+ 
+ ! begin EOS Omni vars
+-  integer :: n,keytemp,anyerr,keyerr(1)
++  integer :: n,keytemp,anyerr,keyerr(1), reset_to_atmo
+   real*8  :: xpress(1),xeps(1),xtemp(1),xye(1),xrho(1)
+   n = 1;keytemp = 0;anyerr = 0;keyerr(1) = 0
+   xpress = 0.0d0;xeps = 0.0d0;xtemp = 0.0d0;xye = 0.0d0
+@@ -89,9 +89,8 @@ subroutine Conservative2PrimitiveHot(CCTK_ARGUMENTS)
+       do i = 1, nx
+ 
+ 
+-        !do not compute if in atmosphere or in excised region
+-        if ((atmosphere_mask(i,j,k) .ne. 0) .or. &
+-            (hydro_excision_mask(i,j,k) .ne. 0)) cycle
++        !do not compute if in atmosphere
++        if (atmosphere_mask(i,j,k) .gt. 0) cycle
+          
+         epsnegative = .false.
+ 
+@@ -121,8 +120,12 @@ subroutine Conservative2PrimitiveHot(CCTK_ARGUMENTS)
+                 GRHydro_Y_e_min)
+         endif
+ 
++        reset_to_atmo = 0
+         IF_BELOW_ATMO(dens(i,j,k), sqrt(det)*GRHydro_rho_min, GRHydro_atmo_tolerance, r(i,j,k)) then
++           reset_to_atmo = 1
++        endif
+ 
++        if (reset_to_atmo .gt. 0 .or. hydro_excision_mask(i,j,k) .gt. 0) then
+            SET_ATMO_MIN(dens(i,j,k), sqrt(det)*GRHydro_rho_min, r(i,j,k)) 
+            SET_ATMO_MIN(rho(i,j,k), GRHydro_rho_min, r(i,j,k)) 
+            scon(i,j,k,:) = 0.d0
+-- 
+1.7.10.4
+

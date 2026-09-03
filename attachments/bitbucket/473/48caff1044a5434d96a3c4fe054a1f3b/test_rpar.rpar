@@ -1,0 +1,41 @@
+#!/usr/bin/perl -W
+
+$dtfac = 0.5;
+
+################################################################################
+
+$lines = <<EOF;
+
+ActiveThorns = "
+Carpet
+CarpetIOBasic
+CarpetIOHDF5
+CarpetLib
+CartGrid3D
+CoordBase
+IOUtil
+SymBase
+Time
+"
+
+Cactus::cctk_itlast           = 10000000000000
+Cactus::max_runtime           = 0.1 # 6 seconds
+Cactus::terminate             = "runtime"
+
+Time::dtfac                   = $dtfac
+
+CarpetIOHDF5::checkpoint      = yes
+
+IO::checkpoint_on_terminate   = yes
+IO::recover                   = autoprobe
+
+IOBasic::outinfo_every        = 2000
+
+EOF
+
+$filename = "$0";
+$filename =~ s/\.rpar/.par/g; 
+
+open(OUT,">$filename");
+print OUT "$lines";
+close(OUT);

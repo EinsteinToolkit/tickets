@@ -1,0 +1,26 @@
+From 6f9e92d99f52b40e0af4e591bebe67a6faac4680 Mon Sep 17 00:00:00 2001
+From: srichers <srichers@caltech.edu>
+Date: Tue, 9 Apr 2013 10:07:36 -0700
+Subject: [PATCH 04/12] GRhydro: Pressure in polytypeM_pt was off by factor
+ inv_sqrt_detg
+
+---
+ src/GRHydro_Con2PrimM_polytype_pt.c |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/GRHydro_Con2PrimM_polytype_pt.c b/src/GRHydro_Con2PrimM_polytype_pt.c
+index 4931415..108d700 100644
+--- a/src/GRHydro_Con2PrimM_polytype_pt.c
++++ b/src/GRHydro_Con2PrimM_polytype_pt.c
+@@ -406,7 +406,7 @@ void CCTK_FCALL CCTK_FNAME(GRHydro_Con2PrimM_Polytype_pt)  (
+   
+   //  printf("doublecheck - S, rho, gamma: %e %e %e\n",*sc_in, rho_gm1,gamma);
+ 
+-  p = (*sc_in) * rho_gm1 / gamma; 
++  p = (*sc_in) * inv_sqrt_detg * rho_gm1 / gamma;
+ 
+   u = p / gm1;
+ 
+-- 
+1.7.10.4
+

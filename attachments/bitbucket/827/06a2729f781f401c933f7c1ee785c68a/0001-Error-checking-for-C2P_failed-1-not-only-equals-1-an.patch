@@ -1,0 +1,61 @@
+From 91b960181ff1c83d481ad22ef5c6345d2720cbfb Mon Sep 17 00:00:00 2001
+From: Philipp Moesta <pmoesta@pmacbook.(none)>
+Date: Fri, 24 Feb 2012 11:06:57 -0800
+Subject: [PATCH 01/11] Error checking for C2P_failed > 1, not only equals 1
+ and check for atmosphere using density after
+ Con2PrimM_pt was performed.
+
+---
+ src/GRHydro_Con2PrimM.F90 |   29 ++++++++++++++++++++++++++++-
+ 1 files changed, 28 insertions(+), 1 deletions(-)
+
+diff --git a/src/GRHydro_Con2PrimM.F90 b/src/GRHydro_Con2PrimM.F90
+index 67774ca..1d66cca 100644
+--- a/src/GRHydro_Con2PrimM.F90
++++ b/src/GRHydro_Con2PrimM.F90
+@@ -243,6 +243,34 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+ #endif          
+               
+            end if
++           
++           if ( rho(i,j,k) .le. GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance) .or. GRHydro_C2P_failed(i,j,k) .ge. 1) then
++               
++              b2=gxx(i,j,k)*Bvec(i,j,k,1)**2+gyy(i,j,k)*Bvec(i,j,k,2)**2+gzz(i,j,k)*Bvec(i,j,k,3)**2+ &
++                   2.0*(gxy(i,j,k)*Bvec(i,j,k,1)*Bvec(i,j,k,2)+gxz(i,j,k)*Bvec(i,j,k,1)*Bvec(i,j,k,3)+ &
++                   gyz(i,j,k)*Bvec(i,j,k,2)*Bvec(i,j,k,3))
++              
++              dens(i,j,k) = sqrt(det)*GRHydro_rho_min !/(1.d0+GRHydro_atmo_tolerance)
++              rho(i,j,k) = GRHydro_rho_min
++              scon(i,j,k,:) = 0.d0
++              vel(i,j,k,:) = 0.d0
++              w_lorentz(i,j,k) = 1.d0
++              xtemp = 0.0d0
++   
++              call EOS_Omni_press(GRHydro_polytrope_handle,keytemp,GRHydro_eos_rf_prec,n,&
++                   rho(i,j,k),eps(i,j,k),xtemp,xye,press(i,j,k),keyerr,anyerr)
++
++              call EOS_Omni_EpsFromPress(GRHydro_polytrope_handle,keytemp,GRHydro_eos_rf_prec,n,&
++                   rho(i,j,k),eps(i,j,k),xtemp,xye,press(i,j,k),eps(i,j,k),keyerr,anyerr)
++
++              ! w_lorentz=1, so the expression for tau reduces to:
++
++              !!$ tau does need to take into account the existing B-field
++              !!$ with w_lorentz=1, we find tau = sqrtdet*(rho (1+eps+b^2/2)) - dens  [Press drops out]
++              tau(i,j,k)  = sqrt(det) * (rho(i,j,k)*(1.0+eps(i,j,k)+b2/2.0)) - dens(i,j,k)
++
++           end if
++            
+         end do
+      end do
+   end do
+@@ -487,7 +515,6 @@ subroutine Conservative2PrimitiveBoundsM(CCTK_ARGUMENTS)
+                  !$OMP END CRITICAL
+               endif
+            endif
+-           
+         end do
+      end do
+   end do
+-- 
+1.7.8
+

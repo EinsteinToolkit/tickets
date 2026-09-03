@@ -1,0 +1,385 @@
+From a3515e332cfa72ced1230dce01a31dfee28c1622 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Sat, 2 Jun 2012 17:36:04 -0700
+Subject: [PATCH] CarpetLib: add preliminary support for higher order
+ restriction
+
+---
+ Carpet/CarpetLib/param.ccl                     |    6 +
+ Carpet/CarpetLib/src/data.cc                   |   13 ++
+ Carpet/CarpetLib/src/dh.cc                     |   11 ++
+ Carpet/CarpetLib/src/make.code.defn            |    1 +
+ Carpet/CarpetLib/src/operator_prototypes_3d.hh |   14 ++
+ Carpet/CarpetLib/src/restrict_3d_cc_o3_rf2.cc  |  246 ++++++++++++++++++++++++
+ 6 files changed, 291 insertions(+)
+ create mode 100644 Carpet/CarpetLib/src/restrict_3d_cc_o3_rf2.cc
+
+diff --git a/Carpet/CarpetLib/param.ccl b/Carpet/CarpetLib/param.ccl
+index 2ad5639..b0a8251 100644
+--- a/Carpet/CarpetLib/param.ccl
++++ b/Carpet/CarpetLib/param.ccl
+@@ -33,6 +33,12 @@ BOOLEAN use_dgfe "Use DGFE operators instead of Lagrange operators"
+ 
+ 
+ 
++BOOLEAN use_cc_o3 "Use third order cell centered restriction operators instead of first order"
++{
++} "no"
++
++
++
+ BOOLEAN output_bboxes "Output bounding box information to the screen" STEERABLE=always
+ {
+ } "no"
+diff --git a/Carpet/CarpetLib/src/data.cc b/Carpet/CarpetLib/src/data.cc
+index 4a0c53e..9a26eec 100644
+--- a/Carpet/CarpetLib/src/data.cc
++++ b/Carpet/CarpetLib/src/data.cc
+@@ -1141,6 +1141,19 @@ transfer_restrict (data const * const src,
+                                     srcregbox, dstregbox, NULL);
+           break;
+         }
++        if (use_cc_o3 and
++            transport_operator != op_WENO and 
++            transport_operator != op_ENO) { // HACK
++          // Don't use call_operator, because we parallelise ourselves
++          restrict_3d_cc_o3_rf2(static_cast <T const *> (src->storage()),
++                             src->shape(),
++                             static_cast <T *> (this->storage()),
++                             this->shape(),
++                             srcbox,
++                             dstbox,
++                             srcregbox, dstregbox, NULL);
++          break;
++        }
+         // Don't use call_operator, because we parallelise ourselves
+         restrict_3d_cc_rf2(static_cast <T const *> (src->storage()),
+                            src->shape(),
+diff --git a/Carpet/CarpetLib/src/dh.cc b/Carpet/CarpetLib/src/dh.cc
+index 704ce8e..572fe2e 100644
+--- a/Carpet/CarpetLib/src/dh.cc
++++ b/Carpet/CarpetLib/src/dh.cc
+@@ -1034,13 +1034,20 @@ regrid (bool const do_init)
+           full_dboxes const& obox = full_olevel.AT(oc);
+           
+           ibset needrecv = allrestricted & obox.owned;
++          if(use_cc_o3) {
++            // NOTE: change in behaviour (affects only outer boundaries I think)!!!!
++            // NOTE: b/c of this we need a low-level sync after the restrict
++            needrecv = allrestricted & obox.interior;
++          }
+           // Cannot restrict into buffer zones
+           assert ((allrestricted & obox.buffers).empty());
+           
+           for (int c = 0; c < h.components(rl); ++ c) {
+             full_dboxes const& box = full_level.AT(c);
+             
++            // HORRIBLE HACK
+             ibbox const contracted_exterior =
++              use_cc_o3 ? box.interior.expand(ivect(int(h.refcent==cell_centered))).contracted_for(odomext) :
+               box.exterior.contracted_for(odomext);
+             ibset const ovlp = needrecv & contracted_exterior;
+             
+@@ -1051,6 +1058,10 @@ regrid (bool const do_init)
+               ibbox const send = recv.expanded_for(box.exterior);
+               ASSERT_c (send <= box.exterior,
+                         "Refinement restriction: Send region must be contained in exterior");
++              if(use_cc_o3) {
++                ASSERT_c (send <= box.interior.expand(ivect(int(h.refcent==cell_centered))),
++                          "Refinement restriction: Send region must be contained in interior");
++              }
+               
+               sendrecv_pseudoregion_t const preg (send, c, recv, oc);
+               fast_olevel.fast_ref_rest_sendrecv.push_back(preg);
+diff --git a/Carpet/CarpetLib/src/make.code.defn b/Carpet/CarpetLib/src/make.code.defn
+index 67c93ab..89bdca3 100644
+--- a/Carpet/CarpetLib/src/make.code.defn
++++ b/Carpet/CarpetLib/src/make.code.defn
+@@ -34,6 +34,7 @@ SRCS =	backtrace.cc				\
+ 	interpolate_3d_5tl.cc			\
+ 	interpolate_eno_3d_3tl.cc		\
+ 	restrict_3d_cc_rf2.cc			\
++	restrict_3d_cc_o3_rf2.cc		\
+ 	restrict_3d_rf2.cc			\
+ 	restrict_3d_vc_rf2.cc			\
+ 	restrict_3d_dgfe_rf2.cc			\
+diff --git a/Carpet/CarpetLib/src/operator_prototypes_3d.hh b/Carpet/CarpetLib/src/operator_prototypes_3d.hh
+index dce5b5c..b9cb7d3 100644
+--- a/Carpet/CarpetLib/src/operator_prototypes_3d.hh
++++ b/Carpet/CarpetLib/src/operator_prototypes_3d.hh
+@@ -372,6 +372,20 @@ namespace CarpetLib {
+   
+   
+   
++  template <typename T>
++  void
++  restrict_3d_cc_o3_rf2 (T const * restrict const src,
++                         ivect3 const & restrict srcext,
++                         T * restrict const dst,
++                         ivect3 const & restrict dstext,
++                         ibbox3 const & restrict srcbbox,
++                         ibbox3 const & restrict dstbbox,
++                         ibbox3 const & restrict srcregbbox,
++                         ibbox3 const & restrict dstregbbox,
++                         void * extraargs);
++  
++  
++  
+   template <typename T, int centi, int centj, int centk>
+   void
+   restrict_3d_vc_rf2 (T const * restrict const src,
+diff --git a/Carpet/CarpetLib/src/restrict_3d_cc_o3_rf2.cc b/Carpet/CarpetLib/src/restrict_3d_cc_o3_rf2.cc
+new file mode 100644
+index 0000000..c8ecc04
+--- /dev/null
++++ b/Carpet/CarpetLib/src/restrict_3d_cc_o3_rf2.cc
+@@ -0,0 +1,246 @@
++#include <cctk.h>
++#include <cctk_Parameters.h>
++
++#include <algorithm>
++#include <cassert>
++#include <cmath>
++
++#include "gdata.hh"
++#include "operator_prototypes_3d.hh"
++#include "typeprops.hh"
++
++using namespace std;
++
++
++
++namespace CarpetLib {
++
++
++  
++#define SRCIND3(i,j,k)                                  \
++  index3 (srcioff + (i), srcjoff + (j), srckoff + (k),  \
++          srciext, srcjext, srckext)
++#define DSTIND3(i,j,k)                                  \
++  index3 (dstioff + (i), dstjoff + (j), dstkoff + (k),  \
++          dstiext, dstjext, dstkext)
++  
++  
++  
++  template <typename T>
++  void
++  restrict_3d_cc_o3_rf2 (T const * restrict const src,
++                      ivect3 const & restrict srcext,
++                      T * restrict const dst,
++                      ivect3 const & restrict dstext,
++                      ibbox3 const & restrict srcbbox,
++                      ibbox3 const & restrict dstbbox,
++                      ibbox3 const & restrict,
++                      ibbox3 const & restrict regbbox,
++                      void * extraargs)
++  {
++    assert (not extraargs);
++    
++    DECLARE_CCTK_PARAMETERS;
++    
++    typedef typename typeprops<T>::real RT;
++    
++    
++    
++    if (any (srcbbox.stride() >= regbbox.stride() or
++             dstbbox.stride() != regbbox.stride()))
++    {
++      CCTK_WARN (0, "Internal error: strides disagree");
++    }
++    
++    if (any (reffact2 * srcbbox.stride() != dstbbox.stride())) {
++      CCTK_WARN (0, "Internal error: destination strides are not twice the source strides");
++    }
++    
++    // This could be handled, but is likely to point to an error
++    // elsewhere
++    if (regbbox.empty()) {
++      CCTK_WARN (0, "Internal error: region extent is empty");
++    }
++    
++    if (not regbbox.expanded_for(srcbbox).expand(1,1).is_contained_in(srcbbox) or
++        not regbbox.is_contained_in(dstbbox))
++    {
++      cerr << "srcbbox: " << srcbbox << endl
++           << "dstbbox: " << dstbbox << endl
++           << "regbbox: " << regbbox << endl;
++      CCTK_WARN (0, "Internal error: region extent is not contained in array extent");
++    }
++    
++    if (any (srcext != gdata::allocated_memory_shape(srcbbox.shape() / srcbbox.stride()) or
++             dstext != gdata::allocated_memory_shape(dstbbox.shape() / dstbbox.stride())))
++    {
++      CCTK_WARN (0, "Internal error: array sizes don't agree with bounding boxes");
++    }
++    
++    
++    
++    ivect3 const regext = regbbox.shape() / regbbox.stride();
++    assert (all (srcbbox.stride() % 2 == 0));
++    assert (all ((regbbox.lower() - srcbbox.lower() - srcbbox.stride() / 2) %
++                 srcbbox.stride() == 0));
++    ivect3 const srcoff =
++      (regbbox.lower() - srcbbox.lower() - srcbbox.stride() / 2) /
++      srcbbox.stride();
++    assert (all ((regbbox.lower() - dstbbox.lower()) % dstbbox.stride() == 0));
++    ivect3 const dstoff =
++      (regbbox.lower() - dstbbox.lower()) / dstbbox.stride();
++    
++    
++    
++    int const srciext = srcext[0];
++    int const srcjext = srcext[1];
++    int const srckext = srcext[2];
++    
++    int const dstiext = dstext[0];
++    int const dstjext = dstext[1];
++    int const dstkext = dstext[2];
++    
++    int const regiext = regext[0];
++    int const regjext = regext[1];
++    int const regkext = regext[2];
++    
++    int const srcioff = srcoff[0];
++    int const srcjoff = srcoff[1];
++    int const srckoff = srcoff[2];
++    
++    int const dstioff = dstoff[0];
++    int const dstjoff = dstoff[1];
++    int const dstkoff = dstoff[2];
++    
++    
++    
++    RT const den = 4096;
++    
++    RT const f1 = 1/den;
++    RT const f2 = 9/den;
++    RT const f3 = 81/den;
++    RT const f4 = 729/den;
++    
++    
++    
++    // Loop over coarse region
++#pragma omp parallel for //collapse(3)
++    for (int k=0; k<regkext; ++k) {
++      for (int j=0; j<regjext; ++j) {
++        for (int i=0; i<regiext; ++i) {
++          
++#if(1 || defined(CARPET_DEBUG))
++    if(not (2 * k + 2 + srckoff < srckext and
++            2 * j + 2 + srcjoff < srcjext and
++            2 * i + 2 + srcioff < srciext and
++            2 * k - 1 + srckoff >= 0 and
++            2 * j - 1 + srcjoff >= 0 and
++            2 * i - 1 + srcioff >= 0))
++    {
++      cout << "restrict_3d_cc_o3_rf2.cc\n";
++      cout << "regext " << regext << "\n";
++      cout << "srcext " << srcext << "\n";
++      cout << "srcbbox=" << srcbbox << "\n";
++      cout << "dstbbox=" << dstbbox << "\n";
++      cout << "regbbox=" << regbbox << "\n";
++      cout << "i,j,k=" << i << " " << j << " " << k << "\n";
++      assert(2 * k + 2 + srckoff < srckext);
++      assert(2 * j + 2 + srcjoff < srcjext);
++      assert(2 * i + 2 + srcioff < srciext);
++      assert(2 * k - 1 + srckoff >= 0);
++      assert(2 * j - 1 + srcjoff >= 0);
++      assert(2 * i - 1 + srcioff >= 0);
++    }
++#endif    
++          dst [DSTIND3(i, j, k)] =
++            - f1 * src [SRCIND3(2*i-1, 2*j-1, 2*k-1)]
++            + f2 * src [SRCIND3(2*i  , 2*j-1, 2*k-1)]
++            + f2 * src [SRCIND3(2*i+1, 2*j-1, 2*k-1)]
++            - f1 * src [SRCIND3(2*i+2, 2*j-1, 2*k-1)]
++            + f2 * src [SRCIND3(2*i-1, 2*j  , 2*k-1)]
++            - f3 * src [SRCIND3(2*i  , 2*j  , 2*k-1)]
++            - f3 * src [SRCIND3(2*i+1, 2*j  , 2*k-1)]
++            + f2 * src [SRCIND3(2*i+2, 2*j  , 2*k-1)]
++            + f2 * src [SRCIND3(2*i-1, 2*j+1, 2*k-1)]
++            - f3 * src [SRCIND3(2*i  , 2*j+1, 2*k-1)]
++            - f3 * src [SRCIND3(2*i+1, 2*j+1, 2*k-1)]
++            + f2 * src [SRCIND3(2*i+2, 2*j+1, 2*k-1)]
++            - f1 * src [SRCIND3(2*i-1, 2*j+2, 2*k-1)]
++            + f2 * src [SRCIND3(2*i  , 2*j+2, 2*k-1)]
++            + f2 * src [SRCIND3(2*i+1, 2*j+2, 2*k-1)]
++            - f1 * src [SRCIND3(2*i+2, 2*j+2, 2*k-1)]
++            + f2 * src [SRCIND3(2*i-1, 2*j-1, 2*k  )]
++            - f3 * src [SRCIND3(2*i  , 2*j-1, 2*k  )]
++            - f3 * src [SRCIND3(2*i+1, 2*j-1, 2*k  )]
++            + f2 * src [SRCIND3(2*i+2, 2*j-1, 2*k  )]
++            - f3 * src [SRCIND3(2*i-1, 2*j  , 2*k  )]
++            + f4 * src [SRCIND3(2*i  , 2*j  , 2*k  )]
++            + f4 * src [SRCIND3(2*i+1, 2*j  , 2*k  )]
++            - f3 * src [SRCIND3(2*i+2, 2*j  , 2*k  )]
++            - f3 * src [SRCIND3(2*i-1, 2*j+1, 2*k  )]
++            + f4 * src [SRCIND3(2*i  , 2*j+1, 2*k  )]
++            + f4 * src [SRCIND3(2*i+1, 2*j+1, 2*k  )]
++            - f3 * src [SRCIND3(2*i+2, 2*j+1, 2*k  )]
++            + f2 * src [SRCIND3(2*i-1, 2*j+2, 2*k  )]
++            - f3 * src [SRCIND3(2*i  , 2*j+2, 2*k  )]
++            - f3 * src [SRCIND3(2*i+1, 2*j+2, 2*k  )]
++            + f2 * src [SRCIND3(2*i+2, 2*j+2, 2*k  )]
++            + f2 * src [SRCIND3(2*i-1, 2*j-1, 2*k+1)]
++            - f3 * src [SRCIND3(2*i  , 2*j-1, 2*k+1)]
++            - f3 * src [SRCIND3(2*i+1, 2*j-1, 2*k+1)]
++            + f2 * src [SRCIND3(2*i+2, 2*j-1, 2*k+1)]
++            - f3 * src [SRCIND3(2*i-1, 2*j  , 2*k+1)]
++            + f4 * src [SRCIND3(2*i  , 2*j  , 2*k+1)]
++            + f4 * src [SRCIND3(2*i+1, 2*j  , 2*k+1)]
++            - f3 * src [SRCIND3(2*i+2, 2*j  , 2*k+1)]
++            - f3 * src [SRCIND3(2*i-1, 2*j+1, 2*k+1)]
++            + f4 * src [SRCIND3(2*i  , 2*j+1, 2*k+1)]
++            + f4 * src [SRCIND3(2*i+1, 2*j+1, 2*k+1)]
++            - f3 * src [SRCIND3(2*i+2, 2*j+1, 2*k+1)]
++            + f2 * src [SRCIND3(2*i-1, 2*j+2, 2*k+1)]
++            - f3 * src [SRCIND3(2*i  , 2*j+2, 2*k+1)]
++            - f3 * src [SRCIND3(2*i+1, 2*j+2, 2*k+1)]
++            + f2 * src [SRCIND3(2*i+2, 2*j+2, 2*k+1)]
++            - f1 * src [SRCIND3(2*i-1, 2*j-1, 2*k+2)]
++            + f2 * src [SRCIND3(2*i  , 2*j-1, 2*k+2)]
++            + f2 * src [SRCIND3(2*i+1, 2*j-1, 2*k+2)]
++            - f1 * src [SRCIND3(2*i+2, 2*j-1, 2*k+2)]
++            + f2 * src [SRCIND3(2*i-1, 2*j  , 2*k+2)]
++            - f3 * src [SRCIND3(2*i  , 2*j  , 2*k+2)]
++            - f3 * src [SRCIND3(2*i+1, 2*j  , 2*k+2)]
++            + f2 * src [SRCIND3(2*i+2, 2*j  , 2*k+2)]
++            + f2 * src [SRCIND3(2*i-1, 2*j+1, 2*k+2)]
++            - f3 * src [SRCIND3(2*i  , 2*j+1, 2*k+2)]
++            - f3 * src [SRCIND3(2*i+1, 2*j+1, 2*k+2)]
++            + f2 * src [SRCIND3(2*i+2, 2*j+1, 2*k+2)]
++            - f1 * src [SRCIND3(2*i-1, 2*j+2, 2*k+2)]
++            + f2 * src [SRCIND3(2*i  , 2*j+2, 2*k+2)]
++            + f2 * src [SRCIND3(2*i+1, 2*j+2, 2*k+2)]
++            - f1 * src [SRCIND3(2*i+2, 2*j+2, 2*k+2)];
++
++        }
++      }
++    }
++    
++  }
++  
++  
++  
++#define TYPECASE(N,T)                                   \
++  template                                              \
++  void                                                  \
++  restrict_3d_cc_o3_rf2 (T const * restrict const src,     \
++                      ivect3 const & restrict srcext,   \
++                      T * restrict const dst,           \
++                      ivect3 const & restrict dstext,   \
++                      ibbox3 const & restrict srcbbox,  \
++                      ibbox3 const & restrict dstbbox,  \
++                      ibbox3 const & restrict,          \
++                      ibbox3 const & restrict regbbox,  \
++                      void * extraargs);
++#include "typecase.hh"
++#undef TYPECASE
++  
++  
++  
++} // namespace CarpetLib
+-- 
+1.7.10
+

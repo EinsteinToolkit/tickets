@@ -1,0 +1,385 @@
+From 5aa9486a470dd472d88768e08dc3e7e97164b248 Mon Sep 17 00:00:00 2001
+From: Christian Ott <cott@tapir.caltech.edu>
+Date: Sat, 4 Jan 2014 17:53:21 -0800
+Subject: [PATCH 08/36] GRHydro: compute pressure in prim2con only where needed
+
+* change Prim2Con handling for realistic EOS: now compute pressure
+  and cs2 only where really needed (saves some EOS calls and fixes
+  issue with initialization with "save" values in Reconstruction")
+
+* may be useful to still set save values *everywhere* via memcopy
+  in reconstruct rather than call TrivalReconstruct.
+---
+ src/GRHydro_Prim2Con.c | 292 +++++++++++++++++++++++++------------------------
+ 1 file changed, 150 insertions(+), 142 deletions(-)
+
+diff --git a/src/GRHydro_Prim2Con.c b/src/GRHydro_Prim2Con.c
+index 16a8476..7bf8ec4 100644
+--- a/src/GRHydro_Prim2Con.c
++++ b/src/GRHydro_Prim2Con.c
+@@ -69,6 +69,8 @@ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+ 
+    // EOS calls (now GF-wide)
+    if(!*evolve_temper) {
++     // n needs to be computed using ash since ash is used when computing the
++     // linear index in CCTK_GFINDEX3D
+      int n = cctk_ash[0]*cctk_ash[1]*cctk_ash[2];
+      int *keyerr = malloc(sizeof(*keyerr)*n);
+      int anyerr = 0;
+@@ -76,13 +78,13 @@ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+ 
+      // don't need special error handling for analytic EOS
+ #pragma omp parallel for
+-       for(int k=0;k<cctk_ash[2];k++) 
+-	 for(int j=0;j<cctk_ash[1];j++) {
++       for(int k=0;k<cctk_lsh[2];k++) 
++	 for(int j=0;j<cctk_lsh[1];j++) {
+ 	   int i = CCTK_GFINDEX3D(cctkGH,0,j,k);
+-	   EOS_Omni_press_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,cctk_ash[0],
++	   EOS_Omni_press_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,cctk_lsh[0],
+ 			  &(rhominus[i]),&(epsminus[i]),NULL,NULL,&(pressminus[i]),&(cs2minus[i]),
+ 			  &(keyerr[i]),&anyerr);
+-	   EOS_Omni_press_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,cctk_ash[0],
++	   EOS_Omni_press_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,cctk_lsh[0],
+ 			  &(rhoplus[i]),&(epsplus[i]),NULL,NULL,&(pressplus[i]),&(cs2plus[i]),
+ 			  &(keyerr[i]),&anyerr);
+ 	 }
+@@ -90,87 +92,85 @@ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+    } else {
+      if(reconstruct_temper) {
+        int n = cctk_ash[0]*cctk_ash[1]*cctk_ash[2];
++       int nx = cctk_lsh[0] - (GRHydro_stencil - 1) - (GRHydro_stencil) + 1;
+        int *keyerr = malloc(sizeof(*keyerr)*n);
+-       int anyerr = 0;
+        int keytemp = 1;
+-
+        // ensure Y_e and temperature within bounds
+ #pragma omp parallel for
+-       for(int i=0;i<n;i++) {
++       for(int i=0;i<n;i++) { // walks over slightly too many elements but cannot fail
+ 	 Y_e_minus[i] = MAX(MIN(Y_e_minus[i],GRHydro_Y_e_max),GRHydro_Y_e_min);
+ 	 Y_e_plus[i] = MAX(MIN(Y_e_plus[i],GRHydro_Y_e_max),GRHydro_Y_e_min);
+ 	 tempminus[i] = MIN(MAX(tempminus[i],GRHydro_hot_atmo_temp),GRHydro_max_temp);
+ 	 tempplus[i] = MIN(MAX(tempplus[i],GRHydro_hot_atmo_temp),GRHydro_max_temp);
++	 keyerr[i] = 0;
+         }
+ 
+        // call the EOS with slices
+-#pragma omp parallel for
+-       for(int k=0;k<cctk_ash[2];k++) 
+-	 for(int j=0;j<cctk_ash[1];j++) {
+-	   int i = CCTK_GFINDEX3D(cctkGH,0,j,k);
+-	   EOS_Omni_press_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,cctk_ash[0],
++#pragma omp parallel for 
++       for(int k=GRHydro_stencil-1;k<cctk_lsh[2]-GRHydro_stencil+1;k++) 
++	 for(int j=GRHydro_stencil-1;j<cctk_lsh[1]-GRHydro_stencil+1;j++) {
++	   int anyerr = 0;
++	   int i = CCTK_GFINDEX3D(cctkGH,GRHydro_stencil-1,j,k);
++	   EOS_Omni_press_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,nx,
+ 			  &rhominus[i],&epsminus[i],&tempminus[i],&Y_e_minus[i],
+ 			  &pressminus[i],&cs2minus[i],
+ 			  &keyerr[i],&anyerr);
+-	 }
+-       
+-       if(anyerr!=0) {
+-#pragma omp parallel for
+-	 for(int i=0;i<n;i++) {
+-	   if(keyerr[i] != 0) {
++	   if(anyerr) {
++	     for(int ii=GRHydro_stencil-1;ii<cctk_lsh[0]-GRHydro_stencil+1;ii++) {
++	       int idx = CCTK_GFINDEX3D(cctkGH,ii,j,k);
++	       if(keyerr[idx]!=0) {
+ #pragma omp critical
+-	     {
+-	       CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
+-			  "rl: %d i,x,y,z: %d %15.6E %15.6E %15.6E, keyerr: %d",
+-			  *GRHydro_reflevel, i, x[i], y[i], z[i], keyerr[i]);
+-	       CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
+-			  "rl: %d r,t,ye: %15.6E %15.6E %15.6E, keyerr: %d",
+-			  *GRHydro_reflevel, rhominus[i], tempminus[i], Y_e_minus[i], keyerr[i]);
++		 {
++		   CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++			      "rl: %d i,j,k,x,y,z: %d,%d,%d %15.6E %15.6E %15.6E, keyerr: %d",
++			      *GRHydro_reflevel, ii, j, k, x[idx], y[idx], z[idx], keyerr[idx]);
++                   CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++			      "rl: %d r,t,ye: %15.6E %15.6E %15.6E, keyerr: %d",
++			      *GRHydro_reflevel, rhominus[idx], tempminus[idx], Y_e_minus[idx], keyerr[idx]);
++		 }
++	       }
+ 	     }
+-	   }
+-	 } // for i, i<n
+-	 CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-		    "Aborting!");
+-       }
++             CCTK_ERROR("Aborting!");
++	   } // if (anyerr)
++	 } // loop
++       
+ 
+-#pragma omp parallel for
+-       for(int k=0;k<cctk_ash[2];k++) 
+-	 for(int j=0;j<cctk_ash[1];j++) {
+-	   int i = CCTK_GFINDEX3D(cctkGH,0,j,k);
+-	   EOS_Omni_press_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,cctk_ash[0],
++#pragma omp parallel for 
++       for(int k=GRHydro_stencil-1;k<cctk_lsh[2]-GRHydro_stencil+1;k++) 
++	 for(int j=GRHydro_stencil-1;j<cctk_lsh[1]-GRHydro_stencil+1;j++) {
++	   int anyerr = 0;
++	   int i = CCTK_GFINDEX3D(cctkGH,GRHydro_stencil-1,j,k);
++	   EOS_Omni_press_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,nx,
+ 			  &rhoplus[i],&epsplus[i],&tempplus[i],&Y_e_plus[i],
+ 			  &pressplus[i],&cs2plus[i],
+ 			  &keyerr[i],&anyerr);
+-	 }
+-
+-
+-       if(anyerr!=0) {
+-#pragma omp parallel for
+-	 for(int i=0;i<n;i++) {
+-	   if(keyerr[i] != 0) {
++	   if(anyerr) {
++	     for(int ii=GRHydro_stencil-1;ii<cctk_lsh[0]-GRHydro_stencil+1;ii++) {
++	       int idx = CCTK_GFINDEX3D(cctkGH,ii,j,k);
++	       if(keyerr[idx]!=0) {
+ #pragma omp critical
+-	     {
+-	       CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
+-			  "rl: %d i,x,y,z: %d %15.6E %15.6E %15.6E, keyerr: %d",
+-			  *GRHydro_reflevel, i, x[i], y[i], z[i], keyerr[i]);
+-	       CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
+-			  "rl: %d r,t,ye: %15.6E %15.6E %15.6E, keyerr: %d",
+-			  *GRHydro_reflevel, rhoplus[i], tempplus[i], Y_e_plus[i], keyerr[i]);
++		 {
++		   CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++			      "rl: %d i,j,k,x,y,z: %d,%d,%d %15.6E %15.6E %15.6E, keyerr: %d",
++			      *GRHydro_reflevel, ii, j, k, x[idx], y[idx], z[idx], keyerr[idx]);
++                   CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++			      "rl: %d r,t,ye: %15.6E %15.6E %15.6E, keyerr: %d",
++			      *GRHydro_reflevel, rhoplus[idx], tempplus[idx], Y_e_plus[idx], keyerr[idx]);
++		 }
++	       }
+ 	     }
+-	   }
+-	 } // for i, i<n
+-	 CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-		    "Aborting!");
+-       }
++             CCTK_ERROR("Aborting!");
++	   } // if (anyerr)
++	 } // loop
+        free(keyerr);
+      } else {
+        // ******************** EPS RECONSTRUCTION BRANCH ******************
+        int n = cctk_ash[0]*cctk_ash[1]*cctk_ash[2];
++       int nx = cctk_lsh[0] - (GRHydro_stencil - 1) - (GRHydro_stencil) + 1;
+        int *keyerr = malloc(sizeof(*keyerr)*n);
+-       int anyerr = 0;
+        int keytemp = 0;
+ 
+-       // ensure Y_e and temperature within bounds
++      // ensure Y_e and temperature within bounds
+ #pragma omp parallel for
+        for(int i=0;i<n;i++) {
+ 	 Y_e_minus[i] = MAX(MIN(Y_e_minus[i],GRHydro_Y_e_max),GRHydro_Y_e_min);
+@@ -178,103 +178,111 @@ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+ 	 tempminus[i] = MIN(MAX(tempminus[i],GRHydro_hot_atmo_temp),GRHydro_max_temp);
+ 	 tempplus[i] = MIN(MAX(tempplus[i],GRHydro_hot_atmo_temp),GRHydro_max_temp);
+ 	 temperature[i] = MIN(MAX(temperature[i],GRHydro_hot_atmo_temp),GRHydro_max_temp);
++	 keyerr[i] = 0;
+         }
+ 
+-       // call the EOS with slices
+-#pragma omp parallel for
+-       for(int k=0;k<cctk_ash[2];k++) 
+-	 for(int j=0;j<cctk_ash[1];j++) {
+-	   int i = CCTK_GFINDEX3D(cctkGH,0,j,k);
+-	   EOS_Omni_press_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,cctk_ash[0],
++       // call the EOS with slices for minus states
++#pragma omp parallel for 
++       for(int k=GRHydro_stencil-1;k<cctk_lsh[2]-GRHydro_stencil+1;k++) 
++	 for(int j=GRHydro_stencil-1;j<cctk_lsh[1]-GRHydro_stencil+1;j++) {
++	   int i = CCTK_GFINDEX3D(cctkGH,GRHydro_stencil-1,j,k);
++	   int anyerr = 0;
++	   EOS_Omni_press_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,nx,
+ 			  &rhominus[i],&epsminus[i],&tempminus[i],&Y_e_minus[i],
+ 			  &pressminus[i],&cs2minus[i],
+ 			  &keyerr[i],&anyerr);
+-	 }
+-
+-       if(anyerr!=0) {
+-#pragma omp parallel for
+-	 for(int i=0;i<n;i++) {
+-	   if(keyerr[i] != 0) {
++	   if(anyerr) {
++	     for(int ii=GRHydro_stencil-1;ii<cctk_lsh[0]-GRHydro_stencil+1;ii++) {
++	       int idx = CCTK_GFINDEX3D(cctkGH,ii,j,k);
++	       if(keyerr[idx]!=0) {
+ #pragma omp critical
+-	     {
+-	       CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
+-			  "rl: %d x,y,z: %15.6E %15.6E %15.6E, keyerr: %d",
+-			  *GRHydro_reflevel, x[i], y[i], z[i], keyerr[i]);
+-	       CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
+-			  "rl: %d r,t,ye: %15.6E %15.6E %15.6E, keyerr: %d",
+-			  *GRHydro_reflevel, rhominus[i], tempminus[i], 
+-			  Y_e_minus[i], keyerr[i]);
+-	       if(keyerr[i] == 668) {
+-		 // This means the temperature came back negative.
+-		 // We'll try using piecewise constant for the temperature
+-		 tempminus[i] = temperature[i];
+-		 const int ln=1;
+-		 int lkeyerr[1];
+-		 int lanyerr = 0;
+-		 int lkeytemp = 1;
+-		 EOS_Omni_press_cs2(*GRHydro_eos_handle,lkeytemp,GRHydro_eos_rf_prec,ln,
+-				&rhominus[i],&epsminus[i],&tempminus[i],
+-				&Y_e_minus[i],&pressminus[i],&cs2minus[i],lkeyerr,&lanyerr);
+-		 if(lanyerr !=0) {
+-		   CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-			      "Aborting! keyerr=%d, r=%15.6E, t=%15.6E, ye=%15.6E",
+-			      lkeyerr[0],rhominus[i],tempminus[i],Y_e_minus[i]);
+-		 }		 
+-	       } else {
+-		 CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-			    "Aborting!");
+-	       }
+-	     }
+-	   }
+-	 } // for i, i<n
+-       }
+-
+-#pragma omp parallel for
+-       for(int k=0;k<cctk_ash[2];k++) 
+-	 for(int j=0;j<cctk_ash[1];j++) {
+-	   int i = CCTK_GFINDEX3D(cctkGH,0,j,k);
+-	   EOS_Omni_press_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,cctk_ash[0],
++		 {
++		   CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++			      "rl: %d i,j,k,x,y,z: %d,%d,%d %15.6E %15.6E %15.6E, keyerr: %d",
++			      *GRHydro_reflevel, ii, j, k, x[idx], y[idx], z[idx], keyerr[idx]);
++                   CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++			      "rl: %d r,t,ye: %15.6E %15.6E %15.6E, keyerr: %d",
++			      *GRHydro_reflevel, rhominus[idx], tempminus[idx], Y_e_minus[idx], keyerr[idx]);
++
++		   if(keyerr[idx] == 668) {
++		     // This means the temperature came back negative.
++		     // We'll try using piecewise constant for the temperature
++		     tempminus[idx] = temperature[idx];
++		     const int ln=1;
++		     int lkeyerr[1];
++		     int lanyerr = 0;
++		     int lkeytemp = 1;
++		     EOS_Omni_press_cs2(*GRHydro_eos_handle,lkeytemp,GRHydro_eos_rf_prec,ln,
++					&rhominus[i],&epsminus[i],&tempminus[i],
++					&Y_e_minus[i],&pressminus[i],&cs2minus[i],lkeyerr,&lanyerr);
++		     if(lanyerr !=0) {
++		       CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++				  "Aborting! keyerr=%d, r=%15.6E, t=%15.6E, ye=%15.6E",
++				  lkeyerr[0],rhominus[i],tempminus[i],Y_e_minus[i]);
++		     }		 
++		   } else {
++		     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                                "Aborting! keyerr=%d, r=%15.6E, t=%15.6E, ye=%15.6E",
++                                keyerr[i],rhominus[i],tempminus[i],Y_e_minus[i]);
++		   }
++		 } // omp critical pragma
++	       } // if keyerr
++	     } // loop ii
++	   } // if (anyerr)
++	 } // big loop
++
++       // call the EOS with slices for plus states
++#pragma omp parallel for 
++       for(int k=GRHydro_stencil-1;k<cctk_lsh[2]-GRHydro_stencil+1;k++) 
++	 for(int j=GRHydro_stencil-1;j<cctk_lsh[1]-GRHydro_stencil+1;j++) {
++	   int i = CCTK_GFINDEX3D(cctkGH,GRHydro_stencil-1,j,k);
++	   int anyerr = 0;
++	   EOS_Omni_press_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,nx,
+ 			  &rhoplus[i],&epsplus[i],&tempplus[i],&Y_e_plus[i],
+ 			  &pressplus[i],&cs2plus[i],
+ 			  &keyerr[i],&anyerr);
+-	 }
+-
+-       if(anyerr!=0) {
+-#pragma omp parallel for
+-	 for(int i=0;i<n;i++) {
+-	   if(keyerr[i] != 0) {
++	   if(anyerr) {
++	     for(int ii=GRHydro_stencil-1;ii<cctk_lsh[0]-GRHydro_stencil+1;ii++) {
++	       int idx = CCTK_GFINDEX3D(cctkGH,ii,j,k);
++	       if(keyerr[idx]!=0) {
+ #pragma omp critical
+-	     {
+-	       CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
+-			  "rl: %d x,y,z: %15.6E %15.6E %15.6E, keyerr: %d",
+-			  *GRHydro_reflevel, x[i], y[i], z[i], keyerr[i]);
+-	       CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
+-			  "rl: %d r,t,ye: %15.6E %15.6E %15.6E, keyerr: %d",
+-			  *GRHydro_reflevel, rhoplus[i], tempplus[i], Y_e_plus[i], keyerr[i]);
+-	       if(keyerr[i] == 668) {
+-		 // This means the temperature came back negative.
+-		 // We'll try using piecewise constant for the temperature
+-		 tempplus[i] = temperature[i];
+-		 const int ln=1;
+-		 int lkeyerr[1];
+-		 int lanyerr = 0;
+-		 int lkeytemp = 1;
+-		 EOS_Omni_press_cs2(*GRHydro_eos_handle,lkeytemp,GRHydro_eos_rf_prec,ln,
+-				&rhoplus[i],&epsplus[i],&tempplus[i],
+-				&Y_e_plus[i],&pressplus[i],&cs2plus[i],lkeyerr,&lanyerr);
+-		 if(lanyerr !=0) {
++		 {
++		   CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++			      "rl: %d i,j,k,x,y,z: %d,%d,%d %15.6E %15.6E %15.6E, keyerr: %d",
++			      *GRHydro_reflevel, ii, j, k, x[idx], y[idx], z[idx], keyerr[idx]);
+ 		   CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-			      "Aborting! keyerr=%d, r=%15.6E, t=%15.6E, ye=%15.6E",
+-			      lkeyerr[0],rhoplus[i],tempplus[i],Y_e_plus[i]);
+-		 }		 
+-	       } else {
+-		 CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-			    "Aborting!");
+-	       }
+-	     } // end critical
+-	   }
+-	 } // for i, i<n error checking
+-       }
++			      "rl: %d r,t,ye: %15.6E %15.6E %15.6E, keyerr: %d",
++			      *GRHydro_reflevel, rhoplus[idx], tempplus[idx], Y_e_plus[idx], keyerr[idx]);
++
++		   if(keyerr[idx] == 668) {
++		     // This means the temperature came back negative.
++		     // We'll try using piecewise constant for the temperature
++		     tempplus[idx] = temperature[idx];
++		     const int ln=1;
++		     int lkeyerr[1];
++		     int lanyerr = 0;
++		     int lkeytemp = 1;
++		     EOS_Omni_press_cs2(*GRHydro_eos_handle,lkeytemp,GRHydro_eos_rf_prec,ln,
++					&rhoplus[i],&epsplus[i],&tempplus[i],
++					&Y_e_plus[i],&pressplus[i],&cs2plus[i],lkeyerr,&lanyerr);
++		     if(lanyerr !=0) {
++		       CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++				  "Aborting! keyerr=%d, r=%15.6E, t=%15.6E, ye=%15.6E",
++				  lkeyerr[0],rhoplus[i],tempplus[i],Y_e_plus[i]);
++		     }		 
++		   } else {
++		     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                                "Aborting! keyerr=%d, r=%15.6E, t=%15.6E, ye=%15.6E",
++                                keyerr[i],rhoplus[i],tempplus[i],Y_e_plus[i]);
++		   }
++		 } // omp critical pragma
++	       } // if keyerr
++	     } // loop ii
++	     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++			"Aborting!");
++	   } // if (anyerr)
++	 } // big loop over plus states
++
+        free(keyerr);
+      } // end branch for no temp reconsturction
+    } // end of evolve temper branch
+-- 
+1.9.0
+

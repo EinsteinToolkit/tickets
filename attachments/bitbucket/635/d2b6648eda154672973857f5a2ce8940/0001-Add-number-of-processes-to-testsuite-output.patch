@@ -1,0 +1,37 @@
+From bd94da505e026b59a7321bf4972a78d1fbd4b97e Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Thu, 20 Oct 2011 00:28:19 +0200
+Subject: [PATCH] Add number of processes to testsuite output
+
+---
+ lib/sbin/RunTest.pl      |    1 +
+ lib/sbin/RunTestUtils.pl |    1 +
+ 2 files changed, 2 insertions(+), 0 deletions(-)
+
+diff --git a/lib/sbin/RunTest.pl b/lib/sbin/RunTest.pl
+index 51d47ed..c1b2302 100644
+--- a/lib/sbin/RunTest.pl
++++ b/lib/sbin/RunTest.pl
+@@ -97,6 +97,7 @@ while ($choice !~ /^Q/i)
+     
+     if ($choice =~ /^[EIO]/i) 
+     {
++      print "  Processes: $config_data->{'NPROCS'}\n\n";
+ 
+       # Reset/Initialise Test Statistics
+       $rundata = &ResetTestStatistics($rundata,$testdata);
+diff --git a/lib/sbin/RunTestUtils.pl b/lib/sbin/RunTestUtils.pl
+index 92c37d9..8dd8eb9 100644
+--- a/lib/sbin/RunTestUtils.pl
++++ b/lib/sbin/RunTestUtils.pl
+@@ -816,6 +816,7 @@ sub WriteFullResults
+ 
+   push (@summary, "    Time                     -> $date");
+   push (@summary, "    Host                     -> $hostname");
++  push (@summary, "    Processes                -> $config_data->{'NPROCS'}");
+   push (@summary, "    User                     -> ".getpwuid($<));
+   push (@summary, '');
+ 
+-- 
+1.7.5.4
+

@@ -1,0 +1,123 @@
+
+ActiveThorns = "
+  Boundary
+  Carpet
+  CarpetInterp
+  CarpetInterp2
+  CarpetIOASCII
+  CarpetIOBasic
+  CarpetIOHDF5
+  CarpetIOScalar
+  CarpetLib
+  CarpetReduce
+  CarpetRegrid2
+  CartGrid3D
+  CoordBase
+  CoordGauge
+  InitBase 
+  IOUtil
+  LocalInterp
+  LoopControl
+  MoL
+  NaNChecker
+  Slab
+  SpaceMask
+  SphericalSurface
+  StaticConformal
+  SymBase
+  Time
+  TimerReport
+"
+
+Cactus::cctk_final_time                 = 2000.0
+
+
+IO::out_dir = $parfile
+
+### Grids
+
+Carpet::domain_from_coordbase           = yes
+CartGrid3D::type                        = coordbase
+CoordBase::domainsize                   = minmax
+CoordBase::xmax                         = 10.0
+CoordBase::ymax                         = 10.0
+CoordBase::zmax                         = 10.0
+CoordBase::xmin                         =-10.0
+CoordBase::ymin                         =-10.0
+CoordBase::zmin                         =-10.0
+CoordBase::dx                           =  0.5
+CoordBase::dy                           =  0.5
+CoordBase::dz                           =  0.5
+
+Carpet::max_refinement_levels           = 2
+CarpetRegrid2::num_centres              = 1
+CarpetRegrid2::num_levels_1             = 2
+CarpetRegrid2::radius_1             [1] = 5.0
+Carpet::init_fill_timelevels            = yes
+
+Time::dtfac                             = 0.5
+
+Driver::ghost_size                      = 3
+
+Carpet::use_buffer_zones                = yes
+Carpet::prolongation_order_space        = 5
+Carpet::prolongation_order_time         = 2
+
+
+### Finite differencing
+
+MoL::ODE_Method                         = rk4
+MoL::MoL_Intermediate_Steps             = 4
+MoL::MoL_Num_Scratch_Levels             = 1
+
+
+
+### NaNCheck
+
+Carpet::poison_new_timelevels           = yes
+CarpetLib::poison_new_memory            = yes
+
+### Checkpointing
+
+CarpetIOHDF5::checkpoint                = yes
+IO::checkpoint_ID                       = no
+IO::recover                             = autoprobe
+IO::checkpoint_on_terminate             = yes
+CarpetIOHDF5::open_one_input_file_at_a_time = yes
+
+
+### IO
+
+IOScalar::one_file_per_group            = yes
+IOASCII::one_file_per_group             = yes
+
+IOBasic::outInfo_every                  = 1
+IOBasic::outInfo_reductions             = "norm2"
+IOBasic::outInfo_vars                   = "
+"
+
+IOScalar::outScalar_every               = 4
+IOScalar::outScalar_reductions          = "norm_inf norm2"
+IOScalar::outScalar_vars                = "
+"
+
+IOASCII::out0D_every                    = 4
+IOASCII::out0D_vars                     = "
+  Carpet::timing
+"
+
+IOASCII::out1D_every                    = 4
+IOASCII::out1D_d                        = no
+IOASCII::out1D_vars                     = "
+"
+
+IOASCII::out2D_every                    = 16
+IOASCII::out2D_vars                     = "
+"
+
+IOHDF5::out_every                       = 64
+IOHDF5::out_vars                        = "
+"
+
+Cactus::terminate = "runtime"
+Cactus::max_runtime = 1

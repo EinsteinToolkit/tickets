@@ -1,0 +1,25 @@
+Index: lib/sbin/RunTestUtils.pl
+===================================================================
+--- lib/sbin/RunTestUtils.pl	(revision 4850)
++++ lib/sbin/RunTestUtils.pl	(working copy)
+@@ -524,12 +524,17 @@
+   my($config_data) = @_;
+   my($mpi,$dir,$sep,$extradir,$capabilitydir);
+ 
+-  $dir = $config_data->{"CCTK_DIR"};
+   $sep = $config_data->{"SEPARATOR"};
++  $dir = $config_data->{"CCTK_DIR"}.${sep}."configs";
+   $config = $config_data->{"CONFIG"};
++  if(defined($ENV{CACTUS_CONFIGS_DIR})) {
++    $dir = $ENV{CACTUS_CONFIGS_DIR};
++  }
+ 
+-  $extradir = "$dir${sep}configs${sep}$config${sep}config-data${sep}cctk_Extradefs.h";
+-  $capabilitydir = "$dir${sep}configs${sep}$config${sep}bindings${sep}Configuration${sep}Capabilities${sep}cctki_MPI.h";
++  $extradir = "${dir}${sep}$config{$sep}config-data${sep}cctk_Extradefs.h";
++  $capabilitydir = "${dir}${sep}$config${sep}bindings${sep}Configuration${sep}Capabilities${sep}cctki_MPI.h";
++  print "$dir${sep}::configs${sep}$config${sep}bindings${sep}Configuration${sep}Capabilities${sep}cctki_MPI.h";
++  print "capabilitydir=$capabilitydir\n";
+ 
+   $mpi = 0;
+ 

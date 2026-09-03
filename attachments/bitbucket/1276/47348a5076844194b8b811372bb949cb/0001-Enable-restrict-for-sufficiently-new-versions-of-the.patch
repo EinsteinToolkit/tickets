@@ -1,0 +1,25 @@
+From 8fffde03a36a5773d28d2b033f8d52a366b64fc9 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Mon, 21 Apr 2014 17:47:50 +0200
+Subject: [PATCH] Enable restrict for sufficiently new versions of the Intel
+ compiler
+
+---
+ lib/make/cctk_Config.h.in | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/lib/make/cctk_Config.h.in b/lib/make/cctk_Config.h.in
+index 65f7d0d..08144d9 100644
+--- a/lib/make/cctk_Config.h.in
++++ b/lib/make/cctk_Config.h.in
+@@ -177,6 +177,7 @@
+  * version >= 20120731 to be on the safe side. */
+ #if (defined __INTEL_COMPILER                &&                 \
+      __INTEL_COMPILER_BUILD_DATE >= 20120731 &&                 \
++     __INTEL_COMPILER_BUILD_DATE <  20130728 &&                 \
+      !defined CCTK_INTEL_COMPILER_DONT_DISABLE_RESTRICT)
+ #  define CCTK_DISABLE_RESTRICT 1
+ #endif
+-- 
+1.9.1
+

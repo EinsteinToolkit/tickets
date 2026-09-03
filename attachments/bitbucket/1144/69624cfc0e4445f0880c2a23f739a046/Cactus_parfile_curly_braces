@@ -1,0 +1,26 @@
+Index: util/ParseFile.c
+===================================================================
+--- util/ParseFile.c	(revision 4889)
++++ util/ParseFile.c	(working copy)
+@@ -430,7 +430,8 @@
+           if (pos+1 < *buffersize) { pos++; }
+         }
+         /* Parameter file name ? */
+-        else if (strcmp(define, "parfile") == 0)
++        else if ((strcmp(define, "parfile") == 0) ||
++                 (strcmp(define, "{parfile") == 0))
+         {
+           char path[500];
+           CCTK_ParameterFilename(500, path);
+@@ -448,6 +449,11 @@
+           {
+             value[strlen (value) - 4] = '\0';
+           }
++          if (define[0] == '{')
++          {
++            /* increase pos to jump over the trailing } */
++            if (pos+1 < *buffersize) { pos++; }
++          }
+         }
+         /* Else: unknown define - or no define at all: ignore */
+         if (value)

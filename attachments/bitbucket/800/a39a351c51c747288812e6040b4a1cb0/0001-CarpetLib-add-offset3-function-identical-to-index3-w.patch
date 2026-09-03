@@ -1,0 +1,302 @@
+From b7ce21f7057012c8dd660686105e9b009426cce2 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Thu, 3 May 2012 19:04:00 -0700
+Subject: [PATCH 1/3] CarpetLib: add offset3 function identical to index3
+ without tests
+
+index3 fails with CARPET_DEBUG if it is asked for an index outisde of
+the box, which happens in the operators when they try to ask for di
+offsets for a box of width 1
+---
+ Carpet/CarpetLib/src/operator_prototypes_3d.hh   |   10 ++++
+ Carpet/CarpetLib/src/prolongate_3d_cc_eno_rf2.cc |   10 +++--
+ Carpet/CarpetLib/src/prolongate_3d_cc_rf2.cc     |   10 +++--
+ Carpet/CarpetLib/src/prolongate_3d_dgfe_rf2.cc   |   50 +++++++++++----------
+ Carpet/CarpetLib/src/prolongate_3d_rf2.cc        |   10 +++--
+ Carpet/CarpetLib/src/restrict_3d_dgfe_rf2.cc     |   18 ++++----
+ Carpet/CarpetLib/src/restrict_3d_vc_rf2.cc       |   15 ++++--
+ 7 files changed, 74 insertions(+), 49 deletions(-)
+
+diff --git a/Carpet/CarpetLib/src/operator_prototypes_3d.hh b/Carpet/CarpetLib/src/operator_prototypes_3d.hh
+index dce5b5c..592f92d 100644
+--- a/Carpet/CarpetLib/src/operator_prototypes_3d.hh
++++ b/Carpet/CarpetLib/src/operator_prototypes_3d.hh
+@@ -35,6 +35,16 @@ namespace CarpetLib {
+   
+   
+   
++  static inline
++  size_t
++  offset3 (size_t const i, size_t const j, size_t const k,
++          size_t const exti, size_t const extj, size_t const extk)
++  {
++    return i + exti * (j + extj * k);
++  }
++  
++  
++  
+   static int const dim3 = 3;
+   
+   typedef vect <bool, dim3> bvect3;
+diff --git a/Carpet/CarpetLib/src/prolongate_3d_cc_eno_rf2.cc b/Carpet/CarpetLib/src/prolongate_3d_cc_eno_rf2.cc
+index e9a64ec..cc00464 100644
+--- a/Carpet/CarpetLib/src/prolongate_3d_cc_eno_rf2.cc
++++ b/Carpet/CarpetLib/src/prolongate_3d_cc_eno_rf2.cc
+@@ -47,6 +47,8 @@ namespace CarpetLib {
+   
+ #define SRCIND3(i,j,k) index3 (i, j, k, srciext, srcjext, srckext)
+ #define DSTIND3(i,j,k) index3 (i, j, k, dstiext, dstjext, dstkext)
++#define SRCOFF3(i,j,k) offset3 (i, j, k, srciext, srcjext, srckext)
++#define DSTOFF3(i,j,k) offset3 (i, j, k, dstiext, dstjext, dstkext)
+   
+   
+   
+@@ -1069,11 +1071,11 @@ namespace CarpetLib {
+     size_t const j0 = srcjoff / 2;
+     size_t const k0 = srckoff / 2;
+     
+-    // size_t const srcdi = SRCIND3(1,0,0) - SRCIND3(0,0,0);
++    // size_t const srcdi = SRCOFF3(1,0,0) - SRCOFF3(0,0,0);
+     size_t const srcdi = 1;
+-    assert (srcdi == SRCIND3(1,0,0) - SRCIND3(0,0,0));
+-    size_t const srcdj = SRCIND3(0,1,0) - SRCIND3(0,0,0);
+-    size_t const srcdk = SRCIND3(0,0,1) - SRCIND3(0,0,0);
++    assert (srcdi == SRCOFF3(1,0,0) - SRCOFF3(0,0,0));
++    size_t const srcdj = SRCOFF3(0,1,0) - SRCOFF3(0,0,0);
++    size_t const srcdk = SRCOFF3(0,0,1) - SRCOFF3(0,0,0);
+     
+     
+     
+diff --git a/Carpet/CarpetLib/src/prolongate_3d_cc_rf2.cc b/Carpet/CarpetLib/src/prolongate_3d_cc_rf2.cc
+index 7ddecd9..827d6d6 100644
+--- a/Carpet/CarpetLib/src/prolongate_3d_cc_rf2.cc
++++ b/Carpet/CarpetLib/src/prolongate_3d_cc_rf2.cc
+@@ -47,6 +47,8 @@ namespace CarpetLib {
+   
+ #define SRCIND3(i,j,k) index3 (i, j, k, srciext, srcjext, srckext)
+ #define DSTIND3(i,j,k) index3 (i, j, k, dstiext, dstjext, dstkext)
++#define SRCOFF3(i,j,k) offset3 (i, j, k, srciext, srcjext, srckext)
++#define DSTOFF3(i,j,k) offset3 (i, j, k, dstiext, dstjext, dstkext)
+   
+   
+   
+@@ -443,11 +445,11 @@ namespace CarpetLib {
+     size_t const k0 = srckoff / 2;
+     
+     
+-    // size_t const srcdi = SRCIND3(1,0,0) - SRCIND3(0,0,0);
++    // size_t const srcdi = SRCOFF3(1,0,0) - SRCOFF3(0,0,0);
+     size_t const srcdi = 1;
+-    assert (srcdi == SRCIND3(1,0,0) - SRCIND3(0,0,0));
+-    size_t const srcdj = SRCIND3(0,1,0) - SRCIND3(0,0,0);
+-    size_t const srcdk = SRCIND3(0,0,1) - SRCIND3(0,0,0);
++    assert (srcdi == SRCOFF3(1,0,0) - SRCOFF3(0,0,0));
++    size_t const srcdj = SRCOFF3(0,1,0) - SRCOFF3(0,0,0);
++    size_t const srcdk = SRCOFF3(0,0,1) - SRCOFF3(0,0,0);
+     
+     
+     
+diff --git a/Carpet/CarpetLib/src/prolongate_3d_dgfe_rf2.cc b/Carpet/CarpetLib/src/prolongate_3d_dgfe_rf2.cc
+index 3bcd3f1..9c4f92b 100644
+--- a/Carpet/CarpetLib/src/prolongate_3d_dgfe_rf2.cc
++++ b/Carpet/CarpetLib/src/prolongate_3d_dgfe_rf2.cc
+@@ -22,6 +22,8 @@ namespace CarpetLib {
+   
+ #define SRCIND3(i,j,k) ptrdiff_t(index3(i, j, k, srciext, srcjext, srckext))
+ #define DSTIND3(i,j,k) ptrdiff_t(index3(i, j, k, dstiext, dstjext, dstkext))
++#define SRCOFF3(i,j,k) ptrdiff_t(offset3(i, j, k, srciext, srcjext, srckext))
++#define DSTOFF3(i,j,k) ptrdiff_t(offset3(i, j, k, dstiext, dstjext, dstkext))
+   
+   
+   
+@@ -129,11 +131,11 @@ namespace CarpetLib {
+       assert(regext[2] % (2*(ORDER+1)) == 0);
+       
+       int const srcdi = 1;      // 2d face
+-      int const srcdj = SRCIND3(0,1,0) - SRCIND3(0,0,0);
+-      int const srcdk = SRCIND3(0,0,1) - SRCIND3(0,0,0);
++      int const srcdj = SRCOFF3(0,1,0) - SRCOFF3(0,0,0);
++      int const srcdk = SRCOFF3(0,0,1) - SRCOFF3(0,0,0);
+       int const dstdi = 1;      // 2d face
+-      int const dstdj = DSTIND3(0,1,0) - DSTIND3(0,0,0);
+-      int const dstdk = DSTIND3(0,0,1) - DSTIND3(0,0,0);
++      int const dstdj = DSTOFF3(0,1,0) - DSTOFF3(0,0,0);
++      int const dstdk = DSTOFF3(0,0,1) - DSTOFF3(0,0,0);
+       int const srcstr2d[2] = {srcdj, srcdk};
+       int const dststr2d[2] = {dstdj, dstdk};
+       
+@@ -163,16 +165,16 @@ namespace CarpetLib {
+       assert(regext[0] % (2*(ORDER+1)) == 0);
+       assert(regext[2] % (2*(ORDER+1)) == 0);
+       
+-      // int const srcdi = SRCIND3(1,0,0) - SRCIND3(0,0,0);
++      // int const srcdi = SRCOFF3(1,0,0) - SRCOFF3(0,0,0);
+       int const srcdi = 1;
+-      assert(srcdi == SRCIND3(1,0,0) - SRCIND3(0,0,0));
++      assert(srcdi == SRCOFF3(1,0,0) - SRCOFF3(0,0,0));
+       int const srcdj = 1;      // 2d face
+-      int const srcdk = SRCIND3(0,0,1) - SRCIND3(0,0,0);
+-      // int const dstdi = DSTIND3(1,0,0) - DSTIND3(0,0,0);
++      int const srcdk = SRCOFF3(0,0,1) - SRCOFF3(0,0,0);
++      // int const dstdi = DSTOFF3(1,0,0) - DSTOFF3(0,0,0);
+       int const dstdi = 1;
+-      assert(dstdi == DSTIND3(1,0,0) - DSTIND3(0,0,0));
++      assert(dstdi == DSTOFF3(1,0,0) - DSTOFF3(0,0,0));
+       int const dstdj = 1;      // 2d face
+-      int const dstdk = DSTIND3(0,0,1) - DSTIND3(0,0,0);
++      int const dstdk = DSTOFF3(0,0,1) - DSTOFF3(0,0,0);
+       int const srcstr2d[2]= {srcdi, srcdk};
+       int const dststr2d[2]= {dstdi, dstdk};
+       
+@@ -202,15 +204,15 @@ namespace CarpetLib {
+       assert(regext[0] % (2*(ORDER+1)) == 0);
+       assert(regext[1] % (2*(ORDER+1)) == 0);
+       
+-      // int const srcdi = SRCIND3(1,0,0) - SRCIND3(0,0,0);
++      // int const srcdi = SRCOFF3(1,0,0) - SRCOFF3(0,0,0);
+       int const srcdi = 1;
+-      assert(srcdi == SRCIND3(1,0,0) - SRCIND3(0,0,0));
+-      int const srcdj = SRCIND3(0,1,0) - SRCIND3(0,0,0);
++      assert(srcdi == SRCOFF3(1,0,0) - SRCOFF3(0,0,0));
++      int const srcdj = SRCOFF3(0,1,0) - SRCOFF3(0,0,0);
+       int const srcdk = 1;      // 2d face
+-      // int const dstdi = DSTIND3(1,0,0) - DSTIND3(0,0,0);
++      // int const dstdi = DSTOFF3(1,0,0) - DSTOFF3(0,0,0);
+       int const dstdi = 1;
+-      assert(dstdi == DSTIND3(1,0,0) - DSTIND3(0,0,0));
+-      int const dstdj = DSTIND3(0,1,0) - DSTIND3(0,0,0);
++      assert(dstdi == DSTOFF3(1,0,0) - DSTOFF3(0,0,0));
++      int const dstdj = DSTOFF3(0,1,0) - DSTOFF3(0,0,0);
+       int const dstdk = 1;      // 2d face
+       int const srcstr2d[2]= {srcdi, srcdj};
+       int const dststr2d[2]= {dstdi, dstdj};
+@@ -239,16 +241,16 @@ namespace CarpetLib {
+       // Ensure we traverse an even integer number of elements
+       assert(all(regext % (2*(ORDER+1)) == 0));
+       
+-      // int const srcdi = SRCIND3(1,0,0) - SRCIND3(0,0,0);
++      // int const srcdi = SRCOFF3(1,0,0) - SRCOFF3(0,0,0);
+       int const srcdi = 1;
+-      assert(srcdi == SRCIND3(1,0,0) - SRCIND3(0,0,0));
+-      int const srcdj = SRCIND3(0,1,0) - SRCIND3(0,0,0);
+-      int const srcdk = SRCIND3(0,0,1) - SRCIND3(0,0,0);
+-      // int const dstdi = DSTIND3(1,0,0) - DSTIND3(0,0,0);
++      assert(srcdi == SRCOFF3(1,0,0) - SRCOFF3(0,0,0));
++      int const srcdj = SRCOFF3(0,1,0) - SRCOFF3(0,0,0);
++      int const srcdk = SRCOFF3(0,0,1) - SRCOFF3(0,0,0);
++      // int const dstdi = DSTOFF3(1,0,0) - DSTOFF3(0,0,0);
+       int const dstdi = 1;
+-      assert(dstdi == DSTIND3(1,0,0) - DSTIND3(0,0,0));
+-      int const dstdj = DSTIND3(0,1,0) - DSTIND3(0,0,0);
+-      int const dstdk = DSTIND3(0,0,1) - DSTIND3(0,0,0);
++      assert(dstdi == DSTOFF3(1,0,0) - DSTOFF3(0,0,0));
++      int const dstdj = DSTOFF3(0,1,0) - DSTOFF3(0,0,0);
++      int const dstdk = DSTOFF3(0,0,1) - DSTOFF3(0,0,0);
+       int const srcstr[3] = {srcdi, srcdj, srcdk};
+       int const dststr[3] = {dstdi, dstdj, dstdk};
+       
+diff --git a/Carpet/CarpetLib/src/prolongate_3d_rf2.cc b/Carpet/CarpetLib/src/prolongate_3d_rf2.cc
+index 9bb3ceb..9872753 100644
+--- a/Carpet/CarpetLib/src/prolongate_3d_rf2.cc
++++ b/Carpet/CarpetLib/src/prolongate_3d_rf2.cc
+@@ -23,6 +23,8 @@ namespace CarpetLib {
+   
+ #define SRCIND3(i,j,k) index3 (i, j, k, srciext, srcjext, srckext)
+ #define DSTIND3(i,j,k) index3 (i, j, k, dstiext, dstjext, dstkext)
++#define SRCOFF3(i,j,k) offset3 (i, j, k, srciext, srcjext, srckext)
++#define DSTOFF3(i,j,k) offset3 (i, j, k, dstiext, dstjext, dstkext)
+   
+   
+   
+@@ -588,11 +590,11 @@ namespace CarpetLib {
+     
+     
+     
+-    // size_t const srcdi = SRCIND3(1,0,0) - SRCIND3(0,0,0);
++    // size_t const srcdi = SRCOFF3(1,0,0) - SRCOFF3(0,0,0);
+     size_t const srcdi = 1;
+-    assert (srcdi == SRCIND3(1,0,0) - SRCIND3(0,0,0));
+-    size_t const srcdj = SRCIND3(0,1,0) - SRCIND3(0,0,0);
+-    size_t const srcdk = SRCIND3(0,0,1) - SRCIND3(0,0,0);
++    assert (srcdi == SRCOFF3(1,0,0) - SRCOFF3(0,0,0));
++    size_t const srcdj = SRCOFF3(0,1,0) - SRCOFF3(0,0,0);
++    size_t const srcdk = SRCOFF3(0,0,1) - SRCOFF3(0,0,0);
+     
+     
+     
+diff --git a/Carpet/CarpetLib/src/restrict_3d_dgfe_rf2.cc b/Carpet/CarpetLib/src/restrict_3d_dgfe_rf2.cc
+index 45bf10b..e774e27 100644
+--- a/Carpet/CarpetLib/src/restrict_3d_dgfe_rf2.cc
++++ b/Carpet/CarpetLib/src/restrict_3d_dgfe_rf2.cc
+@@ -22,6 +22,8 @@ namespace CarpetLib {
+   
+ #define SRCIND3(i,j,k) ptrdiff_t(index3(i, j, k, srciext, srcjext, srckext))
+ #define DSTIND3(i,j,k) ptrdiff_t(index3(i, j, k, dstiext, dstjext, dstkext))
++#define SRCOFF3(i,j,k) ptrdiff_t(offset3(i, j, k, srciext, srcjext, srckext))
++#define DSTOFF3(i,j,k) ptrdiff_t(offset3(i, j, k, dstiext, dstjext, dstkext))
+   
+   
+   
+@@ -102,17 +104,17 @@ namespace CarpetLib {
+     
+     
+     
+-    // int const srcdi = SRCIND3(1,0,0) - SRCIND3(0,0,0);
++    // int const srcdi = SRCOFF3(1,0,0) - SRCOFF3(0,0,0);
+     int const srcdi = 1;
+-    assert(srcdi == SRCIND3(1,0,0) - SRCIND3(0,0,0));
+-    int const srcdj = SRCIND3(0,1,0) - SRCIND3(0,0,0);
+-    int const srcdk = SRCIND3(0,0,1) - SRCIND3(0,0,0);
++    assert(srcdi == SRCOFF3(1,0,0) - SRCOFF3(0,0,0));
++    int const srcdj = SRCOFF3(0,1,0) - SRCOFF3(0,0,0);
++    int const srcdk = SRCOFF3(0,0,1) - SRCOFF3(0,0,0);
+     
+-    // int const dstdi = DSTIND3(1,0,0) - DSTIND3(0,0,0);
++    // int const dstdi = DSTOFF3(1,0,0) - DSTOFF3(0,0,0);
+     int const dstdi = 1;
+-    assert(dstdi == DSTIND3(1,0,0) - DSTIND3(0,0,0));
+-    int const dstdj = DSTIND3(0,1,0) - DSTIND3(0,0,0);
+-    int const dstdk = DSTIND3(0,0,1) - DSTIND3(0,0,0);
++    assert(dstdi == DSTOFF3(1,0,0) - DSTOFF3(0,0,0));
++    int const dstdj = DSTOFF3(0,1,0) - DSTOFF3(0,0,0);
++    int const dstdk = DSTOFF3(0,0,1) - DSTOFF3(0,0,0);
+     
+     int const srcstr[3] = {srcdi, srcdj, srcdk};
+     int const dststr[3] = {dstdi, dstdj, dstdk};
+diff --git a/Carpet/CarpetLib/src/restrict_3d_vc_rf2.cc b/Carpet/CarpetLib/src/restrict_3d_vc_rf2.cc
+index d61db70..7ed9377 100644
+--- a/Carpet/CarpetLib/src/restrict_3d_vc_rf2.cc
++++ b/Carpet/CarpetLib/src/restrict_3d_vc_rf2.cc
+@@ -23,6 +23,12 @@ namespace CarpetLib {
+ #define DSTIND3(i,j,k)                                  \
+   index3 (dstioff + (i), dstjoff + (j), dstkoff + (k),  \
+           dstiext, dstjext, dstkext)
++#define SRCOFF3(i,j,k)                                  \
++  offset3 (srcioff + (i), srcjoff + (j), srckoff + (k),  \
++          srciext, srcjext, srckext)
++#define DSTOFF3(i,j,k)                                  \
++  offset3 (dstioff + (i), dstjoff + (j), dstkoff + (k),  \
++          dstiext, dstjext, dstkext)
+   
+   
+   
+@@ -223,12 +229,11 @@ namespace CarpetLib {
+     int const dstjoff = dstoff[1];
+     int const dstkoff = dstoff[2];
+     
+-    // size_t const srcdi == SRCIND3(1,0,0) - SRCIND3(0,0,0);
++    // size_t const srcdi == SRCOFF3(1,0,0) - SRCOFF3(0,0,0);
+     size_t const srcdi = 1;
+-    assert (srcdi == SRCIND3(1,0,0) - SRCIND3(0,0,0));
+-    size_t const srcdj = SRCIND3(0,1,0) - SRCIND3(0,0,0);
+-    size_t const srcdk = SRCIND3(0,0,1) - SRCIND3(0,0,0);
+-    
++    assert (srcdi == SRCOFF3(1,0,0) - SRCOFF3(0,0,0));
++    size_t const srcdj = SRCOFF3(0,1,0) - SRCOFF3(0,0,0);
++    size_t const srcdk = SRCOFF3(0,0,1) - SRCOFF3(0,0,0);
+     
+     
+     // Loop over coarse region
+-- 
+1.7.9
+

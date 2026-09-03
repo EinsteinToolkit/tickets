@@ -1,0 +1,52 @@
+From a558212bef2508b7871adfe1fc21c911b51bf95c Mon Sep 17 00:00:00 2001
+From: Barry Wardell <barry.wardell@gmail.com>
+Date: Sat, 15 Mar 2014 22:02:15 -0400
+Subject: [PATCH] Replace deprecated use of finite with isfinite
+
+---
+ src/molecule_posn.c | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/src/molecule_posn.c b/src/molecule_posn.c
+index 553a176..a10d689 100644
+--- a/src/molecule_posn.c
++++ b/src/molecule_posn.c
+@@ -228,12 +228,12 @@ if (molecule_size > HOW_MANY_IN_RANGE(grid_i_min,grid_i_max))
+    then return MOLECULE_POSN_ERROR_GRID_TINY;		/*** ERROR RETURN ***/
+ 
+ /* has someone passed us NaNs for coordinates etc? */
+-if (!finite(grid_origin) || !finite(grid_delta) || !finite(x))
++if (!isfinite(grid_origin) || !isfinite(grid_delta) || !isfinite(x))
+    then return MOLECULE_POSN_ERROR_NAN;
+-if (    !finite(boundary_off_centering_tolerance_min)
+-     || !finite(boundary_off_centering_tolerance_max)
+-     || !finite(boundary_extrapolation_tolerance_min)
+-     || !finite(boundary_extrapolation_tolerance_max)    )
++if (    !isfinite(boundary_off_centering_tolerance_min)
++     || !isfinite(boundary_off_centering_tolerance_max)
++     || !isfinite(boundary_extrapolation_tolerance_min)
++     || !isfinite(boundary_extrapolation_tolerance_max)    )
+    then return MOLECULE_POSN_ERROR_NAN;
+ 
+ /* is the grid spacing zero (we'll need to divide by it)? */
+@@ -259,7 +259,7 @@ const fp fp_centered_max_possible_i = grid_i_max - mr_plus
+ 
+ /* integer coordinate i of interpolation point, as a floating-point number */
+ const fp fp_i = (x - grid_origin) / grid_delta;
+-assert(finite(fp_i));
++assert(isfinite(fp_i));
+ 
+ if (debug > 8)
+    then {
+@@ -293,7 +293,7 @@ if (fp_i > fp_centered_max_possible_i + boundary_off_centering_tolerance_max)
+ fp fp_i_center = IS_EVEN(molecule_size)
+ 		 ? floor(fp_i)
+ 		 : ROUND_TO_INTEGER__RESULT_IS_FP(fp_i);
+-assert(finite(fp_i_center));
++assert(isfinite(fp_i_center));
+ int int_i_center = (int) fp_i_center;	/* convert to integer */
+ if (debug > 8)
+    then printf("   initial: fp_i_center=%g int_i_center=%d\n",
+-- 
+1.8.5.5
+

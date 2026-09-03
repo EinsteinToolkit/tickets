@@ -1,0 +1,126 @@
+Index: lib/make/make.config.rules.in
+===================================================================
+--- lib/make/make.config.rules.in	(revision 4739)
++++ lib/make/make.config.rules.in	(working copy)
+@@ -29,27 +29,35 @@
+ 
+ #####################################################################
+ 
++ifeq ($(shell echo $(VERBOSE) | tr '[:upper:]' '[:lower:]'),yes)
+ define NOTIFY_PREPROCESSING
+-	VERBOSE=`echo $VERBOSE | tr '[:upper:]' '[:lower:]'`; \
+-	if test "$(VERBOSE)" = "yes"; then echo Preprocessing $<; fi
++	echo Preprocessing $<
+ endef
+ define NOTIFY_COPYING
+-	VERBOSE=`echo $VERBOSE | tr '[:upper:]' '[:lower:]'`; \
+-	if test "$(VERBOSE)" = "yes"; then echo Copying $<; fi
++	echo Copying $<
+ endef
+ define NOTIFY_COMPILING
+-	VERBOSE=`echo $VERBOSE | tr '[:upper:]' '[:lower:]'`; \
+-	if test "$(VERBOSE)" = "yes"; then echo Compiling $<; \
+-                                   else echo COMPILING $<; fi
++	echo Compiling $<
+ endef
+ define NOTIFY_POSTPROCESSING
+-	VERBOSE=`echo $VERBOSE | tr '[:upper:]' '[:lower:]'`; \
+-	if test "$(VERBOSE)" = "yes"; then echo Postprocessing $<; fi
++	echo Postprocessing $<
+ endef
+ define NOTIFY_DIVIDER
+-	VERBOSE=`echo $VERBOSE | tr '[:upper:]' '[:lower:]'`; \
+-	if test "$(VERBOSE)" = "yes"; then echo $(DIVIDER); fi
++	echo $(DIVIDER)
+ endef
++else
++define NOTIFY_PREPROCESSING
++endef
++define NOTIFY_COPYING
++endef
++define NOTIFY_COMPILING
++	echo COMPILING $<
++endef
++define NOTIFY_POSTPROCESSING
++endef
++define NOTIFY_DIVIDER
++endef
++endif
+ 
+ # Define how to do dependencies
+ ifeq ($(strip $(PERL_BACKUP_NECESSARY)),)
+Index: lib/make/make.configuration
+===================================================================
+--- lib/make/make.configuration	(revision 4739)
++++ lib/make/make.configuration	(working copy)
+@@ -45,10 +45,15 @@
+ # Dividers to make the screen output slightly nicer
+ DIVEL   =  __________________
+ DIVIDER =  $(DIVEL)$(DIVEL)$(DIVEL)$(DIVEL)
++ifeq ($(shell echo $(VERBOSE) | tr '[:upper:]' '[:lower:]'),yes)
+ define NOTIFY_DIVIDER
+-	VERBOSE=`echo $VERBOSE | tr '[:upper:]' '[:lower:]'`; \
+-	if test "$(VERBOSE)" = "yes"; then echo $(DIVIDER); fi
++	echo $(DIVIDER)
+ endef
++else
++define NOTIFY_DIVIDER
++ :
++endef
++endif
+ 
+ # Include the definitions for this configuration
+ include $(CONFIG)/make.config.defn
+Index: lib/make/make.thornlib
+===================================================================
+--- lib/make/make.thornlib	(revision 4739)
++++ lib/make/make.thornlib	(working copy)
+@@ -11,10 +11,14 @@
+ # Dividers to make the screen output slightly nicer
+ DIVEL   =  __________________
+ DIVIDER =  $(DIVEL)$(DIVEL)$(DIVEL)$(DIVEL)
++ifeq ($(shell echo $(VERBOSE) | tr '[:upper:]' '[:lower:]'),yes)
+ define NOTIFY_DIVIDER
+-	VERBOSE=`echo $VERBOSE | tr '[:upper:]' '[:lower:]'`; \
+-	if test "$(VERBOSE)" = "yes"; then echo $(DIVIDER); fi
++	echo $(DIVIDER)
+ endef
++else
++define NOTIFY_DIVIDER
++endef
++endif
+ 
+ # Include the main make definitions for this configuration
+ include $(CONFIG)/make.config.defn
+Index: Makefile
+===================================================================
+--- Makefile	(revision 4739)
++++ Makefile	(working copy)
+@@ -40,6 +40,10 @@
+ 
+ export PROMPT
+ 
++# backwards compatibility for VERBOSE=yes (SILENT=no)
++ifeq ($(shell echo $(strip $(SILENT)) | tr '[:upper:]' '[:lower:]'),no)
++VERBOSE = yes
++endif
+ # Make quietly unless told not to
+ ifneq ($(shell echo $(strip $(VERBOSE)) | tr '[:upper:]' '[:lower:]'),yes)
+ .SILENT:
+@@ -191,9 +195,15 @@
+ # Dividers to make the screen output slightly nicer
+ DIVEL   =  __________________
+ DIVIDER =  $(DIVEL)$(DIVEL)$(DIVEL)$(DIVEL)
++ifeq ($(shell echo $(VERBOSE) | tr '[:upper:]' '[:lower:]'),yes)
+ define NOTIFY_DIVIDER
+-	{ if test "$(BRIEF)" != "yes"; then echo $(DIVIDER); fi }
++	echo $(DIVIDER)
+ endef
++else
++define NOTIFY_DIVIDER
++	:
++endef
++endif
+ 
+ # Work out where we are
+ export CCTK_HOME := $(shell pwd)

@@ -1,0 +1,1175 @@
+From b0586688f406fe58a976767b8b166ab666acf24e Mon Sep 17 00:00:00 2001
+From: Bruno Coutinho Mundim <bcmsma@astro.rit.edu>
+Date: Tue, 20 Nov 2012 12:10:55 -0800
+Subject: [PATCH 14/25] GRHydro: Implement entropy evolution (separated from
+ temp evolution)
+
+---
+ interface.ccl                       |   21 ++++
+ param.ccl                           |    6 +-
+ schedule.ccl                        |   43 ++++---
+ src/GRHydro_Boundaries.F90          |  216 ++++++++++++++++++++---------------
+ src/GRHydro_CalcUpdate.F90          |    6 +
+ src/GRHydro_Con2Prim.F90            |    4 +
+ src/GRHydro_Con2PrimM.F90           |   14 ++-
+ src/GRHydro_ENOReconstruct_drv.F90  |   35 ++++++
+ src/GRHydro_HLLEM.F90               |   54 ++++++++-
+ src/GRHydro_Macros.h                |    1 +
+ src/GRHydro_PPMMReconstruct_drv.F90 |    5 +
+ src/GRHydro_ParamCheck.F90          |   15 +++
+ src/GRHydro_Prim2ConM.F90           |    9 ++
+ src/GRHydro_Reconstruct.F90         |   62 +++++-----
+ src/GRHydro_RegisterVars.cc         |   16 ++-
+ src/GRHydro_SourceM.F90             |    4 +
+ src/GRHydro_TVDReconstruct_drv.F90  |   13 +++
+ 17 files changed, 376 insertions(+), 148 deletions(-)
+
+diff --git a/interface.ccl b/interface.ccl
+index 2829ffb..d4aa69f 100644
+--- a/interface.ccl
++++ b/interface.ccl
+@@ -374,6 +374,8 @@ real Evec[3] type = GF Timelevels = 1 tags='ProlongationParameter="HydroBase::pr
+ 
+ real Y_e_con type = GF Timelevels = 3 tags='ProlongationParameter="HydroBase::prolongation_type" tensortypealias="Scalar" tensorweight=+1.0 jacobian="inverse_jacobian" interpolator="matter"' "Conserved electron fraction"
+ 
++real entropycons type = GF Timelevels = 3 tags='ProlongationParameter="HydroBase::prolongation_type" tensortypealias="Scalar" tensorweight=+1.0 jacobian="inverse_jacobian" interpolator="matter"' "Conserved entropy density"
++
+ real GRHydro_tracers[number_of_tracers] type = GF Timelevels = 3 tags='ProlongationParameter="HydroBase::prolongation_type" tensortypealias="Scalar"'
+ {
+   tracer
+@@ -390,6 +392,8 @@ real Bconsrhs[3] type = GF Timelevels = 1 tags='Prolongation="None" checkpoint="
+ 
+ real psidcrhs type = GF Timelevels = 1 tags='Prolongation="None" checkpoint="no"' "Update term for psidc"
+ 
++real entropyrhs type = GF Timelevels = 1 tags='Prolongation="None" checkpoint="no"' "Update term for entropycons"
++
+ real divB type = GF Timelevels = 1 tags='Prolongation="Restrict" checkpoint="no" tensorparity=-1' "Magnetic field constraint"
+ 
+ real bcom[3] type = GF Timelevels = 3 tags='ProlongationParameter="HydroBase::prolongation_type" tensortypealias="U" tensorparity=-1 interpolator="matter"' "b^i: comoving contravariant magnetic field 4-vector spatial components"
+@@ -498,10 +502,17 @@ real GRHydro_psifluxes type = GF Timelevels = 1 tags='Prolongation="None" checkp
+   psidcflux
+ } "Fluxes for the divergence cleaning parameter"
+ 
++real GRHydro_entropyfluxes type = GF Timelevels = 1 tags='Prolongation="None" checkpoint="no"'
++{
++  entropyflux
++} "Fluxes for the conserved entropy density"
++
+ int evolve_Y_e type = SCALAR tags='checkpoint="no"' "Are we evolving Y_e? Set in Paramcheck"
+ 
+ int evolve_temper type = SCALAR tags='checkpoint="no"' "Are we evolving temperature? Set in Paramcheck"
+ 
++int evolve_entropy type = SCALAR tags='checkpoint="no"' "Are we evolving entropy? Set in Paramcheck"
++
+ int evolve_MHD type = SCALAR tags='checkpoint="no"' "Are we doing MHD? Set in ParamCheck"
+ 
+ int GRHydro_reflevel type = SCALAR tags='checkpoint="no"' "Refinement level GRHydro is working on right now"
+@@ -534,6 +545,16 @@ real GRHydro_MHD_psidc_bext type = GF Timelevels = 1 tags='Prolongation="None" c
+   psidcplus,psidcminus
+ } "Divergence cleaning variable extended to the cell boundaries for diverence cleaning"
+ 
++real GRHydro_entropy_prim_bext type = GF Timelevels = 1 tags='Prolongation="None" checkpoint="no"'
++{
++  entropyplus,entropyminus
++} "Primitive entropy extended to the cell boundaries"
++
++real GRHydro_entropy_con_bext type = GF Timelevels = 1 tags='Prolongation="None" checkpoint="no"'
++{
++  entropyconsplus,entropyconsminus
++} "Conservative entropy extended to the cell boundaries"
++
+ int whichpsidcspeed type = SCALAR tags='checkpoint="no"' "Which speed to set for psidc? Set in ParamCheck"
+ 
+ real GRHydro_coords type=GF timelevels=3 
+diff --git a/param.ccl b/param.ccl
+index b2c9d2c..e03f323 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -40,7 +40,11 @@ EXTENDS KEYWORD Y_e_evolution_method ""
+ }
+ EXTENDS KEYWORD temperature_evolution_method ""
+ {
+-  "GRHydro" :: "Use GRHydro to evolve temperature and entropy"
++  "GRHydro" :: "Use GRHydro to evolve temperature"
++}
++EXTENDS KEYWORD entropy_evolution_method ""
++{
++  "GRHydro" :: "Use GRHydro to evolve entropy"
+ }
+ 
+ #########################################
+diff --git a/schedule.ccl b/schedule.ccl
+index 53703c4..911d4f0 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -56,8 +56,6 @@ if (number_of_particles)
+ {
+   STORAGE:particles[timelevels]
+ }
+-STORAGE: ADMBase::metric[timelevels], ADMBase::curv[timelevels]
+-STORAGE: ADMBase::lapse[timelevels]
+ if(CCTK_Equals(Y_e_evolution_method,"GRHydro"))
+ {
+   STORAGE: Y_e_con[timelevels]	
+@@ -67,24 +65,10 @@ if(CCTK_Equals(Bvec_evolution_method,"GRHydro"))
+ {
+   STORAGE: HydroBase::Bvec[timelevels]	
+   STORAGE: GRHydro::Bcons[timelevels]	
++  STORAGE: Bconsrhs
+   if (clean_divergence)
+   {
+     STORAGE:psidc[timelevels]
+-  }
+-}
+-STORAGE:evolve_MHD
+-STORAGE:evolve_Y_e
+-STORAGE:evolve_temper
+-STORAGE:GRHydro_reflevel
+-STORAGE:InLastMoLPostStep
+-STORAGE:densrhs
+-STORAGE:taurhs
+-STORAGE:srhs
+-if(CCTK_Equals(Bvec_evolution_method,"GRHydro"))
+-{
+-  STORAGE:Bconsrhs
+-  if (clean_divergence)
+-  {
+     STORAGE:psidcrhs
+     STORAGE:whichpsidcspeed 
+   }
+@@ -99,6 +83,21 @@ if(CCTK_Equals(Bvec_evolution_method,"GRHydro"))
+     STORAGE:GRHydro::bcom_sq[timelevels]
+   }
+ }
++if(CCTK_Equals(entropy_evolution_method,"GRHydro"))
++{
++  STORAGE: HydroBase::entropy[timelevels]	
++  STORAGE: GRHydro::entropycons[timelevels]	
++  STORAGE: entropyrhs
++}
++STORAGE:evolve_MHD
++STORAGE:evolve_Y_e
++STORAGE:evolve_temper
++STORAGE:evolve_entropy
++STORAGE:GRHydro_reflevel
++STORAGE:InLastMoLPostStep
++STORAGE:densrhs
++STORAGE:taurhs
++STORAGE:srhs
+ STORAGE:GRHydro_eos_scalars
+ STORAGE:GRHydro_minima
+ STORAGE:GRHydro_scalars
+@@ -671,8 +670,11 @@ if (CCTK_Equals(method_type, "RSA FV"))
+         STORAGE:GRHydro_MHD_con_bext
+         STORAGE:GRHydro_MHD_prim_bext
+         STORAGE:GRHydro_MHD_psidc_bext
++        STORAGE:GRHydro_entropy_prim_bext
++        STORAGE:GRHydro_entropy_con_bext
+         STORAGE:GRHydro_Bfluxes
+-	STORAGE:GRHydro_psifluxes
++        STORAGE:GRHydro_psifluxes
++        STORAGE:GRHydro_entropyfluxes
+         STORAGE:GRHydro_tracer_cons_bext
+         STORAGE:GRHydro_tracer_prim_bext
+         STORAGE:GRHydro_tracer_flux
+@@ -702,8 +704,11 @@ if (CCTK_Equals(method_type, "RSA FV"))
+         STORAGE:GRHydro_MHD_con_bext
+         STORAGE:GRHydro_MHD_prim_bext
+         STORAGE:GRHydro_MHD_psidc_bext
++        STORAGE:GRHydro_entropy_con_bext
++        STORAGE:GRHydro_entropy_prim_bext
+         STORAGE:GRHydro_Bfluxes
+         STORAGE:GRHydro_psifluxes
++        STORAGE:GRHydro_entropyfluxes
+       } "Calculation of intercell fluxes"
+     } else {
+       schedule group FluxTerms IN GRHydroRHS WHILE GRHydro::flux_direction
+@@ -1027,6 +1032,7 @@ if (!sync_conserved_only)
+       SYNC: HydroBase::eps
+       SYNC: HydroBase::vel
+       SYNC: Bcons
++      SYNC: entropycons
+       SYNC: HydroBase::Bvec
+       SYNC: psidc
+       SYNC: GRHydro_cons_tracers
+@@ -1049,6 +1055,7 @@ else
+       SYNC: tau
+       SYNC: scon
+       SYNC: Bcons
++      SYNC: entropycons
+       SYNC: psidc
+       SYNC: GRHydro_cons_tracers
+       SYNC: Y_e_con
+diff --git a/src/GRHydro_Boundaries.F90 b/src/GRHydro_Boundaries.F90
+index c04994c..e9def4a 100644
+--- a/src/GRHydro_Boundaries.F90
++++ b/src/GRHydro_Boundaries.F90
+@@ -85,6 +85,11 @@ subroutine GRHydro_InitSymBound(CCTK_ARGUMENTS)
+       call SetCartSymGN(ierr, cctkGH, sym, "HydroBase::entropy")
+     !endif
+   endif
++
++  if(evolve_entropy.ne.0) then
++      call SetCartSymGN(ierr, cctkGH, sym, "HydroBase::entropy")
++      call SetCartSymGN(ierr, cctkGH, sym, "GRHydro::entropycons")
++  endif
+   
+   call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::atmosphere_mask_real")
+   
+@@ -94,9 +99,9 @@ subroutine GRHydro_InitSymBound(CCTK_ARGUMENTS)
+   
+   !if (sync_conserved_only .eq. 0) then
+       if (general_coordinates .ne. 0) then
+-	 call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::lvel[0]")
++        call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::lvel[0]")
+       else
+-	 call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::vel[0]")
++        call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::vel[0]")
+       endif
+   !endif
+   call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::scon[0]")
+@@ -113,15 +118,15 @@ subroutine GRHydro_InitSymBound(CCTK_ARGUMENTS)
+   
+   !if (sync_conserved_only .eq. 0) then
+       if (general_coordinates .ne. 0) then
+-	 call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::lvel[1]")
++         call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::lvel[1]")
+       else
+-	 call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::vel[1]")
++         call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::vel[1]")
+       endif
+   !endif
+   call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::scon[1]")
+   if(evolve_mhd.ne.0) then
+      !if (sync_conserved_only .eq. 0) then
+-	 call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::Bvec[1]")
++     call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::Bvec[1]")
+      !endif
+      call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::Bcons[1]")
+   endif
+@@ -132,9 +137,9 @@ subroutine GRHydro_InitSymBound(CCTK_ARGUMENTS)
+   
+   !if (sync_conserved_only .eq. 0) then
+       if (general_coordinates .ne. 0) then
+-	 call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::lvel[2]")
++        call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::lvel[2]")
+       else
+-	 call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::vel[2]")
++        call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::vel[2]")
+       endif
+   !endif
+   call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::scon[2]")
+@@ -201,31 +206,31 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+          "GRHydro::scon", "Flat")
+     if (sync_conserved_only .eq. 0) then
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-	    "HydroBase::w_lorentz", "Flat")
++           "HydroBase::w_lorentz", "Flat")
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-	    "HydroBase::rho", "Flat")
++           "HydroBase::rho", "Flat")
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-	    "HydroBase::press", "Flat")
++           "HydroBase::press", "Flat")
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-	    "HydroBase::eps", "Flat")
++           "HydroBase::eps", "Flat")
+       if (general_coordinates .ne. 0) then
+-	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-	       "GRHydro::lvel", "Flat")
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "GRHydro::lvel", "Flat")
+       else
+-	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-	       "HydroBase::vel", "Flat")
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::vel", "Flat")
+       endif
+     endif
+     if(evolve_mhd.ne.0) then
+-       if (sync_conserved_only .eq. 0) then
+-	 if (general_coordinates .ne. 0) then
+-	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-		  "GRHydro::lBvec", "Flat")
+-	 else
+-	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-		  "HydroBase::Bvec", "Flat")
+-	 endif
+-       endif
++      if (sync_conserved_only .eq. 0) then
++        if (general_coordinates .ne. 0) then
++          ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++               "GRHydro::lBvec", "Flat")
++        else
++          ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++               "HydroBase::Bvec", "Flat")
++        endif
++      endif
+        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+             "GRHydro::Bcons", "Flat")
+        if(clean_divergence.ne.0) then
+@@ -236,8 +241,8 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+ 
+     if(evolve_tracer.ne.0) then 
+       if (sync_conserved_only .eq. 0) then
+-	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-	       "GRHydro::GRHydro_tracers", "Flat")
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "GRHydro::GRHydro_tracers", "Flat")
+       endif
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+             "GRHydro::GRHydro_cons_tracers", "Flat")
+@@ -245,8 +250,8 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+ 
+     if(evolve_y_e.ne.0) then
+       if (sync_conserved_only .eq. 0) then
+-	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-	       "HydroBase::Y_e", "Flat")
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::Y_e", "Flat")
+       endif
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+             "GRHydro::Y_e_con", "Flat")
+@@ -254,13 +259,21 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+ 
+     if(evolve_temper.ne.0) then
+       if (sync_conserved_only .eq. 0) then
+-	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-	       "HydroBase::temperature", "Flat")
+-	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-	       "HydroBase::entropy", "Flat")
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::temperature", "Flat")
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::entropy", "Flat")
+       endif
+     endif
+ 
++    if(evolve_entropy.ne.0) then
++      if (sync_conserved_only .eq. 0) then
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::entropy", "Flat")
++      endif
++      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++           "GRHydro::entropycons", "Flat")
++    endif
+ 
+   endif
+ 
+@@ -274,44 +287,44 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+     
+     if (sync_conserved_only .eq. 0) then
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-	    "HydroBase::w_lorentz", "None")
++           "HydroBase::w_lorentz", "None")
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-	    "HydroBase::rho", "None")
++           "HydroBase::rho", "None")
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-	    "HydroBase::press", "None")
++           "HydroBase::press", "None")
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-	    "HydroBase::eps", "None")
++           "HydroBase::eps", "None")
+       if (general_coordinates .ne. 0) then
+-	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-	       "GRHydro::lvel", "None")
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "GRHydro::lvel", "None")
+       else
+-	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-	       "HydroBase::vel", "None")
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::vel", "None")
+       endif
+     endif
+     
+     if(evolve_mhd.ne.0) then
+-       if (sync_conserved_only .eq. 0) then
+-	 if (general_coordinates .ne. 0) then
+-	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-		  "GRHydro::lBvec", "None")
+-	 else
+-	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-		  "HydroBase::Bvec", "None")
+-	 endif
+-       endif
+-       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-            "GRHydro::Bcons", "None")
+-       if(clean_divergence.ne.0) then
++      if (sync_conserved_only .eq. 0) then
++        if (general_coordinates .ne. 0) then
+           ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-               "GRHydro::psidc", "None")
+-       endif
++               "GRHydro::lBvec", "None")
++        else
++          ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++               "HydroBase::Bvec", "None")
++        endif
++      endif
++      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++           "GRHydro::Bcons", "None")
++      if(clean_divergence.ne.0) then
++         ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++              "GRHydro::psidc", "None")
++      endif
+     endif
+ 
+     if(evolve_tracer.ne.0) then 
+       if (sync_conserved_only .eq. 0) then 
+-	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-	       "GRHydro::GRHydro_tracers", "None")
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "GRHydro::GRHydro_tracers", "None")
+       endif
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+             "GRHydro::GRHydro_cons_tracers", "None")
+@@ -319,8 +332,8 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+ 
+     if(evolve_y_e.ne.0) then
+       if (sync_conserved_only .eq. 0) then
+-	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-	       "HydroBase::Y_e", "None")
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::Y_e", "None")
+       endif
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+             "GRHydro::Y_e_con", "None")
+@@ -328,11 +341,20 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+ 
+     if(evolve_temper.ne.0) then
+       if (sync_conserved_only .eq. 0) then
+-	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-	       "HydroBase::temperature", "None")
+-	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-	       "HydroBase::entropy", "None")
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::temperature", "None")
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::entropy", "None")
++      endif
++    endif
++
++    if(evolve_entropy.ne.0) then
++      if (sync_conserved_only .eq. 0) then
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::entropy", "None")
+       endif
++      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++           "GRHydro::entropycons", "None")
+     endif
+ 
+   endif
+@@ -394,11 +416,11 @@ subroutine GRHydro_SelectPrimitiveInitialGuessesBoundaries(CCTK_ARGUMENTS)
+     endif
+     if(evolve_mhd.ne.0) then
+       if (general_coordinates .ne. 0) then
+-         ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-               "GRHydro::lBvec", "Flat")
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "GRHydro::lBvec", "Flat")
+       else
+-         ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-               "HydroBase::Bvec", "Flat")
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::Bvec", "Flat")
+       endif
+     endif
+ 
+@@ -419,6 +441,10 @@ subroutine GRHydro_SelectPrimitiveInitialGuessesBoundaries(CCTK_ARGUMENTS)
+        !      "HydroBase::entropy", "Flat")
+     endif
+ 
++    if(evolve_entropy.ne.0) then
++       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::entropy", "Flat")
++    endif
+ 
+   endif
+ 
+@@ -442,12 +468,11 @@ subroutine GRHydro_SelectPrimitiveInitialGuessesBoundaries(CCTK_ARGUMENTS)
+     if(evolve_mhd.ne.0) then
+       if (general_coordinates .ne. 0) then
+         ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-	       "GRHydro::lBvec", "None")
++             "GRHydro::lBvec", "None")
+       else
+         ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-               "HydroBase::Bvec", "None")
++             "HydroBase::Bvec", "None")
+       endif
+-       
+     endif
+ 
+     !if(evolve_tracer.ne.0) then 
+@@ -469,6 +494,11 @@ subroutine GRHydro_SelectPrimitiveInitialGuessesBoundaries(CCTK_ARGUMENTS)
+        !      "HydroBase::entropy", "None")
+     endif
+ 
++    if(evolve_entropy.ne.0) then
++       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::entropy", "None")
++    endif
++
+   end if
+ 
+   if (CCTK_EQUALS(bound,"scalar")) then
+@@ -528,24 +558,25 @@ subroutine GRHydro_SelectPrimitiveBoundaries(CCTK_ARGUMENTS)
+        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+              "HydroBase::vel", "Flat")
+     endif
++
+     if(evolve_mhd.ne.0) then
+-	 if (general_coordinates .ne. 0) then
+-	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-		  "GRHydro::lBvec", "Flat")
+-	 else
+-	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-		  "HydroBase::Bvec", "Flat")
+-	 endif
++      if (general_coordinates .ne. 0) then
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "GRHydro::lBvec", "Flat")
++      else
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::Bvec", "Flat")
++      endif
+     endif
+ 
+     if(evolve_tracer.ne.0) then 
+-    	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-    	       "GRHydro::GRHydro_tracers", "Flat")
++      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++           "GRHydro::GRHydro_tracers", "Flat")
+     endif
+ 
+     if(evolve_y_e.ne.0) then
+-    	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-    	       "HydroBase::Y_e", "Flat")
++      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++           "HydroBase::Y_e", "Flat")
+     endif
+ 
+     if(evolve_temper.ne.0) then
+@@ -555,6 +586,10 @@ subroutine GRHydro_SelectPrimitiveBoundaries(CCTK_ARGUMENTS)
+              "HydroBase::entropy", "Flat")
+     endif
+ 
++    if(evolve_entropy.ne.0) then
++       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::entropy", "Flat")
++    endif
+ 
+   endif
+ 
+@@ -576,20 +611,18 @@ subroutine GRHydro_SelectPrimitiveBoundaries(CCTK_ARGUMENTS)
+     endif
+     
+     if(evolve_mhd.ne.0) then
+-	 if (general_coordinates .ne. 0) then
+-	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-		  "GRHydro::lBvec", "None")
+-	 else
+-	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-		  "HydroBase::Bvec", "None")
+-	 endif
+-       
++      if (general_coordinates .ne. 0) then
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "GRHydro::lBvec", "None")
++      else
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::Bvec", "None")
++      endif
+     endif
+ 
+     if(evolve_tracer.ne.0) then 
+        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+              "GRHydro::GRHydro_tracers", "None")
+-      
+     endif
+ 
+     if(evolve_y_e.ne.0) then
+@@ -605,6 +638,11 @@ subroutine GRHydro_SelectPrimitiveBoundaries(CCTK_ARGUMENTS)
+              "HydroBase::entropy", "None")
+     endif
+ 
++    if(evolve_entropy.ne.0) then
++       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::entropy", "None")
++    endif
++
+   end if
+ 
+   if (CCTK_EQUALS(bound,"scalar")) then
+diff --git a/src/GRHydro_CalcUpdate.F90 b/src/GRHydro_CalcUpdate.F90
+index 32ac21d..3b08360 100644
+--- a/src/GRHydro_CalcUpdate.F90
++++ b/src/GRHydro_CalcUpdate.F90
+@@ -125,6 +125,12 @@ subroutine UpdateCalculation(CCTK_ARGUMENTS)
+                     (alp_l * Y_e_con_flux(i-xoffset,j-yoffset,k-zoffset) - &
+                     alp_r * Y_e_con_flux(i,j,k)) * idx
+             end if
++            
++            if (evolve_entropy .ne. 0) then
++               entropyrhs(i,j,k) = entropyrhs(i,j,k) + &
++                    (alp_l * entropyflux(i-xoffset,j-yoffset,k-zoffset) - &
++                    alp_r * entropyflux(i,j,k)) * idx
++            end if
+ 
+ !            densrhs(i,j,k) = 0.0d0
+ !            taurhs(i,j,k)  = 0.0d0
+diff --git a/src/GRHydro_Con2Prim.F90 b/src/GRHydro_Con2Prim.F90
+index 9881220..e1f0302 100644
+--- a/src/GRHydro_Con2Prim.F90
++++ b/src/GRHydro_Con2Prim.F90
+@@ -2331,6 +2331,10 @@ subroutine check_GRHydro_C2P_failed(CCTK_ARGUMENTS)
+                   temperature(i,j,k),entropy(i,j,k)
+             call CCTK_WARN(1,warnline)
+           end if
++          if (evolve_entropy.ne.0) then
++            write(warnline,'(a32,2g16.7)') 'entropy: ', entropy(i,j,k)
++            call CCTK_WARN(1,warnline)
++          end if
+           if (evolve_Y_e.ne.0) then
+             write(warnline,'(a32,2g16.7)') 'Y_e, Y_e_con: ',&
+                   Y_e(i,j,k),Y_e_con(i,j,k)
+diff --git a/src/GRHydro_Con2PrimM.F90 b/src/GRHydro_Con2PrimM.F90
+index 0d76503..83372cb 100644
+--- a/src/GRHydro_Con2PrimM.F90
++++ b/src/GRHydro_Con2PrimM.F90
+@@ -346,8 +346,11 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+                    uxx,uxy,uxz,uyy,uyz,uzz,det, &
+                    epsnegative,GRHydro_C2P_failed(i,j,k))
+ 
++              if(evolve_entropy.ne.0) then
++                 entropy(i,j,k) = entropycons(i,j,k)/dens(i,j,k)*rho(i,j,k)
++              endif
++
+               if(GRHydro_C2P_failed(i,j,k).ne.0) then
+-              
+                 xrho=1.0d0; xtemp=0.0d0; xeps=1.0d0
+                 call EOS_Omni_press(GRHydro_polytrope_handle,keytemp,GRHydro_eos_rf_prec,n,&
+                      xrho,xeps,xtemp,xye,xpress,keyerr,anyerr)
+@@ -407,6 +410,15 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+                 if(rho(i,j,k)*eps(i,j,k)*max_magnetic_to_gas_pressure_ratio.le.magpress) then
+                   GRHydro_C2P_failed(i,j,k) = 0
+ 
++                  if(evolve_entropy.ne.0) then
++                    local_K = entropycons(i,j,k)/dens(i,j,k) 
++                    xrho=10.0d0; xeps=1.0d0
++                    call EOS_Omni_press(GRHydro_polytrope_handle,keytemp,GRHydro_eos_rf_prec,n,&
++                         xrho,xeps,xtemp,xye,xpress,keyerr,anyerr)
++                    local_pgam=log(xpress(1)/local_K)/log(xrho(1))
++                    sc = local_K*dens(i,j,k)
++                  end if
++
+                   rho_tmp = rho(i,j,k)
+                   press_tmp = press(i,j,k)
+                   eps_tmp = eps(i,j,k)
+diff --git a/src/GRHydro_ENOReconstruct_drv.F90 b/src/GRHydro_ENOReconstruct_drv.F90
+index 207086c..3fb0c8f 100644
+--- a/src/GRHydro_ENOReconstruct_drv.F90
++++ b/src/GRHydro_ENOReconstruct_drv.F90
+@@ -146,6 +146,11 @@ subroutine GRHydro_ENOReconstruct_drv(CCTK_ARGUMENTS)
+              endif
+            endif
+ 
++           if (evolve_entropy .ne. 0) then
++              entropyplus(i,j,k) = 0.0d0
++              entropyminus(i,j,k) = 0.0d0
++           endif
++
+            if (evolve_tracer .ne. 0) then
+               tracerplus(i,j,k,:) = 0.0d0
+               tracerminus(i,j,k,:) = 0.0d0
+@@ -211,6 +216,11 @@ subroutine GRHydro_ENOReconstruct_drv(CCTK_ARGUMENTS)
+                     Bvecz(:,j,k),Bveczminus(:,j,k),Bveczplus(:,j,k),&
+                     trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+             endif
++            if (evolve_entropy .ne. 0) then
++               call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
++                    entropy(:,j,k),entropyminus(:,j,k),entropyplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            endif
+           else if (CCTK_EQUALS(recon_vars,"conservative")) then
+             call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
+                  dens(:,j,k),densminus(:,j,k),densplus(:,j,k),&
+@@ -238,6 +248,11 @@ subroutine GRHydro_ENOReconstruct_drv(CCTK_ARGUMENTS)
+                     Bconsz(:,j,k),Bconszminus(:,j,k),Bconszplus(:,j,k),&
+                     trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+             endif
++            if (evolve_entropy .ne. 0) then
++               call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
++                    entropycons(:,j,k),entropyconsminus(:,j,k),entropyconsplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            endif
+           else
+             !$OMP CRITICAL
+             call CCTK_WARN(0, "Variable type to reconstruct not recognized.")
+@@ -293,6 +308,11 @@ subroutine GRHydro_ENOReconstruct_drv(CCTK_ARGUMENTS)
+                     Bvecz(j,:,k),Bveczminus(j,:,k),Bveczplus(j,:,k),&
+                     trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+             endif
++            if (evolve_entropy .ne. 0) then
++               call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
++                    entropy(j,:,k),entropyminus(j,:,k),entropyplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            endif
+          else if (CCTK_EQUALS(recon_vars,"conservative")) then
+             call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
+                  dens(j,:,k),densminus(j,:,k),densplus(j,:,k),&
+@@ -320,6 +340,11 @@ subroutine GRHydro_ENOReconstruct_drv(CCTK_ARGUMENTS)
+                     Bconsz(j,:,k),Bconszminus(j,:,k),Bconszplus(j,:,k),&
+                     trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+             endif
++            if (evolve_entropy .ne. 0) then
++               call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
++                    entropycons(j,:,k),entropyconsminus(j,:,k),entropyconsplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            endif
+           else
+             !$OMP CRITICAL
+             call CCTK_WARN(0, "Variable type to reconstruct not recognized.")
+@@ -375,6 +400,11 @@ subroutine GRHydro_ENOReconstruct_drv(CCTK_ARGUMENTS)
+                     Bvecz(j,k,:),Bveczminus(j,k,:),Bveczplus(j,k,:),&
+                     trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+             endif
++            if (evolve_entropy .ne. 0) then
++               call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
++                    entropy(j,k,:),entropyminus(j,k,:),entropyplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            endif
+           else if (CCTK_EQUALS(recon_vars,"conservative")) then
+             call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
+                  dens(j,k,:),densminus(j,k,:),densplus(j,k,:),&
+@@ -402,6 +432,11 @@ subroutine GRHydro_ENOReconstruct_drv(CCTK_ARGUMENTS)
+                     Bconsz(j,k,:),Bconszminus(j,k,:),Bconszplus(j,k,:),&
+                     trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+             endif
++            if (evolve_entropy .ne. 0) then
++               call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
++                    entropycons(j,k,:),entropyconsminus(j,k,:),entropyconsplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            endif
+           else
+             !$OMP CRITICAL
+             call CCTK_WARN(0, "Variable type to reconstruct not recognized.")
+diff --git a/src/GRHydro_HLLEM.F90 b/src/GRHydro_HLLEM.F90
+index 3782846..6fe2b5f 100644
+--- a/src/GRHydro_HLLEM.F90
++++ b/src/GRHydro_HLLEM.F90
+@@ -61,6 +61,8 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+   CCTK_REAL :: Bvecxlowp,Bvecxlowm,Bvecylowp,Bvecylowm,Bveczlowp,Bveczlowm
+   CCTK_REAL :: pressstarp,pressstarm,velxlowp,velxlowm,velylowp,velylowm,velzlowp,velzlowm
+ 
++  CCTK_REAL :: entropyconsp,entropyconsm,entropyp,entropym,entropyf,entropydiff,entropyfp,entropyfm
++
+   CCTK_REAL :: psidcp, psidcm, psidcf, psidcdiff, psidcfp, psidcfm
+   CCTK_REAL :: charmax_dc, charmin_dc, charpm_dc   
+  
+@@ -133,7 +135,9 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+   !$OMP velzlowp,velzlowm,Bveczlowp,Bveczlowm,&
+   !$OMP bdotvp,bdotvm,b2p,b2m,v2p,v2m,wp,wm,&
+   !$OMP bxlowp,bxlowm,bylowp,bylowm,bzlowp,bzlowm,&
+-  !$OMP rhoenth_p,rhoenth_m,ab0p,ab0m,vA2p,vA2m,pressstarp,pressstarm,usendh,psidcdiff,psidcfp,psidcfm,charmin,charmax,chartop,charpm,m,xtemp)
++  !$OMP rhoenth_p,rhoenth_m,ab0p,ab0m,vA2p,vA2m,pressstarp,pressstarm,&
++  !$OMP usendh,psidcdiff,psidcfp,psidcfm,charmin,charmax,chartop,charpm,m,xtemp,&
++  !$OMP entropyconsp,entropyconsm,entropyp,entropym,entropyf,entropydiff,entropyfp,entropyfm)
+   do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil + transport_constraints*(1-zoffset)
+     do j = GRHydro_stencil, cctk_lsh(2) - GRHydro_stencil + transport_constraints*(1-yoffset)
+       do i = GRHydro_stencil, cctk_lsh(1) - GRHydro_stencil + transport_constraints*(1-xoffset)
+@@ -199,6 +203,13 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+            psidcm = psidcminus(i+xoffset,j+yoffset,k+zoffset)
+         endif
+ 
++        if(evolve_entropy.ne.0) then
++           entropyp = entropyplus(i,j,k)
++           entropym = entropyminus(i+xoffset,j+yoffset,k+zoffset)
++           entropyconsp = entropyconsplus(i,j,k)
++           entropyconsm = entropyconsminus(i+xoffset,j+yoffset,k+zoffset)
++        endif
++
+ !!$        Calculate various metric terms here.
+ !!$        Note also need the average of the lapse at the 
+ !!$        left and right points.
+@@ -289,6 +300,9 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+                f1(8)=f1(8) + 1.0d0*sdet*uxzh*psidcp - cons_p(6)*avg_betaz/avg_alp
+                psidcf = cons_p(6)/sdet-psidcp*avg_betax/avg_alp
+             endif
++            if(evolve_entropy.ne.0) then
++               entropyf = entropyconsp*vxtp
++            endif
+ 
+           else if (flux_direction == 2) then
+             call num_x_fluxM(cons_p(1),cons_p(3),cons_p(4),cons_p(2),cons_p(5),&
+@@ -302,6 +316,9 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+                f1(8)=f1(8) + 1.0d0*sdet*uyzh*psidcp - cons_p(7)*avg_betaz/avg_alp
+                psidcf = cons_p(7)/sdet-psidcp*avg_betay/avg_alp
+             endif
++            if(evolve_entropy.ne.0) then
++               entropyf = entropyconsp*vytp
++            endif
+ 
+           else if (flux_direction == 3) then
+             call num_x_fluxM(cons_p(1),cons_p(4),cons_p(2),cons_p(3),cons_p(5),&
+@@ -315,6 +332,9 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+                f1(8)=f1(8) + 1.0d0*sdet*uzzh*psidcp - cons_p(8)*avg_betaz/avg_alp
+                psidcf = cons_p(8)/sdet-psidcp*avg_betaz/avg_alp
+             endif
++            if(evolve_entropy.ne.0) then
++               entropyf = entropyconsp*vztp
++            endif
+             
+           else
+             call CCTK_WARN(0, "Flux direction not x,y,z")
+@@ -346,6 +366,9 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+           if (clean_divergence.ne.0) then
+              psidcdiff = psidcm - psidcp
+           endif
++          if(evolve_entropy.ne.0) then
++             entropydiff = entropyconsm - entropyconsp
++          endif
+ 
+ !!$        Eigenvalues and fluxes either side of the cell interface
+           
+@@ -400,6 +423,10 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+                psidcfp = cons_p(6)/sdet-avg_betax*psidcp/avg_alp
+                psidcfm = cons_m(6)/sdet-avg_betax*psidcm/avg_alp
+             endif
++            if(evolve_entropy.ne.0) then
++               entropyfp = entropyconsp*vxtp
++               entropyfm = entropyconsm*vxtm
++            endif
+ 
+           else if (flux_direction == 2) then
+             if(evolve_temper.ne.1) then
+@@ -452,6 +479,10 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+                psidcfp = cons_p(7)/sdet-avg_betay*psidcp/avg_alp
+                psidcfm = cons_m(7)/sdet-avg_betay*psidcm/avg_alp
+             endif
++            if(evolve_entropy.ne.0) then
++               entropyfp = entropyconsp*vytp
++               entropyfm = entropyconsm*vytm
++            endif
+ 
+           else if (flux_direction == 3) then
+             if(evolve_temper.ne.1) then
+@@ -504,6 +535,10 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+                psidcfp = cons_p(8)/sdet-avg_betaz*psidcp/avg_alp
+                psidcfm = cons_m(8)/sdet-avg_betaz*psidcm/avg_alp
+             endif
++            if(evolve_entropy.ne.0) then
++               entropyfp = entropyconsp*vztp
++               entropyfm = entropyconsm*vztm
++            endif
+ 
+           else
+             call CCTK_WARN(0, "Flux direction not x,y,z")
+@@ -586,7 +621,18 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+                end if
+            end select
+           endif
+-
++          
++          if(evolve_entropy.ne.0) then
++            entropydiff = entropyconsm - entropyconsp
++            if (HLLE) then
++              entropyf = (charmax * entropyfp - charmin * entropyfm + &
++                       charmax * charmin * entropydiff) / charpm
++            else if (LLF) then
++              entropyf = 0.5d0 * (entropyfp + entropyfm - chartop * entropydiff) 
++            end if 
++          endif
++             
++             
+ 
+         end if !!! The end of the SpaceMask check for a trivial RP.
+             
+@@ -604,6 +650,10 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+            psidcflux(i,j,k) = psidcf
+         endif
+ 
++        if(evolve_entropy.ne.0) then
++           entropyflux(i,j,k) = entropyf
++        endif
++
+         if(evolve_Y_e.ne.0) then
+            if (densflux(i, j, k) > 0.d0) then
+               Y_e_con_flux(i, j, k) = &
+diff --git a/src/GRHydro_Macros.h b/src/GRHydro_Macros.h
+index 5a02a58..925cfb4 100644
+--- a/src/GRHydro_Macros.h
++++ b/src/GRHydro_Macros.h
+@@ -38,3 +38,4 @@
+      dummy1 = r &&\
+   endif &&\
+   rho_ = rho_min * (atmo_falloff_radius/dummy1)**atmo_falloff_power
++
+diff --git a/src/GRHydro_PPMMReconstruct_drv.F90 b/src/GRHydro_PPMMReconstruct_drv.F90
+index 113f7a1..4d77b76 100644
+--- a/src/GRHydro_PPMMReconstruct_drv.F90
++++ b/src/GRHydro_PPMMReconstruct_drv.F90
+@@ -164,6 +164,11 @@ subroutine GRHydro_PPMMReconstruct_drv(CCTK_ARGUMENTS)
+              psidcminus(i,j,k) = 0.0d0
+            endif
+ 
++           if (evolve_entropy .ne. 0) then
++              entropyplus(i,j,k) = 0.0d0
++              entropyminus(i,j,k) = 0.0d0
++           endif
++
+            if (evolve_tracer .ne. 0) then
+               tracerplus(i,j,k,:) = 0.0d0
+               tracerminus(i,j,k,:) = 0.0d0
+diff --git a/src/GRHydro_ParamCheck.F90 b/src/GRHydro_ParamCheck.F90
+index 085fac1..c738f79 100644
+--- a/src/GRHydro_ParamCheck.F90
++++ b/src/GRHydro_ParamCheck.F90
+@@ -106,6 +106,12 @@ subroutine GRHydro_ParamCheck(CCTK_ARGUMENTS)
+      evolve_temper = 0
+   endif
+ 
++  if (CCTK_EQUALS(entropy_evolution_method,"GRHydro")) then
++     evolve_entropy = 1
++  else
++     evolve_entropy = 0
++  endif
++
+   call CCTK_IsImplementationActive(coordinates_is_active, "Coordinates")
+   ! this test is somewhat overzealous but we cannot access
+   ! coordinates::general_coordinates yet since it is only set in BaseGrid
+@@ -153,5 +159,14 @@ subroutine GRHydro_ParamCheck(CCTK_ARGUMENTS)
+      call CCTK_WARN(0, "Minimum damping radius is greater than maximum damping radius!")
+   end if
+ 
++  if(evolve_entropy.ne.0) then
++    if(evolve_MHD.eq.0) then
++      call CCTK_PARAMWARN("Entropy evolution not properly implemented yet for unmagnetized fluids!")
++    end if
++    if (CCTK_EQUALS(recon_method,"ppm")) then
++      call CCTK_PARAMWARN("Entropy evolution not implemented yet with PPM reconstruction!")
++    end if 
++  end if
++
+ end subroutine GRHydro_ParamCheck
+ 
+diff --git a/src/GRHydro_Prim2ConM.F90 b/src/GRHydro_Prim2ConM.F90
+index 484cb3b..f46b9ff 100644
+--- a/src/GRHydro_Prim2ConM.F90
++++ b/src/GRHydro_Prim2ConM.F90
+@@ -116,6 +116,11 @@ subroutine primitive2conservativeM(CCTK_ARGUMENTS)
+              Bvecxplus(i,j,k), Bvecyplus(i,j,k), Bveczplus(i,j,k), &
+              w_lorentzplus(i,j,k)) 
+ 
++        if(evolve_entropy.ne.0) then
++          entropyconsminus(i,j,k) = sqrt(avg_detl)*entropyminus(i,j,k)*w_lorentzminus(i,j,k)
++          entropyconsplus(i,j,k) = sqrt(avg_detr)*entropyplus(i,j,k)*w_lorentzplus(i,j,k)
++        end if
++
+       end do
+     end do
+   end do
+@@ -476,6 +481,10 @@ subroutine Primitive2ConservativeCellsM(CCTK_ARGUMENTS)
+              eps(i,j,k),press(i,j,k),Bvecx(i,j,k), &
+              Bvecy(i,j,k), Bvecz(i,j,k), w_lorentz(i,j,k))
+ 
++        if(evolve_entropy.ne.0) then
++          entropycons(i,j,k) = sqrt(det)*entropy(i,j,k)*w_lorentz(i,j,k)
++        end if
++
+         maxtau0 = max(maxtau0,tau(i,j,k))
+ 
+       end do
+diff --git a/src/GRHydro_Reconstruct.F90 b/src/GRHydro_Reconstruct.F90
+index 7168523..8ac033a 100644
+--- a/src/GRHydro_Reconstruct.F90
++++ b/src/GRHydro_Reconstruct.F90
+@@ -132,43 +132,43 @@ subroutine Reconstruction(CCTK_ARGUMENTS)
+                  epsminus(i,j,k) = eps(i,j,k)
+                  if (reconstruct_Wv.ne.0) then
+                     ! divide out the Loretnz factor for both the
+-		    ! plus and minus quantities this should by construction ensure
+-		    ! that any Lorentz factor calculated from them later on is
+-		    ! physical (ie. > 1.d0)
+-		    velxplus(i,j,k) = w_lorentz(i,j,k)*vup(i,j,k,1)
++                    ! plus and minus quantities this should by construction ensure
++                    ! that any Lorentz factor calculated from them later on is
++                    ! physical (ie. > 1.d0)
++                    velxplus(i,j,k) = w_lorentz(i,j,k)*vup(i,j,k,1)
+                     velyplus(i,j,k) = w_lorentz(i,j,k)*vup(i,j,k,2)
+                     velzplus(i,j,k) = w_lorentz(i,j,k)*vup(i,j,k,3)
+                     agxx = 0.5d0 * (g11(i,j,k) + g11(i+xoffset,j+yoffset,k+zoffset))
+-		    agxy = 0.5d0 * (g12(i,j,k) + g12(i+xoffset,j+yoffset,k+zoffset))
+-		    agxz = 0.5d0 * (g13(i,j,k) + g13(i+xoffset,j+yoffset,k+zoffset))
+-		    agyy = 0.5d0 * (g22(i,j,k) + g22(i+xoffset,j+yoffset,k+zoffset))
+-		    agyz = 0.5d0 * (g23(i,j,k) + g23(i+xoffset,j+yoffset,k+zoffset))
+-		    agzz = 0.5d0 * (g33(i,j,k) + g33(i+xoffset,j+yoffset,k+zoffset))
+-		    w = sqrt( 1.d0 + agxx*velxplus(i,j,k)*velxplus(i,j,k) + &
+-			      agyy*velyplus(i,j,k)*velyplus(i,j,k) &
+-			   + agzz*velzplus(i,j,k)*velzplus(i,j,k) + &
+-			      2.d0*agxy*velxplus(i,j,k)*velyplus(i,j,k) &
+-			   + 2.d0*agxz*velxplus(i,j,k)*velzplus(i,j,k) + &
+-			      2.d0*agyz*velyplus(i,j,k)*velzplus(i,j,k) )
+-		    velxplus(i,j,k) = velxplus(i,j,k)/w
+-		    velyplus(i,j,k) = velyplus(i,j,k)/w
+-		    velzplus(i,j,k) = velzplus(i,j,k)/w
+-                    
++                    agxy = 0.5d0 * (g12(i,j,k) + g12(i+xoffset,j+yoffset,k+zoffset))
++                    agxz = 0.5d0 * (g13(i,j,k) + g13(i+xoffset,j+yoffset,k+zoffset))
++                    agyy = 0.5d0 * (g22(i,j,k) + g22(i+xoffset,j+yoffset,k+zoffset))
++                    agyz = 0.5d0 * (g23(i,j,k) + g23(i+xoffset,j+yoffset,k+zoffset))
++                    agzz = 0.5d0 * (g33(i,j,k) + g33(i+xoffset,j+yoffset,k+zoffset))
++                    w = sqrt( 1.d0 + agxx*velxplus(i,j,k)*velxplus(i,j,k) &
++                                   + agyy*velyplus(i,j,k)*velyplus(i,j,k) &
++                                   + agzz*velzplus(i,j,k)*velzplus(i,j,k) &
++                                   + 2.d0*agxy*velxplus(i,j,k)*velyplus(i,j,k) &
++                                   + 2.d0*agxz*velxplus(i,j,k)*velzplus(i,j,k) &
++                                   + 2.d0*agyz*velyplus(i,j,k)*velzplus(i,j,k) )
++                    velxplus(i,j,k) = velxplus(i,j,k)/w
++                    velyplus(i,j,k) = velyplus(i,j,k)/w
++                    velzplus(i,j,k) = velzplus(i,j,k)/w
++ 
+                     velxminus(i,j,k) = w_lorentz(i,j,k)*vup(i,j,k,1)
+                     velyminus(i,j,k) = w_lorentz(i,j,k)*vup(i,j,k,2)
+                     velzminus(i,j,k) = w_lorentz(i,j,k)*vup(i,j,k,3)
+-		    agxx = 0.5d0 * (g11(i,j,k) + g11(i-xoffset,j-yoffset,k-zoffset))
+-		    agxy = 0.5d0 * (g12(i,j,k) + g12(i-xoffset,j-yoffset,k-zoffset))
+-		    agxz = 0.5d0 * (g13(i,j,k) + g13(i-xoffset,j-yoffset,k-zoffset))
+-		    agyy = 0.5d0 * (g22(i,j,k) + g22(i-xoffset,j-yoffset,k-zoffset))
+-		    agyz = 0.5d0 * (g23(i,j,k) + g23(i-xoffset,j-yoffset,k-zoffset))
+-		    agzz = 0.5d0 * (g33(i,j,k) + g33(i-xoffset,j-yoffset,k-zoffset))
+-		    w = sqrt( 1.d0 + agxx*velxminus(i,j,k)*velxminus(i,j,k) + &
+-				    agyy*velyminus(i,j,k)*velyminus(i,j,k) &
+-			   + agzz*velzminus(i,j,k)*velzminus(i,j,k) + &
+-			      2.d0*agxy*velxminus(i,j,k)*velyminus(i,j,k) &
+-			   + 2.d0*agxz*velxminus(i,j,k)*velzminus(i,j,k) + &
+-			      2.d0*agyz*velyminus(i,j,k)*velzminus(i,j,k) )
++                    agxx = 0.5d0 * (g11(i,j,k) + g11(i-xoffset,j-yoffset,k-zoffset))
++                    agxy = 0.5d0 * (g12(i,j,k) + g12(i-xoffset,j-yoffset,k-zoffset))
++                    agxz = 0.5d0 * (g13(i,j,k) + g13(i-xoffset,j-yoffset,k-zoffset))
++                    agyy = 0.5d0 * (g22(i,j,k) + g22(i-xoffset,j-yoffset,k-zoffset))
++                    agyz = 0.5d0 * (g23(i,j,k) + g23(i-xoffset,j-yoffset,k-zoffset))
++                    agzz = 0.5d0 * (g33(i,j,k) + g33(i-xoffset,j-yoffset,k-zoffset))
++                    w = sqrt( 1.d0 + agxx*velxminus(i,j,k)*velxminus(i,j,k) &
++                                   + agyy*velyminus(i,j,k)*velyminus(i,j,k) &
++                                   + agzz*velzminus(i,j,k)*velzminus(i,j,k) &
++                                   + 2.d0*agxy*velxminus(i,j,k)*velyminus(i,j,k) &
++                                   + 2.d0*agxz*velxminus(i,j,k)*velzminus(i,j,k) &
++                                   + 2.d0*agyz*velyminus(i,j,k)*velzminus(i,j,k) )
+                     velxminus(i,j,k) = velxminus(i,j,k)/w
+                     velyminus(i,j,k) = velyminus(i,j,k)/w
+                     velzminus(i,j,k) = velzminus(i,j,k)/w
+diff --git a/src/GRHydro_RegisterVars.cc b/src/GRHydro_RegisterVars.cc
+index 48a8651..95a7053 100644
+--- a/src/GRHydro_RegisterVars.cc
++++ b/src/GRHydro_RegisterVars.cc
+@@ -92,9 +92,13 @@ extern "C" void GRHydro_Register(CCTK_ARGUMENTS)
+       }
+       register_evolved("GRHydro::Bcons", "GRHydro::Bconsrhs");
+       if(clean_divergence) {
+-	register_evolved("GRHydro::psidc" , "GRHydro::psidcrhs");
++        register_evolved("GRHydro::psidc" , "GRHydro::psidcrhs");
+       }
+     }
++    // entropycons
++    if(CCTK_EQUALS(entropy_evolution_method,"GRHydro")){
++      register_evolved("GRHydro::entropycons" , "GRHydro::entropyrhs");
++    }
+ 
+     // tau
+     if (CCTK_EQUALS(GRHydro_eos_type, "General"))
+@@ -118,7 +122,7 @@ extern "C" void GRHydro_Register(CCTK_ARGUMENTS)
+       {
+         register_constrained("admbase::shift");
+         register_evolved("GRHydro::GRHydro_coords", 
+-			 "GRHydro::GRHydro_coords_rhs");
++                         "GRHydro::GRHydro_coords_rhs");
+       }
+       else if(GRHydro_MaxNumSandRVars != 0) // hack to save some memory since we "know" that someone else will register these as constrained
+       { 
+@@ -129,15 +133,15 @@ extern "C" void GRHydro_Register(CCTK_ARGUMENTS)
+     // tracer
+     if (evolve_tracer != 0)
+       register_evolved("GRHydro::GRHydro_cons_tracers", 
+-		       "GRHydro::GRHydro_tracer_rhs");
+-    
++                       "GRHydro::GRHydro_tracer_rhs");
++ 
+     // note that we set in pararamcheck
+     // evolve_y_e and evolve_temper, but MoLRegister
+     // happens before paramcheck...
+     if (CCTK_EQUALS(Y_e_evolution_method,"GRHydro")) {
+       register_constrained("HydroBase::Y_e");
+       register_evolved("GRHydro::Y_e_con", 
+-		       "GRHydro::Y_e_con_rhs");
++                       "GRHydro::Y_e_con_rhs");
+       }
+ 
+     if (CCTK_EQUALS(temperature_evolution_method,"GRHydro")) {
+@@ -157,7 +161,7 @@ extern "C" void GRHydro_Register(CCTK_ARGUMENTS)
+     if (CCTK_EQUALS(Bvec_evolution_method, "GRHydro")) {
+       register_constrained("HydroBase::Bcons");
+       if(clean_divergence) {
+-	register_constrained("GRHydro::psidc");
++        register_constrained("GRHydro::psidc");
+       }
+     }
+   }
+diff --git a/src/GRHydro_SourceM.F90 b/src/GRHydro_SourceM.F90
+index 73e72e9..cd734eb 100644
+--- a/src/GRHydro_SourceM.F90
++++ b/src/GRHydro_SourceM.F90
+@@ -212,6 +212,10 @@ subroutine SourceTermsM(CCTK_ARGUMENTS)
+      psidcrhs=0.d0
+   endif
+ 
++  if (evolve_entropy .ne. 0) then
++     entropyrhs = 0.d0
++  endif
++
+   if (track_divB .ne. 0) then
+      divB=0.d0
+   endif
+diff --git a/src/GRHydro_TVDReconstruct_drv.F90 b/src/GRHydro_TVDReconstruct_drv.F90
+index 5de50c7..a51da93 100644
+--- a/src/GRHydro_TVDReconstruct_drv.F90
++++ b/src/GRHydro_TVDReconstruct_drv.F90
+@@ -135,6 +135,11 @@ subroutine GRHydro_TVDReconstruct_drv(CCTK_ARGUMENTS)
+              endif
+            endif
+ 
++           if (evolve_entropy .ne. 0) then
++              entropyplus(i,j,k) = 0.0d0
++              entropyminus(i,j,k) = 0.0d0
++           endif
++
+            if (evolve_tracer .ne. 0) then
+               tracerplus(i,j,k,:) = 0.0d0
+               tracerminus(i,j,k,:) = 0.0d0
+@@ -187,6 +192,10 @@ subroutine GRHydro_TVDReconstruct_drv(CCTK_ARGUMENTS)
+          call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
+               Bprim(:,:,:,3), Bveczplus, Bveczminus, trivial_rp, hydro_excision_mask)
+       endif
++      if (evolve_entropy .ne. 0) then
++         call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
++              entropy, entropyplus, entropyminus, trivial_rp, hydro_excision_mask)
++      endif
+ 
+     else if (CCTK_EQUALS(recon_vars,"conservative")) then
+       call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
+@@ -207,6 +216,10 @@ subroutine GRHydro_TVDReconstruct_drv(CCTK_ARGUMENTS)
+          call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
+               Bcons(:,:,:,3), Bconszplus, Bconszminus, trivial_rp, hydro_excision_mask)
+       endif
++      if (evolve_entropy .ne. 0) then
++         call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
++              entropycons, entropyconsplus, entropyconsminus, trivial_rp, hydro_excision_mask)
++      endif
+ 
+     else
+       call CCTK_WARN(0, "Variable type to reconstruct not recognized.")
+-- 
+1.7.10.4
+

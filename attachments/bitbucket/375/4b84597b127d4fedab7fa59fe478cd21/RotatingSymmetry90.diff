@@ -1,0 +1,123 @@
+Index: interface.ccl
+===================================================================
+--- interface.ccl	(revision 59)
++++ interface.ccl	(working copy)
+@@ -73,6 +73,21 @@
+ 
+ 
+ CCTK_INT FUNCTION                         \
++    GetRegriddingEpoch                    \
++        (CCTK_POINTER_TO_CONST IN cctkGH)
++USES FUNCTION GetRegriddingEpoch
++
++CCTK_INT FUNCTION                         \
++    GetRefinementLevel                    \
++        (CCTK_POINTER_TO_CONST IN cctkGH)
++USES FUNCTION GetRefinementLevel
++
++CCTK_INT FUNCTION                         \
++    GetRefinementLevels                   \
++        (CCTK_POINTER_TO_CONST IN cctkGH)
++USES FUNCTION GetRefinementLevels
++
++CCTK_INT FUNCTION                         \
+     GetLocalComponents                    \
+         (CCTK_POINTER_TO_CONST IN cctkGH)
+ USES FUNCTION GetLocalComponents
+Index: src/rotatingsymmetry90.c
+===================================================================
+--- src/rotatingsymmetry90.c	(revision 59)
++++ src/rotatingsymmetry90.c	(working copy)
+@@ -1,3 +1,14 @@
++#include <cctk.h>
++#include <cctk_Arguments.h>
++#include <cctk_Parameters.h>
++
++#include <util_ErrorCodes.h>
++#include <util_Table.h>
++
++#include <Slab.h>
++
++#include "rotatingsymmetry90.h"
++
+ #include <assert.h>
+ #include <math.h>
+ #include <stdlib.h>
+@@ -3,17 +14,6 @@
+ #include <string.h>
+ 
+-#include "cctk.h"
+-#include "cctk_Arguments.h"
+-#include "cctk_Parameters.h"
+ 
+-#include "util_ErrorCodes.h"
+-#include "util_Table.h"
+ 
+-#include "Slab.h"
+-
+-#include "rotatingsymmetry90.h"
+-
+-
+-
+ /* This is pretty hard coded into all the tensor types and cannot be
+    changed easily.  */
+@@ -599,10 +599,55 @@
+       options = Util_TableCreateFromString ("useghosts=1");
+       assert (options>=0);
+       
+-      ierr = Slab_MultiTransfer
+-        (cctkGH, group.dim, xferinfo, options,
+-         nvars, vartypes, srcptrs, vartypes, varptrs);
+-      assert (!ierr);
++      /* Can we use the more efficient interface? */
++      if (CCTK_IsFunctionAliased ("GetRegriddingEpoch")) {
++        static int epoch = -1;
++        static struct slabsetup *restrict *restrict slab_setups[3] =
++          { NULL, NULL, NULL};
++        static int num_reflevels = 0;
++        int const new_epoch = GetRegriddingEpoch (cctkGH);
++        if (new_epoch > epoch) {
++          epoch = new_epoch;
++          /* Delete old slabbing setups */
++          for (int s=0; s<3; ++s) {
++            for (int rl=0; rl<num_reflevels; ++rl) {
++              if (slab_setups[s][rl]) {
++                Slab_MultiTransfer_Finalize (cctkGH, slab_setups[s][rl]);
++              }
++            }
++            free (slab_setups[s]);
++          }
++          /* Allocate space for new slabbing setups */
++          num_reflevels = GetRefinementLevels (cctkGH);
++          for (int s=0; s<3; ++s) {
++            slab_setups[s] = malloc (num_reflevels * sizeof *slab_setups[s]);
++            assert (slab_setups[s]);
++            for (int rl=0; rl<num_reflevels; ++rl) {
++              slab_setups[s][rl] = NULL;
++            }
++          }
++        }
++        /* Use existing slabbing setup */
++        assert (slab_setups);
++        int const reflevel = GetRefinementLevel (cctkGH);
++        assert (reflevel>=0 && reflevel<num_reflevels);
++        if (!slab_setups[step][reflevel]) {
++          slab_setups[step][reflevel] = 
++            Slab_MultiTransfer_Init (cctkGH, group.dim, xferinfo, options);
++        }
++        assert (slab_setups[step][reflevel]);
++        ierr = Slab_MultiTransfer_Apply
++          (cctkGH, slab_setups[step][reflevel],
++           nvars, vartypes, srcptrs, vartypes, varptrs);
++        assert (!ierr);
++      } else {
++        /* We can't use the more efficient interface, so fall back to
++           the old one */
++        ierr = Slab_MultiTransfer
++          (cctkGH, group.dim, xferinfo, options,
++           nvars, vartypes, srcptrs, vartypes, varptrs);
++        assert (!ierr);
++      }
+       
+       ierr = Util_TableDestroy (options);
+       assert (!ierr);

@@ -1,0 +1,493 @@
+From 86c77b6310ded94500a1c8f78d05c075a8814830 Mon Sep 17 00:00:00 2001
+From: Christian Ott <cott@bethe.tapir.caltech.edu>
+Date: Mon, 9 Jul 2012 09:05:38 -0700
+Subject: [PATCH 4/4] * add a hot shocktube to run shocktube tests with the
+ nuclear EOS
+
+---
+ interface.ccl                               |    2 +-
+ par/GRHydro_Carpet_Shocktube_reflux_hot.par |  254 +++++++++++++++++++++++++++
+ param.ccl                                   |    4 +
+ schedule.ccl                                |    7 +
+ src/GRHydro_ShockTube.F90                   |  153 ++++++++++++++++
+ 5 files changed, 419 insertions(+), 1 deletion(-)
+ create mode 100644 par/GRHydro_Carpet_Shocktube_reflux_hot.par
+
+diff --git a/interface.ccl b/interface.ccl
+index ec711c4..06a497c 100644
+--- a/interface.ccl
++++ b/interface.ccl
+@@ -2,7 +2,7 @@
+ # $Header$
+ 
+ implements: GRHydro_init_data
+-inherits: GRHydro grid
++inherits: GRHydro grid EOS_Omni
+ 
+ #USES INCLUDE: EOS_Base.inc
+ USES INCLUDE: SpaceMask.h
+diff --git a/par/GRHydro_Carpet_Shocktube_reflux_hot.par b/par/GRHydro_Carpet_Shocktube_reflux_hot.par
+new file mode 100644
+index 0000000..1908b3d
+--- /dev/null
++++ b/par/GRHydro_Carpet_Shocktube_reflux_hot.par
+@@ -0,0 +1,254 @@
++ActiveThorns    =       "time
++                         symbase
++                         aeilocalinterp
++                         carpetinterp
++                         carpet
++                         carpetlib
++                         carpetregrid2
++                         carpetreduce
++                         carpetslab
++                         cartgrid3d
++                         coordbase
++                         mol
++                         boundary
++                         admbase
++                         staticconformal
++                         spacemask
++                         admcoupling
++                         coordgauge
++                         admmacros
++                         constants
++                         initbase
++                         tmunubase
++                         loopcontrol
++                         hydrobase
++                         ioutil
++                         formaline
++                         timerreport
++                         nanchecker
++                        "
++
++# EOS
++ActiveThorns     =      "EOS_Omni
++                        "
++# Hydro
++ActiveThorns     =      "grhydro
++                         grhydro_initdata
++                         refluxing
++                        "
++
++# I/O
++ActiveThorns     =      "carpetiobasic
++                         carpetioascii
++                         carpetioscalar
++                         carpetiohdf5
++                        "
++
++
++#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
++# I/O
++#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
++
++carpetioscalar::outScalar_vars  =       "hydrobase::rho
++                                         hydrobase::vel
++                                         hydrobase::eps
++                                         hydrobase::press
++                                         grhydro::dens
++                                         grhydro::scon
++                                         grhydro::tau"
++
++IOBasic::outInfo_vars           =       "hydrobase::rho
++                                         hydrobase::vel[0]"
++
++IOASCII::out1D_vars             =       "grid::coordinates
++                                         carpetreduce::weight
++                                         hydrobase::rho
++                                         hydrobase::vel
++                                         hydrobase::eps
++                                         hydrobase::press
++                                         grhydro::dens
++                                         grhydro::scon
++                                         grhydro::tau"
++
++IO::out_dir                                  = $parfile
++io::recover                                  = no
++carpet::enable_all_storage                   = no
++
++carpetioscalar::outScalar_every              =  1
++IOASCII::out1D_every                         =  1
++IOBasic::outInfo_every                       =  1
++
++carpetioascii::out2D_every                   = 128
++
++iohdf5::out_every                            =  -1
++iohdf5::checkpoint                           = no
++io::checkpoint_every                         = -1
++
++
++#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
++# Timer
++#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
++
++TimerReport::output_schedule_timers          = no
++TimerReport::n_top_timers                    = 20
++
++
++#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
++# Initialization
++#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
++
++
++Carpet::init_fill_timelevels                 = yes
++
++grhydro_initdata::shocktube_type        =       "xshock"
++grhydro_initdata::shock_xpos            =       0.48e0
++grhydro_initdata::shock_case            =       "simple"
++
++
++#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
++# AMR and Grid Setup
++#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
++
++Cactus::cctk_full_warnings                   = yes
++carpet::veryverbose                          = no
++carpet::verbose                              = no
++
++carpet::max_refinement_levels                = 2
++carpet::use_buffer_zones                     = yes
++Carpet::refinement_centering                 = "cell"
++Carpet::prolongation_order_space             =  4
++Carpet::prolongation_order_time              =  2
++
++CarpetLib::use_higher_order_restriction = yes
++Carpet::use_overlap_zones = yes
++
++Carpet::poison_new_timelevels = yes
++CarpetLib::poison_new_memory  = yes
++
++
++cartgrid3d::type                             = "coordbase"
++cartgrid3d::domain                           = "full"
++cartgrid3d::avoid_origin                     = no
++
++coordbase::xmin                              =  0.0
++coordbase::xmax                              =  1.0
++coordbase::ymin                              = -0.00125
++coordbase::ymax                              = +0.00125
++coordbase::zmin                              = -0.00125
++coordbase::zmax                              = +0.00125
++coordbase::dx                                =  0.0025
++coordbase::dy                                =  0.0025
++coordbase::dz                                =  0.0025
++
++CoordBase::boundary_staggered_x_lower        = yes
++CoordBase::boundary_staggered_y_lower        = yes
++CoordBase::boundary_staggered_z_lower        = yes
++CoordBase::boundary_staggered_x_upper        = yes
++CoordBase::boundary_staggered_y_upper        = yes
++CoordBase::boundary_staggered_z_upper        = yes
++
++driver::ghost_size                           = 3
++
++cactus::cctk_itlast                          = 100
++
++Carpet::domain_from_coordbase                = yes
++
++CoordBase::boundary_size_x_lower             = 3
++CoordBase::boundary_size_y_lower             = 3
++CoordBase::boundary_size_z_lower             = 3
++CoordBase::boundary_size_x_upper             = 3
++CoordBase::boundary_size_y_upper             = 3
++CoordBase::boundary_size_z_upper             = 3
++
++CarpetRegrid2::regrid_every                  = 0
++CarpetRegrid2::verbose                       = yes
++CarpetRegrid2::snap_to_coarse                = yes
++
++CarpetRegrid2::num_centres                   = 1
++CarpetRegrid2::num_levels_1                  = 2
++CarpetRegrid2::position_x_1                  = 0.4
++CarpetRegrid2::radius_1[1]                   = 0.1
++
++refluxing::Refluxing_MaxNumEvolvedVars = 36
++
++#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
++# Hydro
++#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
++
++tmunubase::stress_energy_storage	     = yes
++
++hydrobase::timelevels                        = 3
++hydrobase::evolution_method                  = "grhydro"
++hydrobase::prolongation_type                 = "ENO"
++hydrobase::initial_hydro                     = "shocktube_hot"
++
++hydrobase::y_e_evolution_method		     = "GRHydro"
++hydrobase::temperature_evolution_method	     = "GRHydro"
++hydrobase::initial_y_e			     = "one"
++hydrobase::initial_temperature		     = "zero"
++HydroBase::initial_entropy                   = "zero"
++
++grhydro::grhydro_maxnumevolvedvars           = 6
++grhydro::grhydro_maxnumsandrvars             = 16
++grhydro::evolve_tracer                       = no
++grhydro::number_of_tracers                   = 0
++
++grhydro::grhydro_rho_central                 = 1.62e-8
++grhydro::riemann_solver                      = "HLLE"
++grhydro::grhydro_eos_type                    = "General"
++grhydro::grhydro_eos_table                   = "nuc_eos"
++grhydro::recon_method                        = "ppm"
++grhydro::tvd_limiter                         = "vanleerMC2"
++
++grhydro::ppm_detect                          = "yes"
++grhydro::grhydro_stencil                     = 3
++grhydro::bound                               = "flat"
++
++eos_omni::nuceos_read_table = yes
++eos_omni::nuceos_table_name = "LS220_234r_136t_50y_analmu_20091212_SVNr26.h5"
++eos_omni::do_energy_shift = yes
++
++eos_omni::poly_gamma                            = 5.0
++eos_omni::poly_gamma_ini                        = 1.333333333333333
++eos_omni::poly_k                                = 0.4640517
++eos_omni::gl_gamma                              = 5.0
++eos_omni::gl_k                                  = 0.4640517
++eos_omni::hybrid_gamma1                         = 5.0
++eos_omni::hybrid_gamma2                         = 2.4
++eos_omni::hybrid_gamma_th                       = 1.333333333333333333
++eos_omni::hybrid_k1                             = 0.4640517
++eos_omni::hybrid_rho_nuc                        = 3.238607e-4
++
++# Atmosphere
++SpaceMask::use_mask                          =  yes
++
++grhydro::rho_rel_min                         =  1.e-9
++grhydro::initial_atmosphere_factor           =  1.e2
++grhydro::initial_rho_abs_min                 =  5e-17
++
++#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
++# Timestepping and MoL
++#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
++
++time::dtfac                                  = 0.4
++mol::ode_method                              = "RK2"
++MoL::MoL_Intermediate_Steps = 2
++
++#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
++# Curvature
++#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
++
++admbase::evolution_method                    =  "none"
++admbase::metric_type                         =  "physical"
++admbase::metric_timelevels                   =  3
++admbase::shift_timelevels                    =  3
++admbase::lapse_timelevels                    =  3
++
++
++#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
++# Check for NaNs
++#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
++
++NaNChecker::check_every                      = 1
++NaNChecker::check_vars                       = "grhydro::dens grhydro::tau hydrobase::rho hydrobase::press"
++nanchecker::action_if_found = abort
+diff --git a/param.ccl b/param.ccl
+index 8413f91..07b6db2 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -5,10 +5,13 @@ shares:HydroBase
+ 
+ USES CCTK_INT timelevels
+ USES KEYWORD Bvec_evolution_method
++USES KEYWORD Y_e_evolution_method
++USES KEYWORD temperature_evolution_method
+ 
+ EXTENDS KEYWORD initial_hydro ""
+ {
+   "shocktube"	:: "Shocktube type"
++  "shocktube_hot"	:: "Shocktube with hot nuclear EOS"
+   "only_atmo"	:: "Set only a low atmosphere"
+   "read_conformal":: "After reading in initial alp, rho and gxx from h5 files, sets the other quantities"
+   "simple_wave" :: "Set initial data from Anile Miller Motta, Phys.Fluids. 26, 1450 (1983)"
+@@ -386,3 +389,4 @@ USES BOOLEAN clean_divergence
+ 
+ shares:EOS_Omni
+ USES REAL gl_gamma
++USES BOOLEAN nuceos_read_table
+diff --git a/schedule.ccl b/schedule.ccl
+index 19ac82d..7e5ab2c 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -33,6 +33,13 @@ if (CCTK_Equals(initial_hydro,"alfvenwave")) {
+     } "Circularly polarized Alfven wave initial data"
+ }
+ 
++if (CCTK_Equals(initial_hydro,"shocktube_hot")) {
++    schedule GRHydro_shocktube_hot in HydroBase_Initial AFTER (HydroBase_Y_e_one,HydroBase_Zero)
++    {
++      LANG: Fortran
++    } "Hot Shocktube initial data"
++}
++
+ if (CCTK_Equals(initial_hydro,"shocktube")) {
+   if(CCTK_Equals(initial_Bvec,"shocktube"))
+   {
+diff --git a/src/GRHydro_ShockTube.F90 b/src/GRHydro_ShockTube.F90
+index 8b9105b..7ad5b54 100644
+--- a/src/GRHydro_ShockTube.F90
++++ b/src/GRHydro_ShockTube.F90
+@@ -164,3 +164,156 @@ subroutine GRHydro_shocktube(CCTK_ARGUMENTS)
+   return
+   
+ end subroutine GRHydro_shocktube
++
++subroutine GRHydro_shocktube_hot(CCTK_ARGUMENTS)
++
++  implicit none
++  
++  DECLARE_CCTK_ARGUMENTS
++  DECLARE_CCTK_PARAMETERS
++  DECLARE_CCTK_FUNCTIONS
++  
++  CCTK_INT :: i, j, k, nx, ny, nz
++  CCTK_REAL :: direction, det
++  CCTK_REAL :: rhol, rhor, velxl, velxr, velyl, velyr, &
++       velzl, velzr, epsl, epsr, templ, tempr, yel, yer
++  CCTK_REAL :: vlowx, vlowy, vlowz, w, tenthalpy
++
++! begin EOS Omni vars                                                                                                  
++  integer :: n,keytemp,anyerr,keyerr(1)
++  integer :: handle
++  character(len=256) :: warnline
++  ! handle for nuclear EOS
++  handle=4
++  n = 1;keytemp = 0;anyerr = 0;keyerr(1) = 0
++! end EOS Omni vars      
++  
++  nx = cctk_ash(1)
++  ny = cctk_ash(2)
++  nz = cctk_ash(3)
++  
++  call CCTK_INFO("Setting up initial data for hot shocktube")
++
++  if(.not.CCTK_EQUALS(Y_e_evolution_method,"GRHydro").or.&
++       .not.CCTK_EQUALS(temperature_evolution_method,"GRHydro")) then
++     call CCTK_WARN(0,"Must have Y_e_evolution_method and temperature_evolution_method set to GRHydro")
++  endif
++
++  if (nuceos_read_table.eq.0) then
++     call CCTK_WARN(0,"You must read in a nuclear EOS table for initial data shocktube_hot to work!")
++  endif
++
++  if (.not.CCTK_EQUALS(GRHydro_eos_table,"nuc_eos").or..not.CCTK_EQUALS(GRHydro_eos_type,"General")) then
++     call CCTK_WARN(0,"You must set GRHydro::GRHydro_eos_table = nuc_eos and GRHydro::GRHydro_eos_type = General!")
++  endif
++
++  do i=1,nx
++    do j=1,ny
++      do k=1,nz
++        if (CCTK_EQUALS(shocktube_type,"diagshock")) then
++          direction = x(i,j,k) - shock_xpos + &
++               y(i,j,k) - shock_ypos + z(i,j,k) - shock_zpos
++        else if (CCTK_EQUALS(shocktube_type,"xshock")) then
++          direction = x(i,j,k) - shock_xpos
++        else if (CCTK_EQUALS(shocktube_type,"yshock")) then
++          direction = y(i,j,k) - shock_ypos
++        else if (CCTK_EQUALS(shocktube_type,"zshock")) then
++          direction = z(i,j,k) - shock_zpos
++        else if (CCTK_EQUALS(shocktube_type,"sphere")) then
++          direction = sqrt((x(i,j,k)-shock_xpos)**2+&
++                           (y(i,j,k)-shock_ypos)**2+&
++                           (z(i,j,k)-shock_zpos)**2)-shock_radius
++        end if
++        if (CCTK_EQUALS(shock_case,"Simple")) then
++          rhol = 1.62e-8
++          rhor = 1.62e-9
++          velxl = 0.d0
++          velxr = 0.d0
++          velyl = 0.d0
++          velyr = 0.d0
++          velzl = 0.d0
++          velzr = 0.d0
++          templ = 8.0d0
++          tempr = 0.6d0
++          yel = 0.48d0
++          yer = 0.48d0
++        else
++          call CCTK_WARN(0,"Shock case not recognized")
++        end if
++
++        if ( ((change_shock_direction==0).and.(direction .lt. 0.0d0)).or.& 
++             ((change_shock_direction==1).and.(direction .gt. 0.0d0)) ) then
++          rho(i,j,k) = rhol
++          velx(i,j,k) = velxl
++          vely(i,j,k) = velyl
++          velz(i,j,k) = velzl
++          temperature(i,j,k) = templ
++          y_e(i,j,k) = yel
++        else
++          rho(i,j,k) = rhor
++          velx(i,j,k) = velxr
++          vely(i,j,k) = velyr
++          velz(i,j,k) = velzr
++          temperature(i,j,k) = tempr
++          y_e(i,j,k) = yer
++        end if
++
++        det=SPATIAL_DETERMINANT(gxx(i,j,k),gxy(i,j,k),gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k))
++
++        ! call EOS with
++        keytemp = 1
++        call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
++             rho(i,j,k),eps(i,j,k),temperature(i,j,k),y_e(i,j,k),press(i,j,k),keyerr,anyerr)
++
++        if(anyerr.ne.0) then
++           call CCTK_WARN(1,"Error in Initial Data EOS call!")
++           write(warnline,"(A10,i8)") "keyerr= ",keyerr
++           call CCTK_WARN(0,warnline)
++        endif
++
++        ! set up conserved variables
++        w = 1.0d0 / &
++             sqrt(1.0d0 - (gxx(i,j,k)*vel(i,j,k,1)*vel(i,j,k,1) &
++                + gyy(i,j,k)*vel(i,j,k,2)*vel(i,j,k,2) &
++                + gzz(i,j,k)*vel(i,j,k,3)*vel(i,j,k,3) ) )
++
++        vlowx = gxx(i,j,k)*vel(i,j,k,1) &
++             + gxy(i,j,k)*vel(i,j,k,2)  &
++             + gxz(i,j,k)*vel(i,j,k,3)
++        vlowy = gxy(i,j,k)*vel(i,j,k,1) &
++             + gyy(i,j,k)*vel(i,j,k,2)  &
++             + gyz(i,j,k)*vel(i,j,k,3)
++        vlowz = gxz(i,j,k)*vel(i,j,k,1) &
++             + gyz(i,j,k)*vel(i,j,k,2)  &
++             + gzz(i,j,k)*vel(i,j,k,3)
++
++
++        dens(i,j,k) = sqrt(det)*w*rho(i,j,k)
++
++        tenthalpy = 1.0d0 + eps(i,j,k) + press(i,j,k) / rho(i,j,k)
++
++        tau(i,j,k) = sqrt(det)*( (rho(i,j,k)*(1.0d0+eps(i,j,k))+press(i,j,k))*w*w - press(i,j,k)) &
++             - dens(i,j,k)
++
++        w_lorentz(i,j,k) = w
++
++        scon(i,j,k,1) = sqrt(det)*rho(i,j,k)*tenthalpy*(w**2) &
++             *vlowx
++        scon(i,j,k,2) = sqrt(det)*rho(i,j,k)*tenthalpy*(w**2) &
++             *vlowy
++        scon(i,j,k,3) = sqrt(det)*rho(i,j,k)*tenthalpy*(w**2) &
++             *vlowz
++        
++        Y_e_con(i,j,k) = dens(i,j,k)*Y_e(i,j,k)
++           
++     enddo
++    enddo
++  enddo
++
++  densrhs = 0.d0
++  srhs = 0.d0
++  taurhs = 0.d0
++
++  return
++  
++end subroutine GRHydro_shocktube_hot
+-- 
+1.7.10.4
+

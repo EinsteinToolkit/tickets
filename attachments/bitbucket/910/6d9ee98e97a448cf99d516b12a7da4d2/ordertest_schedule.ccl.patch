@@ -1,0 +1,32 @@
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 67)
++++ schedule.ccl	(working copy)
+@@ -101,6 +101,27 @@
+ 
+ # Initial data for the spatial slices
+ 
++schedule group ordertest at initial
++{
++} "test schedule sorter"
++
++schedule ADMBase_CartesianMinkowski in ordertest after ADMBase_LapseOne
++{
++  LANG: C
++} "Set the metric and extrinsic curvature to cartesian minkowski values"
++
++schedule ADMBase_LapseOne in ordertest after ADMBase_CartesianMinkowski
++{
++  LANG: C
++} "Set the lapse to 1 at all points"
++
++SCHEDULE ADMBase_SetShiftStateOn in ordertest after ADMBase_SetShiftStateOn
++{
++  LANG: C
++} "Set the shift_state variable to 1"
++
++
++
+ if (CCTK_Equals(initial_data, "Cartesian Minkowski"))
+ {
+   SCHEDULE ADMBase_CartesianMinkowski in ADMBase_InitialData

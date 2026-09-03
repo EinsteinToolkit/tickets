@@ -1,0 +1,403 @@
+Wed Jun  1 02:03:57 EDT 2011  "Roland Haas" <roland.haas@physics.gatech.edu>
+  * visitCarpetHDF5: more speedup patches
+  
+    * major speedup do to parsing metadata out of the dataset name if possible
+      rather than attributes
+    * avoid C++ exceptions for cases where they are mostly triggered and replace
+      by C style H5E_BEGIN_TRY
+    * avoid some eccessive C++ memory allocations wrt std::vector and std::string
+diff -rN -u old-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C new-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C
+--- old-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C	2011-07-12 09:18:51.000000000 -0400
++++ new-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C	2011-07-12 09:18:52.000000000 -0400
+@@ -46,5 +46,7 @@
+ #include <set>
+ #include <cassert>
++#include <cstdlib>
++#include <cstring>
+ 
+ #include <vtkIdList.h>
+ #include <vtkIntArray.h>
+@@ -914,7 +915,7 @@
+    map<string,int> varmap;
+    map<int,int> cyclemap;
+    // for very large files, using dataset_entry* might be required
+-   vector<vector<vector<dataset_entry> > > dsets_per_timestep_per_variable(timesteps.size());
++   vector<vector<vector<const dataset_entry *> > > dsets_per_timestep_per_variable(timesteps.size());
+    for (int j=0; j < varnames.size(); j++)
+    {
+      varmap[varnames[j]] = j;
+@@ -931,12 +932,12 @@
+      {
+        const int it = cyclemap[files[i]->dsetnames[c].cycle()];
+        const int j = varmap[files[i]->dsetnames[c].varname()];
+-       dsets_per_timestep_per_variable[it][j].push_back(files[i]->dsetnames[c]);
++       dsets_per_timestep_per_variable[it][j].push_back(&(files[i]->dsetnames[c]));
+      }
+    }
+    for (int it=0; it < timesteps.size(); it++)
+    {
+-      timesteps[it] = timestep_t(dsets_per_timestep_per_variable[it]);
++      timesteps[it] = dsets_per_timestep_per_variable[it];
+    }
+ }
+ 
+--- old-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C	2011-07-12 09:18:51.000000000 -0400
++++ new-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C	2011-07-12 09:18:52.000000000 -0400
+@@ -964,19 +964,18 @@
+ {
+    vector<dataset_entry>* dsetnames = (vector<dataset_entry>*) operator_data;
+    char   rootname[1000];
+-   string fullname;
++   char   fullname[1000];
+    H5G_stat_t object_info;
+    int dim = avtCarpetHDF5FileFormat::dim;
+    
+    // build the full name for the current object to process
+    H5Iget_name(group_id, rootname, 256);
+-   string str1(rootname);
+-   string str2(member_name);
+    
+-   fullname = str1+str2;
++   // the root name is "/", so does not need an extra "/"
++   sprintf(fullname, "%s%s%s", rootname, rootname[strlen(rootname)-1]=='/' ? "" : "/",member_name);
+    
+    // we are interested in datasets only - skip anything else
+-   H5Gget_objinfo (group_id, fullname.c_str(), 0, &object_info);
++   H5Gget_objinfo (group_id, member_name, 0, &object_info);
+    if (object_info.type != H5G_DATASET)
+    {
+       if (object_info.type == H5G_GROUP)
+@@ -985,7 +984,7 @@
+          // iterate over all datasets in this group (if it isn't file metadata)
+          if (strcmp (member_name, "Parameters and Global Attributes"))
+          {
+-            H5Giterate (group_id, fullname.c_str(), NULL, H5iter, operator_data);
++            H5Giterate (group_id, member_name, NULL, H5iter, operator_data);
+          }
+       }
+       
+@@ -998,27 +997,24 @@
+    }
+    else
+    {
+-      DataSet dataset(H5Dopen(group_id, fullname.c_str()));
++      DataSet dataset(H5Dopen(group_id, member_name));
+       
+       DataSpace dataspace = dataset.getSpace();
+       Attribute attrib;
+       
+-      vector<hsize_t> dims(dim, 1);
+-      int ndims = dataspace.getSimpleExtentDims( &dims.front(), NULL);
++      hsize_t dims[3] = {1,1,1};
++      int ndims = dataspace.getSimpleExtentDims( dims, NULL);
+ 
+       // First try to read the shape attribute which is written to
+       // index files.  If this is not available, use the shape given
+       // in the dataspace.
+-      try {
+-	DisableAutoPrint dap; // State is restored when this goes out
+-			      // of scope
+-
+-	attrib = dataset.openAttribute("h5shape");
+-	attrib.read(PredType::NATIVE_HSIZE, &dims.front());
+-      }
+-      catch (AttributeIException) {
+-	dataspace.getSimpleExtentDims( &dims.front(), NULL);
+-      }
++      H5E_BEGIN_TRY {
++	hid_t attrib = H5Aopen(dataset.getId(), "h5shape", H5P_DEFAULT);
++         if(attrib >= 0) {
++            H5Aread(attrib, H5T_NATIVE_HSIZE, dims);
++            H5Aclose(attrib);
++         }
++      } H5E_END_TRY;
+ 
+       // shift "dims" around because we always treat all datasets as being 3d
+       // and HDF5 is in C-order!
+@@ -1035,82 +1031,78 @@
+          dims[0] = 1;
+       }
+             
+-      attrib = dataset.openAttribute("timestep");
+       int cycle = 0;
+-      attrib.read(PredType::NATIVE_INT, &cycle);
+-      
++      int rl = 0;
++      char varname[1000];
++      // if metadata can be parsed from dataset name then we are about 6x faster
++      // then using attributes
++      if(sscanf(member_name, "%s it=%d tl=%*d rl=%d c=%*d", varname, &cycle, &rl) != 3 &&
++         (rl=0, sscanf(member_name, "%s it=%d tl=%*d c=%*d", varname, &cycle) != 2)) {
++         attrib = dataset.openAttribute("timestep");
++         attrib.read(PredType::NATIVE_INT, &cycle);
++         
++         attrib = dataset.openAttribute("level");
++         attrib.read(PredType::NATIVE_INT, &rl);
++
++         attrib = dataset.openAttribute("name");
++         attrib.read(StrType(PredType::C_S1, strlen(fullname)), &varname);
++      }
++
+       attrib = dataset.openAttribute("time");
+       double time = 0;
+       attrib.read(PredType::NATIVE_DOUBLE, &time);
+-      
+-      attrib = dataset.openAttribute("level");
+-      int rl = 0;
+-      attrib.read(PredType::NATIVE_INT, &rl);
++         
+       
+       bool is_Cartesian = true;
+       
+-      try
+-      {
+-         Exception::dontPrint();
+-         Attribute attrib(dataset.openAttribute("MapIsCartesian"));
+-         int MapIsCartesian = 1;
+-         attrib.read(PredType::NATIVE_INT, &MapIsCartesian);
+-         is_Cartesian = MapIsCartesian;
+-      }
+-      catch (AttributeIException error)
+-      {
+-         is_Cartesian = true;
+-      }
++      H5E_BEGIN_TRY {
++         hid_t attrib = H5Aopen(dataset.getId(), "MapIsCartesian", H5P_DEFAULT);
++         if(attrib >= 0) {
++           int MapIsCartesian = 1;
++            H5Aread(attrib, H5T_NATIVE_INT, &MapIsCartesian);
++            is_Cartesian = MapIsCartesian;
++            H5Aclose(attrib);
++         }
++      } H5E_END_TRY;
+       
+-      vector<double> delta(dim, 1.0);
+-      try
+-      {
+-         Exception::dontPrint();
+-         attrib = dataset.openAttribute("delta");
+-         attrib.read(PredType::NATIVE_DOUBLE, &delta.front());
+-      }
+-      catch (AttributeIException error)
+-      {
+-         // if delta attrib is not there we probably have an array
+-      }
++      double delta[3] = {1.0,1.0,1.0};
++      H5E_BEGIN_TRY {
++         hid_t attrib = H5Aopen(dataset.getId(), "delta", H5P_DEFAULT);
++         if(attrib >= 0) {
++            H5Aread(attrib, H5T_NATIVE_DOUBLE, delta);
++            H5Aclose(attrib);
++         }
++      } H5E_END_TRY;
+       
+       attrib = dataset.openAttribute("iorigin");
+-      vector<int> iorigin(dim, 0);
+-      attrib.read(PredType::NATIVE_INT, &iorigin.front());
++      int iorigin[3] = {0,0,0};
++      attrib.read(PredType::NATIVE_INT, iorigin);
+       
+-      vector<int> cctk_ghosts(dim, 0);
+-      try
+-      {
+-         attrib = dataset.openAttribute("cctk_nghostzones");
+-         attrib.read(PredType::NATIVE_INT, &cctk_ghosts.front());
+-      }
+-      catch (AttributeIException error)
+-      {
+-         // if ghostzones attrib is not there we probably have an array
+-      }
+-      vector<int> ghosts(2*dim, 0);
++      int cctk_ghosts[3] = {0,0,0};
++      H5E_BEGIN_TRY {
++         hid_t attrib = H5Aopen(dataset.getId(), "cctk_nghostzones", H5P_DEFAULT);
++         if(attrib >= 0) {
++            H5Aread(attrib, H5T_NATIVE_INT, cctk_ghosts);
++            H5Aclose(attrib);
++         }
++      } H5E_END_TRY;
++      int ghosts[6] = {0,0,0,0,0,0};
+       for (int i=0; i < dim; ++i)
+         ghosts[2*i] = ghosts[2*i+1] = cctk_ghosts[i];
+       
+-      vector<double> origin(dim, 0);
+-      try
+-      {
+-         Exception::dontPrint();
+-         attrib = dataset.openAttribute("origin");
+-         attrib.read(PredType::NATIVE_DOUBLE, &origin.front());
+-      }
+-      catch (AttributeIException error)
+-      {
+-         // if orign attrib is not there we probably have an array
+-         is_Cartesian = true;
+-         for (int i=0; i < dim; i++)
+-            origin[i] = iorigin[i];
+-      }
+-      
+-      attrib = dataset.openAttribute("name");
+-      char tmp[1000];
+-      attrib.read(StrType(PredType::C_S1, fullname.size()), &tmp);
+-      string varname = tmp;
++      double origin[3] = {0,0,0};
++      H5E_BEGIN_TRY {
++         hid_t attrib = H5Aopen(dataset.getId(), "origin", H5P_DEFAULT);
++         if(attrib >= 0) {
++            H5Aread(attrib, H5T_NATIVE_DOUBLE, origin);
++            H5Aclose(attrib);
++         } else {
++            // if orign attrib is not there we probably have an array
++            is_Cartesian = true;
++            for (int i=0; i < dim; i++)
++               origin[i] = iorigin[i];
++            }
++      } H5E_END_TRY;
+       
+       
+       // factor set to one for now....will get set once timestep_t is constructed
+@@ -1118,9 +1110,9 @@
+       
+       // get map-attribute from dataset-name
+       int map = 0;
+-      if (fullname.find("m=") != string::npos)
++      if (strstr(member_name, "m="))
+       {
+-         map = atoi(&fullname.c_str()[fullname.find("m=")+2]);
++         map = atoi(strstr(member_name, "m=")+2);
+       }
+       
+       // find out scalar type of variable
+diff -rN -u old-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.h new-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.h
+--- old-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.h	2011-07-12 09:18:51.000000000 -0400
++++ new-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.h	2011-07-12 09:18:52.000000000 -0400
+@@ -125,6 +125,53 @@
+         	for (int d=0; d < _ndims; d++)
+         	    _dims_ghosted[d] = _npoints_ghosted[_ndims-1-d];
+             }
++            dataset_entry(const char* name_,
++                          const char* varname_,
++                          const int cycle_, 
++                          const double time_,
++                          const int rl_,
++                          const int map_,
++                          const int factor_,
++                          const int type_,
++                          const int comps_,
++                          const double* origin_,
++                          const double* delta_,
++                          const int* iorigin_,
++                          const int ndims_,
++                          const hsize_t* dims_,
++                          const bool is_Cartesian_,
++                          const int* ghosts_)
++               : _name(name_), _varname(varname_), _cycle(cycle_), _time(time_), _file_id(-1), _origin(origin_, origin_+ndims_), _origin_ghosted(origin_, origin_+ndims_),
++                 _iorigin(iorigin_, iorigin_+ndims_), _iorigin_ghosted(iorigin_, iorigin_+ndims_), _delta(delta_, delta_+ndims_), _rl(rl_), _map(map_), 
++                 _factor(factor_), _type(type_), _comps(comps_), _ndims(ndims_), _dims(dims_,dims_+ndims_), _dims_ghosted(dims_, dims_+ndims_), _is_Cartesian(is_Cartesian_),
++                 _range(0), _blanks(0), _npoints(ndims_, 0), _npoints_ghosted(ndims_, 0), _ghosts(ghosts_, ghosts_+2*ndims_),
++                 _isOutermostX(false), _isOutermostY(false), _isOutermostZ(false), _isLowerOutermostX(false), _isLowerOutermostY(false), _isLowerOutermostZ(false)
++            {        	
++        	// put hdf5's c-ordering in correct order
++        	for (int d=0; d < _ndims; d++)
++        	    _npoints[d] = _dims[_ndims-1-d];
++				
++        	// set nominal domain size
++        	for (int d=0; d < _ndims; d++)
++        	{
++        	    if (_ghosts[2*d] > 0 || _ghosts[2*d+1] > 0)
++        	       _npoints_ghosted[d] = _npoints[d] - _ghosts[2*d] - _ghosts[2*d+1] + 1;  // addaing a "1" assumes that we have a ghostzone from which we can take it!
++        	    else
++        	       _npoints_ghosted[d] = _npoints[d];
++        	    _iorigin_ghosted[d] = _iorigin[d] + _ghosts[2*d];
++        	    _origin_ghosted[d] = _origin[d] + _ghosts[2*d] * _delta[d];
++        	    
++        	    if (_ghosts[2*d] > 0 || _ghosts[2*d+1] > 0)
++        	    {
++        	       if (_rl > 0 && _iorigin_ghosted[d] % int(pow(2, 1)) >  0) { _npoints_ghosted[d] += 1; _iorigin_ghosted[d] -= 1; _origin_ghosted[d] -= _delta[d]; _ghosts[2*d] -= 1; }
++        	       if (_rl > 0 && _npoints_ghosted[d] % int(pow(2, 1)) == 0) { _npoints_ghosted[d] -= 1; /*_ghosts[2*d+1 += 1;*/ }
++        	    }
++        	}
++        	
++        	// translate into hdf5's c-ordering
++        	for (int d=0; d < _ndims; d++)
++        	    _dims_ghosted[d] = _npoints_ghosted[_ndims-1-d];
++            }
+             
+             virtual ~dataset_entry() { }
+             
+@@ -279,9 +326,8 @@
+ class timestep_t
+ {
+    public :
+-            timestep_t() { }
+-            timestep_t(const vector<vector<dataset_entry> >& dsets)
+-               : max_cart_rl(0), max_multi_rl(0), totalCartDomainExt(vector<vector<double> >(0)), totalCartDomainIExt(vector<vector<int> >(0))
++            timestep_t() : max_cart_rl(0), max_multi_rl(0), totalCartDomainExt(vector<vector<double> >(0)), totalCartDomainIExt(vector<vector<int> >(0)) { }
++            timestep_t &operator=(vector<vector<const dataset_entry*> >& dsets)
+             {
+                cart_comp.resize(dsets.size());
+                multi_comp.resize(dsets.size());
+@@ -290,17 +336,17 @@
+                {
+                   for (int i=0; i < dsets[v].size(); i++)
+                   {
+-                     if (dsets[v][i].is_Cartesian())
++                     if (dsets[v][i]->is_Cartesian())
+                      {
+-                        cart_comp[v].push_back(dsets[v][i]);
+-                        if (dsets[v][i].rl()+1 > max_cart_rl)
+-                           max_cart_rl = dsets[v][i].rl()+1;
++                        cart_comp[v].push_back(*dsets[v][i]);
++                        if (dsets[v][i]->rl()+1 > max_cart_rl)
++                           max_cart_rl = dsets[v][i]->rl()+1;
+                      }
+                      else
+                      {
+-                        multi_comp[v].push_back(dsets[v][i]);
+-                        if (dsets[v][i].rl()+1 > max_multi_rl)
+-                           max_multi_rl = dsets[v][i].rl()+1;
++                        multi_comp[v].push_back(*dsets[v][i]);
++                        if (dsets[v][i]->rl()+1 > max_multi_rl)
++                           max_multi_rl = dsets[v][i]->rl()+1;
+                      }
+                   }
+                   sort(cart_comp[v].begin(), cart_comp[v].end());
+@@ -359,6 +405,8 @@
+                   // set refinement factor
+                   multi_comp[0][i].factor() = 1 << (max_multi_rl-1 - multi_comp[0][i].rl());
+                }
++
++               return *this;
+             }
+             
+             virtual ~timestep_t() { }
+@@ -402,11 +450,19 @@
+ 
+ class avtCarpetHDF5FileFormat : public avtMTMDFileFormat
+ {
++  private:
++            // forbid copying due to pointer usage
++            avtCarpetHDF5FileFormat(const avtCarpetHDF5FileFormat& format);
++            avtCarpetHDF5FileFormat& operator=(const avtCarpetHDF5FileFormat& format);
+   public:
+     
+     
+     class file_t
+     {
++      private:
++               // forbid copying
++               file_t(const file_t& file);
++               file_t& operator=(const file_t& file);
+       public:
+                H5File* file;
+                
+@@ -513,6 +569,10 @@
+     // a multi-processor file 
+     class multi_file
+     {
++      private:
++               // forbid copying
++               multi_file(const multi_file& file);
++               multi_file& operator=(const multi_file& file);
+       public :
+                multi_file(const char* fname);
+                virtual ~multi_file() 

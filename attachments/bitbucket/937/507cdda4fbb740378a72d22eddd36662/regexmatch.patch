@@ -1,0 +1,96 @@
+Index: src/util/Misc.c
+===================================================================
+--- src/util/Misc.c	(revision 4808)
++++ src/util/Misc.c	(working copy)
+@@ -407,7 +407,7 @@
+ 
+ #undef R_MAYBE
+ 
+-  if(CCTK_RegexMatch(range, pattern, 8, pmatch) != 0)
++  if(CCTK_RegexMatch(range, pattern, 8, pmatch) > 0)
+   {
+     /* First work out if the range is closed at the lower end. */
+     if(pmatch[1].rm_so != -1)
+@@ -609,7 +609,7 @@
+ 
+ #undef R_MAYBE
+ 
+-  if(CCTK_RegexMatch(range, pattern, 8, pmatch) != 0)
++  if(CCTK_RegexMatch(range, pattern, 8, pmatch) > 0)
+   {
+     /* First work out if the range is closed at the lower end. */
+     if(pmatch[1].rm_so != -1)
+@@ -1170,7 +1170,7 @@
+   {
+     element = va_arg(ap, char *);
+ 
+-    if(CCTK_RegexMatch(value, element, 0, NULL))
++    if(CCTK_RegexMatch(value, element, 0, NULL) > 0)
+     {
+       retval = CCTK_SetString(data, value);
+       break;
+@@ -1312,6 +1312,7 @@
+    @returndesc
+    1 - pattern matches
+    0 - pattern doesn't match
++   <0 - pattern is invalid
+    @endreturndesc
+ @@*/
+ 
+@@ -1347,7 +1348,7 @@
+     }
+     else
+     {
+-      retval = 0;
++      retval = -1;       /* repost error */
+     }
+   }
+ 
+Index: src/main/Parameters.c
+===================================================================
+--- src/main/Parameters.c	(revision 4808)
++++ src/main/Parameters.c	(working copy)
+@@ -2107,13 +2107,20 @@
+         CCTK_Equals (param->props->thorn, range->origin))
+     {
+ #ifndef CCTK_PARAMUNCHECKED
+-      if (CCTK_RegexMatch (value, range->range, 0, NULL))
++      const int matched = CCTK_RegexMatch (value, range->range, 0, NULL);
++      if (matched > 0)
+       {
+ #endif
+         retval = CCTK_SetString (param->data, value);
+         break;
+ #ifndef CCTK_PARAMUNCHECKED
+       }
++      else if (matched < 0)
++      {
++        CCTK_VWarn(CCTK_WARN_ALERT, __LINE__, __FILE__, "Cactus",
++                   "Invalid regular expression '%s' used as range for string %s::%s",
++                   range->range, param->props->thorn, param->props->name);
++      }
+ #endif
+     }
+   }
+@@ -2151,13 +2158,20 @@
+         CCTK_Equals (param->props->thorn, range->origin))
+     {
+ #ifndef CCTK_PARAMUNCHECKED
+-      if (CCTK_RegexMatch (value, range->range, 0, NULL))
++      const int matched = CCTK_RegexMatch (value, range->range, 0, NULL);
++      if (matched > 0)
+       {
+ #endif
+         retval = CCTK_SetString (param->data, value);
+         break;
+ #ifndef CCTK_PARAMUNCHECKED
+       }
++      else if (matched < 0)
++      {
++        CCTK_VWarn(CCTK_WARN_ALERT, __LINE__, __FILE__, "Cactus",
++                   "Invalid regular expression '%s' used as range for sequence %s::%s",
++                   range->range, param->props->thorn, param->props->name);
++      }
+ #endif
+     }
+   }

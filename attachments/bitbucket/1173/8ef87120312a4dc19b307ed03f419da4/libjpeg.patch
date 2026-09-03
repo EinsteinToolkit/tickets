@@ -1,0 +1,15 @@
+Index: configure.sh
+===================================================================
+--- configure.sh	(revision 25)
++++ configure.sh	(working copy)
+@@ -10,7 +10,9 @@
+ fi
+ set -e                          # Abort on errors
+ 
+-if [ -z "${LIBJPEG_DIR}" ]; then
++if [ -z "${LIBJPEG_DIR}" \
++     -o "$(echo "${LIBJPEG_DIR}" | tr '[a-z]' '[A-Z]')" = 'NO_BUILD' ] 
++then
+     echo "BEGIN MESSAGE"
+     echo "LIBJPEG selected, but LIBJPEG_DIR not set. Checking some places..."
+     echo "END MESSAGE"

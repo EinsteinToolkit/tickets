@@ -1,0 +1,59 @@
+Index: src/piraha/Call.cc
+===================================================================
+--- src/piraha/Call.cc	(revision 4997)
++++ src/piraha/Call.cc	(working copy)
+@@ -573,9 +573,11 @@
+ 					ret->sdata = v1->sdata + v2->sdata;
+ 				} else {
+ 					std::ostringstream msg;
++                    ret->sdata = v1->sdata + addop + v2->sdata;
+ 					msg << "Unknown add operator: " << addop << std::endl;
++                    msg << "Interpreting as literal string with value '" << ret->sdata << "'" << std::endl;
+ 					std::string par = get_parfile();
+-					CCTK_Error(gr->line(),par.c_str(),current_thorn.c_str(),msg.str().c_str());
++					CCTK_Warn(1,gr->line(),par.c_str(),current_thorn.c_str(),msg.str().c_str());
+ 				}
+ 			} else if(v1->intOrDouble() && v2->intOrDouble()) {
+ 				ret->type = PIR_REAL;
+@@ -643,6 +645,14 @@
+ 					std::string par = get_parfile();
+ 					CCTK_Error(gr->line(),par.c_str(),current_thorn.c_str(),msg.str().c_str());
+ 				}
++			} else if(v1->type == PIR_STRING && v2->type == PIR_STRING) {
++				std::ostringstream msg;
++                ret->type = PIR_STRING;
++                ret->sdata = v1->sdata + mulop + v2->sdata;
++				msg << "Unknown operation: " << v1->type << " " << mulop << v2->type << std::endl;
++                msg << "Interpreting as literal string with value '" << ret->sdata << "'" << std::endl;
++				std::string par = get_parfile();
++				CCTK_Warn(1,gr->line(),par.c_str(),current_thorn.c_str(),msg.str().c_str());
+ 			} else {
+ 				std::ostringstream msg;
+ 				msg << "Unknown operation: " << v1->type << " " << mulop << v2->type << std::endl;
+@@ -722,7 +732,7 @@
+ 			"# Note that / occurs in some par files. It is my\n"
+ 			"# feeling that this should require quote marks.\n"
+ 
+-			"name = [@a-zA-Z_][@/a-zA-Z0-9_-]*\n"
++			"name = [a-zA-Z][a-zA-Z0-9_]*\n"
+ 			"dname = [0-9][a-zA-Z_]{2,}\n"
+ 			"inquot = ({var}|\\\\.|[^\\\\\"])*\n"
+ 			"fname = \\.?/[-\\./0-9a-zA-Z_]+\n"
+@@ -813,7 +823,7 @@
+     				smart_ptr<Value> smv = meval(aexpr);
+ 					val = smv->copy();
+     				assert(smv.valid());
+-    				values[thorn][key] = smv;
++                    values[thorn][key] = smv;
+     				smv->integerize();
+     				if(data != NULL) {
+         				if(data->type == PARAMETER_REAL)
+@@ -834,7 +844,7 @@
+     					keyi << key << '[' << i << ']';
+     					smart_ptr<Value> smv = meval(aexpr);
+     					val = smv->copy();
+-        				values[thorn][keyi.str()] = smv;
++                        values[thorn][keyi.str()] = smv;
+         				if(data != NULL) {
+             				if(data->type == PARAMETER_REAL)
+             					smv->integerize();

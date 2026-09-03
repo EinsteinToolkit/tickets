@@ -1,0 +1,42 @@
+From ce59b9c7afe2f055fc095c9e8920b3626b55ea39 Mon Sep 17 00:00:00 2001
+From: Philipp Moesta <pmoesta@tapir.caltech.edu>
+Date: Fri, 6 Jul 2012 20:52:32 -0700
+Subject: [PATCH 05/10] GRHydro: Adding back OpenMP support to HLLEM.F90
+
+---
+ src/GRHydro_HLLEM.F90 |   12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/src/GRHydro_HLLEM.F90 b/src/GRHydro_HLLEM.F90
+index 5edb76d..17a553d 100644
+--- a/src/GRHydro_HLLEM.F90
++++ b/src/GRHydro_HLLEM.F90
+@@ -123,6 +123,17 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+ 
+   ! constraint transport needs to be able to average fluxes in the directions
+   ! other that flux_direction
++
++  !$OMP PARALLEL DO PRIVATE(k,j,i,f1,lamminus,lamplus,cons_p,cons_m,fplus,fminus,qdiff,psidcf,psidcp,psidcm,prim_p,prim_m,&
++  !$OMP avg_betax,avg_betay,avg_betaz,avg_beta,avg_alp,&
++  !$OMP gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,avg_det,sdet,uxxh,uxyh,uxzh,uyyh,uyzh,uzzh,&
++  !$OMP vxtp,vxtm,vytp,vytm,vztp,vztm,&
++  !$OMP velxlowp,velxlowm,Bvecxlowp,Bvecxlowm,&
++  !$OMP velylowp,velylowm,Bvecylowp,Bvecylowm,&
++  !$OMP velzlowp,velzlowm,Bveczlowp,Bveczlowm,&
++  !$OMP bdotvp,bdotvm,b2p,b2m,v2p,v2m,wp,wm,&
++  !$OMP bxlowp,bxlowm,bylowp,bylowm,bzlowp,bzlowm,&
++  !$OMP rhoenth_p,rhoenth_m,ab0p,ab0m,vA2p,vA2m,pressstarp,pressstarm,usendh,psidcdiff,psidcfp,psidcfm,charmin,charmax,chartop,charpm,m)
+   do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil + transport_constraints*(1-zoffset)
+     do j = GRHydro_stencil, cctk_lsh(2) - GRHydro_stencil + transport_constraints*(1-yoffset)
+       do i = GRHydro_stencil, cctk_lsh(1) - GRHydro_stencil + transport_constraints*(1-xoffset)
+@@ -608,6 +619,7 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+       end do
+     end do
+   end do
++  !$OMP END PARALLEL DO
+ #undef faulty_gxx
+ #undef faulty_gxy
+ #undef faulty_gxz
+-- 
+1.7.10.4
+

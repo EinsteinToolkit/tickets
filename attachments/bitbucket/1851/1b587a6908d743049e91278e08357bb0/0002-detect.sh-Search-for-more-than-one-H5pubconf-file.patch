@@ -1,0 +1,40 @@
+From ee9cab32cff0e24e4d89093fbd360f408d085589 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Fri, 6 May 2016 12:29:44 +0200
+Subject: [PATCH 2/2] detect.sh: Search for more than one H5pubconf file
+
+---
+ src/detect.sh | 12 ++++++++----
+ 1 file changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/src/detect.sh b/src/detect.sh
+index 33eb09e..36b68a1 100644
+--- a/src/detect.sh
++++ b/src/detect.sh
+@@ -167,15 +167,19 @@ fi
+ # check installed library, assume that everything is fine if we build
+ if [ -z "$HDF5_BUILD" -a -n "${HDF5_DIR}" ]; then
+   # find public include file
++  H5PUBCONFFILES="H5pubconf.h H5pubconf-64.h H5pubconf-32.h"
+   for dir in $HDF5_RAW_INC_DIRS; do
+-      if [ -r "$dir/H5pubconf.h" ]; then
+-          H5PUBCONF="$H5PUBCONF $dir/H5pubconf.h"
+-      fi
++      for file in $H5PUBCONFFILES ; do
++          if [ -r "$dir/$file" ]; then
++              H5PUBCONF="$H5PUBCONF $dir/$file"
++              break
++          fi
++      done
+   done
+   if [ -z "$H5PUBCONF" ]; then
+       echo 'BEGIN MESSAGE'
+       echo 'WARNING in HDF5 configuration: '
+-      echo "H5pubconf.h not found in $HDF5_RAW_INC_DIRS"
++      echo "None of $H5PUBCONFFILES not found in $HDF5_RAW_INC_DIRS"
+       echo "Automatic detection of szip/zlib compression not possible"
+       echo 'END MESSAGE'
+   else
+-- 
+2.8.2
+

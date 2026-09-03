@@ -1,0 +1,60 @@
+Index: arrangements/ExternalLibraries/hwloc/src/system_topology.cc
+===================================================================
+--- arrangements/ExternalLibraries/hwloc/src/system_topology.cc	(revision 16)
++++ arrangements/ExternalLibraries/hwloc/src/system_topology.cc	(working copy)
+@@ -8,6 +8,7 @@
+ #include <map>
+ #include <string>
+ #include <vector>
++#include <hwloc.h>
+ 
+ #ifdef HAVE_CAPABILITY_MPI
+ #  include <mpi.h>
+@@ -374,24 +375,30 @@
+             hwloc_get_obj_by_depth(topology, core_depth, core_num);
+           hwloc_obj_t pu_obj =
+             hwloc_get_obj_by_depth(topology, pu_depth, pu_num);
+-          printf("thr %d of proc %d (thr%d on host %d): core L#%d (P#%d), PU L#%d (P#%d)\n",
+-                 thread_num_in_proc, host_mapping.mpi_proc_num,
+-                 thread_num, host_mapping.mpi_host_num,
+-                 core_num, core_obj->os_index,
+-                 pu_num, pu_obj->os_index);
+-          // hwloc_cpuset_t cpuset = hwloc_bitmap_dup(pu_obj->cpuset);
+-          hwloc_cpuset_t cpuset = pu_obj->cpuset;
+-          int ierr;
+-          ierr = hwloc_set_cpubind(topology, cpuset,
+-                                   HWLOC_CPUBIND_THREAD | HWLOC_CPUBIND_STRICT);
+-          if (ierr) {
+-            ierr = hwloc_set_cpubind(topology, cpuset, HWLOC_CPUBIND_THREAD);
++          if(pu_obj == NULL || core_obj == NULL) {
++        	  CCTK_VWarn(CCTK_WARN_ALERT, __LINE__, __FILE__, CCTK_THORNSTRING,
++        			  "Could not set CPU binding for thread %d",
++        			  thread_num_in_proc);
++          } else {
++        	  printf("thr %d of proc %d (thr%d on host %d): core L#%d (P#%d), PU L#%d (P#%d)\n",
++        			  thread_num_in_proc, host_mapping.mpi_proc_num,
++        			  thread_num, host_mapping.mpi_host_num,
++        			  core_num, core_obj->os_index,
++        			  pu_num, pu_obj->os_index);
++        	  // hwloc_cpuset_t cpuset = hwloc_bitmap_dup(pu_obj->cpuset);
++        	  hwloc_cpuset_t cpuset = pu_obj->cpuset;
++        	  int ierr;
++        	  ierr = hwloc_set_cpubind(topology, cpuset,
++        			  HWLOC_CPUBIND_THREAD | HWLOC_CPUBIND_STRICT);
++        	  if (ierr) {
++        		  ierr = hwloc_set_cpubind(topology, cpuset, HWLOC_CPUBIND_THREAD);
++        	  }
++        	  if (ierr) {
++        		  CCTK_VWarn(CCTK_WARN_ALERT, __LINE__, __FILE__, CCTK_THORNSTRING,
++        				  "Could not set CPU binding for thread %d",
++        				  thread_num_in_proc);
++        	  }
+           }
+-          if (ierr) {
+-            CCTK_VWarn(CCTK_WARN_ALERT, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                      "Could not set CPU binding for thread %d",
+-                      thread_num_in_proc);
+-          }
+           // hwloc_bitmap_free(cpuset);
+         }
+ #pragma omp barrier

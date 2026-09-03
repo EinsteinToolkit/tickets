@@ -1,0 +1,138 @@
+Index: src/make.code.defn
+===================================================================
+--- src/make.code.defn	(revision 49)
++++ src/make.code.defn	(working copy)
+@@ -2,7 +2,7 @@
+ # $Header$
+ 
+ # Source files in this directory
+-SRCS = apply_dissipation.F77 basegrid.c dissipation.c paramcheck.c setup_epsdis.c
++SRCS = apply_dissipation.F77 basegrid.c dissipation.c paramcheck.c setup_epsdis.c poststep.cc
+ 
+ # Subdirectories containing source files
+ SUBDIRS = 
+Index: src/poststep.cc
+===================================================================
+--- src/poststep.cc	(revision 0)
++++ src/poststep.cc	(revision 0)
+@@ -0,0 +1,73 @@
++#include <vector>
++
++#include "cctk.h"
++#include "cctk_Arguments.h"
++#include "cctk_Parameters.h"
++
++#include "carpet.hh"
++
++namespace {
++
++#ifdef HAVE_CARPET
++std::vector<bool> sync_on_these_levels;
++#endif
++
++extern "C"
++void setup_epsdis_record(CCTK_ARGUMENTS)
++{
++#ifdef HAVE_CARPET
++  // even if Carpet was compiled in, we might still run with PUGH. Check for
++  // this here.
++  if(CCTK_IsThornActive("Carpet"))
++  {
++    using namespace Carpet;
++
++    sync_on_these_levels.resize(reflevels, false);
++    sync_on_these_levels.at(reflevel) = true;
++  }
++#endif
++}
++
++extern "C"
++void setup_epsdis_poststep(CCTK_ARGUMENTS)
++{
++  DECLARE_CCTK_ARGUMENTS;
++
++#ifdef HAVE_CARPET
++  // even if Carpet was compiled in, we might still run with PUGH. Check for
++  // this here.
++  if(CCTK_IsThornActive("Carpet"))
++  {
++    using namespace Carpet;
++
++    // only run on levels that a local routine would have run on
++    if(sync_on_these_levels.at(reflevel)) {
++      BEGIN_LOCAL_MAP_LOOP(cctkGH, CCTK_GF) {
++        BEGIN_LOCAL_COMPONENT_LOOP(cctkGH, CCTK_GF) {
++          setup_epsdis(CCTK_PASS_CTOC);
++        } END_LOCAL_COMPONENT_LOOP;
++      } END_LOCAL_MAP_LOOP;
++      const int ierr =
++        CCTK_SyncGroup(cctkGH, "Dissipation::epsdisA_group");
++      if(ierr != 0) {
++        CCTK_VWarn(CCTK_WARN_ABORT, __LINE__, __FILE__, CCTK_THORNSTRING,
++            "Could not synchronize 'Dissipation::epsdisA_group': %d", ierr);
++      }
++    }
++    sync_on_these_levels.at(reflevel) = false;
++  }
++  else
++#endif
++  {
++    setup_epsdis(CCTK_PASS_CTOC);
++    const int ierr =
++      CCTK_SyncGroup(cctkGH, "Dissipation::epsdisA_group");
++    if(ierr != 0) {
++      CCTK_VWarn(CCTK_WARN_ABORT, __LINE__, __FILE__, CCTK_THORNSTRING,
++          "Could not synchronize 'Dissipation::epsdisA_group': %d", ierr);
++    }
++  }
++
++}
++
++}
+
+Property changes on: src/poststep.cc
+___________________________________________________________________
+Added: svn:mime-type
+   + text/x-c++src
+
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 49)
++++ schedule.ccl	(working copy)
+@@ -13,12 +13,21 @@
+   LANG: C
+ } "Ensure that there are enough ghost zones"
+ 
+-SCHEDULE setup_epsdis AT cctk_poststep after SphericalSurface_HasBeenSet
++# we call CCTK_SyncGroup inside since we would like to only synchronize level
++# where we made changes
++SCHEDULE setup_epsdis_record AT cctk_poststep before setup_epsdis_poststep
+ {
+   LANG: C
+-  SYNC: epsdisA_group
++  OPTIONS: level
++} "Record on which levels a local routine would be called on"
++
++SCHEDULE setup_epsdis_poststep AT cctk_poststep after SphericalSurface_HasBeenSet
++{
++  LANG: C
++  OPTIONS: global loop-level
+ } "Setup spatially varying dissipation"
+ 
++# these two must be local since they run in postregrid
+ SCHEDULE setup_epsdis AT cctk_postregridinitial
+ {
+   LANG: C
+Index: interface.ccl
+===================================================================
+--- interface.ccl	(revision 49)
++++ interface.ccl	(working copy)
+@@ -5,6 +5,8 @@
+ 
+ INHERITS: grid SphericalSurface SpaceMask
+ 
++USES INCLUDE HEADER: carpet.hh
++
+ CCTK_INT FUNCTION MoLQueryEvolvedRHS (CCTK_INT IN EvolvedIndex)
+ REQUIRES FUNCTION MoLQueryEvolvedRHS
+ 

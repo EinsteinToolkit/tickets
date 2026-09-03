@@ -1,0 +1,110 @@
+From c5e6e2761ba0aebce16c587e164c6d2badc99596 Mon Sep 17 00:00:00 2001
+From: Barry Wardell <barry.wardell@gmail.com>
+Date: Thu, 13 Mar 2014 23:41:07 -0400
+Subject: [PATCH 1/2] Enable generating of latex descriptions of a single
+ thorn's interface, parameters and schedule
+
+---
+ lib/sbin/InterLatex.pl | 5 ++++-
+ lib/sbin/ParamLatex.pl | 5 ++++-
+ lib/sbin/SchedLatex.pl | 7 +++++--
+ 3 files changed, 13 insertions(+), 4 deletions(-)
+ mode change 100644 => 100755 lib/sbin/ParamLatex.pl
+
+diff --git a/lib/sbin/InterLatex.pl b/lib/sbin/InterLatex.pl
+index cb55894..d0013aa 100755
+--- a/lib/sbin/InterLatex.pl
++++ b/lib/sbin/InterLatex.pl
+@@ -1,7 +1,7 @@
+ #!/usr/bin/perl -s
+ 
+ #use strict;
+-use vars qw($cctk_home $debug $verbose $h $help $document_type $outdir $directory $thornlist); 
++use vars qw($cctk_home $debug $verbose $h $help $document_type $outdir $directory $thornlist $thorn);
+ 
+ #/*@@
+ #  @file      InterLatex.pl
+@@ -27,6 +27,7 @@ if ($h || $help) {
+    print "--> InterLatex.pl <--\n";
+    print "Options:\n";
+    print "\t-thornlist=     : thornlist to process\n";
++   print "\t-thorn=        : (opt) specific thorn to process\n";
+    print "\t-directory=     : directory of arrangements (default arrangements/)\n";
+    print "\t-outdir=        : directory to dump output files, default is .\n";
+    print "\t-document_type= : create a 'document' or 'section'\n";
+@@ -110,6 +111,8 @@ if (defined $thornlist) {
+    # provided by MakeUtils.pl, returns a hash with a list of the thorns in our thornlist
+    %thorns       = &ReadThornlist($thornlist);
+    @listOfThorns = sort keys %thorns;
++} elsif (defined $thorn) {
++   @listOfThorns = $thorn;
+ } else {
+    # we don't have a thornlist, go find all thorns in arrangements directory
+    @listOfThorns = ThornUtils::CreateThornlist($arrangements_dir);
+diff --git a/lib/sbin/ParamLatex.pl b/lib/sbin/ParamLatex.pl
+old mode 100644
+new mode 100755
+index 48b3050..9b32035
+--- a/lib/sbin/ParamLatex.pl
++++ b/lib/sbin/ParamLatex.pl
+@@ -4,7 +4,7 @@
+ # the following variables in the 'use vars' statement, that can be passed in from 
+ # the command.
+ use strict;
+-use vars qw($h $help $cctk_home $thornlist $outdir $verbose $debug $arrangements_dir $document_type);
++use vars qw($h $help $cctk_home $thornlist $outdir $verbose $debug $arrangements_dir $document_type $thorn);
+ 
+ #########################
+ # ->> ParamLatex.pl <<- #
+@@ -19,6 +19,7 @@ This program will take as input a thornlist, and outputs a latex table that cont
+ 	-cctk_home=        : root directory of Cactus 
+ 	-arrangements_dir= : arrangements directory
+ 	-thornlist=        : thornlist to process
++  -thorn=            : specific thorn to process
+ 	-outdir=           : where to place resulting output files
+ 	-document_type=    : is this a self containted 'document' or 'section'
+ 
+@@ -111,6 +112,8 @@ if (defined $thornlist) {
+    # provided by MakeUtils.pl, returns a hash with a list of the thorns in our thornlist
+    %thorns 	 = &ReadThornlist($thornlist);
+    @listOfThorns = sort keys %thorns; 
++} elsif (defined $thorn) {
++   @listOfThorns = $thorn;
+ } else {
+    # we don't have a thornlist, go find all thorns in arrangements directory
+    @listOfThorns = ThornUtils::CreateThornlist($arrangements_dir);
+diff --git a/lib/sbin/SchedLatex.pl b/lib/sbin/SchedLatex.pl
+index ba67e80..b7317ab 100755
+--- a/lib/sbin/SchedLatex.pl
++++ b/lib/sbin/SchedLatex.pl
+@@ -1,7 +1,7 @@
+ #!/usr/bin/perl -s
+ 
+ use strict;
+-use vars qw($h $help $cctk_home $thornlist $outdir $verbose $debug $directory $document_type);
++use vars qw($h $help $cctk_home $thornlist $outdir $verbose $debug $directory $document_type $thorn);
+ 
+ #/*@@
+ #  @file      SchedLatex.pl
+@@ -25,7 +25,8 @@ if ($h || $help) {
+    print "--> SchedLatex.pl <--\n";
+    print "   This program will take as input a thornlist, and outputs a latex table that contains the information in the thorns' schedule.ccl file(s).  This latex table can then be used as a stand-alone document, or as a section of a larger 'ThornGuide'";
+    print "Options:\n";
+-   print "\t-thornlist=     : (req) list specific thorns to process\n";
++   print "\t-thornlist=     : (opt) list specific thorns to process\n";
++   print "\t-thorn=        : (opt) specific thorn to process\n";
+    print "\t-directory=     : (opt) dir. of arrangements (default arrangements/)\n";
+    print "\t-outdir=        : (opt) directory to dump output files, default is .\n";
+    print "\t-document_type= : (opt) 'document' or 'section'\n";
+@@ -101,6 +102,8 @@ if (defined $thornlist) {
+    # provided by MakeUtils.pl, returns a hash with a list of the thorns in our thornlist
+    %thorns       = &ReadThornlist($thornlist);
+    @listOfThorns = sort keys %thorns; 
++} elsif (defined $thorn) {
++   @listOfThorns = $thorn;
+ } else {
+    # we don't have a thornlist, go find all thorns in arrangements directory
+    @listOfThorns = ThornUtils::CreateThornlist($arrangements_dir);
+-- 
+1.8.5.5
+

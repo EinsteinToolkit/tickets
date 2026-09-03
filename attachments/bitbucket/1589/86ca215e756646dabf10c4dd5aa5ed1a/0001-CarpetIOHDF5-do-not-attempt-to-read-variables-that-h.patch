@@ -1,0 +1,33 @@
+From dcd0afee1d6ce0572a789be017ccdd5b0d1824d3 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Wed, 23 Apr 2014 23:49:05 -0700
+Subject: [PATCH 1/3] CarpetIOHDF5: do not attempt to read variables that have
+ checkpoint=no
+
+but are nevertheless present in checkpoint file (since the tag changed)
+---
+ Carpet/CarpetIOHDF5/src/Input.cc | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/Carpet/CarpetIOHDF5/src/Input.cc b/Carpet/CarpetIOHDF5/src/Input.cc
+index f106ceb..886adb3 100644
+--- a/Carpet/CarpetIOHDF5/src/Input.cc
++++ b/Carpet/CarpetIOHDF5/src/Input.cc
+@@ -644,6 +644,14 @@ int Recover (cGH* cctkGH, const char *basefilename, int called_from)
+          patch != file.patches.end();
+          patch++) {
+ 
++      // skip all variables which aren't expected to be recovered
++      // this should only happen for variables whose checkpoint tag was changed
++      // between the code version used to write the checkpoint and the current
++      // one
++      if (not_checkpointed[patch->vindex]) {
++        continue;
++      }
++
+       // only recover grid variables for the current mglevel/reflevel
+       if (patch->mglevel != mglevel or patch->reflevel != reflevel) {
+         continue;
+-- 
+1.9.2
+

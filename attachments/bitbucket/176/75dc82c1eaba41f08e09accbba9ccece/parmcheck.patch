@@ -1,0 +1,108 @@
+Index: src/main/WarnLevel.c
+===================================================================
+--- src/main/WarnLevel.c	(revision 4824)
++++ src/main/WarnLevel.c	(working copy)
+@@ -1137,6 +1137,25 @@
+ }
+ 
+ 
++int CCTK_ExitAfterParamCheck();
++ /*@@
++   @routine    ExitIfParamCheckOnly
++   @date       Mon May 16 2012
++   @author     Steven R. Brandt
++   @desc
++               Responsible for exiting after paramcheck
++   @enddesc
++
++@@*/
++void CCTK_ExitIfParamCheckOnly()
++{
++    if(CCTK_ExitAfterParamCheck()) {
++        printf("Exit after param check requested.\n");
++        CCTK_Exit(NULL, 0);
++    }
++}
++
++
+ /*@@
+    @routine    CCTKi_FinaliseParamWarn
+    @date       June 1999
+@@ -1191,6 +1210,7 @@
+       }
+     }
+   }
++  CCTK_ExitIfParamCheckOnly();
+ }
+ 
+ 
+Index: src/main/CactusDefaultInitialise.c
+===================================================================
+--- src/main/CactusDefaultInitialise.c	(revision 4824)
++++ src/main/CactusDefaultInitialise.c	(working copy)
+@@ -85,7 +85,6 @@
+   return (0);
+ }
+ 
+-
+  /*@@
+    @routine    CactusInitialiseGH
+    @date       Mon Feb  1 12:13:09 1999
+@@ -112,6 +111,7 @@
+ static void CactusInitialiseGH (const tFleshConfig *config, cGH *GH)
+ {
+   const char *recovery_mode;
++  CCTK_Exit(NULL,0);
+ 
+ 
+   recovery_mode = *(const char *const *)
+Index: src/main/ProcessCommandLine.c
+===================================================================
+--- src/main/ProcessCommandLine.c	(revision 4824)
++++ src/main/ProcessCommandLine.c	(working copy)
+@@ -41,6 +41,8 @@
+  *********************     Local Data   *****************************
+  ********************************************************************/
+ 
++static int exit_after_param_check = 0;
++
+ static char *parameter_file_name=NULL;
+ 
+ static int argc = 0;
+@@ -129,6 +131,7 @@
+     list_thorns_option            = 'T',
+     test_thorns_compiled_option   = 't',
+     version_option                = 'v',
++    exit_after_param_check_option = 'p',
+     ignore_next_option            = 'i'
+   };
+   /* the longopts argument passed into getopt_long_only() */
+@@ -148,6 +151,7 @@
+     {"print-schedule",          no_argument,       NULL, print_schedule_option},
+     {"list-thorns",             no_argument,       NULL, list_thorns_option},
+     {"test-thorn-compiled",     required_argument, NULL, test_thorns_compiled_option},
++    {"exit-after-param-check",  no_argument,       NULL, exit_after_param_check_option},
+     {"version",                 no_argument,       NULL, version_option},
+     {"ignore-next",             no_argument,       NULL, ignore_next_option},
+     {0, 0, 0, 0}
+@@ -203,6 +207,8 @@
+             CCTKi_CommandLineVersion(); break;
+           case ignore_next_option:
+             ignore = 1; break;
++          case exit_after_param_check_option:
++            exit_after_param_check = 1; break;
+           case help_option: 
+           case '?':
+             CCTKi_CommandLineHelp(); break;
+@@ -334,6 +340,11 @@
+   *retval = CCTK_ParameterFilename(*len,name);
+ }
+ 
++int CCTK_ExitAfterParamCheck()
++{
++    return exit_after_param_check;
++}
++
+ /********************************************************************
+  *********************     Local Routines   *************************
+  ********************************************************************/

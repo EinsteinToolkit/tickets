@@ -1,0 +1,353 @@
+Index: src/Registration.c
+===================================================================
+--- src/Registration.c	(revision 190)
++++ src/Registration.c	(working copy)
+@@ -10,6 +10,11 @@
+    @version   $Header$
+  @@*/
+ 
++#include <string.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <assert.h>
++
+ #include "cctk.h"
+ #include "cctk_Arguments.h"
+ #include "cctk_Parameters.h"
+@@ -27,6 +32,7 @@
+ /********************************************************************
+  ********************* Local Routine Prototypes *********************
+  ********************************************************************/
++static char *VarListToString(const int varindices[], const int nvars);
+ 
+ /********************************************************************
+  ***************** Scheduled Routine Prototypes *********************
+@@ -1110,10 +1116,17 @@
+ 
+     if (MoLNumEvolvedVariables+1 > MoL_Num_Evolved_Vars)
+     {
+-      CCTK_WARN(0,"You have tried to register more evolved "
++      const char *evolvedvarname = CCTK_VarName(EvolvedIndex);
++      char *registeredvars = 
++        VarListToString(EvolvedVariableIndex, MoLNumEvolvedVariables);
++      CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                "You have tried to register more evolved "
+                 "variables than the accumulator parameter "
+                 "MoL_Num_Evolved_Variables allows. Check that "
+-                "you are accumulating onto this parameter correctly");
++                "you are accumulating onto this parameter correctly. "
++                "You tried to register '%s'. The currently registered "
++                "evolved variables are: %s", evolvedvarname, registeredvars);
++      free(registeredvars); /* NOTREACHED */
+     }
+   
+     EvolvedVariableIndex[MoLNumEvolvedVariables] = EvolvedIndex;
+@@ -1299,10 +1312,17 @@
+ 
+     if (MoLNumEvolvedVariablesSlow+1 > MoL_Num_Evolved_Vars_Slow)
+     {
+-      CCTK_WARN(0,"You have tried to register more evolved "
++      const char *evolvedvarname = CCTK_VarName(EvolvedIndex);
++      char *registeredvars = 
++        VarListToString(EvolvedVariableIndex, MoLNumEvolvedVariables);
++      CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                "You have tried to register more evolved "
+                 "variables than the accumulator parameter "
+                 "MoL_Num_Evolved_Variables allows. Check that "
+-                "you are accumulating onto this parameter correctly");
++                "you are accumulating onto this parameter correctly. "
++                "You tried to register '%s'. The currently registered "
++                "evolved variables are: %s", evolvedvarname, registeredvars);
++      free(registeredvars); /* NOTREACHED */
+     }
+   
+     EvolvedVariableIndexSlow[MoLNumEvolvedVariablesSlow] = EvolvedIndex;
+@@ -1449,11 +1469,18 @@
+ 
+       if (MoLNumConstrainedVariables+1 > MoL_Num_Constrained_Vars)
+       {
+-        CCTK_WARN(0,"You have tried to register more constrained "
++        const char *constrainedvarname = CCTK_VarName(ConstrainedIndex);
++        char *registeredvars = 
++          VarListToString(ConstrainedVariableIndex, MoLNumConstrainedVariables);
++        CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                  "You have tried to register more constrained "
+                   "variables than the accumulator parameter "
+-                  "MoL_Num_Constrained_Variables allows. "
+-                  "Check that you are accumulating onto this "
+-                  "parameter correctly");
++                  "MoL_Num_Constrained_Variables allows. Check that "
++                  "you are accumulating onto this parameter correctly. "
++                  "You tried to register '%s'. The currently registered "
++                  "constrained variables are: %s", constrainedvarname,
++                  registeredvars);
++        free(registeredvars); /* NOTREACHED */
+       }
+ 
+       ConstrainedVariableIndex[MoLNumConstrainedVariables] = ConstrainedIndex;
+@@ -1571,10 +1598,18 @@
+ 
+       if (MoLNumSandRVariables+1 > MoL_Num_SaveAndRestore_Vars)
+       {
+-        CCTK_WARN(0,"You have tried to register more save and restore "
++        const char *saveandrestorevarname = CCTK_VarName(SandRIndex);
++        char *registeredvars = 
++          VarListToString(SandRVariableIndex, MoLNumSandRVariables);
++        CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                  "You have tried to register more save and restore "
+                   "variables than the accumulator parameter "
+-                  "MoL_Num_SaveAndRestore_Variables allows. Check "
+-                  "that you are accumulating onto this parameter correctly");
++                  "MoL_Num_SaveAndRestore_Variables allows. Check that "
++                  "you are accumulating onto this parameter correctly. "
++                  "You tried to register '%s'. The currently registered "
++                  "save and restore variables are: %s", saveandrestorevarname,
++                  registeredvars);
++        free(registeredvars); /* NOTREACHED */
+       }
+ 
+       SandRVariableIndex[MoLNumSandRVariables] = SandRIndex;
+@@ -1852,11 +1887,18 @@
+   
+     if (MoLNumEvolvedComplexVariables+1 > MoL_Num_ComplexEvolved_Vars)
+     {
+-      CCTK_WARN(0,"You have tried to register more evolved complex "
++      const char *evolvedvarname = CCTK_VarName(EvolvedIndex);
++      char *registeredvars = 
++        VarListToString(Complexcomplex evolvedVariableIndex, MoLNumComplexcomplex evolvedVariables);
++      CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                "You have tried to register more complex evolved "
+                 "variables than the accumulator parameter "
+-                "MoL_Num_ComplexEvolved_Variables allows. "
+-                "Check that you are accumulating onto this "
+-                "parameter correctly");
++                "MoL_Num_Complexcomplex evolved_Variables allows. Check that "
++                "you are accumulating onto this parameter correctly. "
++                "You tried to register '%s'. The currently registered "
++                "complex evolved variables are: %s", evolvedvarname, 
++                registeredvars);
++      free(registeredvars); /* NOTREACHED */
+     }
+ 
+     EvolvedComplexVariableIndex[MoLNumEvolvedComplexVariables] = EvolvedIndex;
+@@ -1975,11 +2017,18 @@
+       if (MoLNumConstrainedComplexVariables+1 >
+           MoL_Num_ComplexConstrained_Vars) 
+       {
+-        CCTK_WARN(0,"You have tried to register more constrained "
+-                  "complex variables than the accumulator parameter "
+-                  "MoL_Num_ComplexConstrained_Variables allows. "
+-                  "Check that you are accumulating onto this "
+-                  "parameter correctly");
++        const char *constrainedvarname = CCTK_VarName(ConstrainedIndex);
++        char *registeredvars = 
++          VarListToString(ComplexConstrainedVariableIndex, MoLNumComplexConstrainedVariables);
++        CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                  "You have tried to register more complex constrained "
++                  "variables than the accumulator parameter "
++                  "MoL_Num_ComplexConstrained_Variables allows. Check that "
++                  "you are accumulating onto this parameter correctly. "
++                  "You tried to register '%s'. The currently registered "
++                  "complex constrained variables are: %s", constrainedvarname,
++                  registeredvars);
++        free(registeredvars); /* NOTREACHED */
+       }
+ 
+       ConstrainedComplexVariableIndex[MoLNumConstrainedComplexVariables] = 
+@@ -2094,11 +2143,19 @@
+ 
+       if (MoLNumSandRComplexVariables+1 > MoL_Num_ComplexSaveAndRestore_Vars)
+       {
+-        CCTK_WARN(0,"You have tried to register more save and restore "
+-                  "complex variables than the accumulator parameter "
+-                  "MoL_Num_ComplexSaveAndRestore_Variables allows. "
+-                  "Check that you are accumulating onto this "
+-                  "parameter correctly");
++        const char *saveandrestorevarname = CCTK_VarName(SandRIndex);
++        char *registeredvars = 
++          VarListToString(ComplexSandRVariableIndex, 
++                          MoLNumComplexSandRVariables);
++        CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                  "You have tried to register more complex save and restore "
++                  "variables than the accumulator parameter "
++                  "MoL_Num_ComplexSaveAndRestore_Variables allows. Check that "
++                  "you are accumulating onto this parameter correctly. "
++                  "You tried to register '%s'. The currently registered "
++                  "complex save and restore variables are: %s", 
++                  saveandrestorevarname, registeredvars);
++        free(registeredvars); /* NOTREACHED */
+       }
+ 
+       SandRComplexVariableIndex[MoLNumSandRComplexVariables] = SandRIndex;
+@@ -2327,11 +2384,18 @@
+   
+     if (MoLNumEvolvedArrayVariables+1 > MoL_Num_ArrayEvolved_Vars)
+     {
+-      CCTK_WARN(0,"You have tried to register more evolved array "
++      const char *evolvedvarname = CCTK_VarName(EvolvedIndex);
++      char *registeredvars = 
++        VarListToString(EvolvedArrayVariableIndex, MoLNumEvolvedArrayVariables);
++      CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                "You have tried to register more evolved array "
+                 "variables than the accumulator parameter "
+-                "MoL_Num_ArrayEvolved_Variables allows. "
+-                "Check that you are accumulating onto this "
+-                "parameter correctly");
++                "MoL_Num_Arrayevolved array_Variables allows. Check that "
++                "you are accumulating onto this parameter correctly. "
++                "You tried to register '%s'. The currently registered "
++                "evolved array variables are: %s", evolvedvarname,
++                registeredvars);
++      free(registeredvars); /* NOTREACHED */
+     }
+ 
+     EvolvedArrayVariableIndex[MoLNumEvolvedArrayVariables] = EvolvedIndex;
+@@ -2437,11 +2501,18 @@
+       if (MoLNumConstrainedArrayVariables+1 >
+           MoL_Num_ArrayConstrained_Vars) 
+       {
+-        CCTK_WARN(0,"You have tried to register more constrained "
+-                  "array variables than the accumulator "
+-                  "parameter MoL_Num_ArrayConstrained_Variables allows. "
+-                  "Check that you are accumulating onto this "
+-                  "parameter correctly");
++        const char *constrainedvarname = CCTK_VarName(ConstrainedIndex);
++        char *registeredvars = 
++          VarListToString(ConstrainedArrayVariableIndex, MoLNumConstrainedArrayVariables);
++        CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                  "You have tried to register more constrained array "
++                  "variables than the accumulator parameter "
++                  "MoL_Num_ArrayConstrained_Variables allows. Check that "
++                  "you are accumulating onto this parameter correctly. "
++                  "You tried to register '%s'. The currently registered "
++                  "constrained array variables are: %s", constrainedvarname,
++                  registeredvars);
++        free(registeredvars); /* NOTREACHED */
+       }
+ 
+       ConstrainedArrayVariableIndex[MoLNumConstrainedArrayVariables] = 
+@@ -2547,11 +2618,18 @@
+ 
+       if (MoLNumSandRArrayVariables+1 > MoL_Num_ArraySaveAndRestore_Vars)
+       {
+-        CCTK_WARN(0,"You have tried to register more save and restore "
+-                  "array variables than the accumulator parameter "
+-                  "MoL_Num_ArraySaveAndRestore_Variables allows. "
+-                  "Check that you are accumulating onto "
+-                  "this parameter correctly");
++        const char *saveandrestorevarname = CCTK_VarName(SandRIndex);
++        char *registeredvars = 
++          VarListToString(SandRVariableIndex, MoLNumSandRArrayVariables);
++        CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                  "You have tried to register more save and restore array "
++                  "variables than the accumulator parameter "
++                  "MoL_Num_ArraySaveAndRestore_Variables allows. Check that "
++                  "you are accumulating onto this parameter correctly. "
++                  "You tried to register '%s'. The currently registered "
++                  "save and restore array variables are: %s",
++                  saveandrestorevarname, registeredvars);
++        free(registeredvars); /* NOTREACHED */
+       }
+ 
+       SandRArrayVariableIndex[MoLNumSandRArrayVariables] = SandRIndex;
+@@ -2785,12 +2863,18 @@
+     if (MoLNumEvolvedComplexArrayVariables+1 > 
+         MoL_Num_ComplexArrayEvolved_Vars)
+     {
+-      CCTK_WARN(0,"You have tried to register more "
+-                "evolved complex array variables than the "
+-                "accumulator parameter "
+-                "MoL_Num_ComplexArrayEvolved_Variables allows. "
+-                "Check that you are accumulating onto this "
+-                "parameter correctly");
++      const char *evolvedvarname = CCTK_VarName(EvolvedIndex);
++      char *registeredvars = 
++        VarListToString(ComplexArrayevolved complex arrayVariableIndex, MoLNumComplexArrayevolved complex arrayVariables);
++      CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                "You have tried to register more evolved complex array "
++                "variables than the accumulator parameter "
++                "MoL_Num_ComplexArrayevolved complex array_Variables allows. Check that "
++                "you are accumulating onto this parameter correctly. "
++                "You tried to register '%s'. The currently registered "
++                "evolved complex array variables are: %s",
++                evolvedvarname, registeredvars);
++      free(registeredvars); /* NOTREACHED */
+     }
+ 
+     EvolvedComplexArrayVariableIndex[MoLNumEvolvedComplexArrayVariables] = 
+@@ -2909,11 +2993,18 @@
+       if (MoLNumConstrainedComplexArrayVariables+1 >
+           MoL_Num_ComplexArrayConstrained_Vars) 
+       {
+-        CCTK_WARN(0,"You have tried to register more constrained "
+-                  "complex array variables than the accumulator "
+-                  "parameter MoL_Num_ComplexArrayConstrained_Variables "
+-                  "allows. Check that you are accumulating onto "
+-                  "this parameter correctly");
++        const char *constrainedvarname = CCTK_VarName(ConstrainedIndex);
++        char *registeredvars = 
++          VarListToString(ComplexArrayConstrainedVariableIndex, MoLNumComplexArrayConstrainedVariables);
++        CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                  "You have tried to register more constrained complex array "
++                  "variables than the accumulator parameter "
++                  "MoL_Num_ComplexArrayConstrained_Variables allows. Check that "
++                  "you are accumulating onto this parameter correctly. "
++                  "You tried to register '%s'. The currently registered "
++                  "constrained complex array variables are: %s",
++                  constrainedvarname, registeredvars);
++        free(registeredvars); /* NOTREACHED */
+       }
+ 
+       ConstrainedComplexArrayVariableIndex[MoLNumConstrainedComplexArrayVariables] = ConstrainedIndex;
+@@ -3028,11 +3119,18 @@
+       if (MoLNumSandRComplexArrayVariables+1 > 
+           MoL_Num_ComplexArraySaveAndRestore_Vars)
+       {
+-        CCTK_WARN(0,"You have tried to register more save and restore "
+-                  "complex array variables than the accumulator "
+-                  "parameter MoL_Num_ComplexArraySaveAndRestore_Variables "
+-                  "allows. Check that you are accumulating onto this "
+-                  "parameter correctly");
++        const char *saveandrestorevarname = CCTK_VarName(SandRIndex);
++        char *registeredvars = 
++          VarListToString(SandRVariableIndex, MoLNumComplexArraySandRVariables);
++        CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                  "You have tried to register more save and restore complex array "
++                  "variables than the accumulator parameter "
++                  "MoL_Num_ComplexArraySaveAndRestore_Variables allows. Check that "
++                  "you are accumulating onto this parameter correctly. "
++                  "You tried to register '%s'. The currently registered "
++                  "save and restore complex array variables are: %s",
++                  saveandrestorevarname, registeredvars);
++        free(registeredvars); /* NOTREACHED */
+       }
+ 
+       SandRComplexArrayVariableIndex[MoLNumSandRComplexArrayVariables] = 
+@@ -3412,3 +3510,27 @@
+ /********************************************************************
+  *********************     Local Routines   *************************
+  ********************************************************************/
++
++static char *VarListToString(const int varindices[], const int nvars)
++{
++  size_t off= 0, len = 0;
++  char *vars = NULL;
++  for(int index = 0 ; index < nvars ; index++)
++  {
++    const char *varname = CCTK_FullName(varindices[index]);
++    /* need room for variable name, " " and '\0' */
++    const size_t varnamelen = strlen(varname) + 2;
++    if(varnamelen > len-off) {
++      /* add varnamelen to avoid len=0 issues */
++      len = (len+varnamelen)*2;
++      vars = realloc(vars, len);
++      assert(vars);
++    }
++    const size_t written =
++      snprintf(vars+off, len-off, "%s%s", off>0?" ":"", varname);
++    assert(written < len-off);
++    off = strlen(vars);
++    free((void*)varname);
++  }
++  return vars;
++}

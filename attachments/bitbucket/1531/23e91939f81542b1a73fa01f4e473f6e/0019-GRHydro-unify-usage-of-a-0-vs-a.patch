@@ -1,0 +1,43 @@
+From 33bc83a90152b010494cd55e51ef6fd9bc686352 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Mon, 25 Nov 2013 21:12:32 -0800
+Subject: [PATCH 19/36] GRHydro: unify usage of a[0] vs *a
+
+---
+ src/GRHydro_PPMReconstruct_drv_opt.cc | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/src/GRHydro_PPMReconstruct_drv_opt.cc b/src/GRHydro_PPMReconstruct_drv_opt.cc
+index b790228..584f888 100644
+--- a/src/GRHydro_PPMReconstruct_drv_opt.cc
++++ b/src/GRHydro_PPMReconstruct_drv_opt.cc
+@@ -267,7 +267,7 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+   //index = i + j*nx + k*nx*ny;
+ 
+ // !!$ PPM starts:
+-  if (flux_direction[0] == 1){
++  if (*flux_direction == 1){
+     //          !$OMP PARALLEL DO PRIVATE(i, j, k)
+     
+     for(k = GRHydro_stencil-1; k < nz - GRHydro_stencil + 1; k++) {
+@@ -356,7 +356,7 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+     }  
+     //          !$OMP END PARALLEL DO
+ 
+-  } else if (flux_direction[0]==2) {
++  } else if (*flux_direction==2) {
+ 
+     //          !$OMP PARALLEL DO PRIVATE(i, j, k)
+     //Make sure to doublecheck the bounds here!
+@@ -444,7 +444,7 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+     }
+     //          !$OMP END PARALLEL DO
+     
+-  } else if (flux_direction[0]==3) {
++  } else if (*flux_direction==3) {
+ 
+     //          !$OMP PARALLEL DO PRIVATE(i, j, k)
+     //Make sure to doublecheck the bounds here!
+-- 
+1.9.0
+

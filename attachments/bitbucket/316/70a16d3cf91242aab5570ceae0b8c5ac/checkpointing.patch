@@ -1,0 +1,93 @@
+Index: lib/simrestart.py
+===================================================================
+--- lib/simrestart.py	(revision 1289)
++++ lib/simrestart.py	(working copy)
+@@ -135,12 +135,15 @@
+         
+         return 1
+             
+-    def PrepareCheckpointing(self, max_restart_id):
+-    
+-        # make sure it's an int.
+-        max_restart_id = int(max_restart_id)
++    def PrepareCheckpointing(self):
+         
+-        self.SimulationLog.Write("PrepareCheckpointing: max_restart_id: %s" % max_restart_id)
++        # this function now happens during run. max_restart_id needs to be one less then our current 
++        # restart-id.
++
++        # make sure it's an int.
++        recover_restart_id = int(self.RestartID) - 1
++
++        self.SimulationLog.Write("PrepareCheckpointing: recover_restart_id: %s" % recover_restart_id)
+             
+         # lets see if from-restart-id is sest
+         if self.Properties.HasProperty('from-restart-id'):
+@@ -151,15 +154,15 @@
+             except ValueError:
+                 fatal("Could not coerce provided from-restart-id %s into an integer" % ii)
+         else:
+-            if max_restart_id >= 0:
+-                restore_restart_id = max_restart_id
++            if recover_restart_id >= 0:
++                restore_restart_id = recover_restart_id
+             else:
+-                info("max_restart_id is < 0, returning False")
+-                return False
++                info("recover_restart_id is < 0, returning False")
++                return (False, -1)
+ 
+         if restore_restart_id == self.RestartID:
+             self.SimulationLog.Write("max_restart_id == self.RestartID, returning false")
+-            return False
++            return (False, -1)
+ 
+         self.SimulationLog.Write("Restoring from restart id %s, 04d is: %04d" % (restore_restart_id, restore_restart_id))
+         
+@@ -198,14 +201,8 @@
+         chkpoint_files = restartlib.GetCheckpointFiles(restore_dir)
+         
+         if len(chkpoint_files) == 0:
++            return (False, -1)
+             
+-            # look in the working directory for the checkpoint files as well.
+-            if work_dir != None:
+-                chkpoint_files = restartlib.GetCheckpointFiles(work_dir)
+-            
+-                if len(chkpoint_files) == 0:
+-                    return False
+-            
+         for ff in chkpoint_files:
+             self.SimulationLog.Write("checkpoint file: %s" % ff)
+ 
+@@ -232,9 +229,9 @@
+             except OSError, e:
+                 warning("Could not link checkpoint file %s to %s, %s" % (ff, dfile, e))
+                 warning("Disabling checkpointing")
+-                return False
++                return (False, -1)
+ 
+-        return True
++        return (True, restore_restart_id)
+     
+     
+     def initRestart(self, simulationName):
+@@ -880,16 +877,11 @@
+         display("Running simulation %s" % self.SimulationName)
+         self.SimulationLog.Write("Prepping for execution/run")
+         
+-        recover_id = self.MaxRestartID
+-        
+-        if self.Properties.HasProperty("from-restart-id"):
+-            recover_id = self.Properties.GetProperty("from-restart-id")
+-        
+-        checkpointing = self.PrepareCheckpointing(recover_id)
++        (checkpointing, recover_id) = self.PrepareCheckpointing()
+             
+         if checkpointing:
+             self.Properties.AddProperty("checkpointing", "yes")
+-            self.SimulationLog.Write("Checkpointing from max restart id of %s" % self.MaxRestartID)
++            self.SimulationLog.Write("Checkpointing from restart id of %s" % recover_id)
+         else:
+             self.Properties.AddProperty("checkpointing", "no")
+ 

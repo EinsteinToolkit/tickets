@@ -1,0 +1,23 @@
+Index: lib/simdt.py
+===================================================================
+--- lib/simdt.py	(revision 2075)
++++ lib/simdt.py	(working copy)
+@@ -448,6 +448,18 @@
+             io.Value = simlib.GetOptionList(False)
+             self.tParser.parser.WriteKey(mm, "optionlist", io)
+         
++        # submitscript
++        if (simenv.OptionsManager.RawOptionDefined("submitscript")):
++            io = self.tParser.GetOption(mm, "submitscript")
++            io.Value = simlib.GetSubmitScript(False)
++            self.tParser.parser.WriteKey(mm, "submitscript", io)
++        
++        # runscript
++        if (simenv.OptionsManager.RawOptionDefined("runscript")):
++            io = self.tParser.GetOption(mm, "runscript")
++            io.Value = simlib.GetRunScript(False)
++            self.tParser.parser.WriteKey(mm, "runscript", io)
++        
+         simlib.WriteContents(dstPath, self.tParser.GetIniAsString())
+         return "machine %s [%s] created successfully" % (mm, dstPath)
+         

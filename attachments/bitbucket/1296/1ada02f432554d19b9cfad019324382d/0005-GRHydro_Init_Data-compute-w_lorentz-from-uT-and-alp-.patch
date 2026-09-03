@@ -1,0 +1,44 @@
+From e982f355752855eac7041677794984baa45298cd Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Wed, 6 Mar 2013 22:42:58 -0800
+Subject: [PATCH 05/12] GRHydro_Init_Data: compute w_lorentz from uT and alp
+ instead of vel
+
+later on prim2con will of course compute the grid function using vel
+---
+ src/GRHydro_BondiM.c |   16 ++++------------
+ 1 file changed, 4 insertions(+), 12 deletions(-)
+
+diff --git a/src/GRHydro_BondiM.c b/src/GRHydro_BondiM.c
+index 0b2e6f7..2fd4184 100644
+--- a/src/GRHydro_BondiM.c
++++ b/src/GRHydro_BondiM.c
+@@ -1225,21 +1225,13 @@ static void GRHydro_BondiM_Internal(CCTK_ARGUMENTS, CCTK_REAL range_min, CCTK_RE
+     vely(i) = (ucon[YY]/ucon[TT] + betay[i]) * inv_alp;
+     velz(i) = (ucon[ZZ]/ucon[TT] + betaz[i]) * inv_alp;
+ 
+-    w_lorentz[i] = 1./sqrt(1-(gxx[i]*SQR(velx(i))+gyy[i]*SQR(vely(i))+gzz[i]*SQR(velz(i))+
+-                              2*(gxy[i]*velx(i)*vely(i)+gxz[i]*velx(i)*velz(i)+gyz[i]*vely(i)*velz(i))) );
+-    if(isnan(w_lorentz[i])) {
+-      CCTK_VWarn(CCTK_WARN_ALERT, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                 "nan in w_lorentz at (%g,%g,%g): v2 = %g",
+-                 x[i],y[i],z[i],(gxx[i]*SQR(velx(i))+gyy[i]*SQR(vely(i))+gzz[i]*SQR(velz(i))+
+-                              2*(gxy[i]*velx(i)*vely(i)+gxz[i]*velx(i)*velz(i)+gyz[i]*vely(i)*velz(i))));
+-    }
+-
+     SpatialDet(gxx[i],gxy[i],gxz[i],gyy[i],gyz[i],gzz[i],&det);
+ 
+     if(bvec_method == BVEC_TRANSFORM) {
+-      Bvecx(i) = w_lorentz[i]*bcon[XX] - alp[i]*bcon[TT]*ucon[XX];
+-      Bvecy(i) = w_lorentz[i]*bcon[YY] - alp[i]*bcon[TT]*ucon[YY];
+-      Bvecz(i) = w_lorentz[i]*bcon[ZZ] - alp[i]*bcon[TT]*ucon[ZZ];
++      const CCTK_REAL w = ucon[TT] * alp[i];
++      Bvecx(i) = w*bcon[XX] - alp[i]*bcon[TT]*ucon[XX];
++      Bvecy(i) = w*bcon[YY] - alp[i]*bcon[TT]*ucon[YY];
++      Bvecz(i) = w*bcon[ZZ] - alp[i]*bcon[TT]*ucon[ZZ];
+     } else {
+       Bvecx(i) = bondi_bmag*SQR(M)*x[i]/sqrt(det)/CUBE(r[i]);
+       Bvecy(i) = bondi_bmag*SQR(M)*y[i]/sqrt(det)/CUBE(r[i]);
+-- 
+1.7.10.4
+

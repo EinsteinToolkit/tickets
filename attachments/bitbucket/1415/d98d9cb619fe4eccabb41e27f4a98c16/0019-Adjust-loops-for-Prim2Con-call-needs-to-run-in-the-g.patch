@@ -1,0 +1,33 @@
+From fe61bbfb5773935b3014fa2742b53e4723ba5e70 Mon Sep 17 00:00:00 2001
+From: Philipp Moesta <pmoesta@tapir.caltech.edu>
+Date: Mon, 8 Jul 2013 00:10:41 -0700
+Subject: [PATCH 19/19] Adjust loops for Prim2Con call (needs to run in the
+ ghost zones as well after being called from
+ ZelmaniLeak).
+
+---
+ src/GRHydro_Prim2ConM.F90 |    8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/GRHydro_Prim2ConM.F90 b/src/GRHydro_Prim2ConM.F90
+index a473163..266b446 100644
+--- a/src/GRHydro_Prim2ConM.F90
++++ b/src/GRHydro_Prim2ConM.F90
+@@ -585,10 +585,10 @@ subroutine Primitive2ConservativeCellsM(CCTK_ARGUMENTS)
+ 
+   if(evolve_Y_e.ne.0) then
+      !$OMP PARALLEL DO PRIVATE(i, j, k)
+-     do k = GRHydro_stencil,cctk_lsh(3)-GRHydro_stencil+1
+-        do j = GRHydro_stencil,cctk_lsh(2)-GRHydro_stencil+1
+-           do i = GRHydro_stencil,cctk_lsh(1)-GRHydro_stencil+1
+-              Y_e_con(i,j,k) = Y_e(i,j,k) * dens(i,j,k)
++    do k = 1,cctk_lsh(3)
++      do j = 1,cctk_lsh(2)
++        do i = 1,cctk_lsh(1)
++                Y_e_con(i,j,k) = Y_e(i,j,k) * dens(i,j,k)
+            enddo
+         enddo
+      enddo
+-- 
+1.7.10.4
+

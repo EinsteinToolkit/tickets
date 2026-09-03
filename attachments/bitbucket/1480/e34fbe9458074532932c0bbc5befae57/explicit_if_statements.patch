@@ -1,0 +1,2049 @@
+Index: src/GRHydro_ENOReconstruct_drv.F90
+===================================================================
+--- src/GRHydro_ENOReconstruct_drv.F90	(revision 586)
++++ src/GRHydro_ENOReconstruct_drv.F90	(working copy)
+@@ -14,15 +14,9 @@
+ 
+ #include "SpaceMask.h"
+ 
+-#define velx(i,j,k) vup(i,j,k,1)
+-#define vely(i,j,k) vup(i,j,k,2)
+-#define velz(i,j,k) vup(i,j,k,3)
+ #define sx(i,j,k) scon(i,j,k,1)
+ #define sy(i,j,k) scon(i,j,k,2)
+ #define sz(i,j,k) scon(i,j,k,3)
+-#define Bvecx(i,j,k) Bprim(i,j,k,1)
+-#define Bvecy(i,j,k) Bprim(i,j,k,2)
+-#define Bvecz(i,j,k) Bprim(i,j,k,3)
+ #define Bconsx(i,j,k) Bcons(i,j,k,1)
+ #define Bconsy(i,j,k) Bcons(i,j,k,2)
+ #define Bconsz(i,j,k) Bcons(i,j,k,3)
+@@ -51,6 +45,9 @@
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+ 
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++
+   integer :: nx, ny, nz, i, j, k, itracer
+ 
+   logical, dimension(:,:,:), allocatable :: trivial_rp
+@@ -64,19 +61,6 @@
+ 
+   CCTK_INT :: ierr
+ 
+-  ! save memory when MP is not used
+-  CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(cctk_ash1,cctk_ash2,cctk_ash3,3) :: vup, Bprim
+-  pointer (pvup,vup), (pBprim,Bprim)
+-
+-  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    pvup = loc(lvel)
+-    pBprim = loc(lBvec)
+-  else
+-    pvup = loc(vel)
+-    pBprim = loc(Bvec)
+-  end if
+-
+   allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
+   if (ierr .ne. 0) then
+     call CCTK_WARN(0, "Allocation problems with trivial_rp")
+@@ -144,28 +128,52 @@
+             call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
+                  rho(:,j,k),rhominus(:,j,k),rhoplus(:,j,k),&
+                  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++              call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
++                   vel(:,j,k,1),velxminus(:,j,k),velxplus(:,j,k),&
++                   trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++              call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
++                   vel(:,j,k,2),velyminus(:,j,k),velyplus(:,j,k),&
++                   trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++              call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
++                   vel(:,j,k,3),velzminus(:,j,k),velzplus(:,j,k),&
++                   trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            else
++              call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
++                   lvel(:,j,k,1),velxminus(:,j,k),velxplus(:,j,k),&
++                   trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++              call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
++                   lvel(:,j,k,2),velyminus(:,j,k),velyplus(:,j,k),&
++                   trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++              call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
++                   lvel(:,j,k,3),velzminus(:,j,k),velzplus(:,j,k),&
++                   trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            end if
+             call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
+-                 velx(:,j,k),velxminus(:,j,k),velxplus(:,j,k),&
+-                 trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+-            call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
+-                 vely(:,j,k),velyminus(:,j,k),velyplus(:,j,k),&
+-                 trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+-            call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
+-                 velz(:,j,k),velzminus(:,j,k),velzplus(:,j,k),&
+-                 trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+-            call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
+                  eps(:,j,k),epsminus(:,j,k),epsplus(:,j,k),&
+                  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+             if(evolve_mhd.ne.0) then
+-               call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
+-                    Bvecx(:,j,k),Bvecxminus(:,j,k),Bvecxplus(:,j,k),&
+-                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+-               call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
+-                    Bvecy(:,j,k),Bvecyminus(:,j,k),Bvecyplus(:,j,k),&
+-                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+-               call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
+-                    Bvecz(:,j,k),Bveczminus(:,j,k),Bveczplus(:,j,k),&
+-                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
++                      Bvec(:,j,k,1),Bvecxminus(:,j,k),Bvecxplus(:,j,k),&
++                      trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
++                      Bvec(:,j,k,2),Bvecyminus(:,j,k),Bvecyplus(:,j,k),&
++                      trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
++                      Bvec(:,j,k,3),Bveczminus(:,j,k),Bveczplus(:,j,k),&
++                      trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++               else
++                 call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
++                      lBvec(:,j,k,1),Bvecxminus(:,j,k),Bvecxplus(:,j,k),&
++                      trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
++                      lBvec(:,j,k,2),Bvecyminus(:,j,k),Bvecyplus(:,j,k),&
++                      trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
++                      lBvec(:,j,k,3),Bveczminus(:,j,k),Bveczplus(:,j,k),&
++                      trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++               end if
+             endif
+             if (evolve_entropy .ne. 0) then
+                call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(1),&
+@@ -246,28 +254,52 @@
+             call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
+                  rho(j,:,k),rhominus(j,:,k),rhoplus(j,:,k),&
+                  trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++              call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
++                   vel(j,:,k,1),velxminus(j,:,k),velxplus(j,:,k),&
++                   trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++              call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
++                   vel(j,:,k,2),velyminus(j,:,k),velyplus(j,:,k),&
++                   trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++              call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
++                   vel(j,:,k,3),velzminus(j,:,k),velzplus(j,:,k),&
++                   trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            else
++              call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
++                   lvel(j,:,k,1),velxminus(j,:,k),velxplus(j,:,k),&
++                   trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++              call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
++                   lvel(j,:,k,2),velyminus(j,:,k),velyplus(j,:,k),&
++                   trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++              call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
++                   lvel(j,:,k,3),velzminus(j,:,k),velzplus(j,:,k),&
++                   trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            end if
+             call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
+-                 velx(j,:,k),velxminus(j,:,k),velxplus(j,:,k),&
+-                 trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+-            call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
+-                 vely(j,:,k),velyminus(j,:,k),velyplus(j,:,k),&
+-                 trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+-            call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
+-                 velz(j,:,k),velzminus(j,:,k),velzplus(j,:,k),&
+-                 trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+-            call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
+                  eps(j,:,k),epsminus(j,:,k),epsplus(j,:,k),&
+                  trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+             if(evolve_mhd.ne.0) then
+-               call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
+-                    Bvecx(j,:,k),Bvecxminus(j,:,k),Bvecxplus(j,:,k),&
+-                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+-               call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
+-                    Bvecy(j,:,k),Bvecyminus(j,:,k),Bvecyplus(j,:,k),&
+-                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+-               call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
+-                    Bvecz(j,:,k),Bveczminus(j,:,k),Bveczplus(j,:,k),&
+-                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
++                      Bvec(j,:,k,1),Bvecxminus(j,:,k),Bvecxplus(j,:,k),&
++                      trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
++                      Bvec(j,:,k,2),Bvecyminus(j,:,k),Bvecyplus(j,:,k),&
++                      trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
++                      Bvec(j,:,k,3),Bveczminus(j,:,k),Bveczplus(j,:,k),&
++                      trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++               else
++                 call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
++                      lBvec(j,:,k,1),Bvecxminus(j,:,k),Bvecxplus(j,:,k),&
++                      trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
++                      lBvec(j,:,k,2),Bvecyminus(j,:,k),Bvecyplus(j,:,k),&
++                      trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
++                      lBvec(j,:,k,3),Bveczminus(j,:,k),Bveczplus(j,:,k),&
++                      trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++               end if
+             endif
+             if (evolve_entropy .ne. 0) then
+                call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(2),&
+@@ -348,28 +380,52 @@
+             call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
+                  rho(j,k,:),rhominus(j,k,:),rhoplus(j,k,:),&
+                  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++              call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
++                   vel(j,k,:,1),velxminus(j,k,:),velxplus(j,k,:),&
++                   trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++              call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
++                   vel(j,k,:,2),velyminus(j,k,:),velyplus(j,k,:),&
++                   trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++              call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
++                   vel(j,k,:,3),velzminus(j,k,:),velzplus(j,k,:),&
++                   trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            else
++              call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
++                   lvel(j,k,:,1),velxminus(j,k,:),velxplus(j,k,:),&
++                   trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++              call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
++                   lvel(j,k,:,2),velyminus(j,k,:),velyplus(j,k,:),&
++                   trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++              call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
++                   lvel(j,k,:,3),velzminus(j,k,:),velzplus(j,k,:),&
++                   trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            end if
+             call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
+-                 velx(j,k,:),velxminus(j,k,:),velxplus(j,k,:),&
+-                 trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+-            call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
+-                 vely(j,k,:),velyminus(j,k,:),velyplus(j,k,:),&
+-                 trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+-            call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
+-                 velz(j,k,:),velzminus(j,k,:),velzplus(j,k,:),&
+-                 trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+-            call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
+                  eps(j,k,:),epsminus(j,k,:),epsplus(j,k,:),&
+                  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+             if(evolve_mhd.ne.0) then
+-               call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
+-                    Bvecx(j,k,:),Bvecxminus(j,k,:),Bvecxplus(j,k,:),&
+-                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+-               call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
+-                    Bvecy(j,k,:),Bvecyminus(j,k,:),Bvecyplus(j,k,:),&
+-                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+-               call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
+-                    Bvecz(j,k,:),Bveczminus(j,k,:),Bveczplus(j,k,:),&
+-                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
++                      Bvec(j,k,:,1),Bvecxminus(j,k,:),Bvecxplus(j,k,:),&
++                      trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
++                      Bvec(j,k,:,2),Bvecyminus(j,k,:),Bvecyplus(j,k,:),&
++                      trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
++                      Bvec(j,k,:,3),Bveczminus(j,k,:),Bveczplus(j,k,:),&
++                      trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++               else
++                 call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
++                      lBvec(j,k,:,1),Bvecxminus(j,k,:),Bvecxplus(j,k,:),&
++                      trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
++                      lBvec(j,k,:,2),Bvecyminus(j,k,:),Bvecyplus(j,k,:),&
++                      trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
++                      lBvec(j,k,:,3),Bveczminus(j,k,:),Bveczplus(j,k,:),&
++                      trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++               end if
+             endif
+             if (evolve_entropy .ne. 0) then
+                call GRHydro_ENOReconstruct1d(eno_order,cctk_lsh(3),&
+Index: src/GRHydro_MP5Reconstruct_drv.F90
+===================================================================
+--- src/GRHydro_MP5Reconstruct_drv.F90	(revision 586)
++++ src/GRHydro_MP5Reconstruct_drv.F90	(working copy)
+@@ -14,15 +14,9 @@
+ 
+ #include "SpaceMask.h"
+ 
+-#define velx(i,j,k) vup(i,j,k,1)
+-#define vely(i,j,k) vup(i,j,k,2)
+-#define velz(i,j,k) vup(i,j,k,3)
+ #define sx(i,j,k) scon(i,j,k,1)
+ #define sy(i,j,k) scon(i,j,k,2)
+ #define sz(i,j,k) scon(i,j,k,3)
+-#define Bvecx(i,j,k) Bprim(i,j,k,1)
+-#define Bvecy(i,j,k) Bprim(i,j,k,2)
+-#define Bvecz(i,j,k) Bprim(i,j,k,3)
+ #define Bconsx(i,j,k) Bcons(i,j,k,1)
+ #define Bconsy(i,j,k) Bcons(i,j,k,2)
+ #define Bconsz(i,j,k) Bcons(i,j,k,3)
+@@ -54,6 +48,9 @@
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+ 
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++
+   integer :: nx, ny, nz, i, j, k, itracer
+ 
+   logical, dimension(:,:,:), allocatable :: trivial_rp
+@@ -66,33 +63,7 @@
+        &dum, dump, dumm
+ 
+   CCTK_INT :: ierr
+-  
+-  ! save memory when MP is not used
+-  CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(cctk_ash1,cctk_ash2,cctk_ash3) :: g11, g12, g13, g22, g23, g33
+-  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
+-  CCTK_REAL, DIMENSION(cctk_ash1,cctk_ash2,cctk_ash3,3) :: vup, Bprim
+-  pointer (pvup,vup), (pBprim,Bprim)
+ 
+-  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    pg11 = loc(gaa)
+-    pg12 = loc(gab)
+-    pg13 = loc(gac)
+-    pg22 = loc(gbb)
+-    pg23 = loc(gbc)
+-    pg33 = loc(gcc)
+-    pvup = loc(lvel)
+-    pBprim = loc(lBvec)
+-  else
+-    pg11 = loc(gxx)
+-    pg12 = loc(gxy)
+-    pg13 = loc(gxz)
+-    pg22 = loc(gyy)
+-    pg23 = loc(gyz)
+-    pg33 = loc(gzz)
+-    pvup = loc(vel)
+-    pBprim = loc(Bvec)
+-  end if
+ 
+   allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
+   if (ierr .ne. 0) then
+@@ -161,28 +132,55 @@
+                  rho(:,j,k),rhominus(:,j,k),rhoplus(:,j,k),&
+                  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+             if (reconstruct_Wv.eq.0) then
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
+-                  velx(:,j,k),velxminus(:,j,k),velxplus(:,j,k),&
+-                  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
+-                  vely(:,j,k),velyminus(:,j,k),velyplus(:,j,k),&
+-                  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
+-                  velz(:,j,k),velzminus(:,j,k),velzplus(:,j,k),&
+-                  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                    vel(:,j,k,1),velxminus(:,j,k),velxplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                    vel(:,j,k,2),velyminus(:,j,k),velyplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                    vel(:,j,k,3),velzminus(:,j,k),velzplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++               else
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                    lvel(:,j,k,1),velxminus(:,j,k),velxplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                    lvel(:,j,k,2),velyminus(:,j,k),velyplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                    lvel(:,j,k,3),velzminus(:,j,k),velzplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++               end if
+             else
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
+-                  w_lorentz(:,j,k)*velx(:,j,k),velxminus(:,j,k),velxplus(:,j,k),&
+-                  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
+-                  w_lorentz(:,j,k)*vely(:,j,k),velyminus(:,j,k),velyplus(:,j,k),&
+-                  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
+-                  w_lorentz(:,j,k)*velz(:,j,k),velzminus(:,j,k),velzplus(:,j,k),&
+-                  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+-               call undo_Wv(nx, velxminus(:,j,k), velyminus(:,j,k), velzminus(:,j,k),&
+-                                velxplus(:,j,k),velyplus(:,j,k),velzplus(:,j,k),&
+-                                g11(:,j,k),g12(:,j,k),g13(:,j,k),g22(:,j,k),g23(:,j,k),g33(:,j,k))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                    w_lorentz(:,j,k)*vel(:,j,k,1),velxminus(:,j,k),velxplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                    w_lorentz(:,j,k)*vel(:,j,k,2),velyminus(:,j,k),velyplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                    w_lorentz(:,j,k)*vel(:,j,k,3),velzminus(:,j,k),velzplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call undo_Wv(nx, velxminus(:,j,k), velyminus(:,j,k), velzminus(:,j,k),&
++                                  velxplus(:,j,k),velyplus(:,j,k),velzplus(:,j,k),&
++                                  gxx(:,j,k),gxy(:,j,k),gxz(:,j,k),gyy(:,j,k),gyz(:,j,k),gzz(:,j,k))
++               else
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                    lvel(:,j,k,1),velxminus(:,j,k),velxplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                    lvel(:,j,k,2),velyminus(:,j,k),velyplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                    lvel(:,j,k,3),velzminus(:,j,k),velzplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call undo_Wv(nx, velxminus(:,j,k), velyminus(:,j,k), velzminus(:,j,k),&
++                                  velxplus(:,j,k),velyplus(:,j,k),velzplus(:,j,k),&
++                                  gaa(:,j,k),gab(:,j,k),gac(:,j,k),gbb(:,j,k),gbc(:,j,k),gcc(:,j,k))
++               end if
+             endif
+             call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
+                  eps(:,j,k),epsminus(:,j,k),epsplus(:,j,k),&
+@@ -198,15 +196,27 @@
+                     trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+             endif
+             if(evolve_mhd.ne.0) then
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
+-                    Bvecx(:,j,k),Bvecxminus(:,j,k),Bvecxplus(:,j,k),&
+-                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
+-                    Bvecy(:,j,k),Bvecyminus(:,j,k),Bvecyplus(:,j,k),&
+-                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
+-                    Bvecz(:,j,k),Bveczminus(:,j,k),Bveczplus(:,j,k),&
+-                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                      Bvec(:,j,k,1),Bvecxminus(:,j,k),Bvecxplus(:,j,k),&
++                      trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                      Bvec(:,j,k,2),Bvecyminus(:,j,k),Bvecyplus(:,j,k),&
++                      trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                      Bvec(:,j,k,3),Bveczminus(:,j,k),Bveczplus(:,j,k),&
++                      trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++               else
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                      lBvec(:,j,k,1),Bvecxminus(:,j,k),Bvecxplus(:,j,k),&
++                      trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                      lBvec(:,j,k,2),Bvecyminus(:,j,k),Bvecyplus(:,j,k),&
++                      trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                      lBvec(:,j,k,3),Bveczminus(:,j,k),Bveczplus(:,j,k),&
++                      trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++               end if
+             endif
+             if (evolve_entropy .ne. 0) then
+                call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
+@@ -278,28 +288,55 @@
+                  rho(j,:,k),rhominus(j,:,k),rhoplus(j,:,k),&
+                  trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+             if (reconstruct_Wv.eq.0) then
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
+-                  velx(j,:,k),velxminus(j,:,k),velxplus(j,:,k),&
+-                  trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
+-                  vely(j,:,k),velyminus(j,:,k),velyplus(j,:,k),&
+-                  trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
+-                  velz(j,:,k),velzminus(j,:,k),velzplus(j,:,k),&
+-                  trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                    vel(j,:,k,1),velxminus(j,:,k),velxplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                    vel(j,:,k,2),velyminus(j,:,k),velyplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                    vel(j,:,k,3),velzminus(j,:,k),velzplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++               else
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                    lvel(j,:,k,1),velxminus(j,:,k),velxplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                    lvel(j,:,k,2),velyminus(j,:,k),velyplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                    lvel(j,:,k,3),velzminus(j,:,k),velzplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++               end if
+             else
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
+-                  w_lorentz(j,:,k)*velx(j,:,k),velxminus(j,:,k),velxplus(j,:,k),&
+-                  trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
+-                  w_lorentz(j,:,k)*vely(j,:,k),velyminus(j,:,k),velyplus(j,:,k),&
+-                  trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
+-                  w_lorentz(j,:,k)*velz(j,:,k),velzminus(j,:,k),velzplus(j,:,k),&
+-                  trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+-               call undo_Wv(ny, velyminus(j,:,k), velzminus(j,:,k), velxminus(j,:,k),&
+-                                velyplus(j,:,k),velzplus(j,:,k),velxplus(j,:,k),&
+-                                g22(j,:,k), g23(j,:,k), g12(j,:,k), g33(j,:,k), g13(j,:,k), g11(j,:,k))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                    w_lorentz(j,:,k)*vel(j,:,k,1),velxminus(j,:,k),velxplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                    w_lorentz(j,:,k)*vel(j,:,k,2),velyminus(j,:,k),velyplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                    w_lorentz(j,:,k)*vel(j,:,k,3),velzminus(j,:,k),velzplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call undo_Wv(ny, velyminus(j,:,k), velzminus(j,:,k), velxminus(j,:,k),&
++                                  velyplus(j,:,k),velzplus(j,:,k),velxplus(j,:,k),&
++                                  gyy(j,:,k), gyz(j,:,k), gxy(j,:,k), gzz(j,:,k), gxz(j,:,k), gxx(j,:,k))
++               else
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                    w_lorentz(j,:,k)*lvel(j,:,k,1),velxminus(j,:,k),velxplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                    w_lorentz(j,:,k)*lvel(j,:,k,2),velyminus(j,:,k),velyplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                    w_lorentz(j,:,k)*lvel(j,:,k,3),velzminus(j,:,k),velzplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call undo_Wv(ny, velyminus(j,:,k), velzminus(j,:,k), velxminus(j,:,k),&
++                                  velyplus(j,:,k),velzplus(j,:,k),velxplus(j,:,k),&
++                                  gbb(j,:,k), gbc(j,:,k), gab(j,:,k), gcc(j,:,k), gac(j,:,k), gaa(j,:,k))
++               end if
+             endif
+             call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
+                  eps(j,:,k),epsminus(j,:,k),epsplus(j,:,k),&
+@@ -315,15 +352,27 @@
+                     trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+             endif
+             if(evolve_mhd.ne.0) then
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
+-                    Bvecx(j,:,k),Bvecxminus(j,:,k),Bvecxplus(j,:,k),&
+-                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
+-                    Bvecy(j,:,k),Bvecyminus(j,:,k),Bvecyplus(j,:,k),&
+-                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
+-                    Bvecz(j,:,k),Bveczminus(j,:,k),Bveczplus(j,:,k),&
+-                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                      Bvec(j,:,k,1),Bvecxminus(j,:,k),Bvecxplus(j,:,k),&
++                      trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                      Bvec(j,:,k,2),Bvecyminus(j,:,k),Bvecyplus(j,:,k),&
++                      trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                      Bvec(j,:,k,3),Bveczminus(j,:,k),Bveczplus(j,:,k),&
++                      trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++               else
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                      lBvec(j,:,k,1),Bvecxminus(j,:,k),Bvecxplus(j,:,k),&
++                      trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                      lBvec(j,:,k,2),Bvecyminus(j,:,k),Bvecyplus(j,:,k),&
++                      trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                      lBvec(j,:,k,3),Bveczminus(j,:,k),Bveczplus(j,:,k),&
++                      trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++               end if
+             endif
+             if (evolve_entropy .ne. 0) then
+                call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
+@@ -395,28 +444,55 @@
+                  rho(j,k,:),rhominus(j,k,:),rhoplus(j,k,:),&
+                  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+             if (reconstruct_Wv.eq.0) then
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
+-                  velx(j,k,:),velxminus(j,k,:),velxplus(j,k,:),&
+-                  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
+-                  vely(j,k,:),velyminus(j,k,:),velyplus(j,k,:),&
+-                  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
+-                  velz(j,k,:),velzminus(j,k,:),velzplus(j,k,:),&
+-                  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                    vel(j,k,:,1),velxminus(j,k,:),velxplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                    vel(j,k,:,2),velyminus(j,k,:),velyplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                    vel(j,k,:,3),velzminus(j,k,:),velzplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++               else
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                    lvel(j,k,:,1),velxminus(j,k,:),velxplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                    lvel(j,k,:,2),velyminus(j,k,:),velyplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                    lvel(j,k,:,3),velzminus(j,k,:),velzplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++               end if
+             else
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
+-                  w_lorentz(j,k,:)*velx(j,k,:),velxminus(j,k,:),velxplus(j,k,:),&
+-                  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
+-                  w_lorentz(j,k,:)*vely(j,k,:),velyminus(j,k,:),velyplus(j,k,:),&
+-                  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
+-                  w_lorentz(j,k,:)*velz(j,k,:),velzminus(j,k,:),velzplus(j,k,:),&
+-                  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+-               call undo_Wv(nz, velzminus(j,k,:), velxminus(j,k,:), velyminus(j,k,:),&
+-                                velzplus(j,k,:),velxplus(j,k,:),velyplus(j,k,:),&
+-                                g33(j,k,:), g13(j,k,:), g23(j,k,:), g11(j,k,:), g12(j,k,:),g22(j,k,:))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                    w_lorentz(j,k,:)*vel(j,k,:,1),velxminus(j,k,:),velxplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                    w_lorentz(j,k,:)*vel(j,k,:,2),velyminus(j,k,:),velyplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                    w_lorentz(j,k,:)*vel(j,k,:,3),velzminus(j,k,:),velzplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call undo_Wv(nz, velzminus(j,k,:), velxminus(j,k,:), velyminus(j,k,:),&
++                                  velzplus(j,k,:),velxplus(j,k,:),velyplus(j,k,:),&
++                                  gzz(j,k,:), gxz(j,k,:), gyz(j,k,:), gxx(j,k,:), gxy(j,k,:),gyy(j,k,:))
++               else
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                    w_lorentz(j,k,:)*lvel(j,k,:,1),velxminus(j,k,:),velxplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                    w_lorentz(j,k,:)*lvel(j,k,:,2),velyminus(j,k,:),velyplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                    w_lorentz(j,k,:)*lvel(j,k,:,3),velzminus(j,k,:),velzplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call undo_Wv(nz, velzminus(j,k,:), velxminus(j,k,:), velyminus(j,k,:),&
++                                  velzplus(j,k,:),velxplus(j,k,:),velyplus(j,k,:),&
++                                  gcc(j,k,:), gac(j,k,:), gbc(j,k,:), gaa(j,k,:), gab(j,k,:),gbb(j,k,:))
++               end if
+             endif
+             call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
+                  eps(j,k,:),epsminus(j,k,:),epsplus(j,k,:),&
+@@ -432,15 +508,27 @@
+                     trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+             endif
+             if(evolve_mhd.ne.0) then
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
+-                    Bvecx(j,k,:),Bvecxminus(j,k,:),Bvecxplus(j,k,:),&
+-                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
+-                    Bvecy(j,k,:),Bvecyminus(j,k,:),Bvecyplus(j,k,:),&
+-                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+-               call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
+-                    Bvecz(j,k,:),Bveczminus(j,k,:),Bveczplus(j,k,:),&
+-                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                      Bvec(j,k,:,1),Bvecxminus(j,k,:),Bvecxplus(j,k,:),&
++                      trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                      Bvec(j,k,:,2),Bvecyminus(j,k,:),Bvecyplus(j,k,:),&
++                      trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                      Bvec(j,k,:,3),Bveczminus(j,k,:),Bveczplus(j,k,:),&
++                      trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++               else
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                      lBvec(j,k,:,1),Bvecxminus(j,k,:),Bvecxplus(j,k,:),&
++                      trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                      lBvec(j,k,:,2),Bvecyminus(j,k,:),Bvecyplus(j,k,:),&
++                      trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                      lBvec(j,k,:,3),Bveczminus(j,k,:),Bveczplus(j,k,:),&
++                      trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++               end if
+             endif
+             if (evolve_entropy .ne. 0) then
+                call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
+Index: src/GRHydro_PPMMReconstruct_drv.F90
+===================================================================
+--- src/GRHydro_PPMMReconstruct_drv.F90	(revision 586)
++++ src/GRHydro_PPMMReconstruct_drv.F90	(working copy)
+@@ -14,15 +14,9 @@
+ 
+ #include "SpaceMask.h"
+ 
+-#define velx(i,j,k) vup(i,j,k,1)
+-#define vely(i,j,k) vup(i,j,k,2)
+-#define velz(i,j,k) vup(i,j,k,3)
+ #define sx(i,j,k) scon(i,j,k,1)
+ #define sy(i,j,k) scon(i,j,k,2)
+ #define sz(i,j,k) scon(i,j,k,3)
+-#define Bvecx(i,j,k) Bprim(i,j,k,1)
+-#define Bvecy(i,j,k) Bprim(i,j,k,2)
+-#define Bvecz(i,j,k) Bprim(i,j,k,3)
+ #define Bconsx(i,j,k) Bcons(i,j,k,1)
+ #define Bconsy(i,j,k) Bcons(i,j,k,2)
+ #define Bconsz(i,j,k) Bcons(i,j,k,3)
+@@ -51,6 +45,9 @@
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+ 
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++
+   integer :: nx, ny, nz, i, j, k
+ 
+   logical, dimension(:,:,:), allocatable :: trivial_rp
+@@ -64,41 +61,6 @@
+ 
+   CCTK_INT :: ierr
+ 
+-  ! save memory when MP is not used
+-  CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(cctk_ash1,cctk_ash2,cctk_ash3) :: g11, g12, g13, g22, g23, g33
+-  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
+-  CCTK_REAL, DIMENSION(cctk_ash1,cctk_ash2,cctk_ash3) :: beta1, beta2, beta3
+-  pointer (pbeta1,beta1), (pbeta2,beta2), (pbeta3,beta3)
+-  CCTK_REAL, DIMENSION(cctk_ash1,cctk_ash2,cctk_ash3,3) :: vup, Bprim
+-  pointer (pvup,vup), (pBprim,Bprim)
+-
+-  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    pg11 = loc(gaa)
+-    pg12 = loc(gab)
+-    pg13 = loc(gac)
+-    pg22 = loc(gbb)
+-    pg23 = loc(gbc)
+-    pg33 = loc(gcc)
+-    pbeta1 = loc(betaa)
+-    pbeta2 = loc(betab)
+-    pbeta3 = loc(betac)
+-    pvup = loc(lvel)
+-    pBprim = loc(lBvec)
+-  else
+-    pg11 = loc(gxx)
+-    pg12 = loc(gxy)
+-    pg13 = loc(gxz)
+-    pg22 = loc(gyy)
+-    pg23 = loc(gyz)
+-    pg33 = loc(gzz)
+-    pbeta1 = loc(betax)
+-    pbeta2 = loc(betay)
+-    pbeta3 = loc(betaz)
+-    pvup = loc(vel)
+-    pBprim = loc(Bvec)
+-  end if
+-
+   allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
+   if (ierr .ne. 0) then
+     call CCTK_WARN(0, "Allocation problems with trivial_rp")
+@@ -148,35 +110,69 @@
+             do k = GRHydro_stencil, nz - GRHydro_stencil + 1 + transport_constraints
+               do j = GRHydro_stencil, ny - GRHydro_stencil + 1 + transport_constraints
+                if(clean_divergence.ne.0) then
+-                 call SimplePPM_1dM(GRHydro_eos_handle,0,nx,CCTK_DELTA_SPACE(1),&
+-                      rho(:,j,k),velx(:,j,k),vely(:,j,k),velz(:,j,k),&
+-                      Bvecx(:,j,k),Bvecy(:,j,k),Bvecz(:,j,k),psidc(:,j,k),eps(:,j,k),press(:,j,k),&
+-                      rhominus(:,j,k),velxminus(:,j,k),velyminus(:,j,k),velzminus(:,j,k),&
+-                      Bvecxminus(:,j,k),Bvecyminus(:,j,k),Bveczminus(:,j,k),psidcminus(:,j,k),epsminus(:,j,k),&
+-                      rhoplus(:,j,k),velxplus(:,j,k),velyplus(:,j,k),velzplus(:,j,k),&
+-                      Bvecxplus(:,j,k),Bvecyplus(:,j,k),Bveczplus(:,j,k),psidcplus(:,j,k),epsplus(:,j,k),&
+-                      1,trivial_rp(:,j,k), hydro_excision_mask(:,j,k),&
+-                      g11(:,j,k), g12(:,j,k), g13(:,j,k), g22(:,j,k), g23(:,j,k), &
+-                      g33(:,j,k), beta1(:,j,k), alp(:,j,k),&
+-                      w_lorentz(:,j,k), &
+-                      1, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_x_left, &
+-                      GRHydro_mppm_eigenvalue_x_right, &
+-                      GRHydro_mppm_xwind)
++                 if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                   call SimplePPM_1dM(GRHydro_eos_handle,0,nx,CCTK_DELTA_SPACE(1),&
++                        rho(:,j,k),vel(:,j,k,1),vel(:,j,k,2),vel(:,j,k,3),&
++                        Bvec(:,j,k,1),Bvec(:,j,k,2),Bvec(:,j,k,3),psidc(:,j,k),eps(:,j,k),press(:,j,k),&
++                        rhominus(:,j,k),velxminus(:,j,k),velyminus(:,j,k),velzminus(:,j,k),&
++                        Bvecxminus(:,j,k),Bvecyminus(:,j,k),Bveczminus(:,j,k),psidcminus(:,j,k),epsminus(:,j,k),&
++                        rhoplus(:,j,k),velxplus(:,j,k),velyplus(:,j,k),velzplus(:,j,k),&
++                        Bvecxplus(:,j,k),Bvecyplus(:,j,k),Bveczplus(:,j,k),psidcplus(:,j,k),epsplus(:,j,k),&
++                        1,trivial_rp(:,j,k), hydro_excision_mask(:,j,k),&
++                        gxx(:,j,k), gxy(:,j,k), gxz(:,j,k), gyy(:,j,k), gyz(:,j,k), &
++                        gzz(:,j,k), betax(:,j,k), alp(:,j,k),&
++                        w_lorentz(:,j,k), &
++                        1, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_x_left, &
++                        GRHydro_mppm_eigenvalue_x_right, &
++                        GRHydro_mppm_xwind)
++                 else
++                   call SimplePPM_1dM(GRHydro_eos_handle,0,nx,CCTK_DELTA_SPACE(1),&
++                        rho(:,j,k),lvel(:,j,k,1),lvel(:,j,k,2),lvel(:,j,k,3),&
++                        lBvec(:,j,k,1),lBvec(:,j,k,2),lBvec(:,j,k,3),psidc(:,j,k),eps(:,j,k),press(:,j,k),&
++                        rhominus(:,j,k),velxminus(:,j,k),velyminus(:,j,k),velzminus(:,j,k),&
++                        Bvecxminus(:,j,k),Bvecyminus(:,j,k),Bveczminus(:,j,k),psidcminus(:,j,k),epsminus(:,j,k),&
++                        rhoplus(:,j,k),velxplus(:,j,k),velyplus(:,j,k),velzplus(:,j,k),&
++                        Bvecxplus(:,j,k),Bvecyplus(:,j,k),Bveczplus(:,j,k),psidcplus(:,j,k),epsplus(:,j,k),&
++                        1,trivial_rp(:,j,k), hydro_excision_mask(:,j,k),&
++                        gaa(:,j,k), gab(:,j,k), gac(:,j,k), gbb(:,j,k), gbc(:,j,k), &
++                        gcc(:,j,k), betaa(:,j,k), alp(:,j,k),&
++                        w_lorentz(:,j,k), &
++                        1, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_x_left, &
++                        GRHydro_mppm_eigenvalue_x_right, &
++                        GRHydro_mppm_xwind)
++                 end if
+                else  !clean_divergence
+-                 call SimplePPM_1dM(GRHydro_eos_handle,0,nx,CCTK_DELTA_SPACE(1),&
+-                      rho(:,j,k),velx(:,j,k),vely(:,j,k),velz(:,j,k),&
+-                      Bvecx(:,j,k),Bvecy(:,j,k),Bvecz(:,j,k),dum(:,j,k),eps(:,j,k),press(:,j,k),&
+-                      rhominus(:,j,k),velxminus(:,j,k),velyminus(:,j,k),velzminus(:,j,k),&
+-                      Bvecxminus(:,j,k),Bvecyminus(:,j,k),Bveczminus(:,j,k),dumm(:,j,k),epsminus(:,j,k),&
+-                      rhoplus(:,j,k),velxplus(:,j,k),velyplus(:,j,k),velzplus(:,j,k),&
+-                      Bvecxplus(:,j,k),Bvecyplus(:,j,k),Bveczplus(:,j,k),dump(:,j,k),epsplus(:,j,k),&
+-                      0,trivial_rp(:,j,k), hydro_excision_mask(:,j,k),&
+-                      g11(:,j,k), g12(:,j,k), g13(:,j,k), g22(:,j,k), g23(:,j,k), &
+-                      g33(:,j,k), beta1(:,j,k), alp(:,j,k),&
+-                      w_lorentz(:,j,k), &
+-                      1, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_x_left, &
+-                      GRHydro_mppm_eigenvalue_x_right, &
+-                      GRHydro_mppm_xwind)
++                 if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                   call SimplePPM_1dM(GRHydro_eos_handle,0,nx,CCTK_DELTA_SPACE(1),&
++                        rho(:,j,k),vel(:,j,k,1),vel(:,j,k,2),vel(:,j,k,3),&
++                        Bvec(:,j,k,1),Bvec(:,j,k,2),Bvec(:,j,k,3),dum(:,j,k),eps(:,j,k),press(:,j,k),&
++                        rhominus(:,j,k),velxminus(:,j,k),velyminus(:,j,k),velzminus(:,j,k),&
++                        Bvecxminus(:,j,k),Bvecyminus(:,j,k),Bveczminus(:,j,k),dumm(:,j,k),epsminus(:,j,k),&
++                        rhoplus(:,j,k),velxplus(:,j,k),velyplus(:,j,k),velzplus(:,j,k),&
++                        Bvecxplus(:,j,k),Bvecyplus(:,j,k),Bveczplus(:,j,k),dump(:,j,k),epsplus(:,j,k),&
++                        0,trivial_rp(:,j,k), hydro_excision_mask(:,j,k),&
++                        gxx(:,j,k), gxy(:,j,k), gxz(:,j,k), gyy(:,j,k), gyz(:,j,k), &
++                        gzz(:,j,k), betax(:,j,k), alp(:,j,k),&
++                        w_lorentz(:,j,k), &
++                        1, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_x_left, &
++                        GRHydro_mppm_eigenvalue_x_right, &
++                        GRHydro_mppm_xwind)
++                 else
++                   call SimplePPM_1dM(GRHydro_eos_handle,0,nx,CCTK_DELTA_SPACE(1),&
++                        rho(:,j,k),lvel(:,j,k,1),lvel(:,j,k,2),lvel(:,j,k,3),&
++                        lBvec(:,j,k,1),lBvec(:,j,k,2),lBvec(:,j,k,3),dum(:,j,k),eps(:,j,k),press(:,j,k),&
++                        rhominus(:,j,k),velxminus(:,j,k),velyminus(:,j,k),velzminus(:,j,k),&
++                        Bvecxminus(:,j,k),Bvecyminus(:,j,k),Bveczminus(:,j,k),dumm(:,j,k),epsminus(:,j,k),&
++                        rhoplus(:,j,k),velxplus(:,j,k),velyplus(:,j,k),velzplus(:,j,k),&
++                        Bvecxplus(:,j,k),Bvecyplus(:,j,k),Bveczplus(:,j,k),dump(:,j,k),epsplus(:,j,k),&
++                        0,trivial_rp(:,j,k), hydro_excision_mask(:,j,k),&
++                        gaa(:,j,k), gab(:,j,k), gac(:,j,k), gbb(:,j,k), gbc(:,j,k), &
++                        gcc(:,j,k), betaa(:,j,k), alp(:,j,k),&
++                        w_lorentz(:,j,k), &
++                        1, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_x_left, &
++                        GRHydro_mppm_eigenvalue_x_right, &
++                        GRHydro_mppm_xwind)
++                 end if
+                endif  !clean_divergence
+                 do i = 1, nx
+                    if (trivial_rp(i,j,k)) then
+@@ -193,10 +189,17 @@
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+-               call SimplePPM_tracer_1d(nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
+-                    velx(:,j,k),vely(:,j,k),velz(:,j,k), &
+-                    tracer(:,j,k,:),tracerminus(:,j,k,:),tracerplus(:,j,k,:), &
+-                    press(:,j,k))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call SimplePPM_tracer_1d(nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
++                      vel(:,j,k,1),vel(:,j,k,2),vel(:,j,k,3), &
++                      tracer(:,j,k,:),tracerminus(:,j,k,:),tracerplus(:,j,k,:), &
++                      press(:,j,k))
++               else
++                 call SimplePPM_tracer_1d(nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
++                      lvel(:,j,k,1),lvel(:,j,k,2),lvel(:,j,k,3), &
++                      tracer(:,j,k,:),tracerminus(:,j,k,:),tracerplus(:,j,k,:), &
++                      press(:,j,k))
++              end if
+             end do
+          end do
+          !$OMP END PARALLEL DO
+@@ -206,10 +209,17 @@
+          !$OMP PARALLEL DO PRIVATE(j, k)
+           do k = GRHydro_stencil, nz - GRHydro_stencil + 1 + transport_constraints
+             do j = GRHydro_stencil, ny - GRHydro_stencil + 1 + transport_constraints
+-               call SimplePPM_ye_1d(nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
+-                    velx(:,j,k),vely(:,j,k),velz(:,j,k), &
+-                    Y_e(:,j,k),Y_e_minus(:,j,k),Y_e_plus(:,j,k), &
+-                    press(:,j,k))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call SimplePPM_ye_1d(nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
++                      vel(:,j,k,1),vel(:,j,k,2),vel(:,j,k,3), &
++                      Y_e(:,j,k),Y_e_minus(:,j,k),Y_e_plus(:,j,k), &
++                      press(:,j,k))
++               else
++                 call SimplePPM_ye_1d(nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
++                      lvel(:,j,k,1),lvel(:,j,k,2),lvel(:,j,k,3), &
++                      Y_e(:,j,k),Y_e_minus(:,j,k),Y_e_plus(:,j,k), &
++                      press(:,j,k))
++               end if
+             end do
+          end do
+          !$OMP END PARALLEL DO
+@@ -222,35 +232,69 @@
+           do k = GRHydro_stencil, nz - GRHydro_stencil + 1 + transport_constraints
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1 + transport_constraints
+              if(clean_divergence.ne.0) then
+-              call SimplePPM_1dM(GRHydro_eos_handle,0,ny,CCTK_DELTA_SPACE(2),&
+-                   rho(j,:,k),vely(j,:,k),velz(j,:,k),velx(j,:,k),&
+-                   Bvecy(j,:,k),Bvecz(j,:,k),Bvecx(j,:,k),psidc(j,:,k),eps(j,:,k),press(j,:,k),&
+-                   rhominus(j,:,k),velyminus(j,:,k),velzminus(j,:,k),velxminus(j,:,k),&
+-                   Bvecyminus(j,:,k),Bveczminus(j,:,k),Bvecxminus(j,:,k),psidcminus(j,:,k),epsminus(j,:,k),&
+-                   rhoplus(j,:,k),velyplus(j,:,k),velzplus(j,:,k),velxplus(j,:,k),&
+-                   Bvecyplus(j,:,k),Bveczplus(j,:,k),Bvecxplus(j,:,k),psidcplus(j,:,k),epsplus(j,:,k),&
+-                   1,trivial_rp(j,:,k), hydro_excision_mask(j,:,k),&
+-                   g22(j,:,k), g23(j,:,k), g12(j,:,k), g33(j,:,k), g13(j,:,k), &
+-                   g11(j,:,k), beta2(j,:,k), alp(j,:,k),&
+-                   w_lorentz(j,:,k), &
+-                   2, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_y_left, &
+-                   GRHydro_mppm_eigenvalue_y_right, &
+-                   GRHydro_mppm_xwind)
++              if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                call SimplePPM_1dM(GRHydro_eos_handle,0,ny,CCTK_DELTA_SPACE(2),&
++                     rho(j,:,k),vel(j,:,k,2),vel(j,:,k,3),vel(j,:,k,1),&
++                     Bvec(j,:,k,2),Bvec(j,:,k,3),Bvec(j,:,k,1),psidc(j,:,k),eps(j,:,k),press(j,:,k),&
++                     rhominus(j,:,k),velyminus(j,:,k),velzminus(j,:,k),velxminus(j,:,k),&
++                     Bvecyminus(j,:,k),Bveczminus(j,:,k),Bvecxminus(j,:,k),psidcminus(j,:,k),epsminus(j,:,k),&
++                     rhoplus(j,:,k),velyplus(j,:,k),velzplus(j,:,k),velxplus(j,:,k),&
++                     Bvecyplus(j,:,k),Bveczplus(j,:,k),Bvecxplus(j,:,k),psidcplus(j,:,k),epsplus(j,:,k),&
++                     1,trivial_rp(j,:,k), hydro_excision_mask(j,:,k),&
++                     gyy(j,:,k), gyz(j,:,k), gxy(j,:,k), gzz(j,:,k), gxz(j,:,k), &
++                     gxx(j,:,k), betay(j,:,k), alp(j,:,k),&
++                     w_lorentz(j,:,k), &
++                     2, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_y_left, &
++                     GRHydro_mppm_eigenvalue_y_right, &
++                     GRHydro_mppm_xwind)
++              else
++                call SimplePPM_1dM(GRHydro_eos_handle,0,ny,CCTK_DELTA_SPACE(2),&
++                     rho(j,:,k),lvel(j,:,k,2),lvel(j,:,k,3),lvel(j,:,k,1),&
++                     lBvec(j,:,k,2),lBvec(j,:,k,3),lBvec(j,:,k,1),psidc(j,:,k),eps(j,:,k),press(j,:,k),&
++                     rhominus(j,:,k),velyminus(j,:,k),velzminus(j,:,k),velxminus(j,:,k),&
++                     Bvecyminus(j,:,k),Bveczminus(j,:,k),Bvecxminus(j,:,k),psidcminus(j,:,k),epsminus(j,:,k),&
++                     rhoplus(j,:,k),velyplus(j,:,k),velzplus(j,:,k),velxplus(j,:,k),&
++                     Bvecyplus(j,:,k),Bveczplus(j,:,k),Bvecxplus(j,:,k),psidcplus(j,:,k),epsplus(j,:,k),&
++                     1,trivial_rp(j,:,k), hydro_excision_mask(j,:,k),&
++                     gbb(j,:,k), gbc(j,:,k), gab(j,:,k), gcc(j,:,k), gac(j,:,k), &
++                     gaa(j,:,k), betab(j,:,k), alp(j,:,k),&
++                     w_lorentz(j,:,k), &
++                     2, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_y_left, &
++                     GRHydro_mppm_eigenvalue_y_right, &
++                     GRHydro_mppm_xwind)
++              end if
+              else  !clean_divergence
+-              call SimplePPM_1dM(GRHydro_eos_handle,0,ny,CCTK_DELTA_SPACE(2),&
+-                   rho(j,:,k),vely(j,:,k),velz(j,:,k),velx(j,:,k),&
+-                   Bvecy(j,:,k),Bvecz(j,:,k),Bvecx(j,:,k),dum(j,:,k),eps(j,:,k),press(j,:,k),&
+-                   rhominus(j,:,k),velyminus(j,:,k),velzminus(j,:,k),velxminus(j,:,k),&
+-                   Bvecyminus(j,:,k),Bveczminus(j,:,k),Bvecxminus(j,:,k),dumm(j,:,k),epsminus(j,:,k),&
+-                   rhoplus(j,:,k),velyplus(j,:,k),velzplus(j,:,k),velxplus(j,:,k),&
+-                   Bvecyplus(j,:,k),Bveczplus(j,:,k),Bvecxplus(j,:,k),dump(j,:,k),epsplus(j,:,k),&
+-                   0,trivial_rp(j,:,k), hydro_excision_mask(j,:,k),&
+-                   g22(j,:,k), g23(j,:,k), g12(j,:,k), g33(j,:,k), g13(j,:,k), &
+-                   g11(j,:,k), beta2(j,:,k), alp(j,:,k),&
+-                   w_lorentz(j,:,k), &
+-                   2, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_y_left, &
+-                   GRHydro_mppm_eigenvalue_y_right, &
+-                   GRHydro_mppm_xwind)
++              if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                call SimplePPM_1dM(GRHydro_eos_handle,0,ny,CCTK_DELTA_SPACE(2),&
++                     rho(j,:,k),vel(j,:,k,2),vel(j,:,k,3),vel(j,:,k,1),&
++                     Bvec(j,:,k,2),Bvec(j,:,k,3),Bvec(j,:,k,1),dum(j,:,k),eps(j,:,k),press(j,:,k),&
++                     rhominus(j,:,k),velyminus(j,:,k),velzminus(j,:,k),velxminus(j,:,k),&
++                     Bvecyminus(j,:,k),Bveczminus(j,:,k),Bvecxminus(j,:,k),dumm(j,:,k),epsminus(j,:,k),&
++                     rhoplus(j,:,k),velyplus(j,:,k),velzplus(j,:,k),velxplus(j,:,k),&
++                     Bvecyplus(j,:,k),Bveczplus(j,:,k),Bvecxplus(j,:,k),dump(j,:,k),epsplus(j,:,k),&
++                     0,trivial_rp(j,:,k), hydro_excision_mask(j,:,k),&
++                     gyy(j,:,k), gyz(j,:,k), gxy(j,:,k), gzz(j,:,k), gxz(j,:,k), &
++                     gxx(j,:,k), betay(j,:,k), alp(j,:,k),&
++                     w_lorentz(j,:,k), &
++                     2, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_y_left, &
++                     GRHydro_mppm_eigenvalue_y_right, &
++                     GRHydro_mppm_xwind)
++              else
++                call SimplePPM_1dM(GRHydro_eos_handle,0,ny,CCTK_DELTA_SPACE(2),&
++                     rho(j,:,k),lvel(j,:,k,2),lvel(j,:,k,3),lvel(j,:,k,1),&
++                     lBvec(j,:,k,2),lBvec(j,:,k,3),lBvec(j,:,k,1),dum(j,:,k),eps(j,:,k),press(j,:,k),&
++                     rhominus(j,:,k),velyminus(j,:,k),velzminus(j,:,k),velxminus(j,:,k),&
++                     Bvecyminus(j,:,k),Bveczminus(j,:,k),Bvecxminus(j,:,k),dumm(j,:,k),epsminus(j,:,k),&
++                     rhoplus(j,:,k),velyplus(j,:,k),velzplus(j,:,k),velxplus(j,:,k),&
++                     Bvecyplus(j,:,k),Bveczplus(j,:,k),Bvecxplus(j,:,k),dump(j,:,k),epsplus(j,:,k),&
++                     0,trivial_rp(j,:,k), hydro_excision_mask(j,:,k),&
++                     gbb(j,:,k), gbc(j,:,k), gab(j,:,k), gcc(j,:,k), gac(j,:,k), &
++                     gaa(j,:,k), betab(j,:,k), alp(j,:,k),&
++                     w_lorentz(j,:,k), &
++                     2, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_y_left, &
++                     GRHydro_mppm_eigenvalue_y_right, &
++                     GRHydro_mppm_xwind)
++              end if
+              endif  !clean_divergence
+               do i = 1, ny
+                 if (trivial_rp(j,i,k)) then
+@@ -266,10 +310,17 @@
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+-              call SimplePPM_tracer_1d(ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
+-                   vely(j,:,k),velz(j,:,k),velx(j,:,k), &
+-                   tracer(j,:,k,:),tracerminus(j,:,k,:),tracerplus(j,:,k,:), &
+-                   press(j,:,k))
++              if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                call SimplePPM_tracer_1d(ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
++                     vel(j,:,k,2),vel(j,:,k,3),vel(j,:,k,1), &
++                     tracer(j,:,k,:),tracerminus(j,:,k,:),tracerplus(j,:,k,:), &
++                     press(j,:,k))
++              else
++                call SimplePPM_tracer_1d(ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
++                     lvel(j,:,k,2),lvel(j,:,k,3),lvel(j,:,k,1), &
++                     tracer(j,:,k,:),tracerminus(j,:,k,:),tracerplus(j,:,k,:), &
++                     press(j,:,k))
++              end if
+             end do
+          end do
+          !$OMP END PARALLEL DO
+@@ -278,10 +329,17 @@
+          !$OMP PARALLEL DO PRIVATE(j, k)
+           do k = GRHydro_stencil, nz - GRHydro_stencil + 1 + transport_constraints
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1 + transport_constraints
+-               call SimplePPM_ye_1d(ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
+-                    vely(j,:,k),velz(j,:,k),velx(j,:,k), &
+-                    Y_e(j,:,k),Y_e_minus(j,:,k),Y_e_plus(j,:,k), &
+-                    press(j,:,k))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call SimplePPM_ye_1d(ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
++                      vel(j,:,k,2),vel(j,:,k,3),vel(j,:,k,1), &
++                      Y_e(j,:,k),Y_e_minus(j,:,k),Y_e_plus(j,:,k), &
++                      press(j,:,k))
++               else
++                 call SimplePPM_ye_1d(ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
++                      lvel(j,:,k,2),lvel(j,:,k,3),lvel(j,:,k,1), &
++                      Y_e(j,:,k),Y_e_minus(j,:,k),Y_e_plus(j,:,k), &
++                      press(j,:,k))
++               end if
+             end do
+          end do
+          !$OMP END PARALLEL DO
+@@ -294,35 +352,69 @@
+           do k = GRHydro_stencil, ny - GRHydro_stencil + 1 + transport_constraints
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1 + transport_constraints
+              if(clean_divergence.ne.0) then
+-              call SimplePPM_1dM(GRHydro_eos_handle,0,nz,CCTK_DELTA_SPACE(3),&
+-                   rho(j,k,:),velz(j,k,:),velx(j,k,:),vely(j,k,:),&
+-                   Bvecz(j,k,:),Bvecx(j,k,:),Bvecy(j,k,:),psidc(j,k,:),eps(j,k,:),press(j,k,:),&
+-                   rhominus(j,k,:),velzminus(j,k,:),velxminus(j,k,:),velyminus(j,k,:),&
+-                   Bveczminus(j,k,:),Bvecxminus(j,k,:),Bvecyminus(j,k,:),psidcminus(j,k,:),epsminus(j,k,:),&
+-                   rhoplus(j,k,:),velzplus(j,k,:),velxplus(j,k,:),velyplus(j,k,:),&
+-                   Bveczplus(j,k,:),Bvecxplus(j,k,:),Bvecyplus(j,k,:),psidcplus(j,k,:),epsplus(j,k,:),&
+-                   1,trivial_rp(j,k,:), hydro_excision_mask(j,k,:),&
+-                   g33(j,k,:), g13(j,k,:), g23(j,k,:), g11(j,k,:), g12(j,k,:), &
+-                   g22(j,k,:), beta3(j,k,:), alp(j,k,:),&
+-                   w_lorentz(j,k,:), &
+-                   3, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_z_left, &
+-                   GRHydro_mppm_eigenvalue_z_right, &
+-                   GRHydro_mppm_xwind)
++              if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                call SimplePPM_1dM(GRHydro_eos_handle,0,nz,CCTK_DELTA_SPACE(3),&
++                     rho(j,k,:),vel(j,k,:,3),vel(j,k,:,1),vel(j,k,:,2),&
++                     Bvec(j,k,:,3),Bvec(j,k,:,1),Bvec(j,k,:,2),psidc(j,k,:),eps(j,k,:),press(j,k,:),&
++                     rhominus(j,k,:),velzminus(j,k,:),velxminus(j,k,:),velyminus(j,k,:),&
++                     Bveczminus(j,k,:),Bvecxminus(j,k,:),Bvecyminus(j,k,:),psidcminus(j,k,:),epsminus(j,k,:),&
++                     rhoplus(j,k,:),velzplus(j,k,:),velxplus(j,k,:),velyplus(j,k,:),&
++                     Bveczplus(j,k,:),Bvecxplus(j,k,:),Bvecyplus(j,k,:),psidcplus(j,k,:),epsplus(j,k,:),&
++                     1,trivial_rp(j,k,:), hydro_excision_mask(j,k,:),&
++                     gzz(j,k,:), gxz(j,k,:), gyz(j,k,:), gxx(j,k,:), gxy(j,k,:), &
++                     gyy(j,k,:), betaz(j,k,:), alp(j,k,:),&
++                     w_lorentz(j,k,:), &
++                     3, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_z_left, &
++                     GRHydro_mppm_eigenvalue_z_right, &
++                     GRHydro_mppm_xwind)
++              else
++                call SimplePPM_1dM(GRHydro_eos_handle,0,nz,CCTK_DELTA_SPACE(3),&
++                     rho(j,k,:),lvel(j,k,:,3),lvel(j,k,:,1),lvel(j,k,:,2),&
++                     lBvec(j,k,:,3),lBvec(j,k,:,1),lBvec(j,k,:,2),psidc(j,k,:),eps(j,k,:),press(j,k,:),&
++                     rhominus(j,k,:),velzminus(j,k,:),velxminus(j,k,:),velyminus(j,k,:),&
++                     Bveczminus(j,k,:),Bvecxminus(j,k,:),Bvecyminus(j,k,:),psidcminus(j,k,:),epsminus(j,k,:),&
++                     rhoplus(j,k,:),velzplus(j,k,:),velxplus(j,k,:),velyplus(j,k,:),&
++                     Bveczplus(j,k,:),Bvecxplus(j,k,:),Bvecyplus(j,k,:),psidcplus(j,k,:),epsplus(j,k,:),&
++                     1,trivial_rp(j,k,:), hydro_excision_mask(j,k,:),&
++                     gcc(j,k,:), gac(j,k,:), gbc(j,k,:), gaa(j,k,:), gab(j,k,:), &
++                     gbb(j,k,:), betac(j,k,:), alp(j,k,:),&
++                     w_lorentz(j,k,:), &
++                     3, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_z_left, &
++                     GRHydro_mppm_eigenvalue_z_right, &
++                     GRHydro_mppm_xwind)
++              end if
+              else  !clean_divergence
+-              call SimplePPM_1dM(GRHydro_eos_handle,0,nz,CCTK_DELTA_SPACE(3),&
+-                   rho(j,k,:),velz(j,k,:),velx(j,k,:),vely(j,k,:),&
+-                   Bvecz(j,k,:),Bvecx(j,k,:),Bvecy(j,k,:),dum(j,k,:),eps(j,k,:),press(j,k,:),&
+-                   rhominus(j,k,:),velzminus(j,k,:),velxminus(j,k,:),velyminus(j,k,:),&
+-                   Bveczminus(j,k,:),Bvecxminus(j,k,:),Bvecyminus(j,k,:),dumm(j,k,:),epsminus(j,k,:),&
+-                   rhoplus(j,k,:),velzplus(j,k,:),velxplus(j,k,:),velyplus(j,k,:),&
+-                   Bveczplus(j,k,:),Bvecxplus(j,k,:),Bvecyplus(j,k,:),dump(j,k,:),epsplus(j,k,:),&
+-                   0,trivial_rp(j,k,:), hydro_excision_mask(j,k,:),&
+-                   g33(j,k,:), g13(j,k,:), g23(j,k,:), g11(j,k,:), g12(j,k,:), &
+-                   g22(j,k,:), beta3(j,k,:), alp(j,k,:),&
+-                   w_lorentz(j,k,:), &
+-                   3, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_z_left, &
+-                   GRHydro_mppm_eigenvalue_z_right, &
+-                   GRHydro_mppm_xwind)
++              if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                call SimplePPM_1dM(GRHydro_eos_handle,0,nz,CCTK_DELTA_SPACE(3),&
++                     rho(j,k,:),vel(j,k,:,3),vel(j,k,:,1),vel(j,k,:,2),&
++                     Bvec(j,k,:,3),Bvec(j,k,:,1),Bvec(j,k,:,2),dum(j,k,:),eps(j,k,:),press(j,k,:),&
++                     rhominus(j,k,:),velzminus(j,k,:),velxminus(j,k,:),velyminus(j,k,:),&
++                     Bveczminus(j,k,:),Bvecxminus(j,k,:),Bvecyminus(j,k,:),dumm(j,k,:),epsminus(j,k,:),&
++                     rhoplus(j,k,:),velzplus(j,k,:),velxplus(j,k,:),velyplus(j,k,:),&
++                     Bveczplus(j,k,:),Bvecxplus(j,k,:),Bvecyplus(j,k,:),dump(j,k,:),epsplus(j,k,:),&
++                     0,trivial_rp(j,k,:), hydro_excision_mask(j,k,:),&
++                     gzz(j,k,:), gxz(j,k,:), gyz(j,k,:), gxx(j,k,:), gxy(j,k,:), &
++                     gyy(j,k,:), betaz(j,k,:), alp(j,k,:),&
++                     w_lorentz(j,k,:), &
++                     3, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_z_left, &
++                     GRHydro_mppm_eigenvalue_z_right, &
++                     GRHydro_mppm_xwind)
++              else
++                call SimplePPM_1dM(GRHydro_eos_handle,0,nz,CCTK_DELTA_SPACE(3),&
++                     rho(j,k,:),lvel(j,k,:,3),lvel(j,k,:,1),lvel(j,k,:,2),&
++                     lBvec(j,k,:,3),lBvec(j,k,:,1),lBvec(j,k,:,2),dum(j,k,:),eps(j,k,:),press(j,k,:),&
++                     rhominus(j,k,:),velzminus(j,k,:),velxminus(j,k,:),velyminus(j,k,:),&
++                     Bveczminus(j,k,:),Bvecxminus(j,k,:),Bvecyminus(j,k,:),dumm(j,k,:),epsminus(j,k,:),&
++                     rhoplus(j,k,:),velzplus(j,k,:),velxplus(j,k,:),velyplus(j,k,:),&
++                     Bveczplus(j,k,:),Bvecxplus(j,k,:),Bvecyplus(j,k,:),dump(j,k,:),epsplus(j,k,:),&
++                     0,trivial_rp(j,k,:), hydro_excision_mask(j,k,:),&
++                     gcc(j,k,:), gac(j,k,:), gbc(j,k,:), gaa(j,k,:), gab(j,k,:), &
++                     gbb(j,k,:), betac(j,k,:), alp(j,k,:),&
++                     w_lorentz(j,k,:), &
++                     3, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_z_left, &
++                     GRHydro_mppm_eigenvalue_z_right, &
++                     GRHydro_mppm_xwind)
++              end if
+              endif  !clean_divergence
+               do i = 1, nz
+                 if (trivial_rp(j,k,i)) then
+@@ -339,10 +431,17 @@
+          do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+ 
+-               call SimplePPM_tracer_1d(nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
+-                    velz(j,k,:),velx(j,k,:),vely(j,k,:), &
+-                    tracer(j,k,:,:),tracerminus(j,k,:,:),tracerplus(j,k,:,:), &
+-                    press(j,k,:))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call SimplePPM_tracer_1d(nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
++                      vel(j,k,:,3),vel(j,k,:,1),vel(j,k,:,2), &
++                      tracer(j,k,:,:),tracerminus(j,k,:,:),tracerplus(j,k,:,:), &
++                      press(j,k,:))
++               else
++                 call SimplePPM_tracer_1d(nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
++                      lvel(j,k,:,3),lvel(j,k,:,1),lvel(j,k,:,2), &
++                      tracer(j,k,:,:),tracerminus(j,k,:,:),tracerplus(j,k,:,:), &
++                      press(j,k,:))
++               end if
+             end do
+          end do
+          !$OMP END PARALLEL DO
+@@ -351,10 +450,17 @@
+          !$OMP PARALLEL DO PRIVATE(j, k)
+           do k = GRHydro_stencil, ny - GRHydro_stencil + 1 + transport_constraints
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1 + transport_constraints
+-               call SimplePPM_ye_1d(nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
+-                    velz(j,k,:),velx(j,k,:),vely(j,k,:), &
+-                    Y_e(j,k,:),Y_e_minus(j,k,:),Y_e_plus(j,k,:), &
+-                    press(j,k,:))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call SimplePPM_ye_1d(nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
++                      vel(j,k,:,3),vel(j,k,:,1),vel(j,k,:,2), &
++                      Y_e(j,k,:),Y_e_minus(j,k,:),Y_e_plus(j,k,:), &
++                      press(j,k,:))
++               else
++                 call SimplePPM_ye_1d(nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
++                      lvel(j,k,:,3),lvel(j,k,:,1),lvel(j,k,:,2), &
++                      Y_e(j,k,:),Y_e_minus(j,k,:),Y_e_plus(j,k,:), &
++                      press(j,k,:))
++               end if
+             end do
+          end do
+          !$OMP END PARALLEL DO
+Index: src/GRHydro_PPMReconstruct_drv.F90
+===================================================================
+--- src/GRHydro_PPMReconstruct_drv.F90	(revision 586)
++++ src/GRHydro_PPMReconstruct_drv.F90	(working copy)
+@@ -14,9 +14,6 @@
+ 
+ #include "SpaceMask.h"
+ 
+-#define velx(i,j,k) vup(i,j,k,1)
+-#define vely(i,j,k) vup(i,j,k,2)
+-#define velz(i,j,k) vup(i,j,k,3)
+ #define sx(i,j,k) scon(i,j,k,1)
+ #define sy(i,j,k) scon(i,j,k,2)
+ #define sz(i,j,k) scon(i,j,k,3)
+@@ -45,6 +42,9 @@
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+ 
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++
+   integer :: nx, ny, nz, i, j, k
+ 
+   logical, dimension(:,:,:), allocatable :: trivial_rp
+@@ -55,41 +55,8 @@
+ 
+   CCTK_INT :: ierr
+ 
+-  ! save memory when MP is not used
+-  CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(cctk_ash1,cctk_ash2,cctk_ash3) :: g11, g12, g13, g22, g23, g33
+-  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
+-  CCTK_REAL, DIMENSION(cctk_ash1,cctk_ash2,cctk_ash3) :: beta1, beta2, beta3
+-  pointer (pbeta1,beta1), (pbeta2,beta2), (pbeta3,beta3)
+-  CCTK_REAL, DIMENSION(cctk_ash1,cctk_ash2,cctk_ash3,3) :: vup
+-  pointer (pvup,vup)
+-
+   logical :: apply_enhanced_ppm
+ 
+-  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    pg11 = loc(gaa)
+-    pg12 = loc(gab)
+-    pg13 = loc(gac)
+-    pg22 = loc(gbb)
+-    pg23 = loc(gbc)
+-    pg33 = loc(gcc)
+-    pbeta1 = loc(betaa)
+-    pbeta2 = loc(betab)
+-    pbeta3 = loc(betac)
+-    pvup = loc(lvel)
+-  else
+-    pg11 = loc(gxx)
+-    pg12 = loc(gxy)
+-    pg13 = loc(gxz)
+-    pg22 = loc(gyy)
+-    pg23 = loc(gyz)
+-    pg33 = loc(gzz)
+-    pbeta1 = loc(betax)
+-    pbeta2 = loc(betay)
+-    pbeta3 = loc(betaz)
+-    pvup = loc(vel)
+-  end if
+-
+   allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
+   if (ierr .ne. 0) then
+     call CCTK_WARN(0, "Allocation problems with trivial_rp")
+@@ -129,19 +96,35 @@
+          !$OMP PARALLEL DO PRIVATE(i, j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+            do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+-           call SimplePPM_1d(apply_enhanced_ppm,&
+-                GRHydro_eos_handle,0,nx,CCTK_DELTA_SPACE(1),&
+-                rho(:,j,k),velx(:,j,k),vely(:,j,k),velz(:,j,k),eps(:,j,k),&
+-                press(:,j,k),rhominus(:,j,k),velxminus(:,j,k),velyminus(:,j,k),&
+-                velzminus(:,j,k),epsminus(:,j,k),rhoplus(:,j,k),&
+-                velxplus(:,j,k),velyplus(:,j,k),velzplus(:,j,k),epsplus(:,j,k),&
+-                trivial_rp(:,j,k), hydro_excision_mask(:,j,k),&
+-                g11(:,j,k), g12(:,j,k), g13(:,j,k), g22(:,j,k), g23(:,j,k), &
+-                g33(:,j,k), beta1(:,j,k), alp(:,j,k),&
+-                w_lorentz(:,j,k), &
+-                1, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_x_left, &
+-                GRHydro_mppm_eigenvalue_x_right, &
+-                GRHydro_mppm_xwind)
++           if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++             call SimplePPM_1d(apply_enhanced_ppm,&
++                  GRHydro_eos_handle,0,nx,CCTK_DELTA_SPACE(1),&
++                  rho(:,j,k),vel(:,j,k,1),vel(:,j,k,2),vel(:,j,k,3),eps(:,j,k),&
++                  press(:,j,k),rhominus(:,j,k),velxminus(:,j,k),velyminus(:,j,k),&
++                  velzminus(:,j,k),epsminus(:,j,k),rhoplus(:,j,k),&
++                  velxplus(:,j,k),velyplus(:,j,k),velzplus(:,j,k),epsplus(:,j,k),&
++                  trivial_rp(:,j,k), hydro_excision_mask(:,j,k),&
++                  gxx(:,j,k), gxy(:,j,k), gxz(:,j,k), gyy(:,j,k), gyz(:,j,k), &
++                  gzz(:,j,k), betax(:,j,k), alp(:,j,k),&
++                  w_lorentz(:,j,k), &
++                  1, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_x_left, &
++                  GRHydro_mppm_eigenvalue_x_right, &
++                  GRHydro_mppm_xwind)
++           else
++             call SimplePPM_1d(apply_enhanced_ppm,&
++                  GRHydro_eos_handle,0,nx,CCTK_DELTA_SPACE(1),&
++                  rho(:,j,k),lvel(:,j,k,1),lvel(:,j,k,2),lvel(:,j,k,3),eps(:,j,k),&
++                  press(:,j,k),rhominus(:,j,k),velxminus(:,j,k),velyminus(:,j,k),&
++                  velzminus(:,j,k),epsminus(:,j,k),rhoplus(:,j,k),&
++                  velxplus(:,j,k),velyplus(:,j,k),velzplus(:,j,k),epsplus(:,j,k),&
++                  trivial_rp(:,j,k), hydro_excision_mask(:,j,k),&
++                  gaa(:,j,k), gab(:,j,k), gac(:,j,k), gbb(:,j,k), gbc(:,j,k), &
++                  gcc(:,j,k), betaa(:,j,k), alp(:,j,k),&
++                  w_lorentz(:,j,k), &
++                  1, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_x_left, &
++                  GRHydro_mppm_eigenvalue_x_right, &
++                  GRHydro_mppm_xwind)
++           end if
+              do i = 1, nx
+                 if (trivial_rp(i,j,k)) then
+                   SpaceMask_SetStateBitsF90(space_mask, i, j, k, type_bitsx, trivialx)
+@@ -156,10 +139,17 @@
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+-               call SimplePPM_temperature_1d(apply_enhanced_ppm,&
+-                    nx,CCTK_DELTA_SPACE(1),velx(:,j,k), & 
+-                    temperature(:,j,k),press(:,j,k),&
+-                    tempminus(:,j,k),tempplus(:,j,k), hydro_excision_mask)
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call SimplePPM_temperature_1d(apply_enhanced_ppm,&
++                      nx,CCTK_DELTA_SPACE(1),vel(:,j,k,1), & 
++                      temperature(:,j,k),press(:,j,k),&
++                      tempminus(:,j,k),tempplus(:,j,k), hydro_excision_mask)
++               else
++                   call SimplePPM_temperature_1d(apply_enhanced_ppm,&
++                      nx,CCTK_DELTA_SPACE(1),lvel(:,j,k,1), & 
++                      temperature(:,j,k),press(:,j,k),&
++                      tempminus(:,j,k),tempplus(:,j,k), hydro_excision_mask)
++               end if
+             end do
+          end do
+          !$OMP END PARALLEL DO
+@@ -168,11 +158,19 @@
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+-               call SimplePPM_tracer_1d(apply_enhanced_ppm,&
+-                    nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
+-                    velx(:,j,k),vely(:,j,k),velz(:,j,k), &
+-                    tracer(:,j,k,:),tracerminus(:,j,k,:),tracerplus(:,j,k,:), &
+-                    press(:,j,k))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call SimplePPM_tracer_1d(apply_enhanced_ppm,&
++                      nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
++                      vel(:,j,k,1),vel(:,j,k,2),vel(:,j,k,3), &
++                      tracer(:,j,k,:),tracerminus(:,j,k,:),tracerplus(:,j,k,:), &
++                      press(:,j,k))
++               else
++                 call SimplePPM_tracer_1d(apply_enhanced_ppm,&
++                      nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
++                      lvel(:,j,k,1),lvel(:,j,k,2),lvel(:,j,k,3), &
++                      tracer(:,j,k,:),tracerminus(:,j,k,:),tracerplus(:,j,k,:), &
++                      press(:,j,k))
++               end if
+             end do
+          end do
+          !$OMP END PARALLEL DO
+@@ -181,11 +179,19 @@
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+-               call SimplePPM_ye_1d(apply_enhanced_ppm,&
+-                    nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
+-                    velx(:,j,k),vely(:,j,k),velz(:,j,k), &
+-                    Y_e(:,j,k),Y_e_minus(:,j,k),Y_e_plus(:,j,k), &
+-                    press(:,j,k))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call SimplePPM_ye_1d(apply_enhanced_ppm,&
++                      nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
++                      vel(:,j,k,1),vel(:,j,k,2),vel(:,j,k,3), &
++                      Y_e(:,j,k),Y_e_minus(:,j,k),Y_e_plus(:,j,k), &
++                      press(:,j,k))
++               else
++                 call SimplePPM_ye_1d(apply_enhanced_ppm,&
++                      nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
++                      lvel(:,j,k,1),lvel(:,j,k,2),lvel(:,j,k,3), &
++                      Y_e(:,j,k),Y_e_minus(:,j,k),Y_e_plus(:,j,k), &
++                      press(:,j,k))
++               end if
+             end do
+          end do
+          !$OMP END PARALLEL DO
+@@ -195,19 +201,35 @@
+         !$OMP PARALLEL DO PRIVATE(i, j, k)
+         do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+           do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+-            call SimplePPM_1d(apply_enhanced_ppm,&
+-                 GRHydro_eos_handle,0,ny,CCTK_DELTA_SPACE(2),&
+-                 rho(j,:,k),vely(j,:,k),velz(j,:,k),velx(j,:,k),eps(j,:,k),&
+-                 press(j,:,k),rhominus(j,:,k),velyminus(j,:,k),velzminus(j,:,k),&
+-                 velxminus(j,:,k),epsminus(j,:,k),rhoplus(j,:,k),&
+-                 velyplus(j,:,k),velzplus(j,:,k),velxplus(j,:,k),epsplus(j,:,k),&
+-                 trivial_rp(j,:,k), hydro_excision_mask(j,:,k),&
+-                 g22(j,:,k), g23(j,:,k), g12(j,:,k), g33(j,:,k), g13(j,:,k), &
+-                 g11(j,:,k), beta2(j,:,k), alp(j,:,k),&
+-                 w_lorentz(j,:,k), &
+-                 2, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_y_left, &
+-                 GRHydro_mppm_eigenvalue_y_right, &
+-                 GRHydro_mppm_xwind)
++            if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++              call SimplePPM_1d(apply_enhanced_ppm,&
++                   GRHydro_eos_handle,0,ny,CCTK_DELTA_SPACE(2),&
++                   rho(j,:,k),vel(j,:,k,2),vel(j,:,k,3),vel(j,:,k,1),eps(j,:,k),&
++                   press(j,:,k),rhominus(j,:,k),velyminus(j,:,k),velzminus(j,:,k),&
++                   velxminus(j,:,k),epsminus(j,:,k),rhoplus(j,:,k),&
++                   velyplus(j,:,k),velzplus(j,:,k),velxplus(j,:,k),epsplus(j,:,k),&
++                   trivial_rp(j,:,k), hydro_excision_mask(j,:,k),&
++                   gyy(j,:,k), gyz(j,:,k), gxy(j,:,k), gzz(j,:,k), gxz(j,:,k), &
++                   gxx(j,:,k), betay(j,:,k), alp(j,:,k),&
++                   w_lorentz(j,:,k), &
++                   2, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_y_left, &
++                   GRHydro_mppm_eigenvalue_y_right, &
++                   GRHydro_mppm_xwind)
++            else
++              call SimplePPM_1d(apply_enhanced_ppm,&
++                   GRHydro_eos_handle,0,ny,CCTK_DELTA_SPACE(2),&
++                   rho(j,:,k),lvel(j,:,k,2),lvel(j,:,k,3),lvel(j,:,k,1),eps(j,:,k),&
++                   press(j,:,k),rhominus(j,:,k),velyminus(j,:,k),velzminus(j,:,k),&
++                   velxminus(j,:,k),epsminus(j,:,k),rhoplus(j,:,k),&
++                   velyplus(j,:,k),velzplus(j,:,k),velxplus(j,:,k),epsplus(j,:,k),&
++                   trivial_rp(j,:,k), hydro_excision_mask(j,:,k),&
++                   gbb(j,:,k), gbc(j,:,k), gab(j,:,k), gcc(j,:,k), gac(j,:,k), &
++                   gaa(j,:,k), betab(j,:,k), alp(j,:,k),&
++                   w_lorentz(j,:,k), &
++                   2, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_y_left, &
++                   GRHydro_mppm_eigenvalue_y_right, &
++                   GRHydro_mppm_xwind)
++            end if
+             do i = 1, ny
+               if (trivial_rp(j,i,k)) then
+                  SpaceMask_SetStateBitsF90(space_mask, j, i, k, type_bitsy, trivialy)
+@@ -222,10 +244,17 @@
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+-               call SimplePPM_temperature_1d(apply_enhanced_ppm,&
+-                    ny,CCTK_DELTA_SPACE(2),vely(j,:,k), & 
+-                    temperature(j,:,k),press(j,:,k),&
+-                    tempminus(j,:,k),tempplus(j,:,k), hydro_excision_mask)
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call SimplePPM_temperature_1d(apply_enhanced_ppm,&
++                      ny,CCTK_DELTA_SPACE(2),vel(j,:,k,2), & 
++                      temperature(j,:,k),press(j,:,k),&
++                      tempminus(j,:,k),tempplus(j,:,k), hydro_excision_mask)
++               else
++                 call SimplePPM_temperature_1d(apply_enhanced_ppm,&
++                      ny,CCTK_DELTA_SPACE(2),lvel(j,:,k,2), & 
++                      temperature(j,:,k),press(j,:,k),&
++                      tempminus(j,:,k),tempplus(j,:,k), hydro_excision_mask)
++               end if
+             end do
+          end do
+          !$OMP END PARALLEL DO
+@@ -234,11 +263,19 @@
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+-              call SimplePPM_tracer_1d(apply_enhanced_ppm,&
+-                   ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
+-                   vely(j,:,k),velz(j,:,k),velx(j,:,k), &
+-                   tracer(j,:,k,:),tracerminus(j,:,k,:),tracerplus(j,:,k,:), &
+-                   press(j,:,k))
++              if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                call SimplePPM_tracer_1d(apply_enhanced_ppm,&
++                     ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
++                     vel(j,:,k,2),vel(j,:,k,3),vel(j,:,k,1), &
++                     tracer(j,:,k,:),tracerminus(j,:,k,:),tracerplus(j,:,k,:), &
++                     press(j,:,k))
++              else
++                call SimplePPM_tracer_1d(apply_enhanced_ppm,&
++                     ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
++                     lvel(j,:,k,2),lvel(j,:,k,3),lvel(j,:,k,1), &
++                     tracer(j,:,k,:),tracerminus(j,:,k,:),tracerplus(j,:,k,:), &
++                     press(j,:,k))
++              end if
+             end do
+          end do
+          !$OMP END PARALLEL DO
+@@ -247,11 +284,19 @@
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+-               call SimplePPM_ye_1d(apply_enhanced_ppm,&
+-                    ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
+-                    vely(j,:,k),velz(j,:,k),velx(j,:,k), &
+-                    Y_e(j,:,k),Y_e_minus(j,:,k),Y_e_plus(j,:,k), &
+-                    press(j,:,k))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call SimplePPM_ye_1d(apply_enhanced_ppm,&
++                      ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
++                      vel(j,:,k,2),vel(j,:,k,3),vel(j,:,k,1), &
++                      Y_e(j,:,k),Y_e_minus(j,:,k),Y_e_plus(j,:,k), &
++                      press(j,:,k))
++               else
++                 call SimplePPM_ye_1d(apply_enhanced_ppm,&
++                      ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
++                      lvel(j,:,k,2),lvel(j,:,k,3),lvel(j,:,k,1), &
++                      Y_e(j,:,k),Y_e_minus(j,:,k),Y_e_plus(j,:,k), &
++                      press(j,:,k))
++               end if
+             end do
+          end do
+          !$OMP END PARALLEL DO
+@@ -261,19 +306,35 @@
+         !$OMP PARALLEL DO PRIVATE(i, j, k)
+         do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+           do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+-            call SimplePPM_1d(apply_enhanced_ppm,&
+-                 GRHydro_eos_handle,0,nz,CCTK_DELTA_SPACE(3),&
+-                 rho(j,k,:),velz(j,k,:),velx(j,k,:),vely(j,k,:),eps(j,k,:),&
+-                 press(j,k,:),rhominus(j,k,:),velzminus(j,k,:),velxminus(j,k,:),&
+-                 velyminus(j,k,:),epsminus(j,k,:),rhoplus(j,k,:),&
+-                 velzplus(j,k,:),velxplus(j,k,:),velyplus(j,k,:),epsplus(j,k,:),&
+-                 trivial_rp(j,k,:), hydro_excision_mask(j,k,:),&
+-                 g33(j,k,:), g13(j,k,:), g23(j,k,:), g11(j,k,:), g12(j,k,:), &
+-                 g22(j,k,:), beta3(j,k,:), alp(j,k,:),&
+-                 w_lorentz(j,k,:), &
+-                 3, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_z_left, &
+-                 GRHydro_mppm_eigenvalue_z_right, &
+-                 GRHydro_mppm_xwind)
++            if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++              call SimplePPM_1d(apply_enhanced_ppm,&
++                   GRHydro_eos_handle,0,nz,CCTK_DELTA_SPACE(3),&
++                   rho(j,k,:),vel(j,k,:,3),vel(j,k,:,1),vel(j,k,:,2),eps(j,k,:),&
++                   press(j,k,:),rhominus(j,k,:),velzminus(j,k,:),velxminus(j,k,:),&
++                   velyminus(j,k,:),epsminus(j,k,:),rhoplus(j,k,:),&
++                   velzplus(j,k,:),velxplus(j,k,:),velyplus(j,k,:),epsplus(j,k,:),&
++                   trivial_rp(j,k,:), hydro_excision_mask(j,k,:),&
++                   gzz(j,k,:), gxz(j,k,:), gyz(j,k,:), gxx(j,k,:), gxy(j,k,:), &
++                   gyy(j,k,:), betaz(j,k,:), alp(j,k,:),&
++                   w_lorentz(j,k,:), &
++                   3, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_z_left, &
++                   GRHydro_mppm_eigenvalue_z_right, &
++                   GRHydro_mppm_xwind)
++            else
++              call SimplePPM_1d(apply_enhanced_ppm,&
++                   GRHydro_eos_handle,0,nz,CCTK_DELTA_SPACE(3),&
++                   rho(j,k,:),lvel(j,k,:,3),lvel(j,k,:,1),lvel(j,k,:,2),eps(j,k,:),&
++                   press(j,k,:),rhominus(j,k,:),velzminus(j,k,:),velxminus(j,k,:),&
++                   velyminus(j,k,:),epsminus(j,k,:),rhoplus(j,k,:),&
++                   velzplus(j,k,:),velxplus(j,k,:),velyplus(j,k,:),epsplus(j,k,:),&
++                   trivial_rp(j,k,:), hydro_excision_mask(j,k,:),&
++                   gcc(j,k,:), gac(j,k,:), gbc(j,k,:), gaa(j,k,:), gab(j,k,:), &
++                   gbb(j,k,:), betac(j,k,:), alp(j,k,:),&
++                   w_lorentz(j,k,:), &
++                   3, j, k, nx, ny, nz, GRHydro_mppm_eigenvalue_z_left, &
++                   GRHydro_mppm_eigenvalue_z_right, &
++                   GRHydro_mppm_xwind)
++            end if
+             do i = 1, nz
+               if (trivial_rp(j,k,i)) then
+                 SpaceMask_SetStateBitsF90(space_mask, j, k, i, type_bitsz, trivialz)
+@@ -288,10 +349,17 @@
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+-               call SimplePPM_temperature_1d(apply_enhanced_ppm,&
+-                    nz,CCTK_DELTA_SPACE(3),velz(j,k,:), & 
+-                    temperature(j,k,:),press(j,k,:),&
+-                    tempminus(j,k,:),tempplus(j,k,:), hydro_excision_mask)
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call SimplePPM_temperature_1d(apply_enhanced_ppm,&
++                      nz,CCTK_DELTA_SPACE(3),vel(j,k,:,3), & 
++                      temperature(j,k,:),press(j,k,:),&
++                      tempminus(j,k,:),tempplus(j,k,:), hydro_excision_mask)
++               else
++                 call SimplePPM_temperature_1d(apply_enhanced_ppm,&
++                      nz,CCTK_DELTA_SPACE(3),lvel(j,k,:,3), & 
++                      temperature(j,k,:),press(j,k,:),&
++                      tempminus(j,k,:),tempplus(j,k,:), hydro_excision_mask)
++               end if
+             end do
+          end do
+          !$OMP END PARALLEL DO
+@@ -301,11 +369,19 @@
+          do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+ 
+-               call SimplePPM_tracer_1d(apply_enhanced_ppm,&
+-                    nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
+-                    velz(j,k,:),velx(j,k,:),vely(j,k,:), &
+-                    tracer(j,k,:,:),tracerminus(j,k,:,:),tracerplus(j,k,:,:), &
+-                    press(j,k,:))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call SimplePPM_tracer_1d(apply_enhanced_ppm,&
++                      nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
++                      vel(j,k,:,3),vel(j,k,:,1),vel(j,k,:,2), &
++                      tracer(j,k,:,:),tracerminus(j,k,:,:),tracerplus(j,k,:,:), &
++                      press(j,k,:))
++               else
++                 call SimplePPM_tracer_1d(apply_enhanced_ppm,&
++                      nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
++                      lvel(j,k,:,3),lvel(j,k,:,1),lvel(j,k,:,2), &
++                      tracer(j,k,:,:),tracerminus(j,k,:,:),tracerplus(j,k,:,:), &
++                      press(j,k,:))
++               end if
+             end do
+          end do
+          !$OMP END PARALLEL DO
+@@ -314,11 +390,19 @@
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+-               call SimplePPM_ye_1d(apply_enhanced_ppm,&
+-                    nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
+-                    velz(j,k,:),velx(j,k,:),vely(j,k,:), &
+-                    Y_e(j,k,:),Y_e_minus(j,k,:),Y_e_plus(j,k,:), &
+-                    press(j,k,:))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call SimplePPM_ye_1d(apply_enhanced_ppm,&
++                      nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
++                      vel(j,k,:,3),vel(j,k,:,1),vel(j,k,:,2), &
++                      Y_e(j,k,:),Y_e_minus(j,k,:),Y_e_plus(j,k,:), &
++                      press(j,k,:))
++               else
++                 call SimplePPM_ye_1d(apply_enhanced_ppm,&
++                      nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
++                      lvel(j,k,:,3),lvel(j,k,:,1),lvel(j,k,:,2), &
++                      Y_e(j,k,:),Y_e_minus(j,k,:),Y_e_plus(j,k,:), &
++                      press(j,k,:))
++               end if
+             end do
+          end do
+          !$OMP END PARALLEL DO
+@@ -332,4 +416,3 @@
+   deallocate(trivial_rp)
+ 
+ end subroutine GRHydro_PPMReconstruct_drv
+-
+Index: src/GRHydro_TVDReconstruct_drv.F90
+===================================================================
+--- src/GRHydro_TVDReconstruct_drv.F90	(revision 586)
++++ src/GRHydro_TVDReconstruct_drv.F90	(working copy)
+@@ -52,6 +52,23 @@
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+ 
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++
++  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++    call TVDReconstruct_drv(gaa, gab, gac, gbb, gbc, gcc, lvel, lBvec)
++  else
++    call TVDReconstruct_drv(gxx, gxy, gxz, gyy, gyz, gzz, vel, Bvec)
++  end if
++
++contains
++subroutine TVDReconstruct_drv(g11, g12, g13, g22, g23, g33, vup, Bprim)
++
++  implicit none
++
++  CCTK_REAL, DIMENSION(cctk_ash1,cctk_ash2,cctk_ash3) :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(cctk_ash1,cctk_ash2,cctk_ash3,3) :: vup, Bprim
++
+   integer :: nx, ny, nz, i, j, k, itracer
+ 
+   logical, dimension(:,:,:), allocatable :: trivial_rp
+@@ -67,33 +84,6 @@
+   CCTK_REAL, DIMENSION(:,:,:,:), ALLOCATABLE :: wvel ! vel*w_lorentz
+   CCTK_REAL :: agxx,agxy,agxz,agyy,agyz,agzz         ! metric components
+ 
+-  ! save memory when MP is not used
+-  CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(cctk_ash1,cctk_ash2,cctk_ash3,3) :: vup, Bprim
+-  pointer (pvup,vup), (pBprim,Bprim)
+-  CCTK_REAL, DIMENSION(cctk_ash1,cctk_ash2,cctk_ash3) :: g11, g12, g13, g22, g23, g33
+-  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
+-
+-  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    pg11 = loc(gaa)
+-    pg12 = loc(gab)
+-    pg13 = loc(gac)
+-    pg22 = loc(gbb)
+-    pg23 = loc(gbc)
+-    pg33 = loc(gcc)
+-    pvup = loc(lvel)
+-    pBprim = loc(lBvec)
+-  else
+-    pg11 = loc(gxx)
+-    pg12 = loc(gxy)
+-    pg13 = loc(gxz)
+-    pg22 = loc(gyy)
+-    pg23 = loc(gyz)
+-    pg33 = loc(gzz)
+-    pvup = loc(vel)
+-    pBprim = loc(Bvec)
+-  end if
+-
+   allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
+   if (ierr .ne. 0) then
+     call CCTK_WARN(0, "Allocation problems with trivial_rp")
+@@ -317,6 +307,7 @@
+   deallocate(trivial_rp)
+   ! Fortran 90 will automatically deallocate wvel for us
+ 
++end subroutine
+ end subroutine GRHydro_TVDReconstruct_drv
+ 
+ 
+Index: src/GRHydro_WENOReconstruct_drv.F90
+===================================================================
+--- src/GRHydro_WENOReconstruct_drv.F90	(revision 586)
++++ src/GRHydro_WENOReconstruct_drv.F90	(working copy)
+@@ -14,15 +14,9 @@
+ 
+ #include "SpaceMask.h"
+ 
+-#define velx(i,j,k) vup(i,j,k,1)
+-#define vely(i,j,k) vup(i,j,k,2)
+-#define velz(i,j,k) vup(i,j,k,3)
+ #define sx(i,j,k) scon(i,j,k,1)
+ #define sy(i,j,k) scon(i,j,k,2)
+ #define sz(i,j,k) scon(i,j,k,3)
+-#define Bvecx(i,j,k) Bprim(i,j,k,1)
+-#define Bvecy(i,j,k) Bprim(i,j,k,2)
+-#define Bvecz(i,j,k) Bprim(i,j,k,3)
+ #define Bconsx(i,j,k) Bcons(i,j,k,1)
+ #define Bconsy(i,j,k) Bcons(i,j,k,2)
+ #define Bconsz(i,j,k) Bcons(i,j,k,3)
+@@ -108,6 +102,11 @@
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+ 
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++  CCTK_REAL, DIMENSION(cctk_ash1,cctk_ash2,cctk_ash3) :: g11, g12, g13, g22, g23, g33
++  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
++
+   integer :: nx, ny, nz, i, j, k, itracer
+ 
+   logical, dimension(:,:,:), allocatable :: trivial_rp
+@@ -126,33 +125,6 @@
+ !   CCTK_REAL, dimension(ny) :: vxY,vyY,vzY
+ !   CCTK_REAL, dimension(nz) :: vxZ,vyZ,vzZ
+   
+-  ! save memory when MP is not used
+-  CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(cctk_ash1,cctk_ash2,cctk_ash3) :: g11, g12, g13, g22, g23, g33
+-  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
+-  CCTK_REAL, DIMENSION(cctk_ash1,cctk_ash2,cctk_ash3,3) :: vup, Bprim
+-  pointer (pvup,vup), (pBprim,Bprim)
+-
+-  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-    pg11 = loc(gaa)
+-    pg12 = loc(gab)
+-    pg13 = loc(gac)
+-    pg22 = loc(gbb)
+-    pg23 = loc(gbc)
+-    pg33 = loc(gcc)
+-    pvup = loc(lvel)
+-    pBprim = loc(lBvec)
+-  else
+-    pg11 = loc(gxx)
+-    pg12 = loc(gxy)
+-    pg13 = loc(gxz)
+-    pg22 = loc(gyy)
+-    pg23 = loc(gyz)
+-    pg33 = loc(gzz)
+-    pvup = loc(vel)
+-    pBprim = loc(Bvec)
+-  end if
+-
+   allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
+   if (ierr .ne. 0) then
+     call CCTK_WARN(0, "Allocation problems with trivial_rp")
+@@ -219,25 +191,49 @@
+                  rho(:,j,k),rhominus(:,j,k),rhoplus(:,j,k),&
+                  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+             if (reconstruct_Wv.eq.0) then
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
+-                  velx(:,j,k),velxminus(:,j,k),velxplus(:,j,k),&
+-                  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
+-                  vely(:,j,k),velyminus(:,j,k),velyplus(:,j,k),&
+-                  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
+-                  velz(:,j,k),velzminus(:,j,k),velzplus(:,j,k),&
+-                  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
++                    vel(:,j,k,1),velxminus(:,j,k),velxplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
++                    vel(:,j,k,2),velyminus(:,j,k),velyplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
++                    vel(:,j,k,3),velzminus(:,j,k),velzplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++               else
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
++                    lvel(:,j,k,1),velxminus(:,j,k),velxplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
++                    lvel(:,j,k,2),velyminus(:,j,k),velyplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
++                    lvel(:,j,k,3),velzminus(:,j,k),velzplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++               end if
+             else
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
+-                  w_lorentz(:,j,k)*velx(:,j,k),velxminus(:,j,k),velxplus(:,j,k),&
+-                  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
+-                  w_lorentz(:,j,k)*vely(:,j,k),velyminus(:,j,k),velyplus(:,j,k),&
+-                  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
+-                  w_lorentz(:,j,k)*velz(:,j,k),velzminus(:,j,k),velzplus(:,j,k),&
+-                  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
++                    w_lorentz(:,j,k)*vel(:,j,k,1),velxminus(:,j,k),velxplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
++                    w_lorentz(:,j,k)*vel(:,j,k,2),velyminus(:,j,k),velyplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
++                    w_lorentz(:,j,k)*vel(:,j,k,3),velzminus(:,j,k),velzplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++               else
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
++                    w_lorentz(:,j,k)*lvel(:,j,k,1),velxminus(:,j,k),velxplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
++                    w_lorentz(:,j,k)*lvel(:,j,k,2),velyminus(:,j,k),velyplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
++                    w_lorentz(:,j,k)*lvel(:,j,k,3),velzminus(:,j,k),velzplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++               end if
+                call undo_Wv(nx, velxminus(:,j,k), velyminus(:,j,k), velzminus(:,j,k),&
+                                 velxplus(:,j,k),velyplus(:,j,k),velzplus(:,j,k),&
+                                 g11(:,j,k),g12(:,j,k),g13(:,j,k),g22(:,j,k),g23(:,j,k),g33(:,j,k))
+@@ -256,15 +252,27 @@
+                     trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+             endif
+             if(evolve_mhd.ne.0) then
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
+-                    Bvecx(:,j,k),Bvecxminus(:,j,k),Bvecxplus(:,j,k),&
+-                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
+-                    Bvecy(:,j,k),Bvecyminus(:,j,k),Bvecyplus(:,j,k),&
+-                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
+-                    Bvecz(:,j,k),Bveczminus(:,j,k),Bveczplus(:,j,k),&
+-                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
++                      Bvec(:,j,k,1),Bvecxminus(:,j,k),Bvecxplus(:,j,k),&
++                      trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
++                      Bvec(:,j,k,2),Bvecyminus(:,j,k),Bvecyplus(:,j,k),&
++                      trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
++                      Bvec(:,j,k,3),Bveczminus(:,j,k),Bveczplus(:,j,k),&
++                      trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++               else
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
++                      lBvec(:,j,k,1),Bvecxminus(:,j,k),Bvecxplus(:,j,k),&
++                      trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
++                      lBvec(:,j,k,2),Bvecyminus(:,j,k),Bvecyplus(:,j,k),&
++                      trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
++                      lBvec(:,j,k,3),Bveczminus(:,j,k),Bveczplus(:,j,k),&
++                      trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++               end if
+             endif
+             if (evolve_entropy .ne. 0) then
+                call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
+@@ -336,25 +344,49 @@
+                  rho(j,:,k),rhominus(j,:,k),rhoplus(j,:,k),&
+                  trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+             if (reconstruct_Wv.eq.0) then
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
+-                  velx(j,:,k),velxminus(j,:,k),velxplus(j,:,k),&
+-                  trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
+-                  vely(j,:,k),velyminus(j,:,k),velyplus(j,:,k),&
+-                  trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
+-                  velz(j,:,k),velzminus(j,:,k),velzplus(j,:,k),&
+-                  trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
++                    vel(j,:,k,1),velxminus(j,:,k),velxplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
++                    vel(j,:,k,2),velyminus(j,:,k),velyplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
++                    vel(j,:,k,3),velzminus(j,:,k),velzplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++               else
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
++                    lvel(j,:,k,1),velxminus(j,:,k),velxplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
++                    lvel(j,:,k,2),velyminus(j,:,k),velyplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
++                    lvel(j,:,k,3),velzminus(j,:,k),velzplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++               end if
+             else
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
+-                  w_lorentz(j,:,k)*velx(j,:,k),velxminus(j,:,k),velxplus(j,:,k),&
+-                  trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
+-                  w_lorentz(j,:,k)*vely(j,:,k),velyminus(j,:,k),velyplus(j,:,k),&
+-                  trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
+-                  w_lorentz(j,:,k)*velz(j,:,k),velzminus(j,:,k),velzplus(j,:,k),&
+-                  trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
++                    w_lorentz(j,:,k)*vel(j,:,k,1),velxminus(j,:,k),velxplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
++                    w_lorentz(j,:,k)*vel(j,:,k,2),velyminus(j,:,k),velyplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
++                    w_lorentz(j,:,k)*vel(j,:,k,3),velzminus(j,:,k),velzplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++               else
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
++                    w_lorentz(j,:,k)*lvel(j,:,k,1),velxminus(j,:,k),velxplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
++                    w_lorentz(j,:,k)*lvel(j,:,k,2),velyminus(j,:,k),velyplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
++                    w_lorentz(j,:,k)*lvel(j,:,k,3),velzminus(j,:,k),velzplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++               end if
+                call undo_Wv(ny, velyminus(j,:,k), velzminus(j,:,k), velxminus(j,:,k),&
+                                 velyplus(j,:,k),velzplus(j,:,k),velxplus(j,:,k),&
+                                 g22(j,:,k), g23(j,:,k), g12(j,:,k), g33(j,:,k), g13(j,:,k), g11(j,:,k))
+@@ -373,15 +405,27 @@
+                     trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+             endif
+             if(evolve_mhd.ne.0) then
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
+-                    Bvecx(j,:,k),Bvecxminus(j,:,k),Bvecxplus(j,:,k),&
+-                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
+-                    Bvecy(j,:,k),Bvecyminus(j,:,k),Bvecyplus(j,:,k),&
+-                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
+-                    Bvecz(j,:,k),Bveczminus(j,:,k),Bveczplus(j,:,k),&
+-                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
++                      Bvec(j,:,k,1),Bvecxminus(j,:,k),Bvecxplus(j,:,k),&
++                      trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
++                      Bvec(j,:,k,2),Bvecyminus(j,:,k),Bvecyplus(j,:,k),&
++                      trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
++                      Bvec(j,:,k,3),Bveczminus(j,:,k),Bveczplus(j,:,k),&
++                      trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++               else
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
++                      lBvec(j,:,k,1),Bvecxminus(j,:,k),Bvecxplus(j,:,k),&
++                      trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
++                      lBvec(j,:,k,2),Bvecyminus(j,:,k),Bvecyplus(j,:,k),&
++                      trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
++                      lBvec(j,:,k,3),Bveczminus(j,:,k),Bveczplus(j,:,k),&
++                      trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++              end if
+             endif
+             if (evolve_entropy .ne. 0) then
+                call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
+@@ -453,25 +497,49 @@
+                  rho(j,k,:),rhominus(j,k,:),rhoplus(j,k,:),&
+                  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+             if (reconstruct_Wv.eq.0) then
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
+-                  velx(j,k,:),velxminus(j,k,:),velxplus(j,k,:),&
+-                  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
+-                  vely(j,k,:),velyminus(j,k,:),velyplus(j,k,:),&
+-                  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
+-                  velz(j,k,:),velzminus(j,k,:),velzplus(j,k,:),&
+-                  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
++                    vel(j,k,:,1),velxminus(j,k,:),velxplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
++                    vel(j,k,:,2),velyminus(j,k,:),velyplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
++                    vel(j,k,:,3),velzminus(j,k,:),velzplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++               else
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
++                      lBvec(j,:,k,1),Bvecxminus(j,:,k),Bvecxplus(j,:,k),&
++                      trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
++                      lBvec(j,:,k,2),Bvecyminus(j,:,k),Bvecyplus(j,:,k),&
++                      trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
++                      lBvec(j,:,k,3),Bveczminus(j,:,k),Bveczplus(j,:,k),&
++                      trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++               end if
+             else
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
+-                  w_lorentz(j,k,:)*velx(j,k,:),velxminus(j,k,:),velxplus(j,k,:),&
+-                  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
+-                  w_lorentz(j,k,:)*vely(j,k,:),velyminus(j,k,:),velyplus(j,k,:),&
+-                  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
+-                  w_lorentz(j,k,:)*velz(j,k,:),velzminus(j,k,:),velzplus(j,k,:),&
+-                  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
++                    w_lorentz(j,k,:)*vel(j,k,:,1),velxminus(j,k,:),velxplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
++                    w_lorentz(j,k,:)*vel(j,k,:,2),velyminus(j,k,:),velyplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
++                    w_lorentz(j,k,:)*vel(j,k,:,3),velzminus(j,k,:),velzplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++               else
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
++                    w_lorentz(j,k,:)*lvel(j,k,:,1),velxminus(j,k,:),velxplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
++                    w_lorentz(j,k,:)*lvel(j,k,:,2),velyminus(j,k,:),velyplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
++                    w_lorentz(j,k,:)*lvel(j,k,:,3),velzminus(j,k,:),velzplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++               end if
+                call undo_Wv(nz, velzminus(j,k,:), velxminus(j,k,:), velyminus(j,k,:),&
+                                 velzplus(j,k,:),velxplus(j,k,:),velyplus(j,k,:),&
+                                 g33(j,k,:), g13(j,k,:), g23(j,k,:), g11(j,k,:), g12(j,k,:),g22(j,k,:))
+@@ -490,15 +558,27 @@
+                     trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+             endif
+             if(evolve_mhd.ne.0) then
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
+-                    Bvecx(j,k,:),Bvecxminus(j,k,:),Bvecxplus(j,k,:),&
++               if (GRHydro_UseGeneralCoordinates(cctkGH).eq.0) then
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
++                      Bvec(j,k,:,1),Bvecxminus(j,k,:),Bvecxplus(j,k,:),&
++                      trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
++                      Bvec(j,k,:,2),Bvecyminus(j,k,:),Bvecyplus(j,k,:),&
++                      trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
++                      Bvec(j,k,:,3),Bveczminus(j,k,:),Bveczplus(j,k,:),&
++                      trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++               else
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
++                    w_lorentz(j,k,:)*lvel(j,k,:,1),velxminus(j,k,:),velxplus(j,k,:),&
+                     trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
+-                    Bvecy(j,k,:),Bvecyminus(j,k,:),Bvecyplus(j,k,:),&
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
++                    w_lorentz(j,k,:)*lvel(j,k,:,2),velyminus(j,k,:),velyplus(j,k,:),&
+                     trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
+-               call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
+-                    Bvecz(j,k,:),Bveczminus(j,k,:),Bveczplus(j,k,:),&
++                 call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
++                    w_lorentz(j,k,:)*lvel(j,k,:,3),velzminus(j,k,:),velzplus(j,k,:),&
+                     trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++               end if
+             endif
+             if (evolve_entropy .ne. 0) then
+                call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&

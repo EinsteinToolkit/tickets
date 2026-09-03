@@ -1,0 +1,104 @@
+From e2073549008da8d77eaed3e78e336e8be47ec200 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@caltech.edu>
+Date: Sun, 22 Apr 2012 19:13:42 -0700
+Subject: [PATCH] CarpetRegrid2: do not create temporary empty boxes in
+ snap_to_coarse
+
+we enlarge the box by a coarse step and shrink it at the end, which effectivey
+prevents any intermediate boxes to be empty
+---
+ Carpet/CarpetRegrid2/src/property.cc |   65 +++++++++++++++++++++++++++++++---
+ 1 file changed, 60 insertions(+), 5 deletions(-)
+
+diff --git a/Carpet/CarpetRegrid2/src/property.cc b/Carpet/CarpetRegrid2/src/property.cc
+index c8ad169..9bee6a6 100644
+--- a/Carpet/CarpetRegrid2/src/property.cc
++++ b/Carpet/CarpetRegrid2/src/property.cc
+@@ -256,6 +256,7 @@ namespace CarpetRegrid2 {
+            ibb = regions.at(rl).begin(); ibb != regions.at(rl).end(); ++ ibb)
+     {
+       ibbox const& bb = *ibb;
++      ibbox aa, cc;
+       
+       // We want to align the current level (without its buffer zones)
+       // with the next coarser level. Conceptually, we therefore
+@@ -267,17 +268,71 @@ namespace CarpetRegrid2 {
+       // the current grid, and expand by N points again. This sequence
+       // is correct for both vertex and cell centred grids, and N is
+       // determined by the number of buffer zones.
++      //
++      // In order to avoid producing intermediate empty boxes, expand by
++      // reffact to ensure that the box encloses at least two coarse points,
++      // then shrink by this amount at the end again.
+       
+       // N is the number of buffer zones modulo the refinement factor.
+       // We cannot shrink the domain (since we cannot shrink
+       // bboxsets). For alignment, only operations modulo the
+       // refinement factor are relevant.
+       
+-      snapped |= bb.
+-        expand(reffact-1 - buffers % reffact).
+-        contracted_for(cbase).
+-        expanded_for(base).
+-        expand(buffers % reffact);
++      aa = bb;
++      assert(not aa.empty());
++      aa = aa.expand(reffact + reffact-1 - buffers % reffact);
++      assert(not aa.empty());
++      aa = aa.contracted_for(cbase);
++      assert(not aa.empty());
++      aa = aa.expanded_for(base);
++      assert(not aa.empty());
++      aa = aa.expand(buffers % reffact - reffact);
++      assert(not aa.empty());
++
++      ivect lower = bb.lower();
++      ivect upper = bb.upper();
++      ivect stride = bb.stride();
++      // expand(reffact-1 - buffers % reffact)
++      {
++        lower -= (reffact-1 - buffers[0] % reffact) * stride;
++        upper += (reffact-1 - buffers[1] % reffact) * stride;
++      }
++      // contracted_for(cbase)
++      {
++        stride = cbase.stride();
++        ivect loff = ((lower - cbase.lower()) % stride + stride) % stride;
++        ivect uoff = ((upper - cbase.lower()) % stride + stride) % stride;
++        lower += (stride - loff) % stride; // go inwards
++        upper -= uoff;
++      }
++      // expanded_for(base)
++      {
++        stride = base.stride();
++        ivect loff = ((lower - base.lower()) % stride + stride) % stride;
++        ivect uoff = ((upper - base.lower()) % stride + stride) % stride;
++        lower -= loff; // go outwards
++        upper += (stride - uoff) % stride;
++      }
++      // expand(buffers % reffact);
++      {
++        lower -= (buffers[0] % reffact) * stride;
++        upper += (buffers[1] % reffact) * stride;
++      }
++      cc = ibbox(lower,upper,stride);
++      assert(not cc.empty());
++
++      if(aa != cc) {
++        cout << "Boxes differ: \n"
++             << "aa = " << aa << "\n"
++             << "cc = " << cc << "\n" 
++             << "bb = " << bb << "\n"
++             << "base = " << base << "\n"
++             << "cbase = " << cbase << "\n"
++             << "buffers = " << buffers << "\n"
++             << "reffact = " << reffact << "\n";
++      }
++
++      snapped |= cc;
+     }
+     
+     return snapped;
+-- 
+1.7.10.4
+

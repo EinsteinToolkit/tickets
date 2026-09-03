@@ -1,0 +1,63 @@
+From 9264dcd8a1b58b58ae32fb5a99c9fc6c4f6f4220 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Tue, 28 May 2013 21:43:40 -0700
+Subject: [PATCH 16/24] GRHydro: fix compiler warnings
+
+* remove unused variable
+
+* pacify compiler warning about possibly uninitialized value
+  not sure if one could somehow get the compiler to realize that the
+  condition on which access is based is false in both case, ie that
+  evolve_MHD is an effective constant.
+---
+ src/GRHydro_Reconstruct.F90 |    3 +++
+ src/GRHydro_Source.F90      |    5 ++---
+ 2 files changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/src/GRHydro_Reconstruct.F90 b/src/GRHydro_Reconstruct.F90
+index 56336f0..0fe2d37 100644
+--- a/src/GRHydro_Reconstruct.F90
++++ b/src/GRHydro_Reconstruct.F90
+@@ -108,6 +108,9 @@ subroutine Reconstruction(CCTK_ARGUMENTS)
+     else
+       local_min_tracer = 0.0d0
+     end if
++  else
++    ! pacify compiler warning about unintialized local_min_tracer
++    local_min_tracer = 1d42
+   end if
+ 
+ 
+diff --git a/src/GRHydro_Source.F90 b/src/GRHydro_Source.F90
+index be915ea..9a3c2f8 100644
+--- a/src/GRHydro_Source.F90
++++ b/src/GRHydro_Source.F90
+@@ -77,7 +77,6 @@ subroutine SourceTerms(CCTK_ARGUMENTS)
+   CCTK_REAL :: db_gaa, db_gab, db_gac, db_gbb, db_gbc, db_gcc
+   CCTK_REAL :: dc_gaa, dc_gab, dc_gac, dc_gbb, dc_gbc, dc_gcc
+   CCTK_REAL :: da, db, dc, ida, idb, idc
+-  CCTK_REAL :: psi4pt, da_psi4, db_psi4, dc_psi4
+   CCTK_REAL :: shiftshiftk, shiftka, shiftkb, shiftkc
+   CCTK_REAL :: sumTK
+   CCTK_REAL :: halfshiftdga, halfshiftdgb, halfshiftdgc
+@@ -186,7 +185,7 @@ subroutine SourceTerms(CCTK_ARGUMENTS)
+   
+   !$OMP PARALLEL DO PRIVATE(i, j, k, local_spatial_order,&
+   !$OMP localgaa,localgab,localgac,localgbb,localgbc,localgcc,&
+-  !$OMP psi4pt,det,sqrtdet,rhoenthalpyW2,shifta,shiftb,shiftc,&
++  !$OMP det,sqrtdet,rhoenthalpyW2,shifta,shiftb,shiftc,&
+   !$OMP da_betaa,da_betab,da_betac,db_betaa,db_betab,db_betac,&
+   !$OMP dc_betaa,dc_betab,dc_betac,velashift,velbshift,velcshift,&
+   !$OMP vlowa,vlowb,vlowc,t00,t0a,t0b,t0c,taa,tab,tac,tbb,tbc,tcc,&
+@@ -195,7 +194,7 @@ subroutine SourceTerms(CCTK_ARGUMENTS)
+   !$OMP da_gaa, da_gab, da_gac, da_gbb, da_gbc, da_gcc,&
+   !$OMP db_gaa, db_gab, db_gac, db_gbb, db_gbc, db_gcc,&
+   !$OMP dc_gaa, dc_gab, dc_gac, dc_gbb, dc_gbc, dc_gcc,&
+-  !$OMP da_psi4,db_psi4,dc_psi4,shiftshiftk,shiftka,shiftkb,shiftkc,&
++  !$OMP shiftshiftk,shiftka,shiftkb,shiftkc,&
+   !$OMP sumTK,halfshiftdga,halfshiftdgb,halfshiftdgc,&
+   !$OMP halfTdga,halfTdgb,halfTdgc,invalp,invalp2)
+   do k=1 + GRHydro_stencil,nc - GRHydro_stencil
+-- 
+1.7.10.4
+

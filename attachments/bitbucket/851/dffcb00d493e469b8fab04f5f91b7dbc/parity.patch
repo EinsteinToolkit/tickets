@@ -1,0 +1,41 @@
+Index: src/interpolate.c
+===================================================================
+--- src/interpolate.c	(revision 47)
++++ src/interpolate.c	(working copy)
+@@ -297,7 +297,7 @@
+         assert (groupname);
+         CCTK_VWarn (0, __LINE__, __FILE__, CCTK_THORNSTRING,
+                     "Illegal tensor type alias \"%s\" for group \"%s\"", 
+-                    tensortypealias, groupname);
++		    tensortypealias, groupname);
+         free (groupname);
+       }
+       
+@@ -434,23 +434,24 @@
+       /* Are there negative parities? */
+       needs_checking = 0;
+       for (dir=0; dir<3; ++dir) {
+-        check_dir[dir] = do_reflection[2*dir] && parities[dir] < 0;
++        check_dir[dir] = do_reflection[2*dir] && parities[dir]*tensorparity < 0;
+         needs_checking |= check_dir[dir];
+       }
++
+       
+       
+       
+       /* Loop over all points and unfold */
+       if (needs_checking) {
+         for (n=0; n<N_interp_points; ++n) {
+-          int parity = tensorparity;
++          int parity = 1; /* all types have their "natural" sign in the +++ octant */
+           /* Is the point outside the domain? */
+           for (dir=0; dir<3; ++dir) {
+             if (check_dir[dir]) {
+               CCTK_REAL const pos = ((CCTK_REAL const *)interp_coords[dir])[n];
+               if (pos < 0) {
+                 /* Reflect the tensor component */
+-                parity *= -1;
++                parity *= -1; /* we only get here if parities[dir]*tensorparity < 0 */
+               }
+             }
+           }

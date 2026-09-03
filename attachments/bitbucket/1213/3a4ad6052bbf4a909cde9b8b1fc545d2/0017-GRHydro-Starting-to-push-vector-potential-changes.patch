@@ -1,0 +1,509 @@
+From 3ed1c5af139eb579b704fbdef72fc8cb85e0d723 Mon Sep 17 00:00:00 2001
+From: Philipp Moesta <pmoesta@tapir.caltech.edu>
+Date: Mon, 10 Dec 2012 22:09:26 -0800
+Subject: [PATCH 17/25] GRHydro: Starting to push vector potential changes
+
+* incl boundary calls for Avec
+* disable call to BvecfromAvec from within loop, this one is a schedule
+  function call now.
+---
+ schedule.ccl               |   17 +--
+ src/GRHydro_Boundaries.F90 |  254 +++++++++++++++++++++-----------------------
+ src/GRHydro_Con2PrimAM.F90 |    3 -
+ 3 files changed, 131 insertions(+), 143 deletions(-)
+
+diff --git a/schedule.ccl b/schedule.ccl
+index 29ec81f..fa71107 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -1066,10 +1066,17 @@ if (CCTK_Equals(GRHydro_eos_type,"General"))
+     {
+       LANG: Fortran
+     } "Convert initial data given in primive variables to conserved variables - MHD version"
+-  } 
+-  else if(CCTK_Equals(Bvec_evolution_method,"GRHydro_Avec")) 
++  } else if(CCTK_Equals(Bvec_evolution_method,"GRHydro_Avec")) 
+   {
+-    schedule Conservative2PrimitiveAM IN HydroBase_Con2Prim AS Con2Prim IF GRHydro::execute_MoL_PostStep
++    schedule GRHydro_BvecfromAvec IN HydroBase_Con2Prim
++    {
++      LANG: Fortran
++    } "Populate Bvec from Avec"
++#   SCHEDULE group HydroBase_Boundaries AT CCTK_POSTINITIAL AFTER GRHydro_PoloidalMagFieldM AFTER GRHydro_BvecfromAvec
++    SCHEDULE group HydroBase_Boundaries IN HydroBase_Con2Prim AFTER GRHydro_BvecfromAvec
++    {
++    } "Call boundary conditions after magnetic field initial data setup"
++    schedule Conservative2PrimitiveAM IN HydroBase_Con2Prim AS Con2Prim AFTER HydroBase_Boundaries IF GRHydro::execute_MoL_PostStep
+     {
+       LANG: Fortran
+     } "Convert back to primitive variables (general) - MHD with Avec version"
+@@ -1078,9 +1085,7 @@ if (CCTK_Equals(GRHydro_eos_type,"General"))
+     {
+       LANG: Fortran
+     } "Convert initial data given in primive variables to conserved variables - MHD with Avec version"
+-  }
+-  else
+-  {
++  } else {
+     schedule Conservative2Primitive IN HydroBase_Con2Prim AS Con2Prim IF GRHydro::execute_MoL_PostStep
+     {
+       LANG: Fortran
+diff --git a/src/GRHydro_Boundaries.F90 b/src/GRHydro_Boundaries.F90
+index e9def4a..d864a10 100644
+--- a/src/GRHydro_Boundaries.F90
++++ b/src/GRHydro_Boundaries.F90
+@@ -85,11 +85,6 @@ subroutine GRHydro_InitSymBound(CCTK_ARGUMENTS)
+       call SetCartSymGN(ierr, cctkGH, sym, "HydroBase::entropy")
+     !endif
+   endif
+-
+-  if(evolve_entropy.ne.0) then
+-      call SetCartSymGN(ierr, cctkGH, sym, "HydroBase::entropy")
+-      call SetCartSymGN(ierr, cctkGH, sym, "GRHydro::entropycons")
+-  endif
+   
+   call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::atmosphere_mask_real")
+   
+@@ -99,9 +94,9 @@ subroutine GRHydro_InitSymBound(CCTK_ARGUMENTS)
+   
+   !if (sync_conserved_only .eq. 0) then
+       if (general_coordinates .ne. 0) then
+-        call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::lvel[0]")
++	 call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::lvel[0]")
+       else
+-        call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::vel[0]")
++	 call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::vel[0]")
+       endif
+   !endif
+   call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::scon[0]")
+@@ -118,15 +113,15 @@ subroutine GRHydro_InitSymBound(CCTK_ARGUMENTS)
+   
+   !if (sync_conserved_only .eq. 0) then
+       if (general_coordinates .ne. 0) then
+-         call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::lvel[1]")
++	 call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::lvel[1]")
+       else
+-         call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::vel[1]")
++	 call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::vel[1]")
+       endif
+   !endif
+   call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::scon[1]")
+   if(evolve_mhd.ne.0) then
+      !if (sync_conserved_only .eq. 0) then
+-     call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::Bvec[1]")
++	 call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::Bvec[1]")
+      !endif
+      call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::Bcons[1]")
+   endif
+@@ -137,9 +132,9 @@ subroutine GRHydro_InitSymBound(CCTK_ARGUMENTS)
+   
+   !if (sync_conserved_only .eq. 0) then
+       if (general_coordinates .ne. 0) then
+-        call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::lvel[2]")
++	 call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::lvel[2]")
+       else
+-        call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::vel[2]")
++	 call SetCartSymVN(ierr, cctkGH, sym, "HydroBase::vel[2]")
+       endif
+   !endif
+   call SetCartSymVN(ierr, cctkGH, sym, "GRHydro::scon[2]")
+@@ -206,31 +201,31 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+          "GRHydro::scon", "Flat")
+     if (sync_conserved_only .eq. 0) then
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-           "HydroBase::w_lorentz", "Flat")
++	    "HydroBase::w_lorentz", "Flat")
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-           "HydroBase::rho", "Flat")
++	    "HydroBase::rho", "Flat")
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-           "HydroBase::press", "Flat")
++	    "HydroBase::press", "Flat")
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-           "HydroBase::eps", "Flat")
++	    "HydroBase::eps", "Flat")
+       if (general_coordinates .ne. 0) then
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "GRHydro::lvel", "Flat")
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "GRHydro::lvel", "Flat")
+       else
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "HydroBase::vel", "Flat")
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "HydroBase::vel", "Flat")
+       endif
+     endif
+     if(evolve_mhd.ne.0) then
+-      if (sync_conserved_only .eq. 0) then
+-        if (general_coordinates .ne. 0) then
+-          ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-               "GRHydro::lBvec", "Flat")
+-        else
+-          ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-               "HydroBase::Bvec", "Flat")
+-        endif
+-      endif
++       if (sync_conserved_only .eq. 0) then
++	 if (general_coordinates .ne. 0) then
++	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++		  "GRHydro::lBvec", "Flat")
++	 else
++	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++		  "HydroBase::Bvec", "Flat")
++	 endif
++       endif
+        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+             "GRHydro::Bcons", "Flat")
+        if(clean_divergence.ne.0) then
+@@ -239,10 +234,22 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+        endif
+     endif
+ 
++    if (CCTK_Equals(Bvec_evolution_method, "GRHydro_Avec")) then 
++      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++             "HydroBase::Avec", "Flat")
++      if (general_coordinates .ne. 0) then
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++               "GRHydro::lBvec", "Flat")
++      else
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++               "HydroBase::Bvec", "Flat")
++      endif
++    endif 
++
+     if(evolve_tracer.ne.0) then 
+       if (sync_conserved_only .eq. 0) then
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "GRHydro::GRHydro_tracers", "Flat")
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "GRHydro::GRHydro_tracers", "Flat")
+       endif
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+             "GRHydro::GRHydro_cons_tracers", "Flat")
+@@ -250,8 +257,8 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+ 
+     if(evolve_y_e.ne.0) then
+       if (sync_conserved_only .eq. 0) then
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "HydroBase::Y_e", "Flat")
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "HydroBase::Y_e", "Flat")
+       endif
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+             "GRHydro::Y_e_con", "Flat")
+@@ -259,21 +266,13 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+ 
+     if(evolve_temper.ne.0) then
+       if (sync_conserved_only .eq. 0) then
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "HydroBase::temperature", "Flat")
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "HydroBase::entropy", "Flat")
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "HydroBase::temperature", "Flat")
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "HydroBase::entropy", "Flat")
+       endif
+     endif
+ 
+-    if(evolve_entropy.ne.0) then
+-      if (sync_conserved_only .eq. 0) then
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "HydroBase::entropy", "Flat")
+-      endif
+-      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-           "GRHydro::entropycons", "Flat")
+-    endif
+ 
+   endif
+ 
+@@ -287,44 +286,56 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+     
+     if (sync_conserved_only .eq. 0) then
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-           "HydroBase::w_lorentz", "None")
++	    "HydroBase::w_lorentz", "None")
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-           "HydroBase::rho", "None")
++	    "HydroBase::rho", "None")
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-           "HydroBase::press", "None")
++	    "HydroBase::press", "None")
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-           "HydroBase::eps", "None")
++	    "HydroBase::eps", "None")
+       if (general_coordinates .ne. 0) then
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "GRHydro::lvel", "None")
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "GRHydro::lvel", "None")
+       else
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "HydroBase::vel", "None")
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "HydroBase::vel", "None")
+       endif
+     endif
+     
+     if(evolve_mhd.ne.0) then
+-      if (sync_conserved_only .eq. 0) then
+-        if (general_coordinates .ne. 0) then
+-          ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-               "GRHydro::lBvec", "None")
+-        else
++       if (sync_conserved_only .eq. 0) then
++	 if (general_coordinates .ne. 0) then
++	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++		  "GRHydro::lBvec", "None")
++	 else
++	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++		  "HydroBase::Bvec", "None")
++	 endif
++       endif
++       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++            "GRHydro::Bcons", "None")
++       if(clean_divergence.ne.0) then
+           ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-               "HydroBase::Bvec", "None")
+-        endif
+-      endif
++               "GRHydro::psidc", "None")
++       endif
++    endif
++
++    if (CCTK_Equals(Bvec_evolution_method, "GRHydro_Avec")) then 
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-           "GRHydro::Bcons", "None")
+-      if(clean_divergence.ne.0) then
+-         ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-              "GRHydro::psidc", "None")
++             "HydroBase::Avec", "None")
++      if (general_coordinates .ne. 0) then
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++               "GRHydro::lBvec", "Flat")
++      else
++        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++               "HydroBase::Bvec", "Flat")
+       endif
+-    endif
++    endif 
+ 
+     if(evolve_tracer.ne.0) then 
+       if (sync_conserved_only .eq. 0) then 
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "GRHydro::GRHydro_tracers", "None")
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "GRHydro::GRHydro_tracers", "None")
+       endif
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+             "GRHydro::GRHydro_cons_tracers", "None")
+@@ -332,8 +343,8 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+ 
+     if(evolve_y_e.ne.0) then
+       if (sync_conserved_only .eq. 0) then
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "HydroBase::Y_e", "None")
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "HydroBase::Y_e", "None")
+       endif
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+             "GRHydro::Y_e_con", "None")
+@@ -341,22 +352,13 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+ 
+     if(evolve_temper.ne.0) then
+       if (sync_conserved_only .eq. 0) then
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "HydroBase::temperature", "None")
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "HydroBase::entropy", "None")
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "HydroBase::temperature", "None")
++	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++	       "HydroBase::entropy", "None")
+       endif
+     endif
+ 
+-    if(evolve_entropy.ne.0) then
+-      if (sync_conserved_only .eq. 0) then
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "HydroBase::entropy", "None")
+-      endif
+-      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-           "GRHydro::entropycons", "None")
+-    endif
+-
+   endif
+ 
+   if (CCTK_EQUALS(bound,"scalar")) then
+@@ -415,13 +417,13 @@ subroutine GRHydro_SelectPrimitiveInitialGuessesBoundaries(CCTK_ARGUMENTS)
+              "HydroBase::vel", "Flat")
+     endif
+     if(evolve_mhd.ne.0) then
+-      if (general_coordinates .ne. 0) then
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "GRHydro::lBvec", "Flat")
+-      else
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "HydroBase::Bvec", "Flat")
+-      endif
++	 if (general_coordinates .ne. 0) then
++	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++		  "GRHydro::lBvec", "Flat")
++	 else
++	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++		  "HydroBase::Bvec", "Flat")
++	 endif
+     endif
+ 
+     !if(evolve_tracer.ne.0) then 
+@@ -441,10 +443,6 @@ subroutine GRHydro_SelectPrimitiveInitialGuessesBoundaries(CCTK_ARGUMENTS)
+        !      "HydroBase::entropy", "Flat")
+     endif
+ 
+-    if(evolve_entropy.ne.0) then
+-       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "HydroBase::entropy", "Flat")
+-    endif
+ 
+   endif
+ 
+@@ -466,13 +464,14 @@ subroutine GRHydro_SelectPrimitiveInitialGuessesBoundaries(CCTK_ARGUMENTS)
+     endif
+     
+     if(evolve_mhd.ne.0) then
+-      if (general_coordinates .ne. 0) then
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "GRHydro::lBvec", "None")
+-      else
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "HydroBase::Bvec", "None")
+-      endif
++	 if (general_coordinates .ne. 0) then
++	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++		  "GRHydro::lBvec", "None")
++	 else
++	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++		  "HydroBase::Bvec", "None")
++	 endif
++       
+     endif
+ 
+     !if(evolve_tracer.ne.0) then 
+@@ -494,11 +493,6 @@ subroutine GRHydro_SelectPrimitiveInitialGuessesBoundaries(CCTK_ARGUMENTS)
+        !      "HydroBase::entropy", "None")
+     endif
+ 
+-    if(evolve_entropy.ne.0) then
+-       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "HydroBase::entropy", "None")
+-    endif
+-
+   end if
+ 
+   if (CCTK_EQUALS(bound,"scalar")) then
+@@ -558,25 +552,24 @@ subroutine GRHydro_SelectPrimitiveBoundaries(CCTK_ARGUMENTS)
+        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+              "HydroBase::vel", "Flat")
+     endif
+-
+     if(evolve_mhd.ne.0) then
+-      if (general_coordinates .ne. 0) then
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "GRHydro::lBvec", "Flat")
+-      else
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "HydroBase::Bvec", "Flat")
+-      endif
++	 if (general_coordinates .ne. 0) then
++	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++		  "GRHydro::lBvec", "Flat")
++	 else
++	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++		  "HydroBase::Bvec", "Flat")
++	 endif
+     endif
+ 
+     if(evolve_tracer.ne.0) then 
+-      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-           "GRHydro::GRHydro_tracers", "Flat")
++    	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++    	       "GRHydro::GRHydro_tracers", "Flat")
+     endif
+ 
+     if(evolve_y_e.ne.0) then
+-      ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-           "HydroBase::Y_e", "Flat")
++    	 ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++    	       "HydroBase::Y_e", "Flat")
+     endif
+ 
+     if(evolve_temper.ne.0) then
+@@ -586,10 +579,6 @@ subroutine GRHydro_SelectPrimitiveBoundaries(CCTK_ARGUMENTS)
+              "HydroBase::entropy", "Flat")
+     endif
+ 
+-    if(evolve_entropy.ne.0) then
+-       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "HydroBase::entropy", "Flat")
+-    endif
+ 
+   endif
+ 
+@@ -611,18 +600,20 @@ subroutine GRHydro_SelectPrimitiveBoundaries(CCTK_ARGUMENTS)
+     endif
+     
+     if(evolve_mhd.ne.0) then
+-      if (general_coordinates .ne. 0) then
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "GRHydro::lBvec", "None")
+-      else
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "HydroBase::Bvec", "None")
+-      endif
++	 if (general_coordinates .ne. 0) then
++	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++		  "GRHydro::lBvec", "None")
++	 else
++	    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++		  "HydroBase::Bvec", "None")
++	 endif
++       
+     endif
+ 
+     if(evolve_tracer.ne.0) then 
+        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+              "GRHydro::GRHydro_tracers", "None")
++      
+     endif
+ 
+     if(evolve_y_e.ne.0) then
+@@ -638,11 +629,6 @@ subroutine GRHydro_SelectPrimitiveBoundaries(CCTK_ARGUMENTS)
+              "HydroBase::entropy", "None")
+     endif
+ 
+-    if(evolve_entropy.ne.0) then
+-       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-             "HydroBase::entropy", "None")
+-    endif
+-
+   end if
+ 
+   if (CCTK_EQUALS(bound,"scalar")) then
+diff --git a/src/GRHydro_Con2PrimAM.F90 b/src/GRHydro_Con2PrimAM.F90
+index 50d701c..788e3b8 100644
+--- a/src/GRHydro_Con2PrimAM.F90
++++ b/src/GRHydro_Con2PrimAM.F90
+@@ -102,9 +102,6 @@ subroutine Conservative2PrimitiveAM(CCTK_ARGUMENTS)
+   !as conformally flat only for con2prim inversion purposes.
+   posdef = .true. 
+  
+-  !! Get Bvec from Avec before rest, so we can reuse pointwise MHD recovery
+-  call GRHydro_BvecfromAvec(CCTK_PASS_FTOF)
+-
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+     g11 => gaa
+     g12 => gab
+-- 
+1.7.10.4
+

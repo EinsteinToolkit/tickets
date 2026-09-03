@@ -1,0 +1,38 @@
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 1553)
++++ param.ccl	(working copy)
+@@ -20,6 +20,7 @@
+ # note our access is read-only
+ shares: ADMBase
+ USES KEYWORD metric_type
++USES CCTK_INT metric_timelevels
+ 
+ # we need to look at SpaceMask::use_mask in order to find out about the
+ # excision region
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 1553)
++++ schedule.ccl	(working copy)
+@@ -2,8 +2,20 @@
+ # $Header$
+ 
+ storage: ah_radius ah_origin ah_centroid ah_flags
+-storage: ahmask[3]
+ 
++if (metric_timelevels == 1)
++{
++  storage: ahmask[1]
++}
++else if (metric_timelevels == 2)
++{
++  storage: ahmask[2]
++}
++else if (metric_timelevels == 3)
++{
++  storage: ahmask[3]
++}
++
+ #
+ # setup
+ #

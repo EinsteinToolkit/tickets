@@ -1,0 +1,72 @@
+From 7f6badb08eba30459845141fc09468a9cb06d270 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Thu, 28 Nov 2013 14:35:53 +0100
+Subject: [PATCH] Add parameters to skip MoL_PostStep and
+ MoL_PseudoEvolutionBoundaries in PostRestrict
+
+---
+ param.ccl    | 12 ++++++++++++
+ schedule.ccl | 14 ++++++++++----
+ 2 files changed, 22 insertions(+), 4 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index cce525f..fef726e 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -171,7 +171,19 @@ BOOLEAN set_ID_boundaries "Should boundaries be overwritten (via synchronization
+ {
+ } "yes"
+ 
++# This parameter can be set to "no" for performance reasons, as long
++# as symmetry and outer boundaries do not overlap with refined
++# regions, and the user understands the implications.
++BOOLEAN call_mol_poststep_in_postrestrict "Is it necessary to recompute quantities using MoL_PostStep after restriction?"
++{
++} "yes"
+ 
++# This parameter can be set to "no" for performance reasons, as long
++# as symmetry and outer boundaries do not overlap with refined
++# regions, and the user understands the implications.
++BOOLEAN call_mol_pseudoevolutionboundaries_in_postrestrict "Is it necessary to set boundary conditions for pseudo-evolved variables after restriction?"
++{
++} "yes"
+ 
+ # The default for this parameter corresponds to generic RK2
+ STRING Generic_Method_Descriptor "A string used to create a table containing the description of the generic method"
+diff --git a/schedule.ccl b/schedule.ccl
+index e08aa3c..1d30c77 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -692,9 +692,12 @@ if (set_ID_boundaries)
+   } "Ensure that everything is correct after restriction"
+ }
+ 
+-schedule GROUP MoL_PostStep AT PostRestrict
++if (call_mol_poststep_in_postrestrict)
+ {
+-} "Ensure that everything is correct after restriction"
++  schedule GROUP MoL_PostStep AT PostRestrict
++  {
++  } "Ensure that everything is correct after restriction"
++}
+ 
+ ##############################################################
+ ###  Schedule the PostStep parts after recovery            ###
+@@ -747,9 +750,12 @@ schedule GROUP MoL_PseudoEvolutionBoundaries AT PostRestrictInitial AFTER MoL_Po
+ {
+ } "Apply boundary conditions to pseudo-evolved quantities"
+ 
+-schedule GROUP MoL_PseudoEvolutionBoundaries AT PostRestrict AFTER MoL_PostStep
++if (call_mol_pseudoevolutionboundaries_in_postrestrict)
+ {
+-} "Apply boundary conditions to pseudo-evolved quantities"
++  schedule GROUP MoL_PseudoEvolutionBoundaries AT PostRestrict AFTER MoL_PostStep
++  {
++  } "Apply boundary conditions to pseudo-evolved quantities"
++}
+ 
+ #################################################
+ ###  Final internal MoL stuff; decrement the  ###
+-- 
+1.8.4.3
+

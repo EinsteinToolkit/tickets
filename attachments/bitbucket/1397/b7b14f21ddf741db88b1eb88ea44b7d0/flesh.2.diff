@@ -1,0 +1,23 @@
+Index: src/main/Parameters.c
+===================================================================
+--- src/main/Parameters.c	(revision 5029)
++++ src/main/Parameters.c	(working copy)
+@@ -603,12 +603,13 @@
+       {
+         if (strcmp (old_value, value))
+         {
+-          CCTK_VWarn (2, __LINE__, __FILE__, "Cactus",
+-                      "CCTK_ParameterSet: Non-steerable parameter '%s::%s' is "
+-                      "not set from the parameter file but recovered from the "
+-                      "checkpoint file",
++          CCTK_VWarn (1, __LINE__, __FILE__, "Cactus",
++                      "CCTK_ParameterSet: Non-steerable parameter '%s::%s' "
++                      "cannot be set from the parameter file but is recovered "
++                      "from the checkpoint file",
+                       thorn, name);
+-          retval = ParameterSet (param, value);
++          ParameterSet (param, value);
++          retval = -10;
+         }
+         else
+         {

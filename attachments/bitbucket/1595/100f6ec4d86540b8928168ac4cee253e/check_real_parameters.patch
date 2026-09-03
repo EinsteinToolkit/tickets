@@ -1,0 +1,25 @@
+Index: lib/sbin/parameter_parser.pl
+===================================================================
+--- lib/sbin/parameter_parser.pl	(revision 5111)
++++ lib/sbin/parameter_parser.pl	(working copy)
+@@ -390,6 +390,20 @@
+                          '', __LINE__, __FILE__);
+             }
+ 
++            # check real parameter ranges
++            # regex taken from piraha's param.peg
++            my $real = '[+\-]?([0-9]+\.[0-9]+|[0-9]+\.|\.[0-9]+|[0-9]+)([eEdD][+\-]?[+\-]?[0-9]+|)';
++            # this parses the currently occuring ranges in the ET:
++            # $new_ranges eq '' || $new_ranges =~ /^["(]?(\*|[\[\(]?$real)?,?:(\*|${real}[\]\)]?)?(:$real)?[)"]?$/)) {
++            if ($type eq 'REAL' && ! (
++                $new_ranges eq '*' ||
++                $new_ranges =~ /^$real$/ ||
++                $new_ranges =~ /^["(]?(\*|\(?$real)?:(\*|$real\)?)?(:$real)?[)"]?$/)) {
++              &CST_error(0, "Invalid range '$new_ranges' for real " .
++                         "parameter '$variable' of thorn '$thorn'",
++                         '', __LINE__, __FILE__);
++            }
++
+             $parameter_db{"\U$thorn $variable\E range $parameter_db{\"\U$thorn $variable\E ranges\"} range"} = $new_ranges;
+ 
+             # Check description

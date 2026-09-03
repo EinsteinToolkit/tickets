@@ -1,0 +1,25 @@
+From a88becceae8e6f3e4bf622d2fc95ee8ceceb9686 Mon Sep 17 00:00:00 2001
+From: Philipp Moesta <pmoesta@tapir.caltech.edu>
+Date: Wed, 4 Apr 2012 18:16:58 -0400
+Subject: [PATCH 03/17] Fix a sign error in the poloidal mag field idata
+
+---
+ src/GRHydro_PoloidalMagFieldM.F90 |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/GRHydro_PoloidalMagFieldM.F90 b/src/GRHydro_PoloidalMagFieldM.F90
+index 38763ed..df74d75 100644
+--- a/src/GRHydro_PoloidalMagFieldM.F90
++++ b/src/GRHydro_PoloidalMagFieldM.F90
+@@ -108,7 +108,7 @@ subroutine GRHydro_PoloidalMagFieldM(CCTK_ARGUMENTS)
+               ( rhofac*press_dz/delPcut - poloidal_n_p*rho_dz/poloidal_rho_max )
+ 
+      Ax_dy = -Aphi - y(i,j,k)*Aphi_dy
+-     Ax_dz = y(i,j,k)*Aphi_dz
++     Ax_dz = -y(i,j,k)*Aphi_dz
+      Ay_dx = Aphi + x(i,j,k)*Aphi_dx
+      Ay_dz = x(i,j,k)*Aphi_dz
+ 
+-- 
+1.7.10.4
+

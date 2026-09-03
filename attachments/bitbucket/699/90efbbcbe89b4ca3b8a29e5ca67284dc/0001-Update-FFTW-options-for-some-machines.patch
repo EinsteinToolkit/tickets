@@ -1,0 +1,80 @@
+From ef8d0b08c3a79b8d1dd173db1258cc58e993f7c4 Mon Sep 17 00:00:00 2001
+From: Barry Wardell <barry.wardell@gmail.com>
+Date: Tue, 13 Dec 2011 11:07:35 +0000
+Subject: [PATCH 1/3] Update FFTW options for some machines.
+
+* The FFTW_DIR option should be FFTW3_DIR.
+* Remove the unused FFTW_LIBS option.
+---
+ mdb/optionlists/damiana.cfg            |    2 +-
+ mdb/optionlists/datura.cfg             |    2 +-
+ mdb/optionlists/macos-macports-gcc.cfg |    5 ++---
+ mdb/optionlists/sl6.cfg                |    3 +--
+ 4 files changed, 5 insertions(+), 7 deletions(-)
+
+diff --git a/mdb/optionlists/damiana.cfg b/mdb/optionlists/damiana.cfg
+index 68aabce..a4afc88 100644
+--- a/mdb/optionlists/damiana.cfg
++++ b/mdb/optionlists/damiana.cfg
+@@ -78,7 +78,7 @@ CXX_WARN_FLAGS =
+ F77_WARN_FLAGS = 
+ F90_WARN_FLAGS = 
+ 
+-
++FFTW3_DIR = /cluster/fftw/SL6/3.3-gcc/double
+ 
+ BLAS_DIR  = /cluster/Compiler/Intel/11.1.072/mkl/lib/em64t
+ BLAS_LIBS = -Wl,--start-group mkl_intel_lp64 mkl_intel_thread mkl_core -Wl,--end-group   iomp5   pthread
+diff --git a/mdb/optionlists/datura.cfg b/mdb/optionlists/datura.cfg
+index d19be6c..f5b99a6 100644
+--- a/mdb/optionlists/datura.cfg
++++ b/mdb/optionlists/datura.cfg
+@@ -78,7 +78,7 @@ CXX_WARN_FLAGS =
+ F77_WARN_FLAGS = 
+ F90_WARN_FLAGS = 
+ 
+-
++FFTW3_DIR = /cluster/fftw/SL6/3.3-gcc/double
+ 
+ BLAS_DIR  = /cluster/Compiler/Intel/11.1.072/mkl/lib/em64t
+ BLAS_LIBS = -Wl,--start-group mkl_intel_lp64 mkl_intel_thread mkl_core -Wl,--end-group   iomp5   pthread
+diff --git a/mdb/optionlists/macos-macports-gcc.cfg b/mdb/optionlists/macos-macports-gcc.cfg
+index 4df2da2..5cac6d3 100644
+--- a/mdb/optionlists/macos-macports-gcc.cfg
++++ b/mdb/optionlists/macos-macports-gcc.cfg
+@@ -1,7 +1,7 @@
+ # macos-mp-gcc
+ #
+ # Assumes the following are installed by macports:
+-# szip, gcc45, fftw, gsl, openssl, hdf5-18 +gcc45 -universal, zlib
++# szip, gcc45, fftw-3, gsl, openssl, hdf5-18 +gcc45 -universal, zlib
+ 
+ VERSION = 2010-03-04
+ 
+@@ -64,8 +64,7 @@ F90_WARN_FLAGS = -warn all
+ BLAS_DIR  = /System/Library/Frameworks/vecLib.framework
+ BLAS_LIBS =
+ 
+-FFTW_DIR  = /opt/local
+-FFTW_LIBS = drfftw dfftw m
++FFTW3_DIR  = /opt/local
+ 
+ GSL_DIR = /opt/local
+ 
+diff --git a/mdb/optionlists/sl6.cfg b/mdb/optionlists/sl6.cfg
+index 816144a..dc495fd 100644
+--- a/mdb/optionlists/sl6.cfg
++++ b/mdb/optionlists/sl6.cfg
+@@ -64,8 +64,7 @@ F90_WARN_FLAGS = -warn all
+ BLAS_DIR  = /usr/lib64
+ BLAS_LIBS =
+ 
+-FFTW_DIR  = /usr
+-FFTW_LIBS = drfftw dfftw m
++FFTW3_DIR  = /usr
+ 
+ GSL_DIR = /usr
+ 
+-- 
+1.7.7.4
+

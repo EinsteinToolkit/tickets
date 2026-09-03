@@ -1,0 +1,29 @@
+From ee050a9defb93b36dd8f5d98b56a53da6a94b17b Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Fri, 15 Feb 2013 19:47:47 -0800
+Subject: [PATCH 03/12] GRHydro_InitDat: clear psidc and c2p_failed in ID
+ routine
+
+this is mostly important when we freeze the evolution afterwards
+---
+ src/GRHydro_BondiM.c |    4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/GRHydro_BondiM.c b/src/GRHydro_BondiM.c
+index c40c507..9dc4224 100644
+--- a/src/GRHydro_BondiM.c
++++ b/src/GRHydro_BondiM.c
+@@ -1267,6 +1267,10 @@ static void GRHydro_BondiM_Internal(CCTK_ARGUMENTS, CCTK_REAL range_min, CCTK_RE
+                  eps[i],&press[i],
+                  Bvecx(i),Bvecy(i),Bvecz(i),
+                  &w_lorentz[i]);
++
++    GRHydro_C2P_failed[i] = 0.;
++    if(psidc)
++      psidc[i] = 0.;
+                  
+   }
+ 
+-- 
+1.7.10.4
+

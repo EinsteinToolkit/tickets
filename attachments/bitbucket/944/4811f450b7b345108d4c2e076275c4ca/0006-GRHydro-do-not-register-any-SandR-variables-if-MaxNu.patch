@@ -1,0 +1,47 @@
+From 26f8b69d071225459640483eeea3dab18d5e0b25 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Thu, 19 Apr 2012 10:51:30 -0700
+Subject: [PATCH 06/13] GRHydro: do not register any SandR variables if
+ MaxNumSandR ==0
+
+  this is useful when running with a spacetime code that will register
+  the ADMBase variables as constrained anyway, so one can save the
+  memory used for SandR scratch space.
+---
+ src/GRHydro_RegisterVars.cc |   12 ++++++++----
+ 1 file changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/src/GRHydro_RegisterVars.cc b/src/GRHydro_RegisterVars.cc
+index 1f6ab78..bb89899 100644
+--- a/src/GRHydro_RegisterVars.cc
++++ b/src/GRHydro_RegisterVars.cc
+@@ -93,9 +93,11 @@ extern "C" void GRHydro_Register(CCTK_ARGUMENTS)
+       CCTK_WARN(0, "Don't recognize the type of EOS!");
+ 
+     // lapse, metric, curv
+-    register_saveandrestore("admbase::lapse");
+-    register_saveandrestore("admbase::metric");
+-    register_saveandrestore("admbase::curv");
++    if(GRHydro_MaxNumSandRVars != 0) { // hack to save some memory since we "know" that someone else will register these as constrained
++      register_saveandrestore("admbase::lapse");
++      register_saveandrestore("admbase::metric");
++      register_saveandrestore("admbase::curv");
++    }
+ 
+     // shift
+     if (!CCTK_EQUALS(initial_shift, "none"))
+@@ -106,8 +108,10 @@ extern "C" void GRHydro_Register(CCTK_ARGUMENTS)
+         register_evolved("GRHydro::GRHydro_coords", 
+ 			 "GRHydro::GRHydro_coords_rhs");
+       }
+-      else
++      else if(GRHydro_MaxNumSandRVars != 0) // hack to save some memory since we "know" that someone else will register these as constrained
++      { 
+         register_saveandrestore("admbase::shift");
++      }
+     }
+ 
+     // tracer
+-- 
+1.7.10
+

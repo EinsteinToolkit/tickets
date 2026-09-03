@@ -1,0 +1,70 @@
+From 57f364be9c4f6d487d833b09abd65c808c8cbdf9 Mon Sep 17 00:00:00 2001
+From: Barry Wardell <barry.wardell@gmail.com>
+Date: Sun, 10 Jul 2011 16:19:13 +0200
+Subject: [PATCH] Fix sim sync in cases where the remote machine has a
+ pre-3.0.0 version of rsync.
+
+---
+ etc/filter.prersync3.rules |    2 +-
+ lib/sim-sync.py            |   13 ++++++++++---
+ 2 files changed, 11 insertions(+), 4 deletions(-)
+
+diff --git a/etc/filter.prersync3.rules b/etc/filter.prersync3.rules
+index 6a6a761..79398a1 100644
+--- a/etc/filter.prersync3.rules
++++ b/etc/filter.prersync3.rules
+@@ -7,12 +7,12 @@
+ : .rsync.rules
+ 
+ # Files to exclude
+--C
+ - _darcs
+ - .hg
+ - .git
+ - doxygen
+ - .DS_Store
++- .svn
+ 
+ # Compiled simfactory python files
+ - *.pyc
+diff --git a/lib/sim-sync.py b/lib/sim-sync.py
+index 8d628a4..23ead4f 100755
+--- a/lib/sim-sync.py
++++ b/lib/sim-sync.py
+@@ -55,7 +55,7 @@ def RsyncVersion(rsyncInfo):
+     (major, minor, revision) = re.match('rsync  version (\d).(\d).(\d)', versionText).groups()
+     return (int(major), int(minor), int(revision))
+ 
+-def CompileCommand(machineName, rsyncInfo, paths):
++def CompileCommand(machineName, rsyncInfo, paths, oldRsync=False):
+   
+     
+     global localMachineName
+@@ -141,8 +141,8 @@ def CompileCommand(machineName, rsyncInfo, paths):
+                     '--delete', '--stats', '--compress']
+ 
+     # We need to use a different rules file for pre 3.0.0 versions of rsync
+-    if rsyncversion[0] < 3:
+-        warning('Old rsync version (%s.%s.%s) in use. Upgrade to at least 3.0.0 for best support.' % rsyncversion)
++    if rsyncversion[0] < 3 or oldRsync:
++        warning('Old rsync version in use (local version is %s.%s.%s). Upgrade to at least 3.0.0 both locally and remotely for best performance.' % rsyncversion)
+         rsyncoptions.append('--filter \'merge simfactory/etc/filter.prersync3.rules\'')
+     else:
+         rsyncoptions.append('--filter \'merge simfactory/etc/filter.rules\'')
+@@ -250,6 +250,13 @@ def main():
+         cmd = CompileCommand(m, rsyncInfo, pathList)
+         print cmd
+         ret = simlib.ExecuteCommand(cmd)
++
++        # If we get a protocol error, try again with less modern rsync options
++        if ret == 512:
++            cmd = CompileCommand(m, rsyncInfo, pathList, True)
++            print cmd
++            ret = simlib.ExecuteCommand(cmd)
++
+         if ret != 0:
+             errors = errors + 1
+             display("\nError while syncing to %s." % m)
+-- 
+1.7.5.1
+

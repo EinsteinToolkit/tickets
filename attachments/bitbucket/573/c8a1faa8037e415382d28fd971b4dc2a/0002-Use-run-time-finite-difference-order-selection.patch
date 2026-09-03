@@ -1,0 +1,66 @@
+From 118b9c185c476e61eae453c81eb89eabdc206ebe Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Fri, 23 Sep 2011 23:18:27 +0200
+Subject: [PATCH 2/3] Use run-time finite difference order selection
+
+Keep the old method for backwards compatibility for now
+---
+ m/WeylScal4.m |   21 +++++++++++++++++++--
+ 1 files changed, 19 insertions(+), 2 deletions(-)
+
+diff --git a/m/WeylScal4.m b/m/WeylScal4.m
+index ed8bf4e..0ef79ab 100644
+--- a/m/WeylScal4.m
++++ b/m/WeylScal4.m
+@@ -25,6 +25,11 @@ derivatives =
+   PDstandard4th[i_, j_] -> StandardCenteredDifferenceOperator[1,2,i] *
+     StandardCenteredDifferenceOperator[1,2,j],
+ 
++  PDstandard[i_] -> StandardCenteredDifferenceOperator[1,fdOrder/2,i],
++  PDstandard[i_, i_] -> StandardCenteredDifferenceOperator[2,fdOrder/2,i],
++  PDstandard[i_, j_] -> StandardCenteredDifferenceOperator[1,fdOrder/2,i] *
++    StandardCenteredDifferenceOperator[1,fdOrder/2,j],
++
+   PDplus[i_] -> DPlus[i],
+   PDminus[i_] -> DMinus[i],
+   PDplus[i_,j_] -> DPlus[i] DPlus[j],
+@@ -277,8 +282,8 @@ PsisCalc[fdOrder_, PD_] :=
+ fdOrderParam = 
+ {
+   Name -> "fd_order",
+-  Default -> "2nd",
+-  AllowedValues -> {"2nd", "4th"}
++  Default -> "Nth",
++  AllowedValues -> {"Nth", "2nd", "4th"}
+ };
+ 
+ keywordParameters = 
+@@ -286,8 +291,19 @@ keywordParameters =
+   fdOrderParam
+ };
+ 
++intParameters =
++{
++  {
++    Name -> fdOrder,
++    Default -> 2,
++    AllowedValues -> {2,4,6,8}
++  }
++};
++
++
+ calculations = 
+ {
++  PsisCalc["Nth", PDstandard],
+   PsisCalc["2nd", PDstandard2nd],
+   PsisCalc["4th", PDstandard4th]
+ };
+@@ -299,4 +315,5 @@ CreateKrancThornTT[groups, ".", "WeylScal4",
+   UseLoopControl -> True,
+   KeywordParameters -> keywordParameters,
+   RealParameters -> realParameters,
++  IntParameters -> intParameters,
+   InheritedImplementations -> {"admbase", "methodoflines"}];
+-- 
+1.7.5.4
+

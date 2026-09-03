@@ -1,0 +1,164 @@
+From 70925894a7a1190e5774e648da637e21f3f6946d Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Sat, 2 Jun 2012 22:37:53 -0700
+Subject: [PATCH 07/13] GRHydro: Added option to constrain evolution to 1D by
+ projecting out non-radial parts of the conserved
+ velocity RHSs.
+
+---
+ param.ccl                  |   17 ++++++++++++
+ schedule.ccl               |   13 +++++++++
+ src/GRHydro_CalcUpdate.F90 |   64 ++++++++++++++++++++++++++++++++++++++++++++
+ src/GRHydro_ParamCheck.F90 |    4 +++
+ 4 files changed, 98 insertions(+)
+
+diff --git a/param.ccl b/param.ccl
+index 98b49d0..62b9f29 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -612,3 +612,20 @@ BOOLEAN verbose "Some debug output"
+ {
+ } no
+ 
++
++
++
++
++############### Testing options ###################################################
++
++
++# This constrains the flux velicity vectors to spherical symmetry.
++# Only the radial contribution to the velocity vectors is considered.
++# This is due to Kotake et al 2012.
++BOOLEAN constrain_to_1D "Set fluid velocities to zero for non-radial motion"
++{
++} no
++
++
++
++
+diff --git a/schedule.ccl b/schedule.ccl
+index 0272f30..1bd3721 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -1280,3 +1280,16 @@ if(track_divB)
+     LANG: Fortran
+   } "Calculate divB"
+ }                           
++
++
++if (constrain_to_1D) {
++  SCHEDULE ConstrainSconTo1D in MoL_PostStepModify
++  {
++    LANG: FORTRAN
++    OPTION: LOCAL
++  } "Constrain conserved fluid velocity to radial direction"
++}
++
++
++
++
+diff --git a/src/GRHydro_CalcUpdate.F90 b/src/GRHydro_CalcUpdate.F90
+index 62653e9..718d618 100644
+--- a/src/GRHydro_CalcUpdate.F90
++++ b/src/GRHydro_CalcUpdate.F90
+@@ -72,6 +72,7 @@ subroutine UpdateCalculation(CCTK_ARGUMENTS)
+             taurhs(i,j,k) = taurhs(i,j,k) + &
+                  (alp_l * tauflux(i-xoffset,j-yoffset,k-zoffset) - &
+                  alp_r * tauflux(i,j,k)) * idx
++            
+             if(evolve_mhd.ne.0) then
+                if(transport_constraints.ne.0) then
+                   ! we have to first compute all components of v\crossB = E and
+@@ -260,6 +261,7 @@ subroutine UpdateCalculation(CCTK_ARGUMENTS)
+           taurhs(i,j,k) = taurhs(i,j,k) + &
+                (tauflux(i-xoffset,j-yoffset,k-zoffset) - &
+                tauflux(i,j,k)) * idx
++          
+           if(evolve_mhd.ne.0) then
+              Bconsrhs(i,j,k,1) = Bconsrhs(i,j,k,1) + &
+                   (Bconsxflux(i-xoffset,j-yoffset,k-zoffset) - &
+@@ -319,3 +321,65 @@ subroutine UpdateCalculation(CCTK_ARGUMENTS)
+ 
+ end subroutine UpdateCalculation
+   
++
++
++
++
++ /*@@
++   @routine    ConstrainSconTo1D
++   @date       Tue  24 14:12 2012
++   @author     Christian Reisswig
++   @desc 
++   Constrains the conserved fluid velocity to radial direction
++   @enddesc 
++   @calls     
++   @calledby   
++   @history 
++   @endhistory 
++
++@@*/
++
++
++subroutine ConstrainSconTo1D(CCTK_ARGUMENTS)
++   implicit none
++
++  DECLARE_CCTK_ARGUMENTS
++  DECLARE_CCTK_PARAMETERS
++  DECLARE_CCTK_FUNCTIONS
++
++  CCTK_INT :: i,j,k
++  CCTK_REAL :: rnorm, rnormI, scon_tmp1, scon_tmp2, scon_tmp3
++
++      !$OMP PARALLEL DO PRIVATE(i,j,k,rnorm,rnormI,scon_tmp1,scon_tmp2,scon_tmp3)
++      do k = GRHydro_stencil + 1 - transport_constraints, cctk_lsh(3) - GRHydro_stencil ! we need to compute Evec on all faces/edges where the fluxes are defined
++        do j = GRHydro_stencil + 1 - transport_constraints, cctk_lsh(2) - GRHydro_stencil
++          do i = GRHydro_stencil + 1 - transport_constraints, cctk_lsh(1) - GRHydro_stencil
++
++            
++            ! Eliminate non-radial fluid velocities to obtain pseudo 1D scheme
++               rnorm = (x(i,j,k)**2 + y(i,j,k)**2 + z(i,j,k)**2)
++               if (rnorm.eq.0) then
++                  rnormI = 0
++               else
++                  rnormI = 1.0d0/rnorm
++               endif
++               
++               scon_tmp1 = (x(i,j,k)*scon(i,j,k,1) &
++                          + y(i,j,k)*scon(i,j,k,2) &
++                          + z(i,j,k)*scon(i,j,k,3)) * rnormI * x(i,j,k)
++               scon_tmp2 = (x(i,j,k)*scon(i,j,k,1) &
++                          + y(i,j,k)*scon(i,j,k,2) &
++                          + z(i,j,k)*scon(i,j,k,3)) * rnormI * y(i,j,k)
++               scon_tmp3 = (x(i,j,k)*scon(i,j,k,1) &
++                          + y(i,j,k)*scon(i,j,k,2) &
++                          + z(i,j,k)*scon(i,j,k,3)) * rnormI * z(i,j,k)
++               
++               scon(i,j,k,1) = scon_tmp1
++               scon(i,j,k,2) = scon_tmp2
++               scon(i,j,k,3) = scon_tmp3
++               
++        end do
++      end do
++    end do
++end subroutine ConstrainSconTo1D
++
+diff --git a/src/GRHydro_ParamCheck.F90 b/src/GRHydro_ParamCheck.F90
+index 9310448..132bb7d 100644
+--- a/src/GRHydro_ParamCheck.F90
++++ b/src/GRHydro_ParamCheck.F90
+@@ -112,6 +112,10 @@ subroutine GRHydro_ParamCheck(CCTK_ARGUMENTS)
+   if (CCTK_Equals(riemann_solver,"HLLE").eq.0.and.coordinates_is_active.ne.0) then
+     call CCTK_WARN(0, "There is currently no Riemann solver other than HLLE compatible with multipatch!")
+   end if
++  
++  if (constrain_to_1D .eq. 1 .and. coordinates_is_active.eq.1) then
++    call CCTK_WARN(0, "Constrain to 1D option does not work with other than Cartesian coordinates. Ask Christian R. to implement it if required!")
++  endif
+ 
+   if (CCTK_EQUALS(riemann_solver,"Roe").and.CCTK_EQUALS(Bvec_evolution_method,"GRHydro")) then
+     call CCTK_PARAMWARN("Roe solver is not implemented yet for MHD")
+-- 
+1.7.10
+

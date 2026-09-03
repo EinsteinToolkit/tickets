@@ -1,0 +1,33 @@
+Index: lib/make/make.config.rules.in
+===================================================================
+--- lib/make/make.config.rules.in	(revision 4850)
++++ lib/make/make.config.rules.in	(working copy)
+@@ -67,11 +67,13 @@
+ # object file.
+ ifeq ($(strip $(PERL_BACKUP_NECESSARY)),)
+ define DEPENDENCY_FIXER
+-	$(PERL) -pi -e 's{^\s*\Q$(basename $(basename $@)).o\E\s*:}{$(basename $@).o $(basename $@).d:}' $@
++	$(PERL) -pi -e 's{^\s*\Q$(basename $(basename $@)).o\E\s*:}{$(basename $@).o $(basename $@).d:};\
++                        s{\s+\S*[/\\]($(DEP_EXCLUDE_FILES))\b}{}g' $@
+ endef
+ else
+ define DEPENDENCY_FIXER
+-	$(PERL) -pi.bak -e 's{^\Q$(basename $(basename $@)).o:\E}{$(basename $@).o $(basename $@).d:}' $@
++	$(PERL) -pi.bak -e 's{^\Q$(basename $(basename $@)).o:\E}{$(basename $@).o $(basename $@).d:}\
++                            s{\s+\S*[/\\]($(DEP_EXCLUDE_FILES))\b}{}g' $@
+ 	rm $@.bak
+ endef
+ endif
+Index: lib/make/make.config.defn.in
+===================================================================
+--- lib/make/make.config.defn.in	(revision 4850)
++++ lib/make/make.config.defn.in	(working copy)
+@@ -179,7 +179,7 @@
+ export USE_RANLIB = @USE_RANLIB@
+ 
+ # Exclude some files from the dependency lists
+-#export DEP_EXCLUDE_FILES = cctk_Functions\.h|CParameterStructNames\.h|cctk_Arguments\.h|cctk_ScheduleFunctions\.h|definethisthorn\.h|FParameters.h|CParameters\.h|cctk_Capabilities\.h
++export DEP_EXCLUDE_FILES = CParameterStructNames\.h
+ #export DEP_EXCLUDE_FILES =
+ 
+ # Command used to get the working directory

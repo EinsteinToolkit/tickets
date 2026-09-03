@@ -1,0 +1,28 @@
+From cedb984205122c29fdc216ebacd9a1e1c6d515ee Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Sun, 18 Aug 2013 14:51:54 -0700
+Subject: [PATCH 3/3] CarpetIOHDF5: output warning if grid structure could not
+ be read
+
+---
+ Carpet/CarpetIOHDF5/src/Input.cc |    4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/Carpet/CarpetIOHDF5/src/Input.cc b/Carpet/CarpetIOHDF5/src/Input.cc
+index ff0ec64..9f9e5dc 100644
+--- a/Carpet/CarpetIOHDF5/src/Input.cc
++++ b/Carpet/CarpetIOHDF5/src/Input.cc
+@@ -1180,6 +1180,10 @@ static void ReadMetadata (fileset_t& fileset, const file_t& file)
+     gs_buf >> fileset.grid_prolongation_orders;
+     skipws (gs_buf);
+     consume (gs_buf, ".");
++  } else {
++    CCTK_VWarn(CCTK_WARN_COMPLAIN, __LINE__, __FILE__, CCTK_THORNSTRING,
++               "Did not find grid structure dataset '" GRID_STRUCTURE
++               "' in file '%s'", file.filename);
+   }
+ 
+ //   fileset.mgleveltimes.resize (fileset.num_mglevels * fileset.num_reflevels);
+-- 
+1.7.10.4
+

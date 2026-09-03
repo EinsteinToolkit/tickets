@@ -1,0 +1,64 @@
+From f4f59e528ff5a39d8d73137f7d44edc2399921f0 Mon Sep 17 00:00:00 2001
+From: Bruno Coutinho Mundim <bcmsma@astro.rit.edu>
+Date: Sun, 7 Oct 2012 16:38:03 -0500
+Subject: [PATCH 07/13] GRHydro_InitData: Fix B-field smoothing in BondiM
+ routine.
+
+---
+ src/GRHydro_BondiM_new.F90 |   19 +++++++++----------
+ 1 file changed, 9 insertions(+), 10 deletions(-)
+
+diff --git a/src/GRHydro_BondiM_new.F90 b/src/GRHydro_BondiM_new.F90
+index 9d4b661..1c61374 100644
+--- a/src/GRHydro_BondiM_new.F90
++++ b/src/GRHydro_BondiM_new.F90
+@@ -65,6 +65,7 @@ subroutine GRHydro_BondiM_Iso(CCTK_ARGUMENTS)
+   CCTK_REAL :: drhodr, det, rhocheck, rhocheck2, riso, rnew, rsch, ucheck
+   CCTK_REAL :: uiso, uisocheck, vcheck, ucheck2, vcheck2, xhat,yhat, zhat, xp, yp, zp
+   CCTK_REAL :: f,df,ddf,a,b,c,rsm,roverm,dudr,uisocheck2,auiso,buiso
++  CCTK_REAL :: bondi_bsmooth
+ 
+   character(400) :: debug_message
+ 
+@@ -199,11 +200,9 @@ subroutine GRHydro_BondiM_Iso(CCTK_ARGUMENTS)
+   nz = cctk_lsh(3)
+ 
+ 
+-  write(debug_message,'(a,3f22.14)') 'Lower bound coordinates:',x(1,1,1),y(1,1,1),z(1,1,1)
+-  call CCTK_INFO(debug_message)
+-  write(debug_message,'(a,3f22.14)') 'Upper bound coordinates:',x(nx,ny,nz),y(nx,ny,nz),z(nx,ny,nz)
+-  call CCTK_INFO(debug_message)
+-  
++
++  bondi_bsmooth = 1.0d0
++
+   do i=1,nx
+      do j=1,ny
+         do k=1,nz
+@@ -238,7 +237,7 @@ subroutine GRHydro_BondiM_Iso(CCTK_ARGUMENTS)
+                  rho(i,j,k) = rhocheck+drhodr*riso*(riso-M)/M
+               else 
+                  rho(i,j,k) = (rhocheck-drhodr*M/4.0)*(1.-cos(2.*M_PI*riso/M))/2.0
+-                 bondi_bmag = bondi_bmag*8.0d0*riso**3 
++                 bondi_bsmooth = 8.0d0*riso**3 
+               endif
+               utmp = Kval * rho(i,j,k)**( gam ) / (gam - 1.)
+ 
+@@ -259,10 +258,10 @@ subroutine GRHydro_BondiM_Iso(CCTK_ARGUMENTS)
+            
+            det=SPATIAL_DETERMINANT(gxx(i,j,k),gxy(i,j,k),gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k))
+ 
+-           Bvecx(i,j,k) = bondi_bmag*M**2*xhat/sqrt(det)/riso**2
+-           Bvecy(i,j,k) = bondi_bmag*M**2*yhat/sqrt(det)/riso**2
+-           Bvecz(i,j,k) = bondi_bmag*M**2*zhat/sqrt(det)/riso**2
+-           
++           Bvecx(i,j,k) = bondi_bsmooth*bondi_bmag*M**2*xhat/sqrt(det)/riso**2
++           Bvecy(i,j,k) = bondi_bsmooth*bondi_bmag*M**2*yhat/sqrt(det)/riso**2
++           Bvecz(i,j,k) = bondi_bsmooth*bondi_bmag*M**2*zhat/sqrt(det)/riso**2
++
+            call Prim2ConGenM(GRHydro_eos_handle,gxx(i,j,k),gxy(i,j,k), &
+                           gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k), &
+                           det, dens(i,j,k),sx(i,j,k),sy(i,j,k),sz(i,j,k), &
+-- 
+1.7.10.4
+

@@ -1,0 +1,34 @@
+Index: src/Interpolate.c
+===================================================================
+--- src/Interpolate.c	(revision 220)
++++ src/Interpolate.c	(working copy)
+@@ -305,9 +305,9 @@
+     return UTIL_ERROR_BAD_INPUT;
+   }
+ 
+-  if (order < 1)
++  if (order < 0)
+   {
+-    CCTK_WARN (1, "Inperpolation order must be positive");
++    CCTK_WARN (1, "Inperpolation order must be non-negative");
+     return UTIL_ERROR_BAD_INPUT;
+   }
+ 
+@@ -511,8 +511,16 @@
+      * NOTE-MAXORDER: support higher interpolation orders by adding the
+      *                appropriate coefficients in another else branch
+      */
+-    if (order == 1)
++    if (order == 0)
+     {
++      /* zeroeth order (copy) 1D interpolation */
++      for (int i = 0; i < num_dims; i++)
++      {
++        coeff[i][0] = 1;
++      }
++    }
++    else     if (order == 1)
++    {
+       /* first order (linear) 1D interpolation */
+       for (int i = 0; i < num_dims; i++)
+       {

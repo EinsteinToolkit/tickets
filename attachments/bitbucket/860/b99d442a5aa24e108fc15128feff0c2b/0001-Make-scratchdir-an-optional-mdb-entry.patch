@@ -1,0 +1,39 @@
+From 61cc44b722b474f075cc2285c1399e90393e3a1d Mon Sep 17 00:00:00 2001
+From: Barry Wardell <barry.wardell@gmail.com>
+Date: Sat, 5 May 2012 17:49:50 +0100
+Subject: [PATCH] Make scratchdir an optional mdb entry.
+
+---
+ etc/syntax/mdb-syntax.ini |    2 +-
+ lib/simrestart.py         |    2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/etc/syntax/mdb-syntax.ini b/etc/syntax/mdb-syntax.ini
+index 5f7ea56..9e5af56 100644
+--- a/etc/syntax/mdb-syntax.ini
++++ b/etc/syntax/mdb-syntax.ini
+@@ -920,7 +920,7 @@ section         = simulation
+ [scratchdir]
+ 
+ # Description
+-necessity       = required
++necessity       = optional
+ type            = string
+ pattern         = [^/]$
+ # default        
+diff --git a/lib/simrestart.py b/lib/simrestart.py
+index 66231b0..81748b0 100644
+--- a/lib/simrestart.py
++++ b/lib/simrestart.py
+@@ -571,7 +571,7 @@ class SimRestart:
+         DefineDatabase = simsubs.DefineDatabase()
+ 
+         machineEntry = simenv.LocalMachineEntry
+-        simlib.VerifyKeys(machineEntry, ['scratchdir', 'num-threads', 'ppn', 'maxwalltime', 'hostname'])
++        simlib.VerifyKeys(machineEntry, ['num-threads', 'ppn', 'maxwalltime', 'hostname'])
+         
+         submitscript_contents = simlib.GetFileContents(submitScript)
+ 
+-- 
+1.7.9.2
+

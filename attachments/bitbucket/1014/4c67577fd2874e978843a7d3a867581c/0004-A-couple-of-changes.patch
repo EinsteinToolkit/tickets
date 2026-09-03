@@ -1,0 +1,51 @@
+From a43ed03893d0b474ff97282ab004218198d452f9 Mon Sep 17 00:00:00 2001
+From: Philipp Moesta <pmoesta@tapir.caltech.edu>
+Date: Thu, 19 Apr 2012 02:46:32 +0100
+Subject: [PATCH 04/17] A couple of changes: 1) Calculate divergence of B in
+ MoL PseudoEvolution and set its
+ Prolongation="Restrict". 2) Correct the source terms
+ and fluxes for the Bfield and the divergence cleaning
+ field when having a non-flat space-time. 3) Make sure
+ alpha factors match between UpdateCalculation and
+ fluxes definition. 4) Include 1/sqrt(detg) factor in
+ calculation of \epsilon^{\muijk} in the cross product
+ to obtain the Bfield form the vector potential.
+
+---
+ src/GRHydro_PoloidalMagFieldM.F90 |   11 +++++++----
+ 1 file changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/src/GRHydro_PoloidalMagFieldM.F90 b/src/GRHydro_PoloidalMagFieldM.F90
+index df74d75..47ce06c 100644
+--- a/src/GRHydro_PoloidalMagFieldM.F90
++++ b/src/GRHydro_PoloidalMagFieldM.F90
+@@ -58,6 +58,7 @@ subroutine GRHydro_PoloidalMagFieldM(CCTK_ARGUMENTS)
+   
+   CCTK_INT :: i, j, k, nx, ny, nz
+   CCTK_REAL :: det
++  CCTK_REAL :: sdet
+   CCTK_REAL :: dx,dy,dz
+   CCTK_REAL :: rhofac, delPcut, maxP_Pcut
+   CCTK_REAL :: Aphi, Ax, Ay, Az
+@@ -112,12 +113,14 @@ subroutine GRHydro_PoloidalMagFieldM(CCTK_ARGUMENTS)
+      Ay_dx = Aphi + x(i,j,k)*Aphi_dx
+      Ay_dz = x(i,j,k)*Aphi_dz
+ 
+-     Bvecx(i,j,k) = alp(i,j,k)*Ay_dz
+-     Bvecy(i,j,k) = -alp(i,j,k)*Ax_dz
+-     Bvecz(i,j,k) = alp(i,j,k)*(Ax_dy-Ay_dx)
+            
+      det=SPATIAL_DETERMINANT(gxx(i,j,k),gxy(i,j,k),gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k))
+-           
++     sdet = sqrt(det) 
++     
++     Bvecx(i,j,k) = Ay_dz/sdet
++     Bvecy(i,j,k) = - Ax_dz/sdet
++     Bvecz(i,j,k) = (Ax_dy-Ay_dx)/sdet
++
+            if (CCTK_EQUALS(GRHydro_eos_type,"Polytype")) then
+               call Prim2ConPolyM(GRHydro_eos_handle,gxx(i,j,k),gxy(i,j,k),&
+                    gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k),&
+-- 
+1.7.10.4
+

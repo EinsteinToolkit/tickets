@@ -1,0 +1,48 @@
+From 4b8f9056b49504581571c3bb292c6d747f3165d3 Mon Sep 17 00:00:00 2001
+From: Anton Khirnov <anton@khirnov.net>
+Date: Tue, 5 Nov 2013 12:08:28 +0100
+Subject: [PATCH 2/2] CarpetIOHDF5: avoid variable shadowing.
+
+---
+ Carpet/CarpetIOHDF5/src/Output.cc |   16 ++++++++--------
+ 1 file changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/Carpet/CarpetIOHDF5/src/Output.cc b/Carpet/CarpetIOHDF5/src/Output.cc
+index 8fea698..5a8a8a0 100644
+--- a/Carpet/CarpetIOHDF5/src/Output.cc
++++ b/Carpet/CarpetIOHDF5/src/Output.cc
+@@ -147,23 +147,23 @@ int WriteVarUnchunked (const cGH* const cctkGH,
+           } H5E_END_TRY;
+         }
+         // enable compression if requested
+-        hid_t plist;
+-        HDF5_ERROR (plist = H5Pcreate (H5P_DATASET_CREATE));
++        hid_t plist_dataset;
++        HDF5_ERROR (plist_dataset = H5Pcreate (H5P_DATASET_CREATE));
+         const int compression_lvl = request->compression_level >= 0 ?
+                                     request->compression_level :
+                                     compression_level;
+         if (compression_lvl) {
+-          HDF5_ERROR (H5Pset_chunk (plist, group.dim, shape));
+-          HDF5_ERROR (H5Pset_deflate (plist, compression_lvl));
++          HDF5_ERROR (H5Pset_chunk (plist_dataset, group.dim, shape));
++          HDF5_ERROR (H5Pset_deflate (plist_dataset, compression_lvl));
+         }
+         // enable checksums if requested
+         if (use_checksums) {
+-          HDF5_ERROR (H5Pset_chunk (plist, group.dim, shape));
+-          HDF5_ERROR (H5Pset_filter (plist, H5Z_FILTER_FLETCHER32, 0, 0, NULL));
++          HDF5_ERROR (H5Pset_chunk (plist_dataset, group.dim, shape));
++          HDF5_ERROR (H5Pset_filter (plist_dataset, H5Z_FILTER_FLETCHER32, 0, 0, NULL));
+         }
+         HDF5_ERROR (dataset = H5Dcreate (outfile, datasetname.str().c_str(),
+-                                         filedatatype, dataspace, plist));
+-        HDF5_ERROR (H5Pclose (plist));
++                                         filedatatype, dataspace, plist_dataset));
++        HDF5_ERROR (H5Pclose (plist_dataset));
+       }
+ 
+       // Loop over all components
+-- 
+1.7.10.4
+

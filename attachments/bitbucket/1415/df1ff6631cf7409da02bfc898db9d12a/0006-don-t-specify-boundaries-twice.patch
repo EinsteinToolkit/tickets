@@ -1,0 +1,30 @@
+From 569fcde1d89db2f2a41d5e056f125b6ff6823c32 Mon Sep 17 00:00:00 2001
+From: Frank Loeffler <knarf@cct.lsu.edu>
+Date: Sun, 28 Jul 2013 12:44:47 -0500
+Subject: [PATCH 06/19] don't specify boundaries twice
+
+---
+ src/GRHydro_Boundaries.F90 |    7 -------
+ 1 file changed, 7 deletions(-)
+
+diff --git a/src/GRHydro_Boundaries.F90 b/src/GRHydro_Boundaries.F90
+index 6a3ed60..4f8de5a 100644
+--- a/src/GRHydro_Boundaries.F90
++++ b/src/GRHydro_Boundaries.F90
+@@ -235,13 +235,6 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+     if (CCTK_EQUALS(Bvec_evolution_method, "GRHydro_Avec")) then 
+       ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+              "HydroBase::Avec", "Flat")
+-      if (general_coordinates .ne. 0) then
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-               "GRHydro::lBvec", "Flat")
+-      else
+-        ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-               "HydroBase::Bvec", "Flat")
+-      endif
+     endif 
+ 
+     if(evolve_tracer.ne.0) then 
+-- 
+1.7.10.4
+

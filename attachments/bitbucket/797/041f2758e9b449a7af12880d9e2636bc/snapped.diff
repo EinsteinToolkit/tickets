@@ -1,0 +1,26 @@
+diff --git a/Carpet/CarpetRegrid2/src/property.cc b/Carpet/CarpetRegrid2/src/property.cc
+index 911e1d5..565ab15 100644
+--- a/Carpet/CarpetRegrid2/src/property.cc
++++ b/Carpet/CarpetRegrid2/src/property.cc
+@@ -279,11 +279,16 @@ namespace CarpetRegrid2 {
+       // bboxsets). For alignment, only operations modulo the
+       // refinement factor are relevant.
+       
+-      snapped |= bb.
+-        expand(reffact-1 - buffers % reffact).
+-        contracted_for(cbase).
+-        expanded_for(base).
+-        expand(buffers % reffact);
++      if (not bb.empty()) {
++        ibbox bbnew;
++        bbnew = bb.
++          expand(reffact + reffact-1 - buffers % reffact).
++          contracted_for(cbase).
++          expanded_for(base).
++          expand(buffers % reffact - reffact);
++        assert(not bbnew.empty());
++        snapped |= bbnew;
++      }
+     }
+     
+     return snapped;

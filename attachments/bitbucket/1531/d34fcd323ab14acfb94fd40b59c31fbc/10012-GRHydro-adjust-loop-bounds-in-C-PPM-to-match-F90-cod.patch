@@ -1,0 +1,68 @@
+From e73a70a1cbdafc347d6f64ab6ba1ea72a6baee99 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Tue, 26 Nov 2013 12:59:30 -0800
+Subject: [PATCH 12/36] GRHydro: adjust loop bounds in C++ PPM to match F90
+ code
+
+some are just affecting data in ghost zones, some are required
+---
+ src/GRHydro_PPM.cc                    |  2 +-
+ src/GRHydro_PPMReconstruct_drv_opt.cc | 14 ++++++++------
+ 2 files changed, 9 insertions(+), 7 deletions(-)
+
+diff --git a/src/GRHydro_PPM.cc b/src/GRHydro_PPM.cc
+index fe6c265..1c575db 100644
+--- a/src/GRHydro_PPM.cc
++++ b/src/GRHydro_PPM.cc
+@@ -316,7 +316,7 @@ void GRHydro_ppm1d_cxx(const int nx,
+     }
+   } // flattening
+ 
+-  for(int i=2;i<nx-2;i++) {
++  for(int i=GRHydro_stencil-1;i<nx-GRHydro_stencil+1;i++) {
+     monotonize(rhominus,rho,rhoplus,i);
+     monotonize(epsminus,eps,epsplus,i);
+     monotonize(velxminus,velx,velxplus,i);
+diff --git a/src/GRHydro_PPMReconstruct_drv_opt.cc b/src/GRHydro_PPMReconstruct_drv_opt.cc
+index 7ed18de..7629019 100644
+--- a/src/GRHydro_PPMReconstruct_drv_opt.cc
++++ b/src/GRHydro_PPMReconstruct_drv_opt.cc
+@@ -269,9 +269,11 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+   if (flux_direction[0] == 1){
+     //          !$OMP PARALLEL DO PRIVATE(i, j, k)
+     
+-    for(k = GRHydro_stencil-1; k < nz - GRHydro_stencil; k++) {
+-      for(j = GRHydro_stencil-1; j < ny - GRHydro_stencil; j++) {
++    for(k = GRHydro_stencil-1; k < nz - GRHydro_stencil + 1; k++) {
++      for(j = GRHydro_stencil-1; j < ny - GRHydro_stencil + 1; j++) {
+         
++        // TODO: there is no need to slice in the x direction, we can just point into the array
++
+         //For reference, the slicing call is:
+         //void oned_slice(int npt,int nstart,int nstride,CCTK_REAL* vec3d,CCTK_REAL* vec1d)
+         nstart=nx*(j+k*ny);
+@@ -361,8 +363,8 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+ 
+     //          !$OMP PARALLEL DO PRIVATE(i, j, k)
+     //Make sure to doublecheck the bounds here!
+-    for(k = GRHydro_stencil-1; k < nz - GRHydro_stencil; k++) {
+-      for(j = GRHydro_stencil-1; j < nx - GRHydro_stencil; j++) {
++    for(k = GRHydro_stencil-1; k < nz - GRHydro_stencil + 1; k++) {
++      for(j = GRHydro_stencil-1; j < nx - GRHydro_stencil + 1; j++) {
+         
+         nstart=j+k*nx*ny;
+         
+@@ -453,8 +455,8 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+ 
+     //          !$OMP PARALLEL DO PRIVATE(i, j, k)
+     //Make sure to doublecheck the bounds here!
+-    for(k = GRHydro_stencil-1; k < ny - GRHydro_stencil; k++) {
+-      for(j = GRHydro_stencil-1; j < nx - GRHydro_stencil; j++) {
++    for(k = GRHydro_stencil-1; k < ny - GRHydro_stencil + 1; k++) {
++      for(j = GRHydro_stencil-1; j < nx - GRHydro_stencil + 1; j++) {
+         
+         nstart=j+k*nx;
+ 
+-- 
+1.8.5.3
+

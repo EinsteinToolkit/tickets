@@ -1,0 +1,111 @@
+diff --git a/Multipole/src/multipole.cc b/Multipole/src/multipole.cc
+index 2bf00990..d7bdc74c 100644
+--- a/Multipole/src/multipole.cc
++++ b/Multipole/src/multipole.cc
+@@ -312,7 +312,7 @@ extern "C" void Multipole_Calc(CCTK_ARGUMENTS)
+   
+     parse_variables_string(string(variables), vars, &n_variables);
+     get_spin_weights(vars, n_variables, spin_weights, &n_spin_weights);
+-    Multipole_CoordSetup(ntheta, nphi, xhat, yhat, zhat, th, ph);
++    Multipole_CoordSetup(xhat, yhat, zhat, th, ph);
+     setup_harmonics(spin_weights, n_spin_weights, lmax, th, ph,
+                     array_size, reY, imY);
+     initialized = true;
+diff --git a/Multipole/src/tests.cc b/Multipole/src/tests.cc
+index 54afee67..7de52032 100644
+--- a/Multipole/src/tests.cc
++++ b/Multipole/src/tests.cc
+@@ -171,7 +171,7 @@ void Multipole_TestOrthonormality(CCTK_ARGUMENTS)
+   CCTK_REAL *yhat = new CCTK_REAL[array_size];
+   CCTK_REAL *zhat = new CCTK_REAL[array_size];
+ 
+-  Multipole_CoordSetup(ntheta, nphi, xhat, yhat, zhat, th, ph);
++  Multipole_CoordSetup(xhat, yhat, zhat, th, ph);
+ 
+   /* Populate spherical-harmonic array */
+   CCTK_REAL *reY[1][max_l_modes][max_m_modes];
+diff --git a/Multipole/src/utils.cc b/Multipole/src/utils.cc
+index 799d039c..5c342a83 100644
+--- a/Multipole/src/utils.cc
++++ b/Multipole/src/utils.cc
+@@ -319,26 +319,53 @@ void Multipole_OutputComplexToH5File(CCTK_ARGUMENTS, const Multipole::variable_d
+ // Coordinates
+ ////////////////////////////////////////////////////////////////////////
+ 
+-void Multipole_CoordSetup(int ntheta, int nphi, 
+-                          CCTK_REAL xhat[], CCTK_REAL yhat[], 
+-                          CCTK_REAL zhat[], CCTK_REAL th[], 
++void Multipole_CoordSetup(CCTK_REAL xhat[], CCTK_REAL yhat[],
++                          CCTK_REAL zhat[], CCTK_REAL th[],
+                           CCTK_REAL ph[])
+ {
++  DECLARE_CCTK_PARAMETERS;
++
+   const CCTK_REAL PI = acos(-1.0);
+ 
++  // Add an offset for midpoint integration.
++  CCTK_REAL offset = 0.0;
++  if (CCTK_Equals(integration_method, "midpoint")) {
++    offset = 1.0;
++  }
++  const CCTK_REAL dth = PI/(ntheta+offset);
++  const CCTK_REAL dph = 2*PI/(nphi+offset);
+   for (int it = 0; it <= ntheta; it++)
+-  {
+-    for (int ip = 0; ip <= nphi; ip++)
+     {
+-      const int i = Multipole_Index(it, ip, ntheta);
+-
+-      th[i] = it * PI / (ntheta);
+-      ph[i] = ip * 2 * PI / nphi;
+-      xhat[i] = cos(ph[i])*sin(th[i]);
+-      yhat[i] = sin(ph[i])*sin(th[i]);
+-      zhat[i] = cos(th[i]);
++      for (int ip = 0; ip <= nphi; ip++)
++        {
++          const int i = Multipole_Index(it, ip, ntheta);
++          // Check for when midpoint enabled:
++          //   dth = PI/(ntheta+1) -> ntheta = PI/dth - 1
++          //   th[i] = i * dth + 0.5*dth
++          //  Therefore:
++          //   th[0]      = 0.5*dth      <- GOOD.
++          //   th[ntheta] = ntheta*dth + 0.5*dth
++          //              = ((PI/dth)-1)*dth + 0.5*dth
++          //              = PI - dth + 0.5*dth
++          //              = PI - 0.5*dth <- GOOD.
++          //  Similarly for ph.
++
++          // Check for when midpoint disabled:
++          //   dth = PI/ntheta -> ntheta = PI/dth
++          //   th[i] = i * dth
++          //  Therefore:
++          //   th[0]      = 0      <- GOOD.
++          //   th[ntheta] = ntheta*dth
++          //              = PI/dth*dth
++          //              = PI     <- GOOD.
++          // Similarly for ph.
++          th[i] = it * dth + 0.5*dth*offset;
++          ph[i] = ip * dph + 0.5*dph*offset;
++          xhat[i] = cos(ph[i])*sin(th[i]);
++          yhat[i] = sin(ph[i])*sin(th[i]);
++          zhat[i] = cos(th[i]);
++        }
+     }
+-  }
+ }
+ 
+ void Multipole_ScaleCartesian(int ntheta, int nphi, CCTK_REAL r,
+diff --git a/Multipole/src/utils.hh b/Multipole/src/utils.hh
+index e85c83bb..68d59cd6 100644
+--- a/Multipole/src/utils.hh
++++ b/Multipole/src/utils.hh
+@@ -28,8 +28,7 @@ void Multipole_OutputComplexToFile(CCTK_ARGUMENTS, const string &name, CCTK_REAL
+ void Multipole_OutputComplexToH5File(CCTK_ARGUMENTS, const Multipole::variable_desc vars[], const CCTK_REAL radii[],
+                                      const Multipole::mode_array& modes);
+ 
+-void Multipole_CoordSetup(int ntheta, int nphi, 
+-                          CCTK_REAL xhat[], CCTK_REAL yhat[], 
++void Multipole_CoordSetup(CCTK_REAL xhat[], CCTK_REAL yhat[],
+                           CCTK_REAL zhat[], CCTK_REAL th[], 
+                           CCTK_REAL ph[]);
+ 

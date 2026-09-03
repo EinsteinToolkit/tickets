@@ -1,0 +1,90 @@
+From a7ad32b4ff897da35879a8f0aa78680dbff8ceb5 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Wed, 4 Apr 2012 11:06:19 +0200
+Subject: [PATCH 2/2] Output XML timer tree at end of run
+
+---
+ Carpet/Carpet/param.ccl        |    4 ++++
+ Carpet/Carpet/src/Shutdown.cc  |    3 +++
+ Carpet/Carpet/src/TimerNode.cc |   16 ++++++++++++++++
+ Carpet/Carpet/src/TimerNode.hh |    1 +
+ 4 files changed, 24 insertions(+), 0 deletions(-)
+
+diff --git a/Carpet/Carpet/param.ccl b/Carpet/Carpet/param.ccl
+index 59ffdf2..c681072 100644
+--- a/Carpet/Carpet/param.ccl
++++ b/Carpet/Carpet/param.ccl
+@@ -401,6 +401,10 @@ INT output_timer_tree_every "Output timing information in tree form to standard
+   1:* :: "report every so many iterations"
+ } 0
+ 
++BOOLEAN output_xml_timer_tree "Output timing information in tree form as XML"
++{
++} "no"
++
+ CCTK_REAL timer_tree_threshold_percentage "The percentage of the root timer below which timers are omitted" STEERABLE=always
+ {
+   0:* :: ""
+diff --git a/Carpet/Carpet/src/Shutdown.cc b/Carpet/Carpet/src/Shutdown.cc
+index 435d62f..1cd3541 100644
+--- a/Carpet/Carpet/src/Shutdown.cc
++++ b/Carpet/Carpet/src/Shutdown.cc
+@@ -83,6 +83,9 @@ namespace Carpet {
+     TimerNode *rt = TimerNode::getRootTimer();
+     rt->stop();
+ 
++    if (output_xml_timer_tree)
++      rt->outputXML(out_dir,CCTK_MyProc (cctkGH));
++
+     // earlier checkpoint before finalising MPI
+     Waypoint ("Done with shutdown");
+     
+diff --git a/Carpet/Carpet/src/TimerNode.cc b/Carpet/Carpet/src/TimerNode.cc
+index 06f8b70..8942084 100644
+--- a/Carpet/Carpet/src/TimerNode.cc
++++ b/Carpet/Carpet/src/TimerNode.cc
+@@ -32,6 +32,7 @@
+ #include <string>
+ #include <ostream>
+ #include <iostream>
++#include <fstream>
+ #include <algorithm>
+ #include <iomanip>
+ 
+@@ -213,6 +214,21 @@ namespace Carpet {
+     out.setf (oldflags);
+   }
+ 
++  void TimerNode::outputXML(const string &out_dir, int proc)
++  {
++    ostringstream filenamebuf;
++    filenamebuf << out_dir << "/timertree." << proc << ".xml";
++    string filenamestr = filenamebuf.str();
++    const char * filename = filenamestr.c_str();
++    ofstream file;
++    file.open (filename, ios::out | ios::trunc);
++
++    printXML(file,0);
++
++    file.close();
++    assert (file.good());
++  }
++
+   /// Print this node and its children as an XML file
+   void TimerNode::printXML(ostream& out, int level)
+   {
+diff --git a/Carpet/Carpet/src/TimerNode.hh b/Carpet/Carpet/src/TimerNode.hh
+index 89963fa..642c970 100644
+--- a/Carpet/Carpet/src/TimerNode.hh
++++ b/Carpet/Carpet/src/TimerNode.hh
+@@ -85,6 +85,7 @@ public:
+ 
+   void print(ostream& out, double total, int level=0, double threshold=0.0, int precision=1);
+   void printXML(ostream& out, int level=0);
++  void outputXML(const string &out_dir, int proc);
+ 
+ private:
+   string escapeForXML(const string &s) const;
+-- 
+1.7.5.4
+

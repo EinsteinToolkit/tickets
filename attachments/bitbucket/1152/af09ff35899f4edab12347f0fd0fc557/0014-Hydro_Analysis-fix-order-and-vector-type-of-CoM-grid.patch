@@ -1,0 +1,78 @@
+From 51bae740e2f7973da7a06665781ee3a59a7f53b2 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Thu, 1 Nov 2012 00:01:06 -0700
+Subject: [PATCH 9/9] Hydro_Analysis: fix order and vector type of CoM grid
+ function
+
+---
+ interface.ccl |  4 ++--
+ src/CoMCore.c | 16 ++++++++--------
+ 2 files changed, 10 insertions(+), 10 deletions(-)
+
+diff --git a/interface.ccl b/interface.ccl
+index 6e93430..b90c85b 100644
+--- a/interface.ccl
++++ b/interface.ccl
+@@ -21,7 +21,7 @@ CCTK_REAL Hydro_Analysis_rho_max_origin_distance  type = SCALAR "proper distance
+ # core center of mass
+ CCTK_REAL Hydro_Analysis_rho_core_sum type = SCALAR "value of the sum of rho in the core region"
+ 
+-# rho*x,rho*y,rho*z,rho
+-CCTK_REAL Hydro_Analysis_rho_core_center_volume_weighted_gf[4] type = GF Timelevels = 3 tags='checkpoint="no" tensortypealias="u"' "temporary GF to obtain the coordinate location of the volume weighted center of mass of the core region via a reduction"
++# rho,rho*x,rho*y,rho*z
++CCTK_REAL Hydro_Analysis_rho_core_center_volume_weighted_gf[4] type = GF Timelevels = 3 tags='checkpoint="no" tensortypealias="4u"' "temporary GF to obtain the coordinate location of the volume weighted center of mass of the core region via a reduction"
+ 
+ CCTK_REAL Hydro_Analysis_rho_core_center_volume_weighted[3] type = SCALAR "coordinate location of the volume weightes center of mass of the core region"
+diff --git a/src/CoMCore.c b/src/CoMCore.c
+index 26e571e..0dc0391 100644
+--- a/src/CoMCore.c
++++ b/src/CoMCore.c
+@@ -59,10 +59,10 @@ void Hydro_Analysis_CompVolWeightedCoreCenterOfMass_PrepareReduction(CCTK_ARGUME
+ #pragma omp parallel
+     CCTK_LOOP3_ALL(CompVolWeightedCoreCenterOfMass_PrepareReduction, cctkGH, i,j,k) {
+       const int ind = CCTK_GFINDEX3D (cctkGH, i, j, k);
+-      const int indx = CCTK_VECTGFINDEX3D (cctkGH, i, j, k, 0);
+-      const int indy = CCTK_VECTGFINDEX3D (cctkGH, i, j, k, 1);
+-      const int indz = CCTK_VECTGFINDEX3D (cctkGH, i, j, k, 2);
+-      const int indr = CCTK_VECTGFINDEX3D (cctkGH, i, j, k, 3);
++      const int indr = CCTK_VECTGFINDEX3D (cctkGH, i, j, k, 0);
++      const int indx = CCTK_VECTGFINDEX3D (cctkGH, i, j, k, 1);
++      const int indy = CCTK_VECTGFINDEX3D (cctkGH, i, j, k, 2);
++      const int indz = CCTK_VECTGFINDEX3D (cctkGH, i, j, k, 3);
+ 
+       const double r2 = SQR(x[ind]-corex) + SQR(y[ind]-corey) + SQR(z[ind]-corez);
+       if (r2 < SQR(Hydro_Analysis_r_core) && myrho[tl][ind] >= corerhomin) {
+@@ -97,10 +97,10 @@ void Hydro_Analysis_CompVolWeightedCoreCenterOfMass_Reduction (CCTK_ARGUMENTS)
+   {
+     *Hydro_Analysis_rho_core_sum = -1.0;
+     const int ierr = CCTK_Reduce(cctkGH, -1, handle_sum, 1, CCTK_VARIABLE_REAL,
+-                                 Hydro_Analysis_rho_core_sum, 1, CCTK_VarIndex("Hydro_Analysis::hydro_analysis_rho_core_center_volume_weighted_gf[3]"));
++                                 Hydro_Analysis_rho_core_sum, 1, CCTK_VarIndex("Hydro_Analysis::Hydro_Analysis_rho_core_center_volume_weighted_gf[0]"));
+     if (ierr) {
+       CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                 "Error while reducing Hydro_Analysis::Hydro_Analysis_rho_core_center_volume_weighted_gf[3]: %d", ierr);
++                 "Error while reducing Hydro_Analysis::Hydro_Analysis_rho_core_center_volume_weighted_gf[0]: %d", ierr);
+       return; /* NOTREACHED */
+     }
+   }
+@@ -128,7 +128,7 @@ void Hydro_Analysis_CompVolWeightedCoreCenterOfMass_Reduction (CCTK_ARGUMENTS)
+     const char *fmt = HYDRO_ANALYSIS_RHO_CORE_CENTER_VOLUME_WEIGHTED_GF"[%1d]";
+     size_t len_written;
+ 
+-    len_written = snprintf(buf, sizeof(buf), fmt, i);
++    len_written = snprintf(buf, sizeof(buf), fmt, i+1); // rho is [0], rho*x is [1], ...
+     if (len_written >= sizeof(buf)) {
+       CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+                  "Error constructing reduction variable name. Buffer size %d too short for string of length %d.", 
+@@ -143,7 +143,7 @@ void Hydro_Analysis_CompVolWeightedCoreCenterOfMass_Reduction (CCTK_ARGUMENTS)
+     if (ierr) {
+       CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING, 
+                "Error while reducing Hydro_Analysis_rho_core_center_volume_weighted_gf[%d]: %d",
+-               i, ierr);
++               i+1, ierr);
+       return; /* NOTREACHED */
+     }
+ 
+-- 
+1.8.4.rc3
+

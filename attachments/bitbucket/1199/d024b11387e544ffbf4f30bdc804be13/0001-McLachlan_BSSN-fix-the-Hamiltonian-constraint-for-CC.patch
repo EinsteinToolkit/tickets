@@ -1,0 +1,28 @@
+From 37213e316ffd920215277bd02a82fb161a69ba9a Mon Sep 17 00:00:00 2001
+From: Anton Khirnov <anton@khirnov.net>
+Date: Tue, 18 Dec 2012 11:06:51 +0100
+Subject: [PATCH] McLachlan_BSSN: fix the Hamiltonian constraint for CCZ4.
+
+A typo in a8794cd2227c87c7457ba51d040e863be2f981e7 has caused the
+additional CCZ4 terms to overwrite the BSSN value instead of adding to
+it.
+---
+ m/McLachlan_BSSN.m |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/m/McLachlan_BSSN.m b/m/McLachlan_BSSN.m
+index 2c0eb21..20ff871 100644
+--- a/m/McLachlan_BSSN.m
++++ b/m/McLachlan_BSSN.m
+@@ -1086,7 +1086,7 @@ constraintsCalc =
+     R[la,lb] -> + Rt[la,lb] + Rphi[la,lb],
+ 
+     IfCCZ4[
+-      R[la,lb] -> + (2/phi) (+ g[la,lc] Z[uc] PD[phi,lb]
++      R[la,lb] -> R[la, lb] + (2/phi) (+ g[la,lc] Z[uc] PD[phi,lb]
+         + g[lb,lc] Z[uc] PD[phi,la] - g[la,lb] Z[uc] PD[phi,lc])
+         + e4phi Z[uc] PD[gt[la,lb],lc]
+     ],
+-- 
+1.7.10.4
+

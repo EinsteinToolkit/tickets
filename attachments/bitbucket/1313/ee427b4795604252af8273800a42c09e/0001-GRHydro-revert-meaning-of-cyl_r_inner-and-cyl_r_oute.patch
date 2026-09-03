@@ -1,0 +1,94 @@
+From 321fdd52b4b8a043976661d220e7bd555adfbc80 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@caltech.edu>
+Date: Thu, 4 Apr 2013 19:54:37 -0700
+Subject: [PATCH] GRHydro: revert meaning of cyl_r_inner and cyl_r_outer so
+ that they now
+
+make sense
+---
+ param.ccl                             |    8 ++++----
+ src/GRHydro_CylindricalExplosionM.F90 |   32 ++++++++++++++++----------------
+ 2 files changed, 20 insertions(+), 20 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index 09f3109..3ce9530 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -284,22 +284,22 @@ CCTK_REAL cyl_r_outer "Outer Radius"
+ CCTK_REAL cyl_rho_inner "density in inner core"
+ {
+   (0:* :: "any positive number"
+-} 1.d-4
++} 1.d-2
+ 
+ CCTK_REAL cyl_press_inner "pressure in inner core"
+ {
+   (0:* :: "any positive number"
+-} 3.d-5
++} 1.d0
+ 
+ CCTK_REAL cyl_rho_outer "density in outer region"
+ {
+   (0:* :: "any positive number"
+-} 1.d-2
++} 1.d-4
+ 
+ CCTK_REAL cyl_press_outer "pressure in outer region"
+ {
+   (0:* :: "any positive number"
+-} 1.d0
++} 3.d-5
+ 
+ # For magnetic advected loop test:
+ 
+diff --git a/src/GRHydro_CylindricalExplosionM.F90 b/src/GRHydro_CylindricalExplosionM.F90
+index d038c18..f6feeac 100644
+--- a/src/GRHydro_CylindricalExplosionM.F90
++++ b/src/GRHydro_CylindricalExplosionM.F90
+@@ -65,27 +65,27 @@ subroutine GRHydro_cylindricalexplosionM(CCTK_ARGUMENTS)
+   if (.not. CCTK_EQUALS(initial_Bvec, "cylexp")) then
+     call CCTK_WARN(1, "When using the cyclindrical explosion initial data, please also select 'cylexp' for initial_Bvec. I will proceed as if this was set")
+   end if
+-  
++
+ !!$Uses Bx_init, By_init and Bz_init to set magnetic field strength
+ !!$Original tests had Bx_init = 0.1, 1.0   with By_init=Bz_init = 0
+-  
++
+   bvcxl = Bx_init
+   bvcyl = By_init
+   bvczl = Bz_init
+-  
+-!!$Inner radius and outer radius (Komissarov's defaults)                                               
+-!  r_inner = 8.d-1                                                                                     
+-!  r_outer = 1.d0                                                                                      
+-  r_inner = cyl_r_inner                                                                                
+-  r_outer = cyl_r_outer                                                                                
+-                                                                                                       
+-!!$Inner values                                                                                        
+-  rhol   = cyl_rho_inner                                                                                       
+-  pressl = cyl_press_inner                                                                                       
+-                                                                                                       
+-!!$Outer values                                                                                        
+-  rhor   = cyl_rho_outer                                                                                       
+-  pressr = cyl_press_outer                                                                                       
++
++!!$Inner radius and outer radius (Komissarov's defaults)
++!  r_inner = 8.d-1
++!  r_outer = 1.d0
++  r_inner = cyl_r_inner
++  r_outer = cyl_r_outer
++
++!!$Inner values
++  rhor   = cyl_rho_inner
++  pressr = cyl_press_inner
++
++!!$Outer values
++  rhol   = cyl_rho_outer
++  pressl = cyl_press_outer
+ 
+ !!$Adiabatic index for test
+   gam = gl_gamma
+-- 
+1.7.10.4
+

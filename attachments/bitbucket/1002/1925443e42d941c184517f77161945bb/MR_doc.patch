@@ -1,0 +1,295 @@
+Index: doc/documentation.tex
+===================================================================
+--- doc/documentation.tex	(revision 177)
++++ doc/documentation.tex	(working copy)
+@@ -386,6 +386,7 @@
+ ##########################################
+ 
+ CCTK_INT FUNCTION MoLRegisterEvolved(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex)
++CCTK_INT FUNCTION MoLRegisterEvolvedSlow(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex)
+ CCTK_INT FUNCTION MoLRegisterConstrained(CCTK_INT ConstrainedIndex)
+ CCTK_INT FUNCTION MoLRegisterSaveAndRestore(CCTK_INT SandRIndex)
+ CCTK_INT FUNCTION MoLRegisterEvolvedGroup(CCTK_INT EvolvedIndex, \
+@@ -393,6 +394,7 @@
+ CCTK_INT FUNCTION MoLRegisterConstrainedGroup(CCTK_INT ConstrainedIndex)
+ CCTK_INT FUNCTION MoLRegisterSaveAndRestoreGroup(CCTK_INT SandRIndex)
+ CCTK_INT FUNCTION MoLChangeToEvolved(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex)
++CCTK_INT FUNCTION MoLChangeToEvolvedSlow(CCTK_INT EvolvedIndex, CCTK_INT RHSIndex)
+ CCTK_INT FUNCTION MoLChangeToConstrained(CCTK_INT ConstrainedIndex)
+ CCTK_INT FUNCTION MoLChangeToSaveAndRestore(CCTK_INT SandRIndex)
+ CCTK_INT FUNCTION MoLChangeToNone(CCTK_INT RemoveIndex)
+@@ -402,6 +404,7 @@
+ #############################################
+ 
+ USES FUNCTION MoLRegisterEvolved
++USES FUNCTION MoLRegisterEvolvedSlow
+ USES FUNCTION MoLRegisterConstrained
+ USES FUNCTION MoLRegisterSaveAndRestore
+ USES FUNCTION MoLRegisterEvolvedGroup
+@@ -413,7 +416,7 @@
+ USES FUNCTION MoLChangeToNone
+ \end{verbatim}
+ 
+-Note that the list of paramters not complete; see the section on
++Note that the list of parameters not complete; see the section on
+ parameters for the use of arrays or complex variables. However, the
+ list of functions is, and is expanded on in
+ section~\ref{CactusBase_MoL_sec:molfns}.  MoL will check whether a
+@@ -461,6 +464,13 @@
+ the correct data at the end of the MoL step will be dealt with by the
+ MoL thorn and the flesh.
+ 
++When using a multirate scheme the thorn routine {\tt Thorn\_CalcRHS} must
++check the MoL grid scalars {\tt MoL::MoL\_SlowStep} and {\tt
++MoL::MoL\_SlowPostStep} which MoL sets to true (non-zero) if it is time for
++the slow sector to compute its RHS or to apply its poststep routine. {\tt
++MoL::MoL\_SlowPostStep} is always true outside of the RHS loop, eg. in {\tt
++CCTK\_POST\_RESTRICT}.
++
+ \subsection{Evolution method writers}
+ \label{CactusBase_MoL_sec:evol-meth-writ}
+ 
+@@ -583,6 +593,14 @@
+                             CCTK_VarIndex("adm_bssn::adm_bs_salp")); 
+ \end{verbatim}
+ 
++\noindent A matter density $\rho$ might not require such a high order scheme
++and can be evolved using a multi-rate scheme
++
++\begin{verbatim}
++ ierr += MoLRegisterEvolvedSlow(CCTK_VarIndex("GRHydro::dens"),
++                                CCTK_VarIndex("GRHydro::dendsrhs")); 
++\end{verbatim}
++
+ \noindent If maximal or static slicing is used then the lapse is a
+ constrained variable\footnote{Note that this is actually a bit of a
+   hack. The rational for {\it Save and Restore} variables was to deal
+@@ -704,6 +722,54 @@
+   {\bf q}^{n+1} & = & {\bf q}^{(4)}.
+ \end{eqnarray}
+ 
++\subsection{Multirate methods}
++\label{CactusBase_MoL_sec:multiratemol}
++% text originally by Christian Reisswig for the GRHydroMP paper
++A scheme for coupling different parts of a system of equations
++\begin{eqnarray}
++\partial_t \mathbf{g} &=& \mathbf{F}(\mathbf{g},\mathbf{q}) \label{eq:CactusBase_MoL_intmetric}, \\
++\partial_t \mathbf{q} &=& \mathbf{G}(\mathbf{g},\mathbf{q}) \label{eq:CactusBase_MoL_intmatter},
++\end{eqnarray}
++representing eg. spacetime and matter variables, respectively, with different RK integrators is 
++given by \emph{multirate} RK schemes (e.g.~\cite{CactusBase_MoL_schlegel:09, CactusBase_MoL_constantinescu:07}).
++Here, we pursuit the simple Ansatz of performing one RK2 intermediate RHS evaluation for two RK4 intermediate RHS evaluations.
++That is, the additional RK4 intermediate RHS evaluations simple use the results from the last intermediate RK2 step.
++
++To be more explicit, given the equation
++\begin{equation}
++\partial_t y = f(t,y)\,,
++\end{equation}
++where $f$ corresponds to the RHS possibly including spatial derivatives,
++we write a generic RK scheme according to
++\begin{eqnarray}
++y_{n+1} &=& y_n + \Delta t \sum_{i=1}^s b_i\, k_i\,, \\
++k_i &=& f(t_n + c_i \Delta t\,, y_n + \Delta t \sum_{j=1}^s a_{ij} k_j)\,.
++\end{eqnarray}
++The coefficients $b_i$, $c_i$, and $a_{ij}$ can be written in the standard Butcher
++notation.
++
++In our multirate scheme, we use two different sets of coefficients. 
++One set of coefficients determines the RK4 scheme used for integrating the spacetime variables \eqref{eq:CactusBase_MoL_intmetric}, the other set determines the RK2 scheme for the
++hydro variables \eqref{eq:CactusBase_MoL_intmatter}. The coefficients for the RK2 scheme are arranged such that RHS evaluations coincide with
++RK4 RHS evaluations.
++We list the corresponding multirate Butcher tableau in Table~\ref{tab:CactusBase_MoL_Multirate_butcher}.
++
++\begin{table}[th]
++\caption{Butcher tableau for an explicit multirate RK4/RK2 scheme. The right table (separated by the double vertical line) shows
++the coefficients $b_i$ (bottom line), $c_i$ (first vertical column), and $a_{ij}$ for the classical RK4 scheme.
++The left table shows the corresponding RK2 coefficients evaluated at timesteps that coincide with RK4 timesteps.}
++\label{tab:CactusBase_MoL_Multirate_butcher}
++\begin{tabular}{l|llll||l|llll}
++0 &     &   &   &          &   0   & & \\ 
++0 & 0   &   &   &          &   1/2 & 1/2\\
++0 & 0   & 0 &   &          &   1/2 & 0   & 1/2 &     & \\
++1 & 1   & 0 & 0 &          &   1   & 0   & 0   & 1/2 & \\
++\hline
++ & 1/2 & 0 & 0 & 1/2 &     & 1/3 & 1/6 & 1/6 & 1/3\\
++\end{tabular}
++\end{table}
++
++
+ \section{Functions provided by MoL}
+ \label{CactusBase_MoL_sec:molfns}
+ 
+@@ -728,12 +794,16 @@
+ \begin{verbatim}
+ CCTK_INT ierr = MoLRegisterEvolved(CCTK_INT EvolvedIndex, 
+                                    CCTK_INT RHSIndex)
++CCTK_INT ierr = MoLRegisterEvolvedSlow(CCTK_INT EvolvedIndex, 
++                                       CCTK_INT RHSIndex)
+ \end{verbatim}
+     \end{Synopsis}
+     \begin{Synopsis}{Fortran}
+ \begin{verbatim}
+ CCTK_INT ierr = MoLRegisterEvolved(CCTK_INT EvolvedIndex,
+                                    CCTK_INT RHSIndex)
++CCTK_INT ierr = MoLRegisterEvolvedSlow(CCTK_INT EvolvedIndex,
++                                       CCTK_INT RHSIndex)
+ \end{verbatim}
+     \end{Synopsis}
+   \end{SynopsisSection}
+@@ -758,7 +828,8 @@
+   \end{ParameterSection}
+ 
+   \begin{Discussion}
+-    Should be called in a function scheduled in {\tt MoL\_Register}.
++    Should be called in a function scheduled in {\tt MoL\_Register}. Use the
++    {\tt Slow} variant to register the slow sector of a multirate scheme.
+   \end{Discussion}
+ 
+   \begin{SeeAlsoSection}
+@@ -774,6 +845,9 @@
+     \begin{SeeAlso}{MoLChangeToEvolved()}
+       Change a variable at runtime to be evolved.
+     \end{SeeAlso}
++    \begin{SeeAlso}{MoLChangeToEvolvedSlow()}
++      Change a variable at runtime to be evolved in the slow sector.
++    \end{SeeAlso}
+   \end{SeeAlsoSection}
+ 
+   \begin{ExampleSection}
+@@ -949,12 +1023,16 @@
+ \begin{verbatim}
+ CCTK_INT ierr = MoLRegisterEvolvedGroup(CCTK_INT EvolvedIndex, 
+                                         CCTK_INT RHSIndex)
++CCTK_INT ierr = MoLRegisterEvolvedGroupSlow(CCTK_INT EvolvedIndex, 
++                                            CCTK_INT RHSIndex)
+ \end{verbatim}
+     \end{Synopsis}
+     \begin{Synopsis}{Fortran}
+ \begin{verbatim}
+ CCTK_INT ierr = MoLRegisterEvolvedGroup(CCTK_INT EvolvedIndex, 
+                                         CCTK_INT RHSIndex)
++CCTK_INT ierr = MoLRegisterEvolvedGroupSlow(CCTK_INT EvolvedIndex, 
++                                            CCTK_INT RHSIndex)
+ \end{verbatim}
+     \end{Synopsis}
+   \end{SynopsisSection}
+@@ -979,7 +1057,8 @@
+   \end{ParameterSection}
+ 
+   \begin{Discussion}
+-    Should be called in a function scheduled in {\tt MoL\_Register}.
++    Should be called in a function scheduled in {\tt MoL\_Register}. Use the
++    {\tt Slow} variant to register the slow sector of a multirate scheme.
+   \end{Discussion}
+ 
+   \begin{SeeAlsoSection}
+@@ -1164,12 +1243,14 @@
+ \begin{verbatim}
+ CCTK_INT ierr = MoLChangeToEvolved(CCTK_INT EvolvedIndex, 
+                                    CCTK_INT RHSIndex)
++CCTK_INT ierr = MoLChangeToEvolvedSlow(CCTK_INT EvolvedIndex, 
++                                       CCTK_INT RHSIndex)
+ \end{verbatim}
+     \end{Synopsis}
+     \begin{Synopsis}{Fortran}
+ \begin{verbatim}
+-CCTK_INT ierr = MoLChangeToEvolved(CCTK_INT EvolvedIndex, 
+-                                   CCTK_INT RHSIndex)
++CCTK_INT ierr = MoLChangeToEvolvedSlow(CCTK_INT EvolvedIndex, 
++                                       CCTK_INT RHSIndex)
+ \end{verbatim}
+     \end{Synopsis}
+   \end{SynopsisSection}
+@@ -1460,6 +1541,77 @@
+ 
+ 
+ 
++\begin{FunctionDescription}{MoLQueryEvolvedRHS}
++  \label{CactusBase_MoL_MoLQueryEvolvedRHS}
++  
++  Queries  MoL for the index of the update variable for given GF in the
++  evolved category.
++
++  \begin{SynopsisSection}
++    \begin{Synopsis}{C}
++\begin{verbatim}
++CCTK_INT RHSindex = MoLQueryEvolvedRHS(CCTK_INT EvolvedIndex)
++\end{verbatim}
++    \end{Synopsis}
++    \begin{Synopsis}{Fortran}
++\begin{verbatim}
++CCTK_INT RHSindex = MoLQueryEvolvedRHS(CCTK_INT EvolvedIndex)
++\end{verbatim}
++    \end{Synopsis}
++  \end{SynopsisSection}
++
++  \begin{ResultSection}
++    \begin{ResultNote}
++        If the grid function passed does not exists, MoL will issue a level 0
++        warning. If the grid function is not of an evolved type (fast or slow
++        sector) $-1$ will be returned. Otherwise the variable
++        index of the update GF is returned.
++    \end{ResultNote}
++    \begin{Result}{$> 0$}
++      variable index of update GF
++    \end{Result}
++  \end{ResultSection}
++
++  \begin{ParameterSection}
++    \begin{Parameter}{EvolvedIndex}
++      Index of the GF whose update GF is to be returned.
++    \end{Parameter}
++  \end{ParameterSection}
++
++  \begin{Discussion}
++    Both slow and fast evolved variables can be queried.
++  \end{Discussion}
++
++  \begin{SeeAlsoSection}
++    \begin{SeeAlso}{CCTK\_VarIndex()}
++      Get the variable index.
++    \end{SeeAlso}
++    \begin{SeeAlso}{MoLRegisterEvolved()}
++      Register evolved variables.
++    \end{SeeAlso}
++    \begin{SeeAlso}{MoLChangeToEvolvedSlow()}
++      Change a variable at runtime to be evolved in the slow sector.
++    \end{SeeAlso}
++  \end{SeeAlsoSection}
++
++  \begin{ExampleSection}
++    \begin{Example}{C}
++\begin{verbatim}
++rhsindex = MoLQueryEvolvedRHS(CCTK_VarIndex("wavetoymol::phi"));
++\end{verbatim}
++    \end{Example}
++    \begin{Example}{Fortran}
++\begin{verbatim}
++call CCTK_VarIndex(EvolvedIndex, "wavetoymol::phi")
++rhsindex = MoLQueryEvolvedRHS(EvolvedIndex)
++\end{verbatim}
++    \end{Example}
++  \end{ExampleSection}
++
++\end{FunctionDescription}
++
++
++
+ \begin{thebibliography}{9}
+ 
+ \bibitem{CactusBase_MoL_Thornburg93}
+@@ -1493,6 +1645,14 @@
+ \newblock Ultrarelativistic fluid dynamics.
+ \newblock {\em Class. Quantum Grav.}, {\bf 17}:\penalty0 733--759, 2000.
+ 
++\bibitem{CactusBase_MoL_schlegel:09}
++M. Schlegel, O. Knoth, M. Arnold, and R. Wolke
++\newblock {\em Journal of Computational and Applied Mathematics}, {\bf 226}, 345, 2009.
++
++\bibitem{CactusBase_MoL_constantinescu:07}
++E. Constantinescu and A. Sandu
++\newblock {\em SIAM J. Sci.\ Comput.}, {\bf 33}, 239, 2007.
++
+ \end{thebibliography}
+ 
+ % Do not delete next line

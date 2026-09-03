@@ -1,0 +1,231 @@
+Index: test/Kerr-rotating-90-staggered.par
+===================================================================
+--- test/Kerr-rotating-90-staggered.par	(revision 70)
++++ test/Kerr-rotating-90-staggered.par	(working copy)
+@@ -18,9 +18,10 @@
+ 
+ ActiveThorns = "NaNChecker"
+ 
+-ActiveThorns = "Boundary CartGrid3D CoordBase SymBase"
++ActiveThorns = "Boundary CartGrid3D CoordBase SymBase ReflectionSymmetry"
++ActiveThorns = "RotatingSymmetry90"
+ CartGrid3D::type         = byrange
+-CartGrid3D::domain       = bitant
++CartGrid3D::domain       = full
+ CartGrid3D::avoid_origin = yes
+ CartGrid3D::xmin         = -0.375
+ CartGrid3D::ymin         = -0.375
+@@ -29,22 +30,37 @@
+ CartGrid3D::ymax         =  3.875
+ CartGrid3D::zmax         =  3.875
+ 
+-ActiveThorns = "RotatingSymmetry90"
++CoordBase::xmin         = -0.375 
++CoordBase::ymin         = -0.375
++CoordBase::zmin         = -0.375
++CoordBase::xmax         =  3.875
++CoordBase::ymax         =  3.875
++CoordBase::zmax         =  3.875
++CoordBase::boundary_size_x_upper     = 2
++CoordBase::boundary_size_y_upper     = 2
++CoordBase::boundary_size_z_upper     = 2
++CoordBase::boundary_size_x_lower     = 2
++CoordBase::boundary_size_y_lower     = 2
++CoordBase::boundary_size_z_lower     = 2
+ 
++ReflectionSymmetry::reflection_z = yes
++
+ ActiveThorns = "ADMBase ADMCoupling ADMMacros CoordGauge SpaceMask StaticConformal"
+ SpaceMask::use_mask = yes
+ 
+ ActiveThorns = "Exact"
+ ADMBase::initial_data  = exact
+ ADMBase::initial_lapse = exact
++ADMBase::initial_dlapse = exact
+ ADMBase::initial_shift = exact
++ADMBase::initial_dshift = exact
+ Exact::exact_model = "Kerr/Kerr-Schild"
+ Exact::Kerr_KerrSchild__mass = 1.0
+ Exact::Kerr_KerrSchild__spin = 0.6
+ 
+-ActiveThorns = "LegoExcision"
+-LegoExcision::fixed_excision = sphere
+-LegoExcision::fixed_size      =  1.01
++ActiveThorns = "NoExcision SphericalSurface LoopControl"
++NoExcision::num_regions = 1
++NoExcision::radius[0]   = 0.6
+ 
+ ActiveThorns = "Time"
+ Time::dtfac = 0.25
+@@ -52,29 +68,36 @@
+ ActiveThorns = "MoL"
+ MoL::ODE_Method = RK3
+ 
+-ActiveThorns = "BSSN_MoL"
+-BSSN_MoL::excise       = yes
+-BSSN_MoL::excisionType = lego
++ActiveThorns = "ML_BSSN ML_BSSN_Helper GenericFD NewRad TmunuBase LoopControl"
+ 
+-ADMBase::evolution_method = ADM_BSSN
+-ADM_BSSN::stencil_size = 2
+-ADM_BSSN::advection    = upwind2
+-ADM_BSSN::bound        = newrad
++ADMBase::evolution_method = ML_BSSN
++ML_BSSN::fdOrder      = 2
++ML_BSSN::my_initial_boundary_condition = "extrapolate-gammas"
++ML_BSSN::my_rhs_boundary_condition     = "NewRad"
++# These are necessary
++ML_BSSN::ML_log_confac_bound = "none"
++ML_BSSN::ML_metric_bound     = "none"
++ML_BSSN::ML_Gamma_bound      = "none"
++ML_BSSN::ML_trace_curv_bound = "none"
++ML_BSSN::ML_curv_bound       = "none"
++ML_BSSN::ML_lapse_bound      = "none"
++ML_BSSN::ML_dtlapse_bound    = "none"
++ML_BSSN::ML_shift_bound      = "none"
++ML_BSSN::ML_dtshift_bound    = "none"
+ 
+-ADMBase::lapse_evolution_method = 1+log
+-ADM_BSSN::lapsesource           = modified
+-ADM_BSSN::harmonic_f            = 2.0
+-ADM_BSSN::LapsePsiPower         = 4
+-ADM_BSSN::force_lapse_positive  = yes
+ 
+-ADMBase::shift_evolution_method = gamma0
+-ADM_BSSN::ShiftGammaCoeff       = 0.75
+-ADM_BSSN::BetaDriver            = 2.5
+-ADM_BSSN::ShiftAlpPower         = 2
+-ADM_BSSN::ShiftPsiPower         = 4
++ADMBase::lapse_evolution_method = ML_BSSN
++ADMBase::dtlapse_evolution_method = "ML_BSSN" 
++ML_BSSN::harmonicN           = 1   # 1+log 
++ML_BSSN::harmonicF           = 2.0
++ML_BSSN::AlphaDriver         = 1
++ML_BSSN::LapseAdvectionCoeff = 0
+ 
++ADMBase::shift_evolution_method = ML_BSSN
++ADMBase::dtshift_evolution_method = ML_BSSN
++ML_BSSN::ShiftGammaCoeff = 0
++
+ ActiveThorns = "ADMConstraints"
+-ADMConstraints::excise = yes
+ 
+ ActiveThorns = "IOBasic LocalReduce"
+ IOBasic::outInfo_every      = 1
+Index: test/Kerr-rotating-90.par
+===================================================================
+--- test/Kerr-rotating-90.par	(revision 70)
++++ test/Kerr-rotating-90.par	(working copy)
+@@ -18,9 +18,10 @@
+ 
+ ActiveThorns = "NaNChecker"
+ 
+-ActiveThorns = "Boundary CartGrid3D CoordBase SymBase"
++ActiveThorns = "Boundary CartGrid3D CoordBase SymBase ReflectionSymmetry"
++ActiveThorns = "RotatingSymmetry90"
+ CartGrid3D::type         = byrange
+-CartGrid3D::domain       = bitant
++CartGrid3D::domain       = full
+ CartGrid3D::avoid_origin = no
+ CartGrid3D::xmin         = -0.5
+ CartGrid3D::ymin         = -0.5
+@@ -29,22 +30,40 @@
+ CartGrid3D::ymax         =  4.0
+ CartGrid3D::zmax         =  4.0
+ 
+-ActiveThorns = "RotatingSymmetry90"
++CoordBase::xmin         = -0.5 
++CoordBase::ymin         = -0.5
++CoordBase::zmin         = -0.5
++CoordBase::xmax         =  4.0
++CoordBase::ymax         =  4.0
++CoordBase::zmax         =  4.0
++CoordBase::boundary_size_x_upper     = 2
++CoordBase::boundary_size_y_upper     = 2
++CoordBase::boundary_size_z_upper     = 2
++CoordBase::boundary_size_x_lower     = 2
++CoordBase::boundary_size_y_lower     = 2
++CoordBase::boundary_size_z_lower     = 2
+ 
++ReflectionSymmetry::avoid_origin_x = no
++ReflectionSymmetry::avoid_origin_y = no
++ReflectionSymmetry::avoid_origin_z = no
++ReflectionSymmetry::reflection_z = yes
++
+ ActiveThorns = "ADMBase ADMCoupling ADMMacros CoordGauge SpaceMask StaticConformal"
+ SpaceMask::use_mask = yes
+ 
+ ActiveThorns = "Exact"
+ ADMBase::initial_data  = exact
+ ADMBase::initial_lapse = exact
++ADMBase::initial_dtlapse = exact
+ ADMBase::initial_shift = exact
++ADMBase::initial_dtshift = exact
+ Exact::exact_model = "Kerr/Kerr-Schild"
+ Exact::Kerr_KerrSchild__mass = 1.0
+ Exact::Kerr_KerrSchild__spin = 0.6
+ 
+-ActiveThorns = "LegoExcision"
+-LegoExcision::fixed_excision = sphere
+-LegoExcision::fixed_size      =  1.26
++ActiveThorns = "NoExcision SphericalSurface LoopControl"
++NoExcision::num_regions = 1
++NoExcision::radius[0]   = 0.6
+ 
+ ActiveThorns = "Time"
+ Time::dtfac = 0.25
+@@ -52,29 +71,36 @@
+ ActiveThorns = "MoL"
+ MoL::ODE_Method = RK3
+ 
+-ActiveThorns = "BSSN_MoL"
+-BSSN_MoL::excise       = yes
+-BSSN_MoL::excisionType = lego
++ActiveThorns = "ML_BSSN ML_BSSN_Helper GenericFD NewRad TmunuBase LoopControl"
+ 
+-ADMBase::evolution_method = ADM_BSSN
+-ADM_BSSN::stencil_size = 2
+-ADM_BSSN::advection    = upwind2
+-ADM_BSSN::bound        = newrad
++ADMBase::evolution_method = ML_BSSN
++ML_BSSN::fdOrder      = 2
++ML_BSSN::my_initial_boundary_condition = "extrapolate-gammas"
++ML_BSSN::my_rhs_boundary_condition     = "NewRad"
++# These are necessary
++ML_BSSN::ML_log_confac_bound = "none"
++ML_BSSN::ML_metric_bound     = "none"
++ML_BSSN::ML_Gamma_bound      = "none"
++ML_BSSN::ML_trace_curv_bound = "none"
++ML_BSSN::ML_curv_bound       = "none"
++ML_BSSN::ML_lapse_bound      = "none"
++ML_BSSN::ML_dtlapse_bound    = "none"
++ML_BSSN::ML_shift_bound      = "none"
++ML_BSSN::ML_dtshift_bound    = "none"
+ 
+-ADMBase::lapse_evolution_method = 1+log
+-ADM_BSSN::lapsesource           = modified
+-ADM_BSSN::harmonic_f            = 2.0
+-ADM_BSSN::LapsePsiPower         = 4
+-ADM_BSSN::force_lapse_positive  = yes
+ 
+-ADMBase::shift_evolution_method = gamma0
+-ADM_BSSN::ShiftGammaCoeff       = 0.75
+-ADM_BSSN::BetaDriver            = 2.5
+-ADM_BSSN::ShiftAlpPower         = 2
+-ADM_BSSN::ShiftPsiPower         = 4
++ADMBase::lapse_evolution_method = ML_BSSN
++ADMBase::dtlapse_evolution_method = "ML_BSSN" 
++ML_BSSN::harmonicN           = 1   # 1+log 
++ML_BSSN::harmonicF           = 2.0
++ML_BSSN::AlphaDriver         = 1
++ML_BSSN::LapseAdvectionCoeff = 0
+ 
++ADMBase::shift_evolution_method = ML_BSSN
++ADMBase::dtshift_evolution_method = ML_BSSN
++ML_BSSN::ShiftGammaCoeff = 0
++
+ ActiveThorns = "ADMConstraints"
+-ADMConstraints::excise = yes
+ 
+ ActiveThorns = "IOBasic LocalReduce"
+ IOBasic::outInfo_every      = 1

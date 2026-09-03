@@ -1,0 +1,148 @@
+diff --git a/Carpet/param.ccl b/Carpet/param.ccl
+index 56f89096..486110dc 100644
+--- a/Carpet/param.ccl
++++ b/Carpet/param.ccl
+@@ -472,6 +472,22 @@ CCTK_INT processor_topology_3d_z "Number of processors in z-direction" STEERABLE
+   1:* :: "must be positive"
+ } 1
+ 
++BOOLEAN uniformly_split_interior_points_x "Uniformly divide interior points across processors in x-direction" STEERABLE=recover
++{
++} "no"
++
++BOOLEAN uniformly_split_interior_points_y "Uniformly divide interior points across processors in y-direction" STEERABLE=recover
++{
++} "no"
++
++BOOLEAN uniformly_split_interior_points_z "Uniformly divide interior points across processors in z-direction" STEERABLE=recover
++{
++} "no"
++
++BOOLEAN symmetrically_distribute_points_y "Symmetrically distribute points in y-direction over domain center" STEERABLE=recover
++{
++} "no"
++
+ CCTK_INT split_direction "Direction in which the domain should be split (for processor_topology=along-dir)" STEERABLE=recover
+ {
+   0:* :: "0 for x, 1 for y, 2 for z, etc."
+diff --git a/Carpet/src/Recompose.cc b/Carpet/src/Recompose.cc
+index 34bcb007..0cb76f2c 100644
+--- a/Carpet/src/Recompose.cc
++++ b/Carpet/src/Recompose.cc
+@@ -1131,11 +1131,50 @@ static void SplitRegions_AsSpecified(cGH const *const cctkGH,
+   const ivect cstr = rstr0;
+   const ivect glonp = (rub0 - rlb0) / cstr;
+   //     const ivect locnp = (glonp + nprocs_dir - 1) / nprocs_dir;
+-  const ivect locnp = glonp / nprocs_dir;
+-  const ivect rem = glonp % nprocs_dir;
++
++  ivect nghost(ghost_size, ghost_size, ghost_size);
++  if(CCTK_EQUALS(ghost_sizes, ""))
++  {
++    if(ghost_size == -1)
++    {
++      nghost[0] = ghost_size_x;
++      nghost[1] = ghost_size_y;
++      nghost[2] = ghost_size_z;
++    }
++  }
++  else
++  {
++    CCTK_WARN(CCTK_WARN_ABORT, "Could not parse parameter \"ghost_sizes\"");
++  }
++
++  const ivect intnp = glonp - 2*nghost;
++  ivect locnp_tmp, rem_tmp;
++  locnp_tmp = glonp / nprocs_dir;
++  rem_tmp = glonp % nprocs_dir;
++  if(uniformly_split_interior_points_x)
++  {
++    locnp_tmp[0] = intnp[0] / nprocs_dir[0];
++    rem_tmp[0] = intnp[0] % nprocs_dir[0];
++  }
++  if(uniformly_split_interior_points_y)
++  {
++    locnp_tmp[1] = intnp[1] / nprocs_dir[1];
++    rem_tmp[1] = intnp[1] % nprocs_dir[1];
++  }
++  if(uniformly_split_interior_points_z)
++  {
++    locnp_tmp[2] = intnp[2] / nprocs_dir[2];
++    rem_tmp[2] = intnp[2] % nprocs_dir[2];
++  }
++
++  const ivect locnp = locnp_tmp;
++  const ivect rem = rem_tmp;
+   const ivect step = locnp * cstr;
+   assert(dim == 3);
+ 
++  const ivect halfrem = rem / 2;
++  const ivect halfnprocs_dir = nprocs_dir / 2;
++
+   vector<int> boundsz(nprocs_dir[2] + 1);
+   vector<ipfulltree *> subtreesz(nprocs_dir[2]);
+   for (int k = 0; k < nprocs_dir[2]; ++k) {
+@@ -1152,13 +1191,58 @@ static void SplitRegions_AsSpecified(cGH const *const cctkGH,
+         ivect cub = rlb0 + step * (ipos + 1);
+         // 	  clb = min (clb, rub);
+         // 	  cub = min (cub, rub);
++
++        /* split according to interior points */
++        if(uniformly_split_interior_points_x)
++        {
++          if(i > 0)               clb[0] = clb[0] +   nghost[0];
++          if(i < nprocs_dir[0]-1) cub[0] = cub[0] +   nghost[0];
++          else                    cub[0] = cub[0] + 2*nghost[0];
++        }
++        if(uniformly_split_interior_points_y)
++        {
++          if(j > 0)               clb[1] = clb[1] +   nghost[1];
++          if(j < nprocs_dir[1]-1) cub[1] = cub[1] +   nghost[1];
++          else                    cub[1] = cub[1] + 2*nghost[1];
++        }
++        if(uniformly_split_interior_points_z)
++        {
++          if(k > 0)               clb[2] = clb[2] +   nghost[2];
++          if(k < nprocs_dir[2]-1) cub[2] = cub[2] +   nghost[2];
++          else                    cub[2] = cub[2] + 2*nghost[2];
++        }
++
++        /* handle extra grid points on some components */
+         for (int d = 0; d < dim; ++d) {
+-          if (ipos[d] < rem[d]) {
+-            clb[d] += cstr[d] * ipos[d];
+-            cub[d] += cstr[d] * (ipos[d] + 1);
++          /* if prepare for double covering theta: make phi symmtrically
++           * distributed */
++          if (symmetrically_distribute_points_y && d == dim-1 && rem[d] > 0) {
++            if (rem[d]%2 == 0) { // even num of points in phi required
++              if (ipos[d]< halfrem[d]) {
++                clb[d] += cstr[d] * ipos[d];
++                cub[d] += cstr[d] * (ipos[d] + 1);
++              } else if (ipos[d]< halfnprocs_dir[d]) {
++                clb[d] += cstr[d] * halfrem[d];
++                cub[d] += cstr[d] * halfrem[d];
++              } else if (ipos[d]< halfnprocs_dir[d]+halfrem[d]) {
++                clb[d] += cstr[d] * (ipos[d] - halfnprocs_dir[d] + halfrem[d]);
++                cub[d] += cstr[d] * (ipos[d] - halfnprocs_dir[d] + halfrem[d] + 1);
++              } else {
++                clb[d] += cstr[d] * rem[d];
++                cub[d] += cstr[d] * rem[d];
++              }
++            } else {
++              CCTK_ERROR("Could not symmetrically_distribute_points_y,\
++                  since point num in z is not even");
++            }
+           } else {
+-            clb[d] += cstr[d] * rem[d];
+-            cub[d] += cstr[d] * rem[d];
++            if (ipos[d] < rem[d]) {
++              clb[d] += cstr[d] * ipos[d];
++              cub[d] += cstr[d] * (ipos[d] + 1);
++            } else {
++              clb[d] += cstr[d] * rem[d];
++              cub[d] += cstr[d] * rem[d];
++            }
+           }
+         }
+         assert(all(clb >= 0));

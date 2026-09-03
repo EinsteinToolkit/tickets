@@ -1,0 +1,105 @@
+From c2168deb6039ea30b6e9bd1241a77ffa9aac88ae Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Fri, 27 Jan 2012 10:44:49 -0800
+Subject: [PATCH 02/12] Hydro_Analysis: add verbosity_level option to control
+ how much data to output to stdout
+
+---
+ param.ccl            |    7 +++++++
+ src/Hydro_Analysis.c |   46 ++++++++++++++++++++++++++++++++++++++++++----
+ 2 files changed, 49 insertions(+), 4 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index 42c9573..00723b8 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -11,6 +11,13 @@ BOOLEAN Hydro_Analysis_average_multiple_maxima_locations "when finding more than
+ {
+ } "false"
+ 
++INT verbosity_level "how much information to ouptut to the logs" STEERABLE = always
++{
++  0 :: "Output nothing"
++  1 :: "warn when finding multiple maxima"
++  2 :: "also output location of maxima" 
++} 1
++
+ BOOLEAN Hydro_Analysis_rho_max_loc_only_positive_x "Restrict location search for density maximum to positive values of x"
+ {
+ } "false"
+diff --git a/src/Hydro_Analysis.c b/src/Hydro_Analysis.c
+index bcd3430..bb99dac 100644
+--- a/src/Hydro_Analysis.c
++++ b/src/Hydro_Analysis.c
+@@ -90,7 +90,7 @@ void Hydro_Analysis_LocationSearch(CCTK_ARGUMENTS)
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+ 
+-  int set_maximum_location;
++  int set_maximum_location, warned_about_multiple_local_maxima = 0;
+ 
+   /* Initialized MPI-local quantities */
+   CCTK_REAL local_rho_max_loc[4], level_rho_max_loc[4];
+@@ -115,6 +115,25 @@ void Hydro_Analysis_LocationSearch(CCTK_ARGUMENTS)
+       {
+         #pragma omp critical
+         {
++          // have to already warn here when we still have the actual coordinates around
++          if (verbosity_level >= 1 && round(local_rho_max_loc[3]) >= 1.)
++          { 
++            CCTK_WARN(1, "Found more than one identical maximum in single patch.");
++            if (verbosity_level >= 2)
++            {
++              if (round(local_rho_max_loc[3]) == 1.) { // once we detect the second maximum, output the first as well
++                CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++                          "my candidate: (%g,%g,%g) with value %g.",
++                           local_rho_max_loc[0],local_rho_max_loc[1],local_rho_max_loc[2],
++                           *Hydro_Analysis_rho_max);
++              }
++              CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++                        "my candidate: (%g,%g,%g) with value %g.",
++                         x[i3D], y[i3D], z[i3D],
++                         *Hydro_Analysis_rho_max);
++              warned_about_multiple_local_maxima = 1;
++            }
++          }
+           local_rho_max_loc[0] += x[i3D];
+           local_rho_max_loc[1] += y[i3D];
+           local_rho_max_loc[2] += z[i3D];
+@@ -149,11 +168,30 @@ void Hydro_Analysis_LocationSearch(CCTK_ARGUMENTS)
+         level_rho_max_loc[1] /= level_rho_max_loc[3];
+         level_rho_max_loc[2] /= level_rho_max_loc[3];
+ 
++        if (verbosity_level >= 1 && !have_warned_about_multiple_maxima)
++        {
++          CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++                     "Found more than one (%d) identical maximum, using average location (%g,%g,%g).",
++                     (int)round(level_rho_max_loc[3]),
++                     level_rho_max_loc[0], level_rho_max_loc[1],
++                     level_rho_max_loc[2]);
++          have_warned_about_multiple_maxima = 1;
++        }
++
+         set_maximum_location = 1;
+       } else {
+-        CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                   "Found more than one (%d) identical maximum, not setting anything.",
+-                   (int)round(level_rho_max_loc[3]));
++        if (verbosity_level >= 1)
++        {
++          CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++                     "Found more than one (%d) identical maximum, not setting anything.",
++                     (int)round(level_rho_max_loc[3]));
++          if (verbosity_level >= 2 && !warned_about_multiple_local_maxima)
++          { 
++            CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++                       "my candidate: (%g,%g,%g) with value %g.",
++                       local_rho_max_loc[0],local_rho_max_loc[1],local_rho_max_loc[2],
++                       *Hydro_Analysis_rho_max);
++          }
+         }
+         set_maximum_location = 0;
+       }
+-- 
+1.7.10.4
+

@@ -1,0 +1,3176 @@
+diff --exclude '*.tex' --exclude README -urw IllinoisGRMHD/configuration.ccl GiRaFFE/configuration.ccl
+--- IllinoisGRMHD/configuration.ccl	2017-01-10 10:54:34.000000000 -0600
++++ GiRaFFE/configuration.ccl	2017-10-03 22:08:55.329532568 -0500
+@@ -1,7 +1,7 @@
+-# Configuration definition for thorn IllinoisGRMHD
+-REQUIRES EOS_Omni Boundary CartGrid3D SpaceMask
++# Configuration definition for thorn GiRaFFE
++REQUIRES Boundary CartGrid3D SpaceMask
+ 
+-PROVIDES IllinoisGRMHD
++PROVIDES GiRaFFE
+ {
+   SCRIPT
+   LANG
+diff --exclude '*.tex' --exclude README -urw IllinoisGRMHD/interface.ccl GiRaFFE/interface.ccl
+--- IllinoisGRMHD/interface.ccl	2016-08-03 09:25:55.000000000 -0500
++++ GiRaFFE/interface.ccl	2017-10-03 22:08:55.329532568 -0500
+@@ -1,19 +1,21 @@
+-# Interface definition for thorn IllinoisGRMHD
++# Interface definition for thorn GiRaFFE
+ 
+-implements: IllinoisGRMHD
++implements: GiRaFFE
+ inherits: ADMBase, Boundary, SpaceMask, Tmunubase, HydroBase, grid
+ 
+-includes header: IllinoisGRMHD_headers.h in IllinoisGRMHD_headers.h
++includes header: GiRaFFE_headers.h in GiRaFFE_headers.h
+ 
+ USES INCLUDE: Symmetry.h
+ 
+ public:
+ 
+ #vvvvvvvv EVOLVED VARIABLES vvvvvvvv#
+-#cctk_real grmhd_conservatives type = GF TAGS='prolongation="Lag3"' Timelevels=3
++# HERE ARE OUR OPTIONS (WE'D PREFER IF 3RD ORDER LAGRANGE INTERPOLATION WERE AN OPTION, AS THIS WORKS BEST, E.G., WHEN SHOCKS DEVELOP AND CROSS REFINEMENT BOUNDARIES [even better than ENO/WENO!])
++#cctk_real grmhd_conservatives type = GF TAGS='prolongation="WENO"' Timelevels=3
++#cctk_real grmhd_conservatives type = GF TAGS='prolongation="Lagrange_monotone"' Timelevels=3
+ cctk_real grmhd_conservatives type = GF Timelevels=3
+ {
+-  rho_star,tau,mhd_st_x,mhd_st_y,mhd_st_z
++  mhd_st_x,mhd_st_y,mhd_st_z
+ } "Evolved mhd variables"
+ 
+ # These variables are semi-staggered:
+@@ -51,39 +53,16 @@
+ 
+ 
+ #vvvvvvv PRIMITIVE VARIABLES vvvvvvv#
+-# TODO: split into groups with well defined symmetry properties: (rho_b, P, u0), (vx,vy,vz)
+ cctk_real grmhd_primitives_allbutBi type = GF TAGS='InterpNumTimelevels=1 prolongation="none"'
+ {
+-  rho_b,P,vx,vy,vz
++  vx,vy,vz
+ }
+-# It is useful to split Bi from Bi_stagger, since we're generally only interested in outputting Bi for diagnostics
+ cctk_real grmhd_primitives_Bi type = GF TAGS='InterpNumTimelevels=1 prolongation="none"'
+ {
+-  Bx,By,Bz
+-}
+-cctk_real grmhd_primitives_Bi_stagger type = GF TAGS='InterpNumTimelevels=1 prolongation="none"'
+-{
+-  Bx_stagger,By_stagger,Bz_stagger
++  Bx,By,Bz,Bx_stagger,By_stagger,Bz_stagger
+ }
+ #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^#
+ 
+-#vvvvvvv EQUATION OF STATE VARIABLES vvvvvvv#
+-REAL eos_params_arrays1 TYPE=ARRAY DISTRIB=CONSTANT DIM=1 SIZE=10
+-{
+-  rho_tab,P_tab,eps_tab
+-} "eos_parameters"
+-
+-REAL eos_params_arrays2 TYPE=ARRAY DISTRIB=CONSTANT DIM=1 SIZE=11
+-{
+-  k_tab,gamma_tab
+-} "eos_parameters"
+-
+-REAL eos_params_scalar TYPE = SCALAR 
+-{
+-  n_poly
+-} "polytropic index"
+-#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^#
+-
+ #vvvvvvv BSSN-based quantities, computed from ADM quantities.v vvvvvvv#
+ cctk_real BSSN_quantities type = GF TAGS='prolongation="none" Checkpoint="no"'
+ {
+@@ -103,9 +82,9 @@
+ #vvvvvvv TEMPORARY VARIABLES FOR RECONSTRUCTION vvvvvvv#
+ cctk_real grmhd_primitives_reconstructed_temps type = GF TAGS='prolongation="none" Checkpoint="no"'
+ {
+-  ftilde_gf,temporary,
+-  rho_br,Pr,vxr,vyr,vzr,Bxr,Byr,Bzr,Bx_staggerr,By_staggerr,Bz_staggerr,
+-  rho_bl,Pl,vxl,vyl,vzl,Bxl,Byl,Bzl,Bx_staggerl,By_staggerl,Bz_staggerl,
++  temporary,
++  vxr,vyr,vzr,Bxr,Byr,Bzr,Bx_staggerr,By_staggerr,Bz_staggerr,
++  vxl,vyl,vzl,Bxl,Byl,Bzl,Bx_staggerl,By_staggerl,Bz_staggerl,
+   vxrr,vxrl,vyrr,vyrl,vzrr,vzrl,vxlr,vxll,vylr,vyll,vzlr,vzll
+ }
+ #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^#
+@@ -113,7 +92,7 @@
+ #vvvvvvv RHS VARIABLES vvvvvvv#
+ cctk_real grmhd_conservatives_rhs type = GF TAGS='prolongation="none" Checkpoint="no"'
+ {
+-  rho_star_rhs,tau_rhs,st_x_rhs,st_y_rhs,st_z_rhs
++  st_x_rhs,st_y_rhs,st_z_rhs
+ }
+ 
+ cctk_real em_Ax_rhs type = GF TAGS='prolongation="none" Checkpoint="no"'
+@@ -146,7 +125,7 @@
+ #vvvvvvv TEMPORARY VARIABLES USEFUL FOR FLUX COMPUTATION vvvvvvv#
+ cctk_real grmhd_flux_temps type = GF TAGS='prolongation="none" Checkpoint="no"'
+ {
+-  rho_star_flux,tau_flux,st_x_flux,st_y_flux,st_z_flux
++  st_x_flux,st_y_flux,st_z_flux
+ }
+ #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^#
+ 
+@@ -157,7 +136,7 @@
+ }
+ #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^#
+ 
+-###########################################################################
++
+ ####################################################
+ ###  Functions provided by MoL for registration  ###
+ ####################################################
+diff --exclude '*.tex' --exclude README -urw IllinoisGRMHD/param.ccl GiRaFFE/param.ccl
+--- IllinoisGRMHD/param.ccl	2018-07-30 08:32:44.156008560 -0500
++++ GiRaFFE/param.ccl	2017-10-03 22:08:55.329532568 -0500
+@@ -1,4 +1,4 @@
+-# Parameter definitions for thorn IllinoisGRMHD
++# Parameter definitions for thorn GiRaFFE
+ 
+ shares: ADMBase
+ USES CCTK_INT lapse_timelevels
+@@ -12,99 +12,37 @@
+ USES CCTK_INT MoL_Num_Evolved_Vars
+ 
+ restricted:
+-CCTK_INT IllinoisGRMHD_MaxNumEvolvedVars "The maximum number of evolved variables used by BSSN" ACCUMULATOR-BASE=MethodofLines::MoL_Num_Evolved_Vars
++
++CCTK_INT GiRaFFE_MaxNumEvolvedVars "The maximum number of evolved variables used by BSSN" ACCUMULATOR-BASE=MethodofLines::MoL_Num_Evolved_Vars
+ {
+-  9:9           :: "Just 9: rho_star,tau,mhd_st_x,mhd_st_y,mhd_st_z,Ax,Ay,Az, and psi6phi"
+-} 9
++  7:7           :: "Just 7: mhd_st_x,mhd_st_y,mhd_st_z,Ax,Ay,Az, and psi6phi"
++} 7
+ #########################################################
+ 
+ restricted:
++
+ #########################################################
+-# Verbosity Level
+-KEYWORD verbose "Determines how much evolution information is output" STEERABLE=ALWAYS
++# Set the drift velocity perpendicular to the current sheet to zero.
++BOOLEAN current_sheet_null_v "Shall we null the velocity normal to the current sheet?"
+ {
+-  "no"        :: "Complete silence"
+-  "essential" :: "Essential health monitoring of the GRMHD evolution: Information about conservative-to-primitive fixes, etc."
+-  "essential+iteration output" :: "Outputs health monitoring information, plus a record of which RK iteration. Very useful for backtracing a crash."
+-} "essential+iteration output"
++} "no" #Necessary for the split monopole
+ #########################################################
+ 
+-
+ #########################################################
+ # SPEED LIMIT: Set maximum relativistic gamma factor
+ # 
+-REAL GAMMA_SPEED_LIMIT "Maximum relativistic gamma factor."
++REAL GAMMA_SPEED_LIMIT "Maximum relativistic gamma factor. Note the default is much higher than IllinoisGRMHD. (GRFFE can handle higher Lorentz factors)"
+ {
+- 1:* :: "Positive > 1, though you'll likely have troubles far above 10."
+-} 10.0
+-#########################################################
+-
+-#########################################################
+-# CONSERV TO PRIMS PARAMETERS
+-
+-# FIXME: Enable this parameter! IllinoisGRMHD is currently hard-coded to tau_stildefix_enable=2.
+-#INT tau_stildefix_enable "tau<0 fix in primitive_vars_hybrid2 to reduce number of Font fixes, especially in puncture+matter evolutions" STEERABLE=ALWAYS
+-#{
+-# 0:3 :: "zero (disable), one (enable everywhere), or two (enable only where Psi6 > Psi6threshold [i.e., inside the horizon, where B's are set to zero], or three (kludge: set B=0 if tau<0 inside horizon))"
+-#} 0
+-
+-BOOLEAN update_Tmunu "Update Tmunu, for RHS of Einstein's equations?" STEERABLE=ALWAYS
+-{
+-} "yes"
+-
+-############################
+-# Limiters on tau and rho_b:
+-REAL tau_atm "Floor value on the energy variable tau (cf. tau_stildefix_enable). Given the variety of systems this code may encounter, there *is no reasonable default*. Effectively the current (enormous) value should disable the tau_atm floor. Please set this in your initial data thorn, and reset at will during evolutions." STEERABLE=ALWAYS
+-{
+- 0:* :: "Positive"
+-} 1e100
+-
+-REAL rho_b_atm "Floor value on the baryonic rest mass density rho_b (atmosphere). Given the variety of systems this code may encounter, there *is no reasonable default*. Your run will die unless you override this default value in your initial data thorn." STEERABLE=ALWAYS
+-{
+- *:* :: "Allow for negative values.  This enables us to debug the code and verify if rho_b_atm is properly set."
+-} 1e200
+-
+-REAL rho_b_max "Ceiling value on the baryonic rest mass density rho_b. The enormous value effectively disables this ceiling by default. It can be quite useful after a black hole has accreted a lot of mass, leading to enormous densities inside the BH. To enable this trick, set rho_b_max in your initial data thorn! You are welcome to change this parameter mid-run (after restarting from a checkpoint)." STEERABLE=ALWAYS
+-{
+- 0:* :: "Note that you will have problems unless rho_b_atm<rho_b_max"
+-} 1e300
+-############################
+-
+-INT conserv_to_prims_debug "0: no, 1: yes" STEERABLE=ALWAYS
+-{
+- 0:1 :: "zero (no) or one (yes)"
+-} 0
+-
+-REAL Psi6threshold "Where Psi^6 > Psi6threshold, we assume we're inside the horizon in the primitives solver, and certain limits are relaxed or imposed" STEERABLE=ALWAYS
+-{
+- *:* :: "Can set to anything"
+-} 1e100
+-#########################################################
+-
+-#########################################################
+-# EQUATION OF STATE PARAMS, LOOK FOR MORE IN interface.ccl!
+-INT neos "number of parameters in EOS table. If you want to increase from the default max value, you MUST also set eos_params_arrays1 and eos_params_arrays2 in interface.ccl to be consistent!"
+-{
+- 1:10 :: "Any integer between 1 and 10"
+-} 1
+-
+-REAL gamma_th "thermal gamma parameter"
+-{
+- 0:* :: "Physical values"
+--1   :: "forbidden value to make sure it is explicitly set in the parfile"
+-} -1
+-
+-REAL K_poly "initial polytropic constant"
+-{
+- 0:* :: "Positive"
+-} 1.0
++ 1:* :: "Positive > 1, though you'll likely have troubles far above 2000."
++} 2000.0
+ #########################################################
+ 
+ #########################################################
+ # OUTER BOUNDARY CONDITION CHOICE
+-KEYWORD Matter_BC "Chosen Matter boundary condition"
++KEYWORD Velocity_BC "Chosen fluid velocity boundary condition"
+ {
+   "outflow" :: "Outflow boundary conditions"
++  "copy"           :: "Copy data from nearest boundary point"
+   "frozen"  :: "Frozen boundaries"
+ } "outflow"
+ 
+@@ -130,6 +68,21 @@
+ } 1.0
+ #########################################################
+ 
++REAL R_NS_aligned_rotator "The radius of the NS set by hand for the aligned rotator solution test." STEERABLE=ALWAYS
++{
++  *:* :: "any real"
++} -1e100
++
++REAL B_p_aligned_rotator "The magnitude of the poloidal magnetic field." STEERABLE=ALWAYS
++{
++  *:* :: "any real"
++} 1e-5
++
++REAL Omega_aligned_rotator "The angular velocity for the aligned rotator solution test." STEERABLE=ALWAYS
++{
++  *:* :: "any real"
++} 1e3
++
+ ###############################################################################################
+ private:
+ 
+diff --exclude '*.tex' --exclude README -urw IllinoisGRMHD/schedule.ccl GiRaFFE/schedule.ccl
+--- IllinoisGRMHD/schedule.ccl	2018-07-30 08:32:43.856002352 -0500
++++ GiRaFFE/schedule.ccl	2017-10-03 22:08:55.329532568 -0500
+@@ -1,27 +1,26 @@
+-# Scheduler setup for IllinoisGRMHD
+-
++# Scheduler setup for GiRaFFE
+ STORAGE: ADMBase::metric[metric_timelevels], ADMBase::curv[metric_timelevels], ADMBase::lapse[lapse_timelevels], ADMBase::shift[shift_timelevels]
+-STORAGE: IllinoisGRMHD::BSSN_quantities
++STORAGE: GiRaFFE::BSSN_quantities
+ 
+ STORAGE: grmhd_conservatives[3],em_Ax[3],em_Ay[3],em_Az[3],em_psi6phi[3] 
+-STORAGE: grmhd_primitives_allbutBi,grmhd_primitives_Bi,grmhd_primitives_Bi_stagger,grmhd_primitives_reconstructed_temps,grmhd_conservatives_rhs,em_Ax_rhs,em_Ay_rhs,em_Az_rhs,em_psi6phi_rhs,grmhd_cmin_cmax_temps,grmhd_flux_temps,TUPmunu,diagnostic_gfs
+-STORAGE: eos_params_arrays1,eos_params_arrays2,eos_params_scalar
++STORAGE: grmhd_primitives_allbutBi,grmhd_primitives_Bi,grmhd_primitives_reconstructed_temps,grmhd_conservatives_rhs,em_Ax_rhs,em_Ay_rhs,em_Az_rhs,em_psi6phi_rhs,grmhd_cmin_cmax_temps,grmhd_flux_temps,TUPmunu,diagnostic_gfs
+ 
+ ####################
+ # RUN INITIALLY ONLY
+-schedule IllinoisGRMHD_RegisterVars in MoL_Register after BSSN_RegisterVars after lapse_RegisterVars
++schedule GiRaFFE_RegisterVars in MoL_Register after BSSN_RegisterVars after lapse_RegisterVars
+ {
+   LANG: C
+   OPTIONS: META
+-} "Register evolved, rhs variables in IllinoisGRMHD for MoL"
++} "Register evolved, rhs variables in GiRaFFE for MoL"
+ 
+ # Tells the symmetry thorn how to apply symmetries on each gridfunction:
+-schedule IllinoisGRMHD_InitSymBound at BASEGRID after Lapse_InitSymBound
++schedule GiRaFFE_InitSymBound at BASEGRID after Lapse_InitSymBound
+ {
+   LANG: C
+ } "Schedule symmetries"
+ ####################
+ 
++
+ ####################
+ # POSTPOSTINITIAL
+ # HydroBase_Con2Prim in CCTK_POSTPOSTINITIAL sets conserv to prim then
+@@ -29,46 +28,46 @@
+ # SYNCs actually reprolongate the conservative variables, making cons
+ # and prims INCONSISTENT. So here we redo the con2prim, avoiding the 
+ # SYNC afterward, then copy the result to other timelevels"
+-schedule GROUP IllinoisGRMHD_PostPostInitial at CCTK_POSTPOSTINITIAL before MoL_PostStep after HydroBase_Con2Prim
++schedule GROUP GiRaFFE_PostPostInitial at CCTK_POSTPOSTINITIAL before MoL_PostStep after HydroBase_Con2Prim
+ {
+ } "HydroBase_Con2Prim in CCTK_POSTPOSTINITIAL sets conserv to prim then outer boundaries (OBs, which are technically disabled). The post OB SYNCs actually reprolongate the conservative variables, making cons and prims INCONSISTENT. So here we redo the con2prim, avoiding the SYNC afterward, then copy the result to other timelevels"
+ 
+-schedule IllinoisGRMHD_InitSymBound in IllinoisGRMHD_PostPostInitial as postid before compute_b
++schedule GiRaFFE_InitSymBound in GiRaFFE_PostPostInitial as postid before compute_b
+ {
+   SYNC: grmhd_conservatives,em_Ax,em_Ay,em_Az,em_psi6phi
+   LANG: C
+ } "Schedule symmetries -- Actually just a placeholder function to ensure prolongations / processor syncs are done BEFORE outer boundaries are updated."
+ 
+ # Easiest primitives to solve for: B^i
+-schedule IllinoisGRMHD_compute_B_and_Bstagger_from_A in IllinoisGRMHD_PostPostInitial as compute_b after postid after empostid after lapsepostid
++schedule GiRaFFE_compute_B_and_Bstagger_from_A in GiRaFFE_PostPostInitial as compute_b after postid after empostid after lapsepostid
+ {
+   # This is strictly a processor sync, as prolongation is disabled for all primitives & B^i's.
+-  SYNC: grmhd_primitives_Bi,grmhd_primitives_Bi_stagger # FIXME: Are both SYNC's necessary?
++  SYNC: grmhd_primitives_Bi
+   LANG: C
+-} "Compute B and B_stagger from A SYNC: grmhd_primitives_Bi,grmhd_primitives_Bi_stagger"
++} "Compute B and B_stagger from A SYNC: grmhd_primitives_Bi"
+ 
+-# Nontrivial primitives solve, for P,rho_b,vx,vy,vz:
+-schedule IllinoisGRMHD_conserv_to_prims in IllinoisGRMHD_PostPostInitial after compute_b
++# Nontrivial primitives solve, for vx,vy,vz:
++schedule GiRaFFE_conserv_to_prims_FFE in GiRaFFE_PostPostInitial after compute_b
+ {
+   LANG: C
+-} "Compute primitive variables from conservatives. This is non-trivial, requiring a Newton-Raphson root-finder."
++} "Applies the FFE condition B^2>E^2 and recomputes the velocities"
+ 
+ # Copy data to other timelevels.
+-schedule IllinoisGRMHD_PostPostInitial_Set_Symmetries__Copy_Timelevels in IllinoisGRMHD_PostPostInitial as mhdpostid after compute_b after p2c
++schedule GiRaFFE_PostPostInitial_Set_Symmetries__Copy_Timelevels in GiRaFFE_PostPostInitial as mhdpostid after compute_b after p2c
+ {
+   LANG: C
+ } "Compute post-initialdata quantities"
+ ####################
+ 
++
+ ####################
+ # RHS EVALUATION
+-schedule IllinoisGRMHD_driver_evaluate_MHD_rhs in MoL_CalcRHS as IllinoisGRMHD_RHS_eval after bssn_rhs after shift_rhs
++schedule GiRaFFE_driver_evaluate_FFE_rhs in MoL_CalcRHS as GiRaFFE_RHS_eval after bssn_rhs after shift_rhs
+ {
+   LANG: C
+-} "Evaluate RHSs of GR Hydro & GRMHD equations"
++} "Evaluate RHSs of GRFFE equations"
+ ####################
+ 
+-
+ ############################################################
+ # COMPUTE B FROM A & RE-SOLVE FOR PRIMITIVES
+ # After a full timestep, there are two types of boundaries that need filling:
+@@ -79,44 +78,47 @@
+ # ( 0) Synchronize (prolongate/restrict) all evolved variables
+ # ( 1) Apply outer boundary conditions (BCs) on A_{\mu}
+ # ( 2) Compute B^i from A_i everywhere, synchronize (processor sync) B^i
+-# ( 3) Call con2prim to get consistent primitives {P,rho_b,vx,vy,vz} and conservatives at all points (if no restriction, really only need interior)
+-# ( 4) Apply outer BCs on {P,rho_b,vx,vy,vz}, recompute conservatives.
++# ( 3) Call con2prim to get consistent primitives {vx,vy,vz} and conservatives at all points (if no restriction, really only need interior)
++# ( 4) Apply outer BCs on {vx,vy,vz}, recompute conservatives.
+ 
+ # (B) AMR GRID REFINEMENT BOUNDARY STEPS:
+ # Same as steps 0,2,3 above. Just need if() statements in steps 1,4 to prevent "outer boundaries" being updated
+ # Problem: all the sync's in outer boundary updates might just overwrite prolongated values.
+ ############################################################
+ 
+-schedule IllinoisGRMHD_InitSymBound in HydroBase_Boundaries as Boundary_SYNCs before compute_B_postrestrict
++schedule GiRaFFE_InitSymBound in HydroBase_Boundaries after HydroBase_ApplyBCs before GiRaFFE_outer_boundaries_on_A_mu
+ {
+   SYNC: grmhd_conservatives,em_Ax,em_Ay,em_Az,em_psi6phi
+   LANG: C
+ } "Schedule symmetries -- Actually just a placeholder function to ensure prolongations / processor syncs are done BEFORE outer boundaries are updated."
+ 
+-schedule IllinoisGRMHD_outer_boundaries_on_A_mu in HydroBase_Boundaries after Boundary_SYNCs before mhd_conserv2prims_postrestrict
++schedule GiRaFFE_outer_boundaries_on_A_mu in HydroBase_Boundaries after GiRaFFE_InitSymBound before GiRaFFE_compute_B_and_Bstagger_from_A
+ {
++#  SYNC: em_Ax,em_Ay,em_Az,em_psi6phi
+   LANG: C
+-} "Apply linear extrapolation BCs on A_{mu}, so that BCs are flat on B^i."
++} "Apply linear extrapolation BCs on A_mu, so that BCs are flat on B^i."
+ 
+ # Easiest primitives to solve for: B^i.
+ # Note however that B^i depends on derivatives of A_{\mu}, so a SYNC is necessary on B^i.
+-schedule IllinoisGRMHD_compute_B_and_Bstagger_from_A in HydroBase_Boundaries after outer_boundaries_on_A_mu
++schedule GiRaFFE_compute_B_and_Bstagger_from_A in HydroBase_Boundaries after GiRaFFE_outer_boundaries_on_A_mu
+ {
+   # This is strictly a processor sync, as prolongation is disabled for all B^i's.
+-  SYNC: grmhd_primitives_Bi,grmhd_primitives_Bi_stagger # FIXME: Are both SYNC's necessary?
++  SYNC: grmhd_primitives_Bi
+   LANG: C
+-} "Compute B and B_stagger from A,  SYNC: grmhd_primitives_Bi,grmhd_primitives_Bi_stagger"
++} "Compute B and B_stagger from A"
+ 
+-# Nontrivial primitives solve, for P,rho_b,vx,vy,vz.
+-schedule IllinoisGRMHD_conserv_to_prims in AddToTmunu after compute_B_and_Bstagger_from_A
++# Nontrivial primitives solve, for vx,vy,vz.
++schedule GiRaFFE_conserv_to_prims_FFE in AddToTmunu after GiRaFFE_compute_B_and_Bstagger_from_A
+ {
+   LANG: C
+-} "Compute primitive variables from conservatives. This is non-trivial, requiring a Newton-Raphson root-finder."
++} "Applies the FFE condition B^2>E^2 and recomputes the velocities"
+ 
+-schedule IllinoisGRMHD_outer_boundaries_on_P_rho_b_vx_vy_vz in AddToTmunu after IllinoisGRMHD_conserv_to_prims
++#schedule outer_boundaries_on_vx_vy_vz in HydroBase_Boundaries after conserv_to_prims
++schedule GiRaFFE_outer_boundaries_on_vx_vy_vz in AddToTmunu after conserv_to_prims
+ {
+-# We must sync {P,rho_b,vx,vy,vz} here.
++# We must sync {vx,vy,vz} AND conservatives here.
++#  SYNC: grmhd_primitives_allbutBi,grmhd_conservatives
+   SYNC: grmhd_primitives_allbutBi
+   LANG: C
+-} "Apply outflow-only, flat BCs on {P,rho_b,vx,vy,vz}. Outflow only == velocities pointed inward from outer boundary are set to zero."
++} "Apply outflow-only, flat BCs on {vx,vy,vz}. Outflow only == velocities pointed inward from outer boundary are set to zero."
+ ##########################################################
+Only in GiRaFFE/src: GRFFE__S_i__flux.C
+diff --exclude '*.tex' --exclude README -urw IllinoisGRMHD/src/InitSymBound.C GiRaFFE/src/InitSymBound.C
+--- IllinoisGRMHD/src/InitSymBound.C	2017-01-10 10:54:34.000000000 -0600
++++ GiRaFFE/src/InitSymBound.C	2017-10-03 22:08:55.329532568 -0500
+@@ -1,5 +1,5 @@
+ /*
+-  Set the symmetries for the IllinoisGRMHD variables
++  Set the symmetries for the GiRaFFE variables
+ */
+ 
+ #include "cctk.h"
+@@ -8,16 +8,18 @@
+ #include "cctk_Arguments.h"
+ #include "cctk_Parameters.h"
+ #include "Symmetry.h"
+-#include "IllinoisGRMHD_headers.h"
++#include "GiRaFFE_headers.h"
+ 
+-extern "C" void IllinoisGRMHD_InitSymBound(CCTK_ARGUMENTS)
++extern "C" void GiRaFFE_InitSymBound(CCTK_ARGUMENTS)
+ {
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+ 
+-  if( CCTK_EQUALS(Matter_BC,"frozen") && !CCTK_EQUALS(EM_BC,"frozen") || 
+-      !CCTK_EQUALS(Matter_BC,"frozen") && CCTK_EQUALS(EM_BC,"frozen") )
+-    CCTK_VError(VERR_DEF_PARAMS,"If Matter_BC or EM_BC is set to FROZEN, BOTH must be set to frozen!");
++  // A-fields CAN EVOLVE, yet the magnetic fields may not change! Thus setting EM_BC==frozen may result in time-changing B-fields at the boundaries (usually glitchy behavior).
++  // if( CCTK_EQUALS(Velocity_BC,"frozen") && !CCTK_EQUALS(EM_BC,"frozen") || 
++  //     !CCTK_EQUALS(Velocity_BC,"frozen") && CCTK_EQUALS(EM_BC,"frozen") )
++  //   CCTK_VError(VERR_DEF_PARAMS,"If Velocity_BC or EM_BC is set to FROZEN, BOTH must be set to frozen!");
++  if(CCTK_EQUALS(EM_BC,"frozen")) CCTK_VInfo(CCTK_THORNSTRING,"Warning: EM_BC=frozen WILL NOT NECESSARILY result in frozen B-fields at the boundaries, since A-fields may evolve even with B fixed in time!\n");
+ 
+   if ((cctk_nghostzones[0]<3 || cctk_nghostzones[1]<3 || cctk_nghostzones[2]<3))
+     CCTK_VError(VERR_DEF_PARAMS,"ERROR: The version of PPM in this thorn requires 3 ghostzones. You only have (%d,%d,%d) ghostzones!",cctk_nghostzones[0],cctk_nghostzones[1],cctk_nghostzones[2]);
+@@ -30,38 +32,38 @@
+     if(CCTK_EQUALS(Symmetry,"none")) {
+       /* FIRST SET NO SYMMETRY OPTION */
+       sym[0] = 1; sym[1] = 1; sym[2] = 1;
+-      SetCartSymGN(cctkGH,sym,"IllinoisGRMHD::grmhd_conservatives");
+-      SetCartSymGN(cctkGH,sym,"IllinoisGRMHD::em_Ax");
+-      SetCartSymGN(cctkGH,sym,"IllinoisGRMHD::em_Ay");
+-      SetCartSymGN(cctkGH,sym,"IllinoisGRMHD::em_Az");
+-      SetCartSymGN(cctkGH,sym,"IllinoisGRMHD::em_psi6phi");
+-      SetCartSymGN(cctkGH,sym,"IllinoisGRMHD::grmhd_primitives_allbutBi");
++      SetCartSymGN(cctkGH,sym,"GiRaFFE::grmhd_conservatives");
++      SetCartSymGN(cctkGH,sym,"GiRaFFE::em_Ax");
++      SetCartSymGN(cctkGH,sym,"GiRaFFE::em_Ay");
++      SetCartSymGN(cctkGH,sym,"GiRaFFE::em_Az");
++      SetCartSymGN(cctkGH,sym,"GiRaFFE::em_psi6phi");
++      SetCartSymGN(cctkGH,sym,"GiRaFFE::grmhd_primitives_allbutBi");
+     } else if(CCTK_EQUALS(Symmetry,"equatorial")) {
+       /* THEN SET EQUATORIAL SYMMETRY OPTION */
+       // Set default to no symmetry, which is correct for scalars and most vectors:
+       sym[0] = 1; sym[1] = 1; sym[2] = 1;
+-      SetCartSymGN(cctkGH,sym,"IllinoisGRMHD::grmhd_conservatives");
++      SetCartSymGN(cctkGH,sym,"GiRaFFE::grmhd_conservatives");
+       // Don't worry about the wrong sym values since A_{\mu} is staggered
+       // and we're going to impose the symmetry separately
+-      SetCartSymGN(cctkGH,sym,"IllinoisGRMHD::em_Ax");
+-      SetCartSymGN(cctkGH,sym,"IllinoisGRMHD::em_Ay");
+-      SetCartSymGN(cctkGH,sym,"IllinoisGRMHD::em_Az");
+-      SetCartSymGN(cctkGH,sym,"IllinoisGRMHD::em_psi6phi");
++      SetCartSymGN(cctkGH,sym,"GiRaFFE::em_Ax");
++      SetCartSymGN(cctkGH,sym,"GiRaFFE::em_Ay");
++      SetCartSymGN(cctkGH,sym,"GiRaFFE::em_Az");
++      SetCartSymGN(cctkGH,sym,"GiRaFFE::em_psi6phi");
+ 
+-      SetCartSymGN(cctkGH,sym,"IllinoisGRMHD::grmhd_primitives_allbutBi");
++      SetCartSymGN(cctkGH,sym,"GiRaFFE::grmhd_primitives_allbutBi");
+ 
+       // Then set unstaggered B field variables
+       sym[2] = -Sym_Bz;
+-      SetCartSymVN(cctkGH, sym,"IllinoisGRMHD::Bx");
+-      SetCartSymVN(cctkGH, sym,"IllinoisGRMHD::By");
++      SetCartSymVN(cctkGH, sym,"GiRaFFE::Bx");
++      SetCartSymVN(cctkGH, sym,"GiRaFFE::By");
+       sym[2] = Sym_Bz;
+-      SetCartSymVN(cctkGH, sym,"IllinoisGRMHD::Bz");
++      SetCartSymVN(cctkGH, sym,"GiRaFFE::Bz");
+ 
+       sym[2] = -1;
+-      SetCartSymVN(cctkGH, sym,"IllinoisGRMHD::mhd_st_z");
+-      SetCartSymVN(cctkGH, sym,"IllinoisGRMHD::vz");
++      SetCartSymVN(cctkGH, sym,"GiRaFFE::mhd_st_z");
++      SetCartSymVN(cctkGH, sym,"GiRaFFE::vz");
+     } else {
+-      CCTK_VError(VERR_DEF_PARAMS,"IllinoisGRMHD_initsymbound: Should not be here; picked an impossible symmetry.");
++      CCTK_VError(VERR_DEF_PARAMS,"GiRaFFE_initsymbound: Should not be here; picked an impossible symmetry.");
+     }
+   }
+ }
+diff --exclude '*.tex' --exclude README -urw IllinoisGRMHD/src/MoL_registration.C GiRaFFE/src/MoL_registration.C
+--- IllinoisGRMHD/src/MoL_registration.C	2017-01-10 10:54:34.000000000 -0600
++++ GiRaFFE/src/MoL_registration.C	2017-10-03 22:08:55.329532568 -0500
+@@ -13,7 +13,7 @@
+ 
+ #include "Symmetry.h"
+ 
+-extern "C" void IllinoisGRMHD_RegisterVars(CCTK_ARGUMENTS)
++extern "C" void GiRaFFE_RegisterVars(CCTK_ARGUMENTS)
+ {
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+@@ -23,28 +23,28 @@
+   // Register evolution & RHS gridfunction groups
+ 
+   /* Ax and Ax_rhs */
+-  group = CCTK_GroupIndex("IllinoisGRMHD::em_Ax");
+-  rhs = CCTK_GroupIndex("IllinoisGRMHD::em_Ax_rhs");
++  group = CCTK_GroupIndex("GiRaFFE::em_Ax");
++  rhs = CCTK_GroupIndex("GiRaFFE::em_Ax_rhs");
+   ierr += MoLRegisterEvolvedGroup(group, rhs);
+ 
+   /* Ay and Ay_rhs */
+-  group = CCTK_GroupIndex("IllinoisGRMHD::em_Ay");
+-  rhs = CCTK_GroupIndex("IllinoisGRMHD::em_Ay_rhs");
++  group = CCTK_GroupIndex("GiRaFFE::em_Ay");
++  rhs = CCTK_GroupIndex("GiRaFFE::em_Ay_rhs");
+   ierr += MoLRegisterEvolvedGroup(group, rhs);
+ 
+   /* Az and Az_rhs */
+-  group = CCTK_GroupIndex("IllinoisGRMHD::em_Az");
+-  rhs = CCTK_GroupIndex("IllinoisGRMHD::em_Az_rhs");
++  group = CCTK_GroupIndex("GiRaFFE::em_Az");
++  rhs = CCTK_GroupIndex("GiRaFFE::em_Az_rhs");
+   ierr += MoLRegisterEvolvedGroup(group, rhs);
+ 
+   /* psi6phi and psi6phi_rhs */
+-  group = CCTK_GroupIndex("IllinoisGRMHD::em_psi6phi");
+-  rhs = CCTK_GroupIndex("IllinoisGRMHD::em_psi6phi_rhs");
++  group = CCTK_GroupIndex("GiRaFFE::em_psi6phi");
++  rhs = CCTK_GroupIndex("GiRaFFE::em_psi6phi_rhs");
+   ierr += MoLRegisterEvolvedGroup(group, rhs);
+ 
+-  /* ALL OTHER EVOLVED VARIABLES (rho_star,tau,mhd_st_x,mhd_st_y,mhd_st_z) */
+-  group = CCTK_GroupIndex("IllinoisGRMHD::grmhd_conservatives");
+-  rhs = CCTK_GroupIndex("IllinoisGRMHD::grmhd_conservatives_rhs");
++  /* ALL OTHER EVOLVED VARIABLES (mhd_st_x,mhd_st_y,mhd_st_z) */
++  group = CCTK_GroupIndex("GiRaFFE::grmhd_conservatives");
++  rhs = CCTK_GroupIndex("GiRaFFE::grmhd_conservatives_rhs");
+   ierr += MoLRegisterEvolvedGroup(group, rhs);
+ 
+   if (ierr) CCTK_ERROR("Problems registering with MoL");
+diff --exclude '*.tex' --exclude README -urw IllinoisGRMHD/src/add_fluxes_and_source_terms_to_hydro_rhss.C GiRaFFE/src/add_fluxes_and_source_terms_to_hydro_rhss.C
+--- IllinoisGRMHD/src/add_fluxes_and_source_terms_to_hydro_rhss.C	2016-08-03 09:25:55.000000000 -0500
++++ GiRaFFE/src/add_fluxes_and_source_terms_to_hydro_rhss.C	2017-10-03 22:08:55.329532568 -0500
+@@ -11,9 +11,9 @@
+ #define A1  -0.0625
+ #define COMPUTE_FCVAL(METRICm2,METRICm1,METRIC,METRICp1) (AM2*(METRICm2) + AM1*(METRICm1) + A0*(METRIC) + A1*(METRICp1))
+ 
+-static inline void mhdflux(int i,int j,int k,const int flux_dirn,CCTK_REAL *Ul,CCTK_REAL *Ur,  CCTK_REAL *FACEVAL,CCTK_REAL *FACEVAL_LAPSE_PSI4,eos_struct &eos,
++static inline void GRFFE__S_i__flux(int i,int j,int k,const int flux_dirn,CCTK_REAL *Ul,CCTK_REAL *Ur,  CCTK_REAL *FACEVAL,CCTK_REAL *FACEVAL_LAPSE_PSI4,
+                            CCTK_REAL &cmax,CCTK_REAL &cmin,
+-                           CCTK_REAL &rho_star_flux,CCTK_REAL &tau_flux,CCTK_REAL &st_x_flux,CCTK_REAL &st_y_flux,CCTK_REAL &st_z_flux);
++                                    CCTK_REAL &st_x_flux,CCTK_REAL &st_y_flux,CCTK_REAL &st_z_flux);
+ 
+ #define COMPUTE_FOURMETRIC(g4tt,g4tx,g4ty,g4tz,g4xx,g4xy,g4xz,g4yy,g4yz,g4zz,METRIC,METRIC_AUX)  ( { \
+       /* g_{0i} = beta_i */                                             \
+@@ -33,10 +33,10 @@
+ 
+ static void add_fluxes_and_source_terms_to_hydro_rhss(const int flux_dirn,const cGH *cctkGH,const int *cctk_lsh,const int *cctk_nghostzones,CCTK_REAL *dX,
+                                                       CCTK_REAL **metric,gf_and_gz_struct *in_prims,CCTK_REAL **TUPmunu,
+-                                                      int numvars_reconstructed,gf_and_gz_struct *out_prims_r,gf_and_gz_struct *out_prims_l,eos_struct &eos,
++                                                      int numvars_reconstructed,gf_and_gz_struct *out_prims_r,gf_and_gz_struct *out_prims_l,
+                                                       CCTK_REAL *cmax,CCTK_REAL *cmin,
+-                                                      CCTK_REAL *rho_star_flux,CCTK_REAL *tau_flux,CCTK_REAL *st_x_flux,CCTK_REAL *st_y_flux,CCTK_REAL *st_z_flux,
+-                                                      CCTK_REAL *rho_star_rhs,CCTK_REAL *tau_rhs,CCTK_REAL *st_x_rhs,CCTK_REAL *st_y_rhs,CCTK_REAL *st_z_rhs) {
++                                                      CCTK_REAL *st_x_flux,CCTK_REAL *st_y_flux,CCTK_REAL *st_z_flux,
++                                                      CCTK_REAL *st_x_rhs,CCTK_REAL *st_y_rhs,CCTK_REAL *st_z_rhs) {
+ 
+   DECLARE_CCTK_PARAMETERS;
+ 
+@@ -81,9 +81,9 @@
+ 	SET_LAPSE_PSI4(FACEVAL_LAPSE_PSI4p1,FACEVALp1);
+ 
+ 	//-----------------------------------------------------------------------------
+-	// Next compute fluxes for \tilde{S}_i, tau, and rho_*
+-	mhdflux(i,j,k,flux_dirn,Ul  ,Ur  ,FACEVAL  ,FACEVAL_LAPSE_PSI4  ,eos, cmax[index],cmin[index],
+-		rho_star_flux[index],tau_flux[index],st_x_flux[index],st_y_flux[index],st_z_flux[index]);
++	// Next compute fluxes for \tilde{S}_i
++	GRFFE__S_i__flux(i,j,k,flux_dirn,Ul  ,Ur  ,FACEVAL  ,FACEVAL_LAPSE_PSI4,  cmax[index],cmin[index],
++                         st_x_flux[index],st_y_flux[index],st_z_flux[index]);
+ 
+     
+ 	//-----------------------------------------------------------------------------
+@@ -115,10 +115,6 @@
+ 	  partial_i_gmunu[2][3] = (g4yz_fp1 - g4yz_f)*dxi[flux_dirn];
+ 	  partial_i_gmunu[3][3] = (g4zz_fp1 - g4zz_f)*dxi[flux_dirn];
+ 
+-	  // Needed for tau_rhs computation:
+-	  CCTK_REAL lapse_deriv[4] = { 0,0,0,0 };
+-	  lapse_deriv[flux_dirn] = (FACEVALp1[LAPM1] - FACEVAL[LAPM1])*dxi[flux_dirn];
+-
+ 	  // Needed for st_i_rhs computation:
+ 	  CCTK_REAL st_i_curvature_terms[4] = { 0,0,0,0 };
+ 	  // add \frac{1}{2} \alpha \sqrt{\gamma} T^{\mu \nu} \partial_i g_{\mu \nu} . Note that i is given by the flux direction.
+@@ -134,11 +130,6 @@
+ 									  TUP[1][3]*partial_i_gmunu[1][3] + 
+ 									  TUP[2][3]*partial_i_gmunu[2][3]) );
+ 
+-	  // add - ( T^{00} \beta^i + T^{0i} ) \partial_i \alpha.
+-	  //   (Last part of Eq. 39 source term in http://arxiv.org/pdf/astro-ph/0503420.pdf)
+-	  CCTK_REAL alpha_sqrtgamma = 2.0*half_alpha_sqrtgamma;
+-	  tau_rhs[index]  += alpha_sqrtgamma*(-(TUP[0][0]*METRIC[SHIFTX+(flux_dirn-1)] + TUP[0][flux_dirn])*lapse_deriv[flux_dirn]); 
+-
+ 	  // Eq 43 in http://arxiv.org/pdf/astro-ph/0503420.pdf:
+ 	  // \partial_t \tilde{S}_i = - \partial_i (\alpha \sqrt{\gamma} T^j_i) + \frac{1}{2}\alpha \sqrt{\gamma} T^{\mu \nu}g_{\mu \nu,i}
+ 	  // Notice that st_i_curvature_terms[N]=0 for N!=flux_dirn.
+@@ -157,8 +148,6 @@
+ 	int index = CCTK_GFINDEX3D(cctkGH,i,j,k);
+ 	int indexp1 = CCTK_GFINDEX3D(cctkGH,i+kronecker_delta[flux_dirn][0],j+kronecker_delta[flux_dirn][1],k+kronecker_delta[flux_dirn][2]);
+ 
+-	rho_star_rhs[index] += (rho_star_flux[index] - rho_star_flux[indexp1]) * dxi[flux_dirn];
+-	tau_rhs[index]      += (tau_flux[index]      - tau_flux[indexp1]     ) * dxi[flux_dirn];
+ 	st_x_rhs[index]     += (st_x_flux[index]     - st_x_flux[indexp1]    ) * dxi[flux_dirn];
+ 	st_y_rhs[index]     += (st_y_flux[index]     - st_y_flux[indexp1]    ) * dxi[flux_dirn];
+ 	st_z_rhs[index]     += (st_z_flux[index]     - st_z_flux[indexp1]    ) * dxi[flux_dirn];
+diff --exclude '*.tex' --exclude README -urw IllinoisGRMHD/src/compute_B_and_Bstagger_from_A.C GiRaFFE/src/compute_B_and_Bstagger_from_A.C
+--- IllinoisGRMHD/src/compute_B_and_Bstagger_from_A.C	2016-08-03 09:25:55.000000000 -0500
++++ GiRaFFE/src/compute_B_and_Bstagger_from_A.C	2017-10-03 22:08:55.329532568 -0500
+@@ -5,7 +5,7 @@
+ #include <sys/time.h>
+ #include "cctk_Arguments.h"
+ #include "cctk_Parameters.h"
+-#include "IllinoisGRMHD_headers.h"
++#include "GiRaFFE_headers.h"
+ 
+ #define LOOP_DEFINE_SIMPLE                      \
+   _Pragma("omp parallel for")                   \
+@@ -13,7 +13,7 @@
+     for(int j=0;j<cctk_lsh[1];j++)              \
+       for(int i=0;i<cctk_lsh[0];i++)
+ 
+-extern "C" void IllinoisGRMHD_compute_B_and_Bstagger_from_A(CCTK_ARGUMENTS) {
++extern "C" void GiRaFFE_compute_B_and_Bstagger_from_A(CCTK_ARGUMENTS) {
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+ 
+@@ -22,13 +22,13 @@
+   CCTK_REAL dzi = 1.0/CCTK_DELTA_SPACE(2);
+ 
+   CCTK_REAL gridfunc_syms_Ax[3]      = {-1, 1, Sym_Bz};
+-  IllinoisGRMHD_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Ax        , gridfunc_syms_Ax,0,1,1);
++  GiRaFFE_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Ax        , gridfunc_syms_Ax,0,1,1);
+   CCTK_REAL gridfunc_syms_Ay[3]      = { 1,-1, Sym_Bz};
+-  IllinoisGRMHD_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Ay        , gridfunc_syms_Ay,1,0,1);
++  GiRaFFE_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Ay        , gridfunc_syms_Ay,1,0,1);
+   CCTK_REAL gridfunc_syms_Az[3]      = { 1, 1,-Sym_Bz};
+-  IllinoisGRMHD_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Az        , gridfunc_syms_Az,1,1,0);
++  GiRaFFE_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Az        , gridfunc_syms_Az,1,1,0);
+   CCTK_REAL gridfunc_syms_psi6phi[3] = { 1, 1,      1};
+-  IllinoisGRMHD_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,psi6phi     , gridfunc_syms_psi6phi,1,1,1);
++  GiRaFFE_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,psi6phi     , gridfunc_syms_psi6phi,1,1,1);
+ 
+   LOOP_DEFINE_SIMPLE {
+     int index=CCTK_GFINDEX3D(cctkGH,i,j,k);
+@@ -112,7 +112,6 @@
+     CCTK_REAL Psi_kp1 = psi_bssn[indexijkp1];
+     Bz_stagger[actual_index] *= Psim3/(Psi_kp1*Psi_kp1*Psi_kp1);
+     
+-
+   }
+ 
+   LOOP_DEFINE_SIMPLE {
+@@ -164,12 +163,12 @@
+ 
+   // Finish up by setting symmetry ghostzones on Bx, By, Bz, and their staggered variants.
+   CCTK_REAL gridfunc_syms_Bx[3] = {-1, 1,-Sym_Bz};
+-  IllinoisGRMHD_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Bx        , gridfunc_syms_Bx,0,0,0);
+-  IllinoisGRMHD_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Bx_stagger, gridfunc_syms_Bx,1,0,0);
++  GiRaFFE_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Bx        , gridfunc_syms_Bx,0,0,0);
++  GiRaFFE_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Bx_stagger, gridfunc_syms_Bx,1,0,0);
+   CCTK_REAL gridfunc_syms_By[3] = { 1,-1,-Sym_Bz};
+-  IllinoisGRMHD_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  By        , gridfunc_syms_By,0,0,0);
+-  IllinoisGRMHD_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  By_stagger, gridfunc_syms_By,0,1,0);
++  GiRaFFE_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  By        , gridfunc_syms_By,0,0,0);
++  GiRaFFE_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  By_stagger, gridfunc_syms_By,0,1,0);
+   CCTK_REAL gridfunc_syms_Bz[3] = { 1, 1, Sym_Bz};
+-  IllinoisGRMHD_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Bz        , gridfunc_syms_Bz,0,0,0);
+-  IllinoisGRMHD_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Bz_stagger, gridfunc_syms_Bz,0,0,1);
++  GiRaFFE_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Bz        , gridfunc_syms_Bz,0,0,0);
++  GiRaFFE_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Bz_stagger, gridfunc_syms_Bz,0,0,1);
+ }
+Only in GiRaFFE/src: compute_conservatives_FFE.C
+diff --exclude '*.tex' --exclude README -urw IllinoisGRMHD/src/convert_ADM_to_BSSN__enforce_detgtij_eq_1__and_compute_gtupij.C GiRaFFE/src/convert_ADM_to_BSSN__enforce_detgtij_eq_1__and_compute_gtupij.C
+--- IllinoisGRMHD/src/convert_ADM_to_BSSN__enforce_detgtij_eq_1__and_compute_gtupij.C	2017-01-10 10:54:34.000000000 -0600
++++ GiRaFFE/src/convert_ADM_to_BSSN__enforce_detgtij_eq_1__and_compute_gtupij.C	2017-10-03 22:08:55.329532568 -0500
+@@ -4,7 +4,7 @@
+ #include <cstdlib>
+ #include "cctk_Parameters.h"
+ 
+-void IllinoisGRMHD_convert_ADM_to_BSSN__enforce_detgtij_eq_1__and_compute_gtupij
++void GiRaFFE_convert_ADM_to_BSSN__enforce_detgtij_eq_1__and_compute_gtupij
+ (const cGH *cctkGH,const int *cctk_lsh,
+  CCTK_REAL *gxx,CCTK_REAL *gxy,CCTK_REAL *gxz,CCTK_REAL *gyy,CCTK_REAL *gyz,CCTK_REAL *gzz,CCTK_REAL *alp,
+  CCTK_REAL *gtxx,CCTK_REAL *gtxy,CCTK_REAL *gtxz,CCTK_REAL *gtyy,CCTK_REAL *gtyz,CCTK_REAL *gtzz,
+diff --exclude '*.tex' --exclude README -urw IllinoisGRMHD/src/inlined_functions.C GiRaFFE/src/inlined_functions.C
+--- IllinoisGRMHD/src/inlined_functions.C	2016-08-03 09:25:55.000000000 -0500
++++ GiRaFFE/src/inlined_functions.C	2017-10-03 22:08:55.329532568 -0500
+@@ -56,84 +56,6 @@
+   }
+ }
+ 
+-static inline void compute_v02(CCTK_REAL dPcold_drho,CCTK_REAL gamma_th,CCTK_REAL eps_th,CCTK_REAL h,CCTK_REAL *smallb,CCTK_REAL *U,  CCTK_REAL &v02L) {
+-
+-  if(U[RHOB]<=0) { v02L=1.0; return; }
+-
+-  /* c_s = sound speed = (dP_c/drho + \Gamma(\Gamma-1) \epsilon_th)/h */
+-  CCTK_REAL c_s_squared  = (dPcold_drho + gamma_th*(gamma_th-1.0)*eps_th)/(h);
+-  /* v_A = Alfven speed = b^2/(rho0 h + b^2) */
+-  CCTK_REAL v_A_squared = smallb[SMALLB2]/(smallb[SMALLB2] + U[RHOB]*(h));
+-  v02L = v_A_squared + c_s_squared*(1.0-v_A_squared);
+-}
+-
+-static inline void compute_P_cold__eps_cold__dPcold_drho__eps_th__h__gamma_cold(CCTK_REAL *U, eos_struct &eos,
+-                                                                         CCTK_REAL &P_cold,CCTK_REAL &eps_cold,CCTK_REAL &dPcold_drho,CCTK_REAL &eps_th,CCTK_REAL &h,
+-                                                                         CCTK_REAL &gamma_cold) {
+-  // This code handles equations of state of the form defined
+-  // in Eqs 13-16 in http://arxiv.org/pdf/0802.0200.pdf
+-
+-  if(U[RHOB]==0) {
+-    P_cold = 0.0;
+-    eps_cold = 0.0;
+-    dPcold_drho = 0.0;
+-    eps_th = 0.0;
+-    h = 0.0;
+-    gamma_cold = eos.gamma_tab[0];
+-    return;
+-  }
+-
+-  CCTK_REAL U_RHOB_inv = 1.0/U[RHOB];
+-
+-  if(eos.neos==1) {
+-    // Eq. 14 of http://arxiv.org/pdf/0802.0200.pdf :
+-    // P_{cold} = K_i rho_i^{\Gamma_i}
+-    P_cold = eos.k_tab[0]*fasterpow_ppm_reconstruct(U[RHOB],eos.gamma_tab[0]);
+-    // Eq. 16 of http://arxiv.org/pdf/0802.0200.pdf :
+-    // \epsilon_{cold} = \int ( P_{cold}(rho) / rho^2 ) drho 
+-    //                 = \int ( K_0 \rho^{\Gamma_0 - 2} ) drho 
+-    //                 = ( K_0 \rho^{\Gamma_0 - 1} ) / (\Gamma_0 - 1)
+-    //                 = ( P_{cold} / rho          ) / (\Gamma_0 - 1)
+-    eps_cold = P_cold*U_RHOB_inv/(eos.gamma_tab[0]-1.0);
+-    // dPcold/drho = K_i \Gamma_i rho_i^{\Gamma_i-1} = \Gamma_i P_{cold} / rho
+-    dPcold_drho = eos.gamma_tab[0]*P_cold*U_RHOB_inv;
+-    // Eq. 15 of http://arxiv.org/pdf/0802.0200.pdf :
+-    // P_{th} = (\Gamma_{th} - 1) \rho_0 \epsilon_{th},
+-    // Eq. 13 of http://arxiv.org/pdf/0802.0200.pdf :
+-    // P_{th} = P - P_{cold}
+-    // -> P - P_{cold} = (\Gamma_{th} - 1) \rho_0 \epsilon_{th}
+-    // -> \epsilon_{th} = ( P - P_{cold} ) / [ (\Gamma_{th} - 1) \rho_0 ]
+-    eps_th = (U[PRESSURE] - P_cold)/(eos.gamma_th-1.0)*U_RHOB_inv;
+-    // Just below Eq. 16 in http://arxiv.org/pdf/astro-ph/0503420.pdf :
+-    // h = 1 + \epsilon + P/rho
+-    h = 1.0 + eps_cold + eps_th + U[PRESSURE]*U_RHOB_inv;
+-    gamma_cold = eos.gamma_tab[0];
+-    return;
+-  }
+-
+-  // See comments above for the eos.neos==1 case for relevant 
+-  // equations & references; the extension to arbitrary "nn"
+-  // is straightforward.
+-  for(int nn=1;nn<eos.neos;nn++) {
+-    if (U[RHOB] <= eos.rho_tab[nn]  &&  U[RHOB] > eos.rho_tab[nn-1]) {
+-      P_cold = eos.k_tab[nn]*fasterpow_ppm_reconstruct(U[RHOB],eos.gamma_tab[nn]);
+-      eps_cold = eos.eps_tab[nn-1] + (P_cold*U_RHOB_inv - eos.P_tab[nn-1]/eos.rho_tab[nn-1])/(eos.gamma_tab[nn]-1.0);
+-      dPcold_drho = eos.gamma_tab[nn]*P_cold*U_RHOB_inv;
+-      eps_th = (U[PRESSURE] - P_cold)/(eos.gamma_th-1.0)*U_RHOB_inv;
+-      h = 1.0 + eps_cold + eps_th + U[PRESSURE]*U_RHOB_inv;
+-      gamma_cold = eos.gamma_tab[nn];
+-    }
+-  }
+-  if (U[RHOB] > eos.rho_tab[eos.neos-1]) {
+-    P_cold = eos.k_tab[eos.neos]*fasterpow_ppm_reconstruct(U[RHOB],eos.gamma_tab[eos.neos]);
+-    eps_cold = eos.eps_tab[eos.neos-1] + (P_cold*U_RHOB_inv - eos.P_tab[eos.neos-1]/eos.rho_tab[eos.neos-1])/(eos.gamma_tab[eos.neos]-1.0);
+-    dPcold_drho = eos.gamma_tab[eos.neos]*P_cold*U_RHOB_inv;
+-    eps_th = (U[PRESSURE] - P_cold)/(eos.gamma_th-1.0)*U_RHOB_inv;
+-    h = 1.0 + eps_cold + eps_th + U[PRESSURE]*U_RHOB_inv;
+-    gamma_cold = eos.gamma_tab[eos.neos];
+-  }
+-}
+-
+ // b_x = g_{\mu x} b^{\mu}
+ //     = g_{t x} b^t + g_{i x} b^i
+ //     = b^t gamma_{xj} beta^j + gamma_{ix} b^i
+@@ -147,7 +69,7 @@
+                                  METRIC[GZZ]*(smallb[SMALLBZ]+smallb[SMALLBT]*METRIC[SHIFTZ]) );
+ }
+ 
+-static inline void impose_speed_limit_output_u0(CCTK_REAL *METRIC,CCTK_REAL *U,CCTK_REAL psi4,CCTK_REAL ONE_OVER_LAPSE,output_stats &stats, CCTK_REAL &u0_out) {
++static inline void impose_speed_limit_output_u0(CCTK_REAL *METRIC,CCTK_REAL *PRIMS,CCTK_REAL psi4,CCTK_REAL ONE_OVER_LAPSE,output_stats &stats, CCTK_REAL &u0_out) {
+   DECLARE_CCTK_PARAMETERS;
+ 
+   // Derivation of first equation:
+@@ -156,21 +78,25 @@
+   //   = 1/(u^0 \alpha)^2 u_j u_l \gamma^{jl}  <- Since \gamma_{ij} \gamma^{ik} = \delta^k_j
+   //   = 1/(u^0 \alpha)^2 ( (u^0 \alpha)^2 - 1 ) <- Using Eq. 56 of arXiv:astro-ph/0503420
+   //   = 1 - 1/(u^0 \alpha)^2 <= 1
+-  CCTK_REAL one_minus_one_over_alpha_u0_squared = psi4*(METRIC[GXX]* SQR(U[VX] + METRIC[SHIFTX]) +
+-                                                        2.0*METRIC[GXY]*(U[VX] + METRIC[SHIFTX])*(U[VY] + METRIC[SHIFTY]) +
+-                                                        2.0*METRIC[GXZ]*(U[VX] + METRIC[SHIFTX])*(U[VZ] + METRIC[SHIFTZ]) +
+-                                                        METRIC[GYY]* SQR(U[VY] + METRIC[SHIFTY]) +
+-                                                        2.0*METRIC[GYZ]*(U[VY] + METRIC[SHIFTY])*(U[VZ] + METRIC[SHIFTZ]) +
+-                                                        METRIC[GZZ]* SQR(U[VZ] + METRIC[SHIFTZ]) )*SQR(ONE_OVER_LAPSE);
++  CCTK_REAL one_minus_one_over_alpha_u0_squared = psi4*(METRIC[GXX]* SQR(PRIMS[VX] + METRIC[SHIFTX]) +
++                                                        2.0*METRIC[GXY]*(PRIMS[VX] + METRIC[SHIFTX])*(PRIMS[VY] + METRIC[SHIFTY]) +
++                                                        2.0*METRIC[GXZ]*(PRIMS[VX] + METRIC[SHIFTX])*(PRIMS[VZ] + METRIC[SHIFTZ]) +
++                                                        METRIC[GYY]* SQR(PRIMS[VY] + METRIC[SHIFTY]) +
++                                                        2.0*METRIC[GYZ]*(PRIMS[VY] + METRIC[SHIFTY])*(PRIMS[VZ] + METRIC[SHIFTZ]) +
++                                                        METRIC[GZZ]* SQR(PRIMS[VZ] + METRIC[SHIFTZ]) )*SQR(ONE_OVER_LAPSE);
+   /*** Check for superluminal velocity ***/
+   //FIXME: Instead of >1.0, should be one_minus_one_over_alpha_u0_squared > ONE_MINUS_ONE_OVER_GAMMA_SPEED_LIMIT_SQUARED, for consistency with conserv_to_prims routines
+-
+-  if(one_minus_one_over_alpha_u0_squared > 1.0) {
++  //if(one_minus_one_over_alpha_u0_squared > 1.0) {
+     CCTK_REAL ONE_MINUS_ONE_OVER_GAMMA_SPEED_LIMIT_SQUARED = 1.0-1.0/SQR(GAMMA_SPEED_LIMIT);
++
++  if(one_minus_one_over_alpha_u0_squared > ONE_MINUS_ONE_OVER_GAMMA_SPEED_LIMIT_SQUARED) {
+     CCTK_REAL correction_fac = sqrt(ONE_MINUS_ONE_OVER_GAMMA_SPEED_LIMIT_SQUARED/one_minus_one_over_alpha_u0_squared);
+-    U[VX] = (U[VX] + METRIC[SHIFTX])*correction_fac-METRIC[SHIFTX];
+-    U[VY] = (U[VY] + METRIC[SHIFTY])*correction_fac-METRIC[SHIFTY];
+-    U[VZ] = (U[VZ] + METRIC[SHIFTZ])*correction_fac-METRIC[SHIFTZ];
++    
++    PRIMS[VX] = (PRIMS[VX] + METRIC[SHIFTX])*correction_fac-METRIC[SHIFTX];
++    PRIMS[VY] = (PRIMS[VY] + METRIC[SHIFTY])*correction_fac-METRIC[SHIFTY];
++    PRIMS[VZ] = (PRIMS[VZ] + METRIC[SHIFTZ])*correction_fac-METRIC[SHIFTZ];
++    //printf("%e %e | %e | %e jjj\n",one_minus_one_over_alpha_u0_squared,tmp,tmp-one_minus_one_over_alpha_u0_squared,ONE_MINUS_ONE_OVER_GAMMA_SPEED_LIMIT_SQUARED);
++
+     one_minus_one_over_alpha_u0_squared=ONE_MINUS_ONE_OVER_GAMMA_SPEED_LIMIT_SQUARED;
+     stats.failure_checker+=1000;
+   }
+@@ -180,7 +106,6 @@
+   //CCTK_REAL alpha_u0_minus_one = 1.0/sqrt(1.0-one_minus_one_over_alpha_u0_squared)-1.0;
+   //u0_out          = (alpha_u0_minus_one + 1.0)*ONE_OVER_LAPSE;
+   CCTK_REAL alpha_u0 = 1.0/sqrt(1.0-one_minus_one_over_alpha_u0_squared);
+-  if(std::isnan(alpha_u0*ONE_OVER_LAPSE)) printf("BAD FOUND NAN U0 CALC: %.15e %.15e %.15e\n",alpha_u0,ONE_OVER_LAPSE,one_minus_one_over_alpha_u0_squared);
+   u0_out = alpha_u0*ONE_OVER_LAPSE;
+ }
+ 
+@@ -196,51 +121,14 @@
+ //alpha_u0_minus_one = one_minus_one_over_alpha_u0_squared/one_over_alpha_u0/(1.0+one_over_alpha_u0); 
+ //u0_out = (alpha_u0_minus_one+1.0)*ONE_OVER_LAPSE;
+ 
+-static inline void enforce_pressure_floor_ceiling(output_stats &stats,CCTK_REAL kpoly,CCTK_REAL P_cold,CCTK_REAL Psi6,const CCTK_REAL Psi6threshold,CCTK_REAL rho_b,const CCTK_REAL rhobatm,  CCTK_REAL &P) {
+-  CCTK_REAL P_min=0.9*P_cold;
+-  if(P<P_min) {
+-    stats.failure_checker+=10;
+-    P=P_min;
+-  }
+-  //MAX(P,P_min);
+-  //if(P < P_min) P=1.0*P_cold;
+-
+-  /* OLD: Discarded because lower limit is unphysical.
+-     if(P <= 0.5*kpoly*P_cold) {
+-     P=0.5*kpoly*P_cold;
+-     }
+-  */
+-
+-  //CCTK_REAL P_max = 10.0*P_cold;
+-  CCTK_REAL P_max = 100.0*P_cold;
+-  if(Psi6 > Psi6threshold) P_max = 1e5*P_cold; // <-- better than 10.
+-
+-  if((rho_b < 100.0*rhobatm || Psi6 > Psi6threshold) && P>P_max) {
+-    P=P_max;
+-    stats.failure_checker+=100;
+-  }
+-
+-  /*
+-    CCTK_REAL rho_horiz_cap = 1000.0*rhobatm;
+-    
+-    //New density damping mechanism inside the horizon
+-    if(Psi6 > Psi6threshold && rho_b>rho_horiz_cap) {
+-    CCTK_REAL six_phi=log(Psi6);
+-    CCTK_REAL six_phithreshold=log(Psi6threshold);
+-    CCTK_REAL Psi6max_approx=350000;
+-    rho_b = rho_horiz_cap+(rho_b-rho_horiz_cap)*exp(-200.0*SQR((six_phi-six_phithreshold)/log(Psi6max_approx)));
+-    }
+-  */
+-}
+-
+-static inline void compute_smallba_b2_and_u_i_over_u0_psi4(CCTK_REAL *METRIC,CCTK_REAL *METRIC_LAP_PSI4,CCTK_REAL *U,CCTK_REAL u0L,CCTK_REAL ONE_OVER_LAPSE_SQRT_4PI,  
++static inline void compute_smallba_b2_and_u_i_over_u0_psi4(CCTK_REAL *METRIC,CCTK_REAL *METRIC_LAP_PSI4,CCTK_REAL *PRIMS,CCTK_REAL u0L,CCTK_REAL ONE_OVER_LAPSE_SQRT_4PI,  
+                                                     CCTK_REAL &u_x_over_u0_psi4,CCTK_REAL &u_y_over_u0_psi4,CCTK_REAL &u_z_over_u0_psi4,CCTK_REAL *smallb) {
+ 
+   // NOW COMPUTE b^{\mu} and b^2 = b^{\mu} b^{\nu} g_{\mu \nu}
+   CCTK_REAL ONE_OVER_U0 = 1.0/u0L;
+-  CCTK_REAL shiftx_plus_vx = (METRIC[SHIFTX]+U[VX]);
+-  CCTK_REAL shifty_plus_vy = (METRIC[SHIFTY]+U[VY]);
+-  CCTK_REAL shiftz_plus_vz = (METRIC[SHIFTZ]+U[VZ]);
++  CCTK_REAL shiftx_plus_vx = (METRIC[SHIFTX]+PRIMS[VX]);
++  CCTK_REAL shifty_plus_vy = (METRIC[SHIFTY]+PRIMS[VY]);
++  CCTK_REAL shiftz_plus_vz = (METRIC[SHIFTZ]+PRIMS[VZ]);
+ 
+   // Eq. 56 in http://arxiv.org/pdf/astro-ph/0503420.pdf:
+   //  u_i = gamma_{ij} u^0 (v^j + beta^j), gamma_{ij} is the physical metric, and gamma_{ij} = Psi4 * METRIC[Gij], since METRIC[Gij] is the conformal metric.
+@@ -250,7 +138,7 @@
+ 
+   // Eqs. 23 and 31 in http://arxiv.org/pdf/astro-ph/0503420.pdf:
+   //   Compute alpha sqrt(4 pi) b^t = u_i B^i
+-  CCTK_REAL alpha_sqrt_4pi_bt = ( u_x_over_u0_psi4*U[BX_CENTER] + u_y_over_u0_psi4*U[BY_CENTER] + u_z_over_u0_psi4*U[BZ_CENTER] ) * METRIC_LAP_PSI4[PSI4]*u0L;
++  CCTK_REAL alpha_sqrt_4pi_bt = ( u_x_over_u0_psi4*PRIMS[BX_CENTER] + u_y_over_u0_psi4*PRIMS[BY_CENTER] + u_z_over_u0_psi4*PRIMS[BZ_CENTER] ) * METRIC_LAP_PSI4[PSI4]*u0L;
+   // Eq. 24 in http://arxiv.org/pdf/astro-ph/0503420.pdf:
+   // b^i = B^i_u / sqrt(4 pi)
+   // b^i = ( B^i/alpha + B^0_u u^i ) / ( u^0 sqrt(4 pi) )
+@@ -258,9 +146,9 @@
+   // b^i = ( B^i +  alpha sqrt(4 pi) b^t u^i ) / ( alpha u^0 sqrt(4 pi) )
+   // b^i = ( B^i/u^0 +  alpha sqrt(4 pi) b^t u^i/u^0 ) / ( alpha sqrt(4 pi) )
+   // b^i = ( B^i/u^0 +  alpha sqrt(4 pi) b^t v^i ) / ( alpha sqrt(4 pi) )
+-  smallb[SMALLBX] = (U[BX_CENTER]*ONE_OVER_U0 + U[VX]*alpha_sqrt_4pi_bt)*ONE_OVER_LAPSE_SQRT_4PI;
+-  smallb[SMALLBY] = (U[BY_CENTER]*ONE_OVER_U0 + U[VY]*alpha_sqrt_4pi_bt)*ONE_OVER_LAPSE_SQRT_4PI;
+-  smallb[SMALLBZ] = (U[BZ_CENTER]*ONE_OVER_U0 + U[VZ]*alpha_sqrt_4pi_bt)*ONE_OVER_LAPSE_SQRT_4PI;
++  smallb[SMALLBX] = (PRIMS[BX_CENTER]*ONE_OVER_U0 + PRIMS[VX]*alpha_sqrt_4pi_bt)*ONE_OVER_LAPSE_SQRT_4PI;
++  smallb[SMALLBY] = (PRIMS[BY_CENTER]*ONE_OVER_U0 + PRIMS[VY]*alpha_sqrt_4pi_bt)*ONE_OVER_LAPSE_SQRT_4PI;
++  smallb[SMALLBZ] = (PRIMS[BZ_CENTER]*ONE_OVER_U0 + PRIMS[VZ]*alpha_sqrt_4pi_bt)*ONE_OVER_LAPSE_SQRT_4PI;
+   // Eq. 23 in http://arxiv.org/pdf/astro-ph/0503420.pdf, with alpha sqrt (4 pi) b^2 = u_i B^i already computed above
+   smallb[SMALLBT] = alpha_sqrt_4pi_bt * ONE_OVER_LAPSE_SQRT_4PI;
+ 
+diff --exclude '*.tex' --exclude README -urw IllinoisGRMHD/src/make.code.defn GiRaFFE/src/make.code.defn
+--- IllinoisGRMHD/src/make.code.defn	2017-01-10 10:54:34.000000000 -0600
++++ GiRaFFE/src/make.code.defn	2017-10-03 22:08:55.329532568 -0500
+@@ -1,4 +1,4 @@
+-# Main make.code.defn file for thorn IllinoisGRMHD
++# Main make.code.defn file for thorn GiRaFFE
+ 
+ # Source files in this directory
+ SRCS =  InitSymBound.C MoL_registration.C \
+@@ -7,9 +7,10 @@
+     \
+     convert_ADM_to_BSSN__enforce_detgtij_eq_1__and_compute_gtupij.C \
+     \
+-    driver_evaluate_MHD_rhs.C \
++    driver_evaluate_FFE_rhs.C \
++    driver_conserv_to_prims_FFE.C \
++    \
+     compute_B_and_Bstagger_from_A.C \
+-    driver_conserv_to_prims.C \
+     symmetry__set_gzs_staggered_gfs.C \
+     \
+     outer_boundaries.C
+diff --exclude '*.tex' --exclude README -urw IllinoisGRMHD/src/outer_boundaries.C GiRaFFE/src/outer_boundaries.C
+--- IllinoisGRMHD/src/outer_boundaries.C	2016-08-03 09:25:55.000000000 -0500
++++ GiRaFFE/src/outer_boundaries.C	2017-10-03 22:08:55.329532568 -0500
+@@ -5,7 +5,7 @@
+  * ( 1) Apply outer boundary conditions (BCs) on A_{\mu}
+  * ( 2) Compute B^i from A_i everywhere, synchronize B^i
+  * ( 3) Call con2prim to get primitives on interior pts
+- * ( 4) Apply outer BCs on {P,rho_b,vx,vy,vz}.
++ * ( 4) Apply outer BCs on {vx,vy,vz}.
+  * ( 5) (optional) set conservatives on outer boundary.
+  *******************************************************/
+ 
+@@ -16,7 +16,7 @@
+ #include "cctk_Arguments.h"
+ #include "cctk_Parameters.h"
+ 
+-#include "IllinoisGRMHD_headers.h"
++#include "GiRaFFE_headers.h"
+ #include "inlined_functions.C"
+ 
+ #define IDX(i,j,k) CCTK_GFINDEX3D(cctkGH,(i),(j),(k))
+@@ -32,17 +32,20 @@
+ /*********************************************
+  * Apply outer boundary conditions on A_{\mu}
+  ********************************************/
+-extern "C" void IllinoisGRMHD_outer_boundaries_on_A_mu(CCTK_ARGUMENTS) {
++extern "C" void GiRaFFE_outer_boundaries_on_A_mu(CCTK_ARGUMENTS) {
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+ 
+-  if(CCTK_EQUALS(EM_BC,"frozen")) return;
++  if(CCTK_EQUALS(EM_BC,"frozen")) {
++    CCTK_VInfo(CCTK_THORNSTRING,"Warning: EM_BC=frozen WILL NOT NECESSARILY result in frozen B-fields at the boundaries, since A-fields may evolve even with B fixed in time!\n");
++    return;
++  }
+ 
+   bool Symmetry_none=false; if(CCTK_EQUALS(Symmetry,"none")) Symmetry_none=true;
+ 
+   int levelnumber = GetRefinementLevel(cctkGH);
+ 
+-  IllinoisGRMHD_convert_ADM_to_BSSN__enforce_detgtij_eq_1__and_compute_gtupij(cctkGH,cctk_lsh,  gxx,gxy,gxz,gyy,gyz,gzz,alp,
++  GiRaFFE_convert_ADM_to_BSSN__enforce_detgtij_eq_1__and_compute_gtupij(cctkGH,cctk_lsh,  gxx,gxy,gxz,gyy,gyz,gzz,alp,
+                                                                 gtxx,gtxy,gtxz,gtyy,gtyz,gtzz,
+                                                                 gtupxx,gtupxy,gtupxz,gtupyy,gtupyz,gtupzz,
+                                                                 phi_bssn,psi_bssn,lapm1);
+@@ -51,7 +54,7 @@
+   if(cctk_iteration==0 || levelnumber!=0) return;
+ 
+   if(cctk_nghostzones[0]!=cctk_nghostzones[1] || cctk_nghostzones[0]!=cctk_nghostzones[2]) 
+-    CCTK_VError(VERR_DEF_PARAMS,"ERROR: IllinoisGRMHD outer BC driver does not support unequal number of ghostzones in different directions!");
++    CCTK_VError(VERR_DEF_PARAMS,"ERROR: GiRaFFE outer BC driver does not support unequal number of ghostzones in different directions!");
+   for(int which_bdry_pt=0;which_bdry_pt<cctk_nghostzones[0];which_bdry_pt++) {
+     int imax=cctk_lsh[0]-cctk_nghostzones[0]+which_bdry_pt; // for cctk_nghostzones==3, this goes {cctk_lsh-3,cctk_lsh-2,cctk_lsh-1}; outer bdry pt is at cctk_lsh-1
+     int jmax=cctk_lsh[1]-cctk_nghostzones[1]+which_bdry_pt;
+@@ -90,17 +93,17 @@
+ 
+ 
+ /*******************************************************
+- * Apply outer boundary conditions on {P,rho_b,vx,vy,vz}
++ * Apply outer boundary conditions on {vx,vy,vz}
+  * It is better to apply BCs on primitives than conservs,
+  * because small errors in conservs can be greatly 
+  * amplified in con2prim, sometimes leading to unphysical
+  * primitives & unnecessary fixes.
+  *******************************************************/
+-extern "C" void IllinoisGRMHD_outer_boundaries_on_P_rho_b_vx_vy_vz(CCTK_ARGUMENTS) {
++extern "C" void GiRaFFE_outer_boundaries_on_vx_vy_vz(CCTK_ARGUMENTS) {
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+ 
+-  if(CCTK_EQUALS(Matter_BC,"frozen")) return;
++  if(CCTK_EQUALS(Velocity_BC,"frozen")) return;
+ 
+   bool Symmetry_none=false; if(CCTK_EQUALS(Symmetry,"none")) Symmetry_none=true;
+ 
+@@ -109,16 +112,16 @@
+   // Don't apply approximate outer boundary conditions on initial data, which should be defined everywhere, or on levels != [coarsest level].
+   if(cctk_iteration==0 || levelnumber!=0) return;
+ 
+-  int ENABLE=1;
++  int OUTFLOW=1;
++  if(CCTK_EQUALS(Velocity_BC,"copy")) OUTFLOW=0;
+ 
+-  IllinoisGRMHD_convert_ADM_to_BSSN__enforce_detgtij_eq_1__and_compute_gtupij(cctkGH,cctk_lsh,  gxx,gxy,gxz,gyy,gyz,gzz,alp,
++  GiRaFFE_convert_ADM_to_BSSN__enforce_detgtij_eq_1__and_compute_gtupij(cctkGH,cctk_lsh,  gxx,gxy,gxz,gyy,gyz,gzz,alp,
+                                                                 gtxx,gtxy,gtxz,gtyy,gtyz,gtzz,
+                                                                 gtupxx,gtupxy,gtupxz,gtupyy,gtupyz,gtupzz,
+                                                                 phi_bssn,psi_bssn,lapm1);
+ 
+-  //if(levelnumber<=11110) {
+   if(cctk_nghostzones[0]!=cctk_nghostzones[1] || cctk_nghostzones[0]!=cctk_nghostzones[2]) 
+-    CCTK_VError(VERR_DEF_PARAMS,"ERROR: IllinoisGRMHD outer BC driver does not support unequal number of ghostzones in different directions!");
++    CCTK_VError(VERR_DEF_PARAMS,"ERROR: GiRaFFE outer BC driver does not support unequal number of ghostzones in different directions!");
+   for(int which_bdry_pt=0;which_bdry_pt<cctk_nghostzones[0];which_bdry_pt++) {
+     int imax=cctk_lsh[0]-cctk_nghostzones[0]+which_bdry_pt; // for cctk_nghostzones==3, this goes {cctk_lsh-3,cctk_lsh-2,cctk_lsh-1}; outer bdry pt is at cctk_lsh-1
+     int jmax=cctk_lsh[1]-cctk_nghostzones[1]+which_bdry_pt;
+@@ -131,38 +134,26 @@
+     // Order here is for compatibility with old version of this code.
+     /* XMIN & XMAX */
+     // i=imax=outer boundary
+-    if(cctk_bbox[1]) { XMAX_OB_SIMPLE_COPY(P,imax); XMAX_OB_SIMPLE_COPY(rho_b,imax); XMAX_OB_SIMPLE_COPY(vx,imax); XMAX_OB_SIMPLE_COPY(vy,imax); XMAX_OB_SIMPLE_COPY(vz,imax); if(ENABLE) XMAX_INFLOW_CHECK(vx,imax); }
++    if(cctk_bbox[1]) { XMAX_OB_SIMPLE_COPY(vx,imax); XMAX_OB_SIMPLE_COPY(vy,imax); XMAX_OB_SIMPLE_COPY(vz,imax); if(OUTFLOW) XMAX_INFLOW_CHECK(vx,imax); }
+     // i=imin=outer boundary
+     if(cctk_bbox[0]) {
+-      XMIN_OB_SIMPLE_COPY(P,imin); XMIN_OB_SIMPLE_COPY(rho_b,imin); XMIN_OB_SIMPLE_COPY(vx,imin); XMIN_OB_SIMPLE_COPY(vy,imin); XMIN_OB_SIMPLE_COPY(vz,imin); if(ENABLE) XMIN_INFLOW_CHECK(vx,imin); }
++      XMIN_OB_SIMPLE_COPY(vx,imin); XMIN_OB_SIMPLE_COPY(vy,imin); XMIN_OB_SIMPLE_COPY(vz,imin); if(OUTFLOW) XMIN_INFLOW_CHECK(vx,imin); }
+ 
+     /* YMIN & YMAX */
+     // j=jmax=outer boundary
+-    if(cctk_bbox[3]) { YMAX_OB_SIMPLE_COPY(P,jmax); YMAX_OB_SIMPLE_COPY(rho_b,jmax); YMAX_OB_SIMPLE_COPY(vx,jmax); YMAX_OB_SIMPLE_COPY(vy,jmax); YMAX_OB_SIMPLE_COPY(vz,jmax); if(ENABLE) YMAX_INFLOW_CHECK(vy,jmax); }
++    if(cctk_bbox[3]) { YMAX_OB_SIMPLE_COPY(vx,jmax); YMAX_OB_SIMPLE_COPY(vy,jmax); YMAX_OB_SIMPLE_COPY(vz,jmax); if(OUTFLOW) YMAX_INFLOW_CHECK(vy,jmax); }
+     // j=jmin=outer boundary
+     if(cctk_bbox[2]) {
+-      YMIN_OB_SIMPLE_COPY(P,jmin); YMIN_OB_SIMPLE_COPY(rho_b,jmin); YMIN_OB_SIMPLE_COPY(vx,jmin); YMIN_OB_SIMPLE_COPY(vy,jmin); YMIN_OB_SIMPLE_COPY(vz,jmin); if(ENABLE) YMIN_INFLOW_CHECK(vy,jmin); }
++      YMIN_OB_SIMPLE_COPY(vx,jmin); YMIN_OB_SIMPLE_COPY(vy,jmin); YMIN_OB_SIMPLE_COPY(vz,jmin); if(OUTFLOW) YMIN_INFLOW_CHECK(vy,jmin); }
+ 
+     /* ZMIN & ZMAX */
+     // k=kmax=outer boundary
+-    if(cctk_bbox[5]) { ZMAX_OB_SIMPLE_COPY(P,kmax); ZMAX_OB_SIMPLE_COPY(rho_b,kmax); ZMAX_OB_SIMPLE_COPY(vx,kmax); ZMAX_OB_SIMPLE_COPY(vy,kmax); ZMAX_OB_SIMPLE_COPY(vz,kmax); if(ENABLE) ZMAX_INFLOW_CHECK(vz,kmax); } 
++    if(cctk_bbox[5]) { ZMAX_OB_SIMPLE_COPY(vx,kmax); ZMAX_OB_SIMPLE_COPY(vy,kmax); ZMAX_OB_SIMPLE_COPY(vz,kmax); if(OUTFLOW) ZMAX_INFLOW_CHECK(vz,kmax); } 
+     // k=kmin=outer boundary
+     if((cctk_bbox[4]) && Symmetry_none) {
+-      ZMIN_OB_SIMPLE_COPY(P,kmin); ZMIN_OB_SIMPLE_COPY(rho_b,kmin); ZMIN_OB_SIMPLE_COPY(vx,kmin); ZMIN_OB_SIMPLE_COPY(vy,kmin); ZMIN_OB_SIMPLE_COPY(vz,kmin); if(ENABLE) ZMIN_INFLOW_CHECK(vz,kmin); }
++      ZMIN_OB_SIMPLE_COPY(vx,kmin); ZMIN_OB_SIMPLE_COPY(vy,kmin); ZMIN_OB_SIMPLE_COPY(vz,kmin); if(OUTFLOW) ZMIN_INFLOW_CHECK(vz,kmin); }
+   }
+ 
+-
+-  // FIXME: only for single gamma-law EOS.
+-  eos_struct eos;
+-  eos.neos=neos;
+-  eos.K_poly=K_poly;
+-  eos.rho_tab[0]=rho_tab[0];
+-  eos.P_tab[0]=P_tab[0];
+-  eos.gamma_th=gamma_th;
+-  eos.eps_tab[0]=eps_tab[0];
+-  eos.k_tab[0]=k_tab[0];   eos.k_tab[1]=k_tab[1];
+-  eos.gamma_tab[0]=gamma_tab[0]; eos.gamma_tab[1]=gamma_tab[1];
+-
+ #pragma omp parallel for
+   for(int k=0;k<cctk_lsh[2];k++) for(int j=0;j<cctk_lsh[1];j++) for(int i=0;i<cctk_lsh[0];i++) {
+         if(((cctk_bbox[0]) && i<cctk_nghostzones[0]) ||
+@@ -174,7 +165,7 @@
+           int index = CCTK_GFINDEX3D(cctkGH,i,j,k);
+           int ww;
+ 
+-          CCTK_REAL METRIC[NUMVARS_FOR_METRIC],dummy;
++          CCTK_REAL METRIC[NUMVARS_FOR_METRIC],dummy=-1e300;
+           ww=0;
+           //psi[index] = exp(phi[index]);
+           METRIC[ww] = phi_bssn[index];ww++;
+@@ -196,51 +187,28 @@
+           METRIC[ww] = gtupxz[index];  ww++;
+           METRIC[ww] = gtupyz[index];  ww++;
+ 
+-          CCTK_REAL U[MAXNUMVARS];
++          CCTK_REAL PRIMS[MAXNUMVARS];
+           ww=0;
+-          U[ww] = rho_b[index]; ww++;
+-          U[ww] = P[index];     ww++;
+-          U[ww] = vx[index];    ww++;
+-          U[ww] = vy[index];    ww++;
+-          U[ww] = vz[index];    ww++;
+-          U[ww] = Bx[index];    ww++;
+-          U[ww] = By[index];    ww++;
+-          U[ww] = Bz[index];    ww++;
+-
+-          struct output_stats stats;
+-          CCTK_REAL CONSERVS[NUM_CONSERVS],TUPMUNU[10],TDNMUNU[10];
+-           
+-          const int already_computed_physical_metric_and_inverse=0;
+-          CCTK_REAL g4dn[4][4],g4up[4][4];
+-          IllinoisGRMHD_enforce_limits_on_primitives_and_recompute_conservs(already_computed_physical_metric_and_inverse,U,stats,eos,METRIC,g4dn,g4up, TUPMUNU,TDNMUNU,CONSERVS);
+-
+-          rho_b[index] = U[RHOB];
+-          P[index]     = U[PRESSURE];
+-          vx[index]    = U[VX];
+-          vy[index]    = U[VY];
+-          vz[index]    = U[VZ];
++          PRIMS[ww] = vx[index];    ww++;
++          PRIMS[ww] = vy[index];    ww++;
++          PRIMS[ww] = vz[index];    ww++;
++          PRIMS[ww] = Bx[index];    ww++;
++          PRIMS[ww] = By[index];    ww++;
++          PRIMS[ww] = Bz[index];    ww++;
++
++          CCTK_REAL CONSERVS[NUM_CONSERVS];
++           
++          GiRaFFE_compute_conservatives(PRIMS,METRIC, CONSERVS);
++
++          vx[index]    = PRIMS[VX];
++          vy[index]    = PRIMS[VY];
++          vz[index]    = PRIMS[VZ];
+ 
+-          rho_star[index]=CONSERVS[RHOSTAR];
+-          tau[index]     =CONSERVS[TAUENERGY];
+           mhd_st_x[index]=CONSERVS[STILDEX];
+           mhd_st_y[index]=CONSERVS[STILDEY];
+           mhd_st_z[index]=CONSERVS[STILDEZ];
+-
+-          if(update_Tmunu) {
+-            ww=0;
+-            eTtt[index] = TDNMUNU[ww]; ww++;
+-            eTtx[index] = TDNMUNU[ww]; ww++;
+-            eTty[index] = TDNMUNU[ww]; ww++;
+-            eTtz[index] = TDNMUNU[ww]; ww++;
+-            eTxx[index] = TDNMUNU[ww]; ww++;
+-            eTxy[index] = TDNMUNU[ww]; ww++;
+-            eTxz[index] = TDNMUNU[ww]; ww++;
+-            eTyy[index] = TDNMUNU[ww]; ww++;
+-            eTyz[index] = TDNMUNU[ww]; ww++;
+-            eTzz[index] = TDNMUNU[ww];
+-          }
+-          //if(i==5 && j==5 && k==5) CCTK_VInfo(CCTK_THORNSTRING,"%e %e %e %e",eTtt[index],eTtx[index],eTty[index],eTxy[index]);
+-          //CCTK_VInfo(CCTK_THORNSTRING,"YAY: "); for(ww=0;ww<10;ww++) CCTK_VInfo(CCTK_THORNSTRING,"%e ",TDNMUNU[ww]); CCTK_VInfo(CCTK_THORNSTRING,"");
+         }
+       }
+ }
++
++#include "compute_conservatives_FFE.C"
+diff --exclude '*.tex' --exclude README -urw IllinoisGRMHD/src/postpostinitial__set_symmetries__copy_timelevels.C GiRaFFE/src/postpostinitial__set_symmetries__copy_timelevels.C
+--- IllinoisGRMHD/src/postpostinitial__set_symmetries__copy_timelevels.C	2017-01-10 10:54:34.000000000 -0600
++++ GiRaFFE/src/postpostinitial__set_symmetries__copy_timelevels.C	2017-10-03 22:08:55.329532568 -0500
+@@ -9,43 +9,40 @@
+ #include "cctk_Functions.h"
+ #include "cctk_Parameters.h"
+ #include "Symmetry.h"
+-#include "IllinoisGRMHD_headers.h"
++#include "GiRaFFE_headers.h"
+ 
+-extern "C" void IllinoisGRMHD_PostPostInitial_Set_Symmetries__Copy_Timelevels(CCTK_ARGUMENTS) {
++extern "C" void GiRaFFE_PostPostInitial_Set_Symmetries__Copy_Timelevels(CCTK_ARGUMENTS) {
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+ 
+-  if(gamma_th<0)
+-    CCTK_VError(VERR_DEF_PARAMS,"ERROR.  Default gamma_th (=-1) detected.  You must set gamma_th to the appropriate value in your initial data thorn, or your .par file!\n");
+-
+   //For emfields, we assume that you've set Bx, By, Bz (the UN-tilded B^i's)
+   // or Ax, Ay, Az (if using constrained transport scheme of Del Zanna)
+ 
+   if(CCTK_EQUALS(Symmetry,"equatorial")) {
+     // SET SYMMETRY GHOSTZONES ON ALL CONSERVATIVE AND PRIMIIVE VARIABLES!
+     int ierr;
+-    ierr=CartSymGN(cctkGH,"IllinoisGRMHD::grmhd_conservatives"); if(ierr!=0) CCTK_VError(VERR_DEF_PARAMS,"Microsoft error code #1874109358120048. Grep it in the source code");
+-    ierr=CartSymGN(cctkGH,"IllinoisGRMHD::grmhd_primitives_allbutBi"); if(ierr!=0) CCTK_VError(VERR_DEF_PARAMS,"Microsoft error code #1874109358120049. Grep it in the source code");
++    ierr=CartSymGN(cctkGH,"GiRaFFE::grmhd_conservatives"); if(ierr!=0) CCTK_VError(VERR_DEF_PARAMS,"Microsoft error code #1874109358120048. Grep it in the source code");
++    ierr=CartSymGN(cctkGH,"GiRaFFE::grmhd_primitives_allbutBi"); if(ierr!=0) CCTK_VError(VERR_DEF_PARAMS,"Microsoft error code #1874109358120049. Grep it in the source code");
+ 
+     // Finish up by setting symmetry ghostzones on Bx, By, Bz, and their staggered variants.
+     CCTK_REAL gridfunc_syms_Bx[3] = {-1, 1,-Sym_Bz};
+-    IllinoisGRMHD_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Bx        , gridfunc_syms_Bx,0,0,0);
+-    IllinoisGRMHD_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Bx_stagger, gridfunc_syms_Bx,1,0,0);
++    GiRaFFE_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Bx        , gridfunc_syms_Bx,0,0,0);
++    GiRaFFE_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Bx_stagger, gridfunc_syms_Bx,1,0,0);
+     CCTK_REAL gridfunc_syms_By[3] = { 1,-1,-Sym_Bz};
+-    IllinoisGRMHD_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  By        , gridfunc_syms_Bx,0,0,0);
+-    IllinoisGRMHD_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  By_stagger, gridfunc_syms_By,0,1,0);
++    GiRaFFE_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  By        , gridfunc_syms_Bx,0,0,0);
++    GiRaFFE_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  By_stagger, gridfunc_syms_By,0,1,0);
+     CCTK_REAL gridfunc_syms_Bz[3] = { 1, 1, Sym_Bz};
+-    IllinoisGRMHD_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Bz        , gridfunc_syms_Bz,0,0,0);
+-    IllinoisGRMHD_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Bz_stagger, gridfunc_syms_Bz,0,0,1);
++    GiRaFFE_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Bz        , gridfunc_syms_Bz,0,0,0);
++    GiRaFFE_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Bz_stagger, gridfunc_syms_Bz,0,0,1);
+ 
+     CCTK_REAL gridfunc_syms_psi6phi[3] = { 1, 1,      1};
+-    IllinoisGRMHD_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,psi6phi     , gridfunc_syms_psi6phi,1,1,1);
++    GiRaFFE_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,psi6phi     , gridfunc_syms_psi6phi,1,1,1);
+     CCTK_REAL gridfunc_syms_Ax[3]      = {-1, 1, Sym_Bz};
+-    IllinoisGRMHD_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Ax        , gridfunc_syms_Ax,0,1,1);
++    GiRaFFE_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Ax        , gridfunc_syms_Ax,0,1,1);
+     CCTK_REAL gridfunc_syms_Ay[3]      = { 1,-1, Sym_Bz};
+-    IllinoisGRMHD_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Ay        , gridfunc_syms_Ay,1,0,1);
++    GiRaFFE_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Ay        , gridfunc_syms_Ay,1,0,1);
+     CCTK_REAL gridfunc_syms_Az[3]      = { 1, 1,-Sym_Bz};
+-    IllinoisGRMHD_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Az        , gridfunc_syms_Az,1,1,0);
++    GiRaFFE_set_symmetry_gzs_staggered(cctkGH,cctk_lsh,x,y,z,  Az        , gridfunc_syms_Az,1,1,0);
+   }
+ 
+ 
+@@ -60,8 +57,6 @@
+   for(int k=0;k<cctk_lsh[2];k++) for(int j=0;j<cctk_lsh[1];j++) for(int i=0;i<cctk_lsh[0];i++) {
+         int index = CCTK_GFINDEX3D(cctkGH,i,j,k);
+ 
+-        rho_star_p[index] = rho_star[index];
+-        tau_p[index] = tau[index];
+         mhd_st_x_p[index] = mhd_st_x[index]; 
+         mhd_st_y_p[index] = mhd_st_y[index];
+         mhd_st_z_p[index] = mhd_st_z[index];
+@@ -71,8 +66,6 @@
+         Ay_p[index] = Ay[index];
+         Az_p[index] = Az[index];
+ 
+-        rho_star_p_p[index] = rho_star[index];
+-        tau_p_p[index] = tau[index];
+         mhd_st_x_p_p[index] = mhd_st_x[index]; 
+         mhd_st_y_p_p[index] = mhd_st_y[index];
+         mhd_st_z_p_p[index] = mhd_st_z[index];
+diff --exclude '*.tex' --exclude README -urw IllinoisGRMHD/src/symmetry__set_gzs_staggered_gfs.C GiRaFFE/src/symmetry__set_gzs_staggered_gfs.C
+--- IllinoisGRMHD/src/symmetry__set_gzs_staggered_gfs.C	2017-01-10 10:54:34.000000000 -0600
++++ GiRaFFE/src/symmetry__set_gzs_staggered_gfs.C	2017-10-03 22:08:55.329532568 -0500
+@@ -2,9 +2,9 @@
+ #include "cctk_Parameters.h"
+ #include <cstdio>
+ #include <cstdlib>
+-#include "IllinoisGRMHD_headers.h"
++#include "GiRaFFE_headers.h"
+ 
+-void IllinoisGRMHD_set_symmetry_gzs_staggered(const cGH *cctkGH, const int *cctk_lsh,CCTK_REAL *X,CCTK_REAL *Y,CCTK_REAL *Z, CCTK_REAL *gridfunc,
++void GiRaFFE_set_symmetry_gzs_staggered(const cGH *cctkGH, const int *cctk_lsh,CCTK_REAL *X,CCTK_REAL *Y,CCTK_REAL *Z, CCTK_REAL *gridfunc,
+                                               CCTK_REAL *gridfunc_syms,int stagger_x,int stagger_y,int stagger_z) {
+ 
+   DECLARE_CCTK_PARAMETERS;
+Only in GiRaFFE/test: GiRaFFE_tests_AlfvenWave
+Only in GiRaFFE/test: GiRaFFE_tests_AlfvenWave.par
+Only in GiRaFFE/test: GiRaFFE_tests_AlignedRotator
+Only in GiRaFFE/test: GiRaFFE_tests_AlignedRotator.par
+Only in GiRaFFE/test: GiRaFFE_tests_DegenAlfvenWave
+Only in GiRaFFE/test: GiRaFFE_tests_DegenAlfvenWave.par
+Only in GiRaFFE/test: GiRaFFE_tests_ExactWald
+Only in GiRaFFE/test: GiRaFFE_tests_ExactWald.par
+Only in GiRaFFE/test: GiRaFFE_tests_FFEBreak
+Only in GiRaFFE/test: GiRaFFE_tests_FFEBreak.par
+Only in GiRaFFE/test: GiRaFFE_tests_FastWave
+Only in GiRaFFE/test: GiRaFFE_tests_FastWave.par
+Only in GiRaFFE/test: GiRaFFE_tests_MagnetoWald
+Only in GiRaFFE/test: GiRaFFE_tests_MagnetoWald.par
+Only in GiRaFFE/test: GiRaFFE_tests_SplitMonopole
+Only in GiRaFFE/test: GiRaFFE_tests_SplitMonopole.par
+Only in GiRaFFE/test: GiRaFFE_tests_ThreeWave
+Only in GiRaFFE/test: GiRaFFE_tests_ThreeWave.par
+diff --exclude '*.tex' --exclude README -urw IllinoisGRMHD/test/test.ccl GiRaFFE/test/test.ccl
+--- IllinoisGRMHD/test/test.ccl	2017-01-10 10:54:34.000000000 -0600
++++ GiRaFFE/test/test.ccl	2018-08-21 13:44:38.430354026 -0500
+@@ -1,4 +1,67 @@
+-TEST magnetizedTOV
++# Script for creating default test.ccl file:
++# for i in `ls -1 *.par|sed "s/.par//g"`;do echo "TEST " $i; echo "{";echo "  NPROCS 2"; echo "}"; echo "";done
++
++TEST  GiRaFFE_tests_AlfvenWave
+ { 
+-  RELTOL 1e-11
++  NPROCS 2
++  ABSTOL 5e-10 # GCC vs ICC: maximum absolute difference in column 13 is 4.2760017748833e-11
++  RELTOL 3e-10 # GCC vs ICC: maximum relative difference in column 13 is 2.848558587442e-11
++}
++
++TEST  GiRaFFE_tests_AlignedRotator
++{
++  NPROCS 2
++  ABSTOL 1e-12   # GCC vs ICC: maximum absolute difference -- BELOW ROUNDOFF THRESHOLD -- choose 1e-12 for safety
++  RELTOL 1e-12   # GCC vs ICC: maximum relative difference -- BELOW ROUNDOFF THRESHOLD -- choose 1e-12 for safety
++}
++
++TEST  GiRaFFE_tests_DegenAlfvenWave
++{
++  NPROCS 2
++  ABSTOL 2e-11   # GCC vs ICC: maximum absolute difference in column 13 is 5.31996668939883e-12
++  RELTOL 1e-11   # GCC vs ICC: maximum relative difference in column 13 is 4.60722630030655e-12
++}
++
++TEST  GiRaFFE_tests_ExactWald
++{
++  NPROCS 2
++  # GCC vs ICC: Bz.maximum.asc: substantial differences
++  ABSTOL 2.4e-3 # GCC vs ICC:  maximum absolute difference in column 3 is 0.00128201124227978
++  RELTOL 1.6e-3 # GCC vs ICC:  maximum relative difference in column 3 is 0.000797528101412071
++}
++
++TEST  GiRaFFE_tests_FastWave
++{
++  NPROCS 2
++  ABSTOL 2e-10  # GCC vs ICC: maximum absolute difference in column 13 is 1.85860216106448e-11
++  RELTOL 3e-10  # GCC vs ICC: maximum relative difference in column 13 is 2.65514594437779e-11
++}
++
++TEST  GiRaFFE_tests_FFEBreak
++{
++  NPROCS 2
++  ABSTOL 1e-12   # GCC vs ICC: maximum absolute difference -- BELOW ROUNDOFF THRESHOLD -- choose 1e-12 for safety
++  RELTOL 1e-12   # GCC vs ICC: maximum relative difference -- BELOW ROUNDOFF THRESHOLD -- choose 1e-12 for safety
++}
++
++TEST  GiRaFFE_tests_MagnetoWald
++{
++  NPROCS 2
++  ABSTOL 4.0e-4  # GCC vs ICC:  maximum absolute difference in column 3 is 0.000191542927641994
++  RELTOL 2.6e-3  # GCC vs ICC:  maximum relative difference in column 3 is 0.00131894152217134
++}
++
++TEST  GiRaFFE_tests_SplitMonopole
++{
++  NPROCS 2
++  # GCC vs ICC: Bz.maximum.asc: substantial differences
++  ABSTOL 2.6e-4 # GCC vs ICC:   maximum absolute difference in column 3 is 0.000128537677625995
++  RELTOL 7.6e-4 # GCC vs ICC:   maximum relative difference in column 3 is 0.000380779826984066
++}
++
++TEST  GiRaFFE_tests_ThreeWave
++{
++  NPROCS 2
++  ABSTOL 6e-8 # GCC vs ICC:   maximum absolute difference in column 13 is 5.1138102641346e-09
++  RELTOL 2e-8 # GCC vs ICC:   maximum relative difference in column 13 is 1.70460342137811e-09
+ } 
+\ No newline at end of file
+--- IllinoisGRMHD/src/reconstruct_set_of_prims_PPM.C	2016-08-03 09:25:55.000000000 -0500
++++ GiRaFFE/src/reconstruct_set_of_prims_PPM_GRFFE.C	2017-10-03 22:08:55.329532568 -0500
+@@ -3,8 +3,8 @@
+  * Zachariah B. Etienne (2013)
+  *
+  * This version of PPM implements the standard 
+- * Colella & Woodward PPM, though modified as in GRHydro
+- * to have 3 ghostzones instead of 4. 
++ * Colella & Woodward PPM, but in the GRFFE
++ * limit, where P=rho=0. Thus, e.g., ftilde=0.
+  *****************************************/
+ 
+ #define MINUS2 0
+@@ -18,16 +18,11 @@
+ // You'll find the #define's for LOOP_DEFINE and SET_INDEX_ARRAYS inside:
+ #include "loop_defines_reconstruction.h"
+ 
+-static inline CCTK_REAL ftilde_compute(const int flux_dirn,CCTK_REAL U[MAXNUMVARS][MAXNUMINDICES]);
+ static inline CCTK_REAL slope_limit(CCTK_REAL dU,CCTK_REAL dUp1);
+-static inline void steepen_rho(CCTK_REAL U[MAXNUMVARS][MAXNUMINDICES],CCTK_REAL slope_lim_dU[MAXNUMVARS][MAXNUMINDICES],
+-                               CCTK_REAL gamma_th,CCTK_REAL P_cold,CCTK_REAL gamma_cold,
+-                               CCTK_REAL *rho_br_ppm,CCTK_REAL *rho_bl_ppm);
+-static inline void compute_P_cold__gamma_cold(CCTK_REAL rho_b,eos_struct &eos,   CCTK_REAL &P_cold,CCTK_REAL &gamma_cold);
+ static inline void monotonize(CCTK_REAL U,CCTK_REAL &Ur,CCTK_REAL &Ul);
+ 
+-static void reconstruct_set_of_prims_PPM(const cGH *cctkGH,const int *cctk_lsh,const int flux_dirn,const int num_prims_to_reconstruct,const int *which_prims_to_reconstruct,eos_struct &eos,
+-                                         gf_and_gz_struct *in_prims,gf_and_gz_struct *out_prims_r,gf_and_gz_struct *out_prims_l,CCTK_REAL *ftilde_gf, CCTK_REAL *temporary) {
++static void reconstruct_set_of_prims_PPM_GRFFE(const cGH *cctkGH,const int *cctk_lsh,const int flux_dirn,const int num_prims_to_reconstruct,const int *which_prims_to_reconstruct,
++                                               gf_and_gz_struct *in_prims,gf_and_gz_struct *out_prims_r,gf_and_gz_struct *out_prims_l, CCTK_REAL *temporary) {
+ 
+   CCTK_REAL U[MAXNUMVARS][MAXNUMINDICES],dU[MAXNUMVARS][MAXNUMINDICES],slope_lim_dU[MAXNUMVARS][MAXNUMINDICES],
+     Ur[MAXNUMVARS][MAXNUMINDICES],Ul[MAXNUMVARS][MAXNUMINDICES];
+@@ -47,8 +42,8 @@
+     //                     Ul depends on U at MINUS2,MINUS1,PLUS0,PLUS1.
+     //  However, we define the below loop from MINUS2 to PLUS2. Why not split
+     //     this up and get additional points? The reason is that later on,
+-    //     Ur and Ul depend on ftilde, which is defined from MINUS2 to PLUS2,
+-    //     so we would lose those points anyway.
++    //     Ur and Ul depend on ftilde [FIXME: SET TO ZERO IN GRFFE.], which is
++    //     defined from MINUS2 to PLUS2, so we would lose those points anyway.
+     LOOP_DEFINE(2,2,  cctk_lsh,flux_dirn,  ijkgz_lo_hi,in_prims[whichvar].gz_lo,in_prims[whichvar].gz_hi) {
+       SET_INDEX_ARRAYS(-2,2,flux_dirn);
+       /* *** LOOP 1a: READ INPUT *** */
+@@ -58,7 +53,7 @@
+       /* *** LOOP 1b: DO COMPUTATION *** */
+       /* First, compute simple dU = U(i) - U(i-1), where direction of i 
+        *         is given by flux_dirn, and U is a primitive variable: 
+-       *         {rho_b,P,vx,vy,vz,Bx,By,Bz}. */
++       *         {vx,vy,vz,Bx,By,Bz}. */
+       // Note that for Ur and Ul at i, we must compute dU(i-1),dU(i),dU(i+1), 
+       //         and dU(i+2)
+       dU[whichvar][MINUS1] = U[whichvar][MINUS1]- U[whichvar][MINUS2];  
+@@ -81,62 +76,19 @@
+       Ul[whichvar][PLUS0] = 0.5*(U[whichvar][PLUS0] + U[whichvar][MINUS1]) + (1.0/6.0)*(slope_lim_dU[whichvar][MINUS1] - slope_lim_dU[whichvar][PLUS0]);
+ 
+       /* *** LOOP 1c: WRITE OUTPUT *** */
+-      // Store right face values to {rho_br,Pr,vxr,vyr,vzr,Bxr,Byr,Bzr},
+-      //    and left face values to {rho_bl,Pl,vxl,vyl,vzl,Bxl,Byl,Bzl}
++      // Store right face values to {vxr,vyr,vzr,Bxr,Byr,Bzr},
++      //    and left face values to {vxl,vyl,vzl,Bxl,Byl,Bzl}
+       out_prims_r[whichvar].gf[index_arr[flux_dirn][PLUS0]] = Ur[whichvar][PLUS0];
+       out_prims_l[whichvar].gf[index_arr[flux_dirn][PLUS0]] = Ul[whichvar][PLUS0];      
+     }
+ 
+-    // *** LOOP 2: STEEPEN RHOB ***
+-    // Note that this loop applies ONLY to RHOB.
+-    if(whichvar==RHOB) {
+-      LOOP_DEFINE(2,2,  cctk_lsh,flux_dirn,  ijkgz_lo_hi,in_prims[whichvar].gz_lo,in_prims[whichvar].gz_hi) {
+-	SET_INDEX_ARRAYS(-2,2,flux_dirn);
+-	// Set rho and P separately, since within this loop,
+-	//  1) steepen_rho() depends on RHOB(MINUS2,MINUS1,PLUS0,PLUS1,PLUS2)
+-
+-	// Read in all primitives between MINUS2 & PLUS2. Store to U.
+-	for(int ii=MINUS2;ii<=PLUS2;ii++) U[RHOB][ii]     = in_prims[RHOB    ].gf[index_arr[flux_dirn][ii]];
+-	for(int ii=MINUS1;ii<=PLUS1;ii++) U[PRESSURE][ii] = in_prims[PRESSURE].gf[index_arr[flux_dirn][ii]];
+-	Ur[RHOB][PLUS0] = out_prims_r[RHOB].gf[index_arr[flux_dirn][PLUS0]];
+-	Ul[RHOB][PLUS0] = out_prims_l[RHOB].gf[index_arr[flux_dirn][PLUS0]];
+-
+-	dU[whichvar][MINUS1] = U[whichvar][MINUS1]- U[whichvar][MINUS2];  
+-	dU[whichvar][PLUS0]  = U[whichvar][PLUS0] - U[whichvar][MINUS1]; 
+-	dU[whichvar][PLUS1]  = U[whichvar][PLUS1] - U[whichvar][PLUS0];  
+-	dU[whichvar][PLUS2]  = U[whichvar][PLUS2] - U[whichvar][PLUS1];  
+-
+-	slope_lim_dU[whichvar][MINUS1]=slope_limit(dU[whichvar][MINUS1],dU[whichvar][PLUS0]);
+-	//slope_lim_dU[whichvar][PLUS0] =slope_limit(dU[whichvar][PLUS0], dU[whichvar][PLUS1]);
+-	slope_lim_dU[whichvar][PLUS1] =slope_limit(dU[whichvar][PLUS1], dU[whichvar][PLUS2]);
+-
+-	// Steepen rho
+-	// DEPENDENCIES: RHOB face values, RHOB(MINUS2,MINUS1,PLUS0,PLUS1,PLUS2), P(MINUS1,PLUS0,PLUS1), and slope_lim_dU[RHOB](MINUS1,PLUS1)
+-	CCTK_REAL P_cold=0,gamma_cold=0;
+-	compute_P_cold__gamma_cold(U[RHOB][PLUS0],eos,  P_cold,gamma_cold);
+-	steepen_rho(U,slope_lim_dU,   eos.gamma_th,P_cold,gamma_cold,  Ur[RHOB],Ul[RHOB]);
+-
+-	// Output rho
+-	out_prims_r[RHOB].gf[index_arr[flux_dirn][PLUS0]] = Ur[RHOB][PLUS0];
+-	out_prims_l[RHOB].gf[index_arr[flux_dirn][PLUS0]] = Ul[RHOB][PLUS0];
+-      }
+-    }
++    // *** LOOP 2 (REMOVED): STEEPEN RHOB. RHOB DOES NOT EXIST IN GRFFE EQUATIONS ***
+   }
+ 
+-  /* ORIGINAL PPM REQUIRES AT LEAST 4 GHOSTZONES, which can add
+-   *  significantly to the size of AMR ref. boundaries.
+-   *  To reduce to 3 ghostzones, we comment the following lines out:
+-   * if ((P[indexp1] - P[indexm1]) <= 0.0) {
+-   * f = MAX(ftilde,ftilde_p1);
+-   * } else {
+-   * f = MAX(ftilde,ftilde_m1);
+-   * }
+-   */
+-
+   // *** LOOP 3: FLATTEN BASED ON FTILDE AND MONOTONIZE ***
+   for(int ww=0;ww<num_prims_to_reconstruct;ww++) {
+     int whichvar=which_prims_to_reconstruct[ww];
+-    // ftilde() depends on P(MINUS2,MINUS1,PLUS1,PLUS2)
++    // ftilde() depends on P(MINUS2,MINUS1,PLUS1,PLUS2), THUS IS SET TO ZERO IN GRFFE
+     LOOP_DEFINE(2,2,  cctk_lsh,flux_dirn,  ijkgz_lo_hi,in_prims[whichvar].gz_lo,in_prims[whichvar].gz_hi) {
+       SET_INDEX_ARRAYS(0,0,flux_dirn);
+       
+@@ -145,10 +97,10 @@
+       Ul[whichvar][PLUS0] = out_prims_l[whichvar].gf[index_arr[flux_dirn][PLUS0]];
+ 
+       // ftilde_gf was computed in the function compute_ftilde_gf(), called before this routine
+-      CCTK_REAL ftilde = ftilde_gf[index_arr[flux_dirn][PLUS0]];
++      //CCTK_REAL ftilde = ftilde_gf[index_arr[flux_dirn][PLUS0]];
+       // ...and then flatten (local operation)
+-      Ur[whichvar][PLUS0]   = U[whichvar][PLUS0]*ftilde + Ur[whichvar][PLUS0]*(1.0-ftilde);
+-      Ul[whichvar][PLUS0]   = U[whichvar][PLUS0]*ftilde + Ul[whichvar][PLUS0]*(1.0-ftilde);
++      Ur[whichvar][PLUS0]   = Ur[whichvar][PLUS0];
++      Ul[whichvar][PLUS0]   = Ul[whichvar][PLUS0];
+ 
+       // Then monotonize
+       monotonize(U[whichvar][PLUS0],Ur[whichvar][PLUS0],Ul[whichvar][PLUS0]);
+@@ -156,10 +108,10 @@
+       out_prims_r[whichvar].gf[index_arr[flux_dirn][PLUS0]] = Ur[whichvar][PLUS0];
+       out_prims_l[whichvar].gf[index_arr[flux_dirn][PLUS0]] = Ul[whichvar][PLUS0];
+     }
+-    // Ur depends on ftilde, which depends on points of U between MINUS2 and PLUS2
++    // FIXME: ftilde=0 in GRFFE. Ur depends on ftilde, which depends on points of U between MINUS2 and PLUS2
+     out_prims_r[whichvar].gz_lo[flux_dirn]+=2; 
+     out_prims_r[whichvar].gz_hi[flux_dirn]+=2;
+-    // Ul depends on ftilde, which depends on points of U between MINUS2 and PLUS2
++    // FIXME: ftilde=0 in GRFFE. Ul depends on ftilde, which depends on points of U between MINUS2 and PLUS2
+     out_prims_l[whichvar].gz_lo[flux_dirn]+=2;
+     out_prims_l[whichvar].gz_hi[flux_dirn]+=2;
+   }
+@@ -222,50 +174,6 @@
+   return 0.0;
+ }
+ 
+-// standard Colella-Woodward parameters:
+-//    K0 = 0.1d0, eta1 = 20.0, eta2 = 0.05, epsilon = 0.01d0
+-#define K0      0.1
+-#define ETA1   20.0
+-#define ETA2    0.05
+-#define EPSILON 0.01
+-static inline void steepen_rho(CCTK_REAL U[MAXNUMVARS][MAXNUMINDICES],CCTK_REAL slope_lim_dU[MAXNUMVARS][MAXNUMINDICES],CCTK_REAL gamma_th,CCTK_REAL P_cold,CCTK_REAL gamma_cold,
+-                               CCTK_REAL *rho_br_ppm,CCTK_REAL *rho_bl_ppm) {
+-
+-  // Next compute centered differences d RHOB and d^2 RHOB
+-  CCTK_REAL d1rho_b     = 0.5*(U[RHOB][PLUS1] - U[RHOB][MINUS1]);
+-  CCTK_REAL d2rho_b_m1  = U[RHOB][PLUS0] - 2.0*U[RHOB][MINUS1] + U[RHOB][MINUS2];
+-  CCTK_REAL d2rho_b_p1  = U[RHOB][PLUS2] - 2.0*U[RHOB][PLUS1]  + U[RHOB][PLUS0];
+-
+-  // Compute effective Gamma = (partial P / partial rho0)_s /(P/rho0)
+-  CCTK_REAL Gamma = gamma_th + (gamma_cold-gamma_th)*P_cold/U[PRESSURE][PLUS0];
+-  CCTK_REAL contact_discontinuity_check = Gamma*K0*fabs(U[RHOB][PLUS1]-U[RHOB][MINUS1])*  
+-    MIN(U[PRESSURE][PLUS1],U[PRESSURE][MINUS1])  
+-    -fabs(U[PRESSURE][PLUS1]-U[PRESSURE][MINUS1])*MIN(U[RHOB][PLUS1],U[RHOB][MINUS1]);
+-  CCTK_REAL second_deriv_check = -d2rho_b_p1*d2rho_b_m1;
+-  CCTK_REAL relative_change_check = fabs(2.0*d1rho_b) - EPSILON*MIN(U[RHOB][PLUS1],U[RHOB][MINUS1]);
+-
+-  if(contact_discontinuity_check >= 0.0 && second_deriv_check >= 0.0 
+-     && relative_change_check >= 0.0) {
+-
+-    CCTK_REAL eta_tilde=0.0;
+-    if (fabs(d1rho_b) > 0.0) {
+-      eta_tilde = -(1.0/6.0)*(d2rho_b_p1-d2rho_b_m1)/(2.0*d1rho_b);
+-    }
+-    CCTK_REAL eta = MAX(0.0,MIN(ETA1*(eta_tilde - ETA2),1.0));
+-    // Next compute Urp1 and Ul for RHOB, using the MC prescription:
+-    // Ur_p1 = U_p1   - 0.5*slope_lim_dU_p1
+-    CCTK_REAL rho_br_mc_p1 = U[RHOB][PLUS1] - 0.5*slope_lim_dU[RHOB][PLUS1];
+-    // Ul = U_m1 + 0.5*slope_lim_dU_m1
+-    // Based on this line of code, Ur[index] = a_j - \delta_m a_j / 2. (cf. Eq. 65 in Marti & Muller's "PPM Method for 1D Relativistic Hydro." paper)
+-    //    So: Ur[indexp1] = a_{j+1} - \delta_m a_{j+1} / 2. This is why we have rho_br_mc[indexp1]
+-    CCTK_REAL rho_bl_mc    = U[RHOB][MINUS1] + 0.5*slope_lim_dU[RHOB][MINUS1];
+-
+-    rho_bl_ppm[PLUS0] = rho_bl_ppm[PLUS0]*(1.0-eta) + rho_bl_mc*eta; 
+-    rho_br_ppm[PLUS0] = rho_br_ppm[PLUS0]*(1.0-eta) + rho_br_mc_p1*eta;
+-
+-  }
+-}
+-
+ static inline void monotonize(CCTK_REAL U,CCTK_REAL &Ur,CCTK_REAL &Ul) {
+   CCTK_REAL dU = Ur - Ul;
+   CCTK_REAL mU = 0.5*(Ur+Ul);
+@@ -284,76 +192,3 @@
+     return;
+   }
+ }
+-
+-static inline void compute_P_cold__gamma_cold(CCTK_REAL rho_b,eos_struct &eos,   CCTK_REAL &P_cold,CCTK_REAL &gamma_cold) {
+-  // This code handles equations of state of the form defined
+-  // in Eqs 13-16 in http://arxiv.org/pdf/0802.0200.pdf
+-
+-  // Default in case rho_b == 0.0
+-  if(rho_b==0.0) { P_cold = 0.0; gamma_cold = eos.gamma_tab[0]; return; }
+-
+-  if(eos.neos==1) {
+-    // Eq. 14 of http://arxiv.org/pdf/0802.0200.pdf :
+-    // P_{cold} = K_i rho_i^{\Gamma_i}
+-    P_cold = eos.k_tab[0]*fasterpow_ppm_reconstruct(rho_b,eos.gamma_tab[0]);
+-    gamma_cold = eos.gamma_tab[0];
+-    return;
+-  }
+-  for(int nn=1;nn<eos.neos;nn++) {
+-    if (rho_b <= eos.rho_tab[nn]  &&  rho_b > eos.rho_tab[nn-1]) {
+-      P_cold = eos.k_tab[nn]*fasterpow_ppm_reconstruct(rho_b,eos.gamma_tab[nn]);
+-      gamma_cold = eos.gamma_tab[nn];
+-    }
+-  }
+-  if (rho_b > eos.rho_tab[eos.neos-1]) {
+-    P_cold = eos.k_tab[eos.neos]*fasterpow_ppm_reconstruct(rho_b,eos.gamma_tab[eos.neos]);
+-    gamma_cold = eos.gamma_tab[eos.neos];
+-  }
+-}
+-
+-#define OMEGA1   0.75
+-#define OMEGA2  10.0
+-#define EPSILON2 0.33
+-static void ftilde_gf_compute(const cGH *cctkGH,const int *cctk_lsh,const int flux_dirn,gf_and_gz_struct *in_prims,CCTK_REAL *ftilde_gf) {
+-  int ijkgz_lo_hi[4][2];
+-  CCTK_REAL U[MAXNUMVARS][MAXNUMINDICES];
+-  /*Remove gcc unused variable warning/error Re: Pragma statement in loop define:*/
+-  CCTK_REAL dU,slope_lim_dU,Ur,Ul; dU=slope_lim_dU=Ur=Ul=0.0; dU*=0;
+-  // Compute ftilde, which is used for flattening left and right face values
+-  LOOP_DEFINE(2,2,  cctk_lsh,flux_dirn,  ijkgz_lo_hi,in_prims[VX+(flux_dirn-1)].gz_lo,in_prims[VX+(flux_dirn-1)].gz_hi) {
+-    SET_INDEX_ARRAYS(-2,2,flux_dirn);
+-    for(int ii=MINUS2;ii<=PLUS2;ii++) U[PRESSURE][ii] = in_prims[PRESSURE].gf[index_arr[flux_dirn][ii]];
+-    U[VX+(flux_dirn-1)][MINUS1] = in_prims[VX+(flux_dirn-1)].gf[index_arr[flux_dirn][MINUS1]];
+-    U[VX+(flux_dirn-1)][PLUS1]  = in_prims[VX+(flux_dirn-1)].gf[index_arr[flux_dirn][PLUS1]];
+-
+-    // Compute ftilde, which is used for flattening left and right face values
+-    // DEPENDENCIES: P(MINUS2,MINUS1,PLUS1,PLUS2) and v^m(MINUS1,PLUS1), where m=flux_dirn={1,2,3}={x,y,z}.
+-    ftilde_gf[index_arr[flux_dirn][PLUS0]] = ftilde_compute(flux_dirn,U);
+-  }
+-}
+-
+-static inline CCTK_REAL ftilde_compute(const int flux_dirn,CCTK_REAL U[MAXNUMVARS][MAXNUMINDICES]) {
+-  CCTK_REAL dP1 = U[PRESSURE][PLUS1] - U[PRESSURE][MINUS1];
+-  CCTK_REAL dP2 = U[PRESSURE][PLUS2] - U[PRESSURE][MINUS2];
+-
+-  // MODIFICATION TO STANDARD PPM:
+-  // Cure roundoff error issues when dP1==0 or dP2==0 to 15 or more significant digits.
+-  CCTK_REAL avg1=0.5*(U[PRESSURE][PLUS1] + U[PRESSURE][MINUS1]);
+-  CCTK_REAL avg2=0.5*(U[PRESSURE][PLUS2] + U[PRESSURE][MINUS2]);
+-  if(fabs(dP1)/avg1<1e-15) dP1=0.0; /* If this is triggered, there is NO shock */
+-  if(fabs(dP2)/avg2<1e-15) dP2=0.0; /* If this is triggered alone, there may be a shock. Otherwise if triggered with above, NO shock. */
+-
+-  CCTK_REAL dP1_over_dP2=1.0;
+-  if (dP2 != 0.0) dP1_over_dP2 = dP1/dP2;
+-
+-  CCTK_REAL q1 = (dP1_over_dP2-OMEGA1)*OMEGA2;
+-  CCTK_REAL q2 = fabs(dP1)/MIN(U[PRESSURE][PLUS1],U[PRESSURE][MINUS1]);
+-
+-  // w==0 -> NOT inside a shock
+-  CCTK_REAL w=0.0;
+-
+-  // w==1 -> inside a shock
+-  if (q2 > EPSILON2 && q2*( (U[VX+(flux_dirn-1)][MINUS1]) - (U[VX+(flux_dirn-1)][PLUS1]) ) > 0.0) w = 1.0;
+-
+-  return MIN(1.0, w*MAX(0.0,q1));
+-}
+--- IllinoisGRMHD/src/IllinoisGRMHD_headers.h	2016-08-03 09:25:55.000000000 -0500
++++ GiRaFFE/src/GiRaFFE_headers.h	2017-10-03 22:08:55.329532568 -0500
+@@ -1,6 +1,6 @@
+ // To safeguard against double-including this header file:
+-#ifndef ILLINOISGRMHD_HEADERS_H_
+-#define ILLINOISGRMHD_HEADERS_H_
++#ifndef GIRAFFE_HEADERS_H_
++#define GIRAFFE_HEADERS_H_
+ 
+ #define MIN(a,b) ( ((a) < (b)) ? (a) : (b) )
+ #define MAX(a,b) ( ((a) > (b)) ? (a) : (b) )
+@@ -18,10 +18,10 @@
+ static const int GUPXY=15,GUPXZ=16,GUPYZ=17,
+   NUMVARS_FOR_METRIC=18; //<-- Be _sure_ to set this correctly, or you'll have memory access bugs!
+ 
+-// The order here MATTERS, and must be consistent with the order in the in_prims[] array in driver_evaluate_MHD_rhs.C.
+-static const int RHOB=0,PRESSURE=1,VX=2,VY=3,VZ=4,
+-  BX_CENTER=5,BY_CENTER=6,BZ_CENTER=7,BX_STAGGER=8,BY_STAGGER=9,BZ_STAGGER=10,
+-  VXR=11,VYR=12,VZR=13,VXL=14,VYL=15,VZL=16,MAXNUMVARS=17;  //<-- Be _sure_ to define MAXNUMVARS appropriately!
++// The order here MATTERS, and must be consistent with the order in the in_prims[] array in driver_evaluate_FFE_rhs.C.
++static const int VX=0,VY=1,VZ=2,
++  BX_CENTER=3,BY_CENTER=4,BZ_CENTER=5,BX_STAGGER=6,BY_STAGGER=7,BZ_STAGGER=8,
++  VXR=9,VYR=10,VZR=11,VXL=12,VYL=13,VZL=14,MAXNUMVARS=15;  //<-- Be _sure_ to define MAXNUMVARS appropriately!
+ 
+ static const int UT=0,UX=1,UY=2,UZ=3;
+ 
+@@ -35,7 +35,7 @@
+ static const int SMALLBT=0,SMALLBX=1,SMALLBY=2,SMALLBZ=3,SMALLB2=4,NUMVARS_SMALLB=5;
+ 
+ // Again, the order here MATTERS, since we assume in the code that, CONSERV[STILDEX+1] = \tilde{S}_y
+-static const int RHOSTAR=0,STILDEX=1,STILDEY=2,STILDEZ=3,TAUENERGY=4,NUM_CONSERVS=5;
++static const int STILDEX=0,STILDEY=1,STILDEZ=2,NUM_CONSERVS=3;
+ 
+ static const int LAPSE=0,PSI2=1,PSI4=2,PSI6=3,PSIM4=4,LAPSEINV=5,NUMVARS_METRIC_AUX=6;
+ #define SET_LAPSE_PSI4(array_name,METRIC)   {                   \
+@@ -55,14 +55,6 @@
+   int gz_lo[4],gz_hi[4];
+ };
+ 
+-#define MAX_EOS_PARAMS 10
+-struct eos_struct {
+-  int neos;
+-  CCTK_REAL rho_tab[MAX_EOS_PARAMS],P_tab[MAX_EOS_PARAMS],eps_tab[MAX_EOS_PARAMS],k_tab[MAX_EOS_PARAMS],gamma_tab[MAX_EOS_PARAMS];
+-  CCTK_REAL gamma_th;
+-  CCTK_REAL K_poly;
+-};  
+-
+ struct output_stats {
+   int font_fixed,vel_limited,failure_checker;
+   long n_iter;
+@@ -75,18 +67,17 @@
+                                     { 0,1,0 },
+                                     { 0,0,1 } };
+ 
+-/* PUBLIC FUNCTIONS, USED OUTSIDE IllinoisGRMHD AS WELL */
+-void IllinoisGRMHD_enforce_limits_on_primitives_and_recompute_conservs(const int already_computed_physical_metric_and_inverse,CCTK_REAL *U,struct output_stats &stats,eos_struct &eos,
+-                                                                       CCTK_REAL *METRIC,CCTK_REAL g4dn[4][4],CCTK_REAL g4up[4][4], CCTK_REAL *TUPMUNU,CCTK_REAL *TDNMUNU,CCTK_REAL *CONSERVS);
++/* PUBLIC FUNCTIONS, USED OUTSIDE GiRaFFE AS WELL */
++void GiRaFFE_compute_conservatives(CCTK_REAL *PRIMS,CCTK_REAL *METRIC, CCTK_REAL *CONSERVS);
+ 
+-void IllinoisGRMHD_convert_ADM_to_BSSN__enforce_detgtij_eq_1__and_compute_gtupij
++void GiRaFFE_convert_ADM_to_BSSN__enforce_detgtij_eq_1__and_compute_gtupij
+ (const cGH *cctkGH,const int *cctk_lsh,
+  CCTK_REAL *gxx,CCTK_REAL *gxy,CCTK_REAL *gxz,CCTK_REAL *gyy,CCTK_REAL *gyz,CCTK_REAL *gzz,CCTK_REAL *alp,
+  CCTK_REAL *gtxx,CCTK_REAL *gtxy,CCTK_REAL *gtxz,CCTK_REAL *gtyy,CCTK_REAL *gtyz,CCTK_REAL *gtzz,
+  CCTK_REAL *gtupxx,CCTK_REAL *gtupxy,CCTK_REAL *gtupxz,CCTK_REAL *gtupyy,CCTK_REAL *gtupyz,CCTK_REAL *gtupzz,
+  CCTK_REAL *phi,CCTK_REAL *psi,CCTK_REAL *lapm1);
+ 
+-void IllinoisGRMHD_set_symmetry_gzs_staggered(const cGH *cctkGH, const int *cctk_lsh,CCTK_REAL *X,CCTK_REAL *Y,CCTK_REAL *Z,  CCTK_REAL *gridfunc,
++void GiRaFFE_set_symmetry_gzs_staggered(const cGH *cctkGH, const int *cctk_lsh,CCTK_REAL *X,CCTK_REAL *Y,CCTK_REAL *Z,  CCTK_REAL *gridfunc,
+                                               CCTK_REAL *gridfunc_syms,int stagger_x,int stagger_y,int stagger_z);
+ 
+-#endif // ILLINOISGRMHD_HEADERS_H
++#endif // GIRAFFE_HEADERS_H
+--- IllinoisGRMHD/src/compute_tau_rhs_extrinsic_curvature_terms_and_TUPmunu.C	2016-08-03 09:25:55.000000000 -0500
++++ GiRaFFE/src/compute_TUPmunu.C	2017-10-03 22:08:55.329532568 -0500
+@@ -1,9 +1,7 @@
+-static void compute_tau_rhs_extrinsic_curvature_terms_and_TUPmunu
++static void compute_TUPmunu
+ (const cGH *cctkGH,const int *cctk_lsh,const int *cctk_nghostzones,CCTK_REAL *dX,CCTK_REAL **metric,gf_and_gz_struct *prims,
+- CCTK_REAL **TUPmunu,eos_struct &eos,
+- CCTK_REAL *gupxy,CCTK_REAL *gupxz,CCTK_REAL *gupyz,
+- CCTK_REAL *kxx,CCTK_REAL *kxy,CCTK_REAL *kxz,CCTK_REAL *kyy,CCTK_REAL *kyz,CCTK_REAL *kzz,
+- CCTK_REAL *tau_rhs) {
++ CCTK_REAL **TUPmunu,
++ CCTK_REAL *gupxy,CCTK_REAL *gupxz,CCTK_REAL *gupyz) {
+ 
+   // These loop extents must be consistent with add_fluxes_and_source_terms_to_hydro_rhss(), since we use TUPmunu there as well.
+ #pragma omp parallel for
+@@ -18,14 +16,7 @@
+         //   can more than double the amount of time in this routine, so instead
+         //   of reading in variables from main memory multiple times, the below
+         //   forces us to read in only once, storing in local variables 
+-        //   U{p,m}{1,2,3}, METRIC{p,m}{1,2}, U, and METRIC.
+-
+-        CCTK_REAL KxxL = kxx[index];
+-        CCTK_REAL KxyL = kxy[index];
+-        CCTK_REAL KxzL = kxz[index];
+-        CCTK_REAL KyyL = kyy[index];
+-        CCTK_REAL KyzL = kyz[index];
+-        CCTK_REAL KzzL = kzz[index];
++        //   PRIMS{p,m}{1,2,3}, METRIC{p,m}{1,2}, PRIMS, and METRIC.
+ 
+         //-----------------------------------------------------------------------------
+         // Compute T^{\mu \nu}
+@@ -33,13 +24,13 @@
+         CCTK_REAL METRIC[NUMVARS_FOR_METRIC_FACEVALS]; for(int ii=0;ii<NUMVARS_FOR_METRIC_FACEVALS;ii++) METRIC[ii] = metric[ii][index];
+         CCTK_REAL METRIC_LAP_PSI4[NUMVARS_METRIC_AUX]; SET_LAPSE_PSI4(METRIC_LAP_PSI4,METRIC);
+ 
+-        // The "vector" U represents the primitive variables: rho, P, vx, vy, vz, Bx, By, and Bz.
+-        CCTK_REAL U[8]; // 8 primitives in the set: {rho_b,P,vx,vy,vz,Bx,By,Bz}
+-        for(int ii=0;ii<8;ii++) U[ii] = prims[ii].gf[index];
++        // The "vector" U represents the primitive variables: vx, vy, vz, Bx, By, and Bz.
++        CCTK_REAL PRIMS[6]; // 6 primitives in the set: {vx,vy,vz,Bx,By,Bz}
++        for(int ii=0;ii<6;ii++) PRIMS[ii] = prims[ii].gf[index];
+ 
+         struct output_stats stats; stats.failure_checker=0;
+         CCTK_REAL u0L;
+-        impose_speed_limit_output_u0(METRIC,U,METRIC_LAP_PSI4[PSI4],METRIC_LAP_PSI4[LAPSEINV],stats, u0L);
++        impose_speed_limit_output_u0(METRIC,PRIMS,METRIC_LAP_PSI4[PSI4],METRIC_LAP_PSI4[LAPSEINV],stats, u0L);
+         
+         /***********************************************************/
+         // Compute b^{\mu} and b^2
+@@ -47,25 +38,19 @@
+         CCTK_REAL ONE_OVER_LAPSE_SQRT_4PI = ONE_OVER_LAPSE*ONE_OVER_SQRT_4PI;
+         CCTK_REAL u_x_over_u0_psi4,u_y_over_u0_psi4,u_z_over_u0_psi4;
+         CCTK_REAL smallb[NUMVARS_SMALLB];
+-        compute_smallba_b2_and_u_i_over_u0_psi4(METRIC,METRIC_LAP_PSI4,U,u0L,ONE_OVER_LAPSE_SQRT_4PI,  
++        compute_smallba_b2_and_u_i_over_u0_psi4(METRIC,METRIC_LAP_PSI4,PRIMS,u0L,ONE_OVER_LAPSE_SQRT_4PI,
+                                                 u_x_over_u0_psi4,u_y_over_u0_psi4,u_z_over_u0_psi4,smallb);
+ 
+         /***********************************************************/
+-        // Next compute T^{\mu \nu}:
+-        //   First set h, the enthalpy:
+-        CCTK_REAL h=0,  P_cold,eps_cold,dPcold_drho,eps_th,gamma_cold; /* <- Note that in setting h, we need to define several 
+-                                                                        *    other variables, even though they will be unused later
+-                                                                        *    in this function. */
+-        compute_P_cold__eps_cold__dPcold_drho__eps_th__h__gamma_cold(U,eos,P_cold,eps_cold,dPcold_drho,eps_th,h,gamma_cold);
+-
++        // Next compute T^{\mu \nu} in the FFE limit:
+         CCTK_REAL Psi6 = METRIC_LAP_PSI4[PSI2]*METRIC_LAP_PSI4[PSI4];
+         CCTK_REAL Psim4 = 1.0/METRIC_LAP_PSI4[PSI4];
+ 
+-        CCTK_REAL rho0_h_plus_b2 = (U[RHOB]*h + smallb[SMALLB2]);
+-        CCTK_REAL P_plus_half_b2 = (U[PRESSURE]+0.5*smallb[SMALLB2]);
++        CCTK_REAL rho0_h_plus_b2 = smallb[SMALLB2];     // Since rho=0 in FFE.
++        CCTK_REAL P_plus_half_b2 = 0.5*smallb[SMALLB2]; // Since P=0 in FFE.
+ 
+         CCTK_REAL half_alpha_sqrtgamma = 0.5*METRIC_LAP_PSI4[LAPSE]*Psi6;
+-        CCTK_REAL uUP[4] = { u0L, u0L*U[VX],u0L*U[VY],u0L*U[VZ] };
++        CCTK_REAL uUP[4] = { u0L, u0L*PRIMS[VX],u0L*PRIMS[VY],u0L*PRIMS[VZ] };
+         // If you like, see Eq 2.119 in Numerical Relativity, by Baumgarte & Shapiro:
+         CCTK_REAL ONE_OVER_LAPSE_SQUARED = SQR(ONE_OVER_LAPSE);
+         CCTK_REAL g4up[4][4];
+@@ -85,35 +70,9 @@
+         // Next compute T^{\mu \nu}:
+         // (Eq. 33 in http://arxiv.org/pdf/astro-ph/0503420.pdf):
+         // T^{mn} = (rho_0 h + b^2) u^m u^n + (P + 0.5 b^2) g^{mn} - b^m b^n, where m and n both run from 0 to 3.
+-        CCTK_REAL TUP[4][4];
+-        for(int ii=0;ii<4;ii++) for(int jj=ii;jj<4;jj++) TUP[ii][jj] = rho0_h_plus_b2*uUP[ii]*uUP[jj] + P_plus_half_b2*g4up[ii][jj] - smallb[SMALLBT+ii]*smallb[SMALLBT+jj];
+-        //-----------------------------------------------------------------------------
+-
+         //-----------------------------------------------------------------------------
+-        // If we are not in the ghostzones, then compute extrinsic curvature terms for tau_rhs:
+-        //    Without this if() statement, _rhs variables are in general set to nonzero values in ghostzones, which messes up frozen BC's.
+-        //    Also, this if() statement should speed up the computation slightly.
+-        if(k<cctk_lsh[2]-cctk_nghostzones[2] && j<cctk_lsh[1]-cctk_nghostzones[1] && i<cctk_lsh[0]-cctk_nghostzones[0]) {
+-          //  \alpha \sqrt{\gamma} (T^{00} \beta^i \beta ^j + 2T^{0i} \beta^j + T^{ij})*K_{ij}
+-          CCTK_REAL alpha_sqrtgamma = 2.0*half_alpha_sqrtgamma;
+-      
+-          //  \alpha \sqrt{\gamma} (T^{00} \beta^i \beta ^j + 2T^{0i} \beta^j + T^{ij})*K_{ij}
+-          CCTK_REAL tau_rhs_extrinsic_curvature_terms = alpha_sqrtgamma*
+-            (
+-             TUP[0][0] * (SQR(METRIC[SHIFTX])*KxxL + SQR(METRIC[SHIFTY])*KyyL + SQR(METRIC[SHIFTZ])*KzzL + 
+-                          2.0*(METRIC[SHIFTX]*METRIC[SHIFTY]*KxyL + METRIC[SHIFTX]*METRIC[SHIFTZ]*KxzL + METRIC[SHIFTY]*METRIC[SHIFTZ]*KyzL) ) +
+-             2.0*(TUP[0][1]*METRIC[SHIFTX]*KxxL + TUP[0][2]*METRIC[SHIFTY]*KyyL + TUP[0][3]*METRIC[SHIFTZ]*KzzL + 
+-                  (TUP[0][1]*METRIC[SHIFTY] + TUP[0][2]*METRIC[SHIFTX])*KxyL +
+-                  (TUP[0][1]*METRIC[SHIFTZ] + TUP[0][3]*METRIC[SHIFTX])*KxzL +
+-                  (TUP[0][2]*METRIC[SHIFTZ] + TUP[0][3]*METRIC[SHIFTY])*KyzL ) +
+-             TUP[1][1]*KxxL + TUP[2][2]*KyyL + TUP[3][3]*KzzL + 
+-             2.0*(TUP[1][2]*KxyL + TUP[1][3]*KxzL + TUP[2][3]*KyzL) );
+-
+-          tau_rhs[index] = tau_rhs_extrinsic_curvature_terms;
+-        }
+-
+         // Set the T^{\mu \nu} gridfunction, since computing T^{\mu \nu} is expensive
+         int counter=0;
+-        for(int ii=0;ii<4;ii++) for(int jj=ii;jj<4;jj++) { TUPmunu[counter][index] = TUP[ii][jj]; counter++; }
++        for(int ii=0;ii<4;ii++) for(int jj=ii;jj<4;jj++) { TUPmunu[counter][index] = rho0_h_plus_b2*uUP[ii]*uUP[jj] + P_plus_half_b2*g4up[ii][jj] - smallb[SMALLBT+ii]*smallb[SMALLBT+jj]; counter++; }
+       }
+ }
+--- IllinoisGRMHD/src/driver_conserv_to_prims.C	2018-07-30 08:32:44.160008644 -0500
++++ GiRaFFE/src/driver_conserv_to_prims_FFE.C	2017-10-03 22:08:55.329532568 -0500
+@@ -1,29 +1,24 @@
+ /* We evolve forward in time a set of functions called the 
+- *  "conservative variables", and any time the conserv's
+- *  are updated, we must solve for the primitive variables 
+- *  (rho, pressure, velocities) using a Newton-Raphson 
+- *  technique, before reconstructing & evaluating the RHSs
+- *  of the MHD equations again. 
++ * "conservative variables" (magnetic field and Poynting vector), 
++ * and any time the conserv's are updated, we must recover the 
++ * primitive variables (velocities), before reconstructing & evaluating 
++ * the RHSs of the MHD equations again. 
+  *
+- * This file contains the driver routine for this Newton-
+- *  Raphson solver. Truncation errors in conservative 
+- *  variables can lead to no physical solutions in 
+- *  primitive variables. We correct for these errors here 
+- *  through a number of tricks described in the appendices 
+- *  of http://arxiv.org/pdf/1112.0568.pdf.
++ * This file contains the routine for this algebraic calculation. 
++ * The velocity is calculated with formula (85), arXiv:1313.3274v2
++ * $v^i = 4 \pi \alpha \gamma^{ij} {\tilde S}_j \gamma{-1/2} B^{-2} - \beta^i$ 
++ * The force-free condition: $B^2>E^2$ is checked before computing the velocity.
++ * and after imposing the constraint ${\tilde B}^i {\tilde S}_i = 0$
++ 
++ * The procedure is as described in arXiv:1313.3274v2: 
++ * 1. ${\tilde S}_i ->{\tilde S}_i - ({\tilde S}_j {\tilde B}^j) {\tilde B}^i/{\tilde B}^2$
++ * 2. $f = \sqrt{(1-\gamma_{max}^{-2}){\tilde B}^4/(16 \pi^2 \gamma {\tilde S}^2)}$ 
++ * 3. ${\tilde S}_i -> {\tilde S}_i min(1,f)
++ * 4. $v^i = 4 \pi \alpha \gamma^{ij} {\tilde S}_j \gamma{-1/2} B^{-2} - \beta^i$
++ * 5. ${\tilde n}_i v^i = 0$
+  *
+- * This is a wrapper for the 2d solver of Noble et al. See 
+- *  harm_utoprim_2d.c for references and copyright notice 
+- *  for that solver. This wrapper was primarily written by
+- *  Zachariah Etienne & Yuk Tung Liu, in 2011-2013.
+- * 
+- * For optimal compatibility, this wrapper is licensed under 
+- *  the GPL v2 or any later version.
+- *
+- * Note that this code assumes a simple gamma law for the 
+- *  moment, though it would be easy to extend to a piecewise
+- *  polytrope. */
+-
++ * All equations are from: http://arxiv.org/pdf/1310.3274.pdf (v2)
++ * */
+ 
+ #include "cctk.h"
+ #include <iostream>
+@@ -37,81 +32,192 @@
+ #include "cctk_Parameters.h"
+ #include "Symmetry.h"
+ 
+-#include "IllinoisGRMHD_headers.h"
+-#include "harm_primitives_headers.h"
++#ifndef M_PI
++#define M_PI 3.141592653589793238463
++#endif
++
++#include "GiRaFFE_headers.h"
+ #include "inlined_functions.C"
+-#include "apply_tau_floor__enforce_limits_on_primitives_and_recompute_conservs.C"
+ 
+-extern "C" void IllinoisGRMHD_conserv_to_prims(CCTK_ARGUMENTS) {
++extern "C" void GiRaFFE_conserv_to_prims_FFE(CCTK_ARGUMENTS) {
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+ 
+   // We use proper C++ here, for file I/O later.
+   using namespace std;
+ 
+-  // FIXME: only for single gamma-law EOS.
+-  eos_struct eos;
+-  eos.neos=neos;
+-  eos.K_poly=K_poly;
+-  eos.rho_tab[0]=rho_tab[0];
+-  eos.P_tab[0]=P_tab[0];
+-  eos.gamma_th=gamma_th;
+-  eos.eps_tab[0]=eps_tab[0];
+-  eos.k_tab[0]=k_tab[0];   eos.k_tab[1]=k_tab[1];
+-  eos.gamma_tab[0]=gamma_tab[0]; eos.gamma_tab[1]=gamma_tab[1];
+-
+-  // These BSSN-based variables are not evolved, and so are not defined anywhere that the grid has moved.
+   // Here we convert ADM variables (from ADMBase) to the BSSN-based variables expected by this routine.
+-  IllinoisGRMHD_convert_ADM_to_BSSN__enforce_detgtij_eq_1__and_compute_gtupij(cctkGH,cctk_lsh,  gxx,gxy,gxz,gyy,gyz,gzz,alp,
++  GiRaFFE_convert_ADM_to_BSSN__enforce_detgtij_eq_1__and_compute_gtupij(cctkGH,cctk_lsh,  gxx,gxy,gxz,gyy,gyz,gzz,alp,
+                                                                 gtxx,gtxy,gtxz,gtyy,gtyz,gtzz,
+                                                                 gtupxx,gtupxy,gtupxz,gtupyy,gtupyz,gtupzz,
+                                                                 phi_bssn,psi_bssn,lapm1);
++  int imin=0,jmin=0,kmin=0;
++  int imax=cctk_lsh[0],jmax=cctk_lsh[1],kmax=cctk_lsh[2];
+ 
+-  if(CCTK_EQUALS(Symmetry,"equatorial")) {
+-    // SET SYMMETRY GHOSTZONES ON ALL CONSERVATIVE VARIABLES!
+-    int ierr=0;
+-    ierr+=CartSymGN(cctkGH,"IllinoisGRMHD::grmhd_conservatives");
+-    // FIXME: UGLY. Filling metric ghostzones is needed for, e.g., Cowling runs.
+-    ierr+=CartSymGN(cctkGH,"lapse::lapse_vars");
+-    ierr+=CartSymGN(cctkGH,"bssn::BSSN_vars");
+-    ierr+=CartSymGN(cctkGH,"bssn::BSSN_AH");
+-    ierr+=CartSymGN(cctkGH,"shift::shift_vars");
+-    if(ierr!=0) CCTK_VError(VERR_DEF_PARAMS,"IllinoisGRMHD ERROR (grep for it, foo!)  :(");
+-  }
++  CCTK_REAL dz = CCTK_DELTA_SPACE(2);
++
++  CCTK_REAL error_int_numer=0,error_int_denom=0;
+ 
+-  //Start the timer, so we can benchmark the primitives solver during evolution.
+-  //  Slower solver -> harder to find roots -> things may be going crazy!
+-  //FIXME: Replace this timing benchmark with something more meaningful, like the avg # of Newton-Raphson iterations per gridpoint!
++  CCTK_INT num_vel_limits=0,num_vel_nulls_current_sheet=0;
++#pragma omp parallel for reduction(+:error_int_numer,error_int_denom,num_vel_limits,num_vel_nulls_current_sheet) schedule(static)
++  for(int k=kmin;k<kmax;k++)
++    for(int j=jmin;j<jmax;j++)
++      for(int i=imin;i<imax;i++) {
++        int index = CCTK_GFINDEX3D(cctkGH,i,j,k);
++        
++        CCTK_REAL rL = r[index];
++        if(rL>R_NS_aligned_rotator) {
++
++          CCTK_REAL psi_bssnL = psi_bssn[index];
++          CCTK_REAL psi2 = psi_bssnL*psi_bssnL;
++          CCTK_REAL psi4 = psi2*psi2;
++          CCTK_REAL psim4 = 1.0/psi4;
++          CCTK_REAL sqrtg = psi4*psi2; // Determinant of 3-metric
++
++          // \gamma_{ij}, computed from \tilde{\gamma}_{ij}
++          CCTK_REAL gxxL = psi4*gtxx[index];
++          CCTK_REAL gxyL = psi4*gtxy[index];
++          CCTK_REAL gxzL = psi4*gtxz[index];
++          CCTK_REAL gyyL = psi4*gtyy[index];
++          CCTK_REAL gyzL = psi4*gtyz[index];
++          CCTK_REAL gzzL = psi4*gtzz[index];
++
++          // \gamma^{ij} = psim4 * \tilde{\gamma}^{ij}
++          CCTK_REAL gupxxL = psim4*gtupxx[index];
++          CCTK_REAL gupxyL = psim4*gtupxy[index];
++          CCTK_REAL gupxzL = psim4*gtupxz[index];
++          CCTK_REAL gupyyL = psim4*gtupyy[index];
++          CCTK_REAL gupyzL = psim4*gtupyz[index];
++          CCTK_REAL gupzzL = psim4*gtupzz[index];
++
++          // Read in magnetic field and momentum variables once from memory, since memory access is expensive:
++          CCTK_REAL BxL = Bx[index];
++          CCTK_REAL ByL = By[index];
++          CCTK_REAL BzL = Bz[index];
++
++          // End of page 7 on http://arxiv.org/pdf/1310.3274.pdf
++          CCTK_REAL BtildexL = BxL*sqrtg;
++          CCTK_REAL BtildeyL = ByL*sqrtg;
++          CCTK_REAL BtildezL = BzL*sqrtg;
++
++          CCTK_REAL Btilde_xL = gxxL*BtildexL + gxyL*BtildeyL + gxzL*BtildezL;
++          CCTK_REAL Btilde_yL = gxyL*BtildexL + gyyL*BtildeyL + gyzL*BtildezL;
++          CCTK_REAL Btilde_zL = gxzL*BtildexL + gyzL*BtildeyL + gzzL*BtildezL;
++
++          CCTK_REAL mhd_st_xL = mhd_st_x[index];
++          CCTK_REAL mhd_st_yL = mhd_st_y[index];
++          CCTK_REAL mhd_st_zL = mhd_st_z[index];
++
++          CCTK_REAL mhd_st_x_orig = mhd_st_xL;
++          CCTK_REAL mhd_st_y_orig = mhd_st_yL;
++          CCTK_REAL mhd_st_z_orig = mhd_st_zL;
++
++          CCTK_REAL alpL = alp[index];
++          CCTK_REAL fourpialpha = 4.0*M_PI*alpL;
++
++          CCTK_REAL betaxL = betax[index];
++          CCTK_REAL betayL = betay[index];
++          CCTK_REAL betazL = betaz[index];
++        
++          //* 1. Just below Eq 90: Enforce orthogonality of B^i & S^i, so that B^i S_i = 0
++          //*    Correction ${\tilde S}_i ->{\tilde S}_i - ({\tilde S}_j {\tilde B}^j) {\tilde B}_i/{\tilde B}^2$
++          //*    NOTICE THAT THE {\tilde B}_i IS LOWERED, AS IT SHOULD BE. THIS IS A TYPO IN PASCHALIDIS ET AL.
++
++          // First compute Btilde^i Stilde_i:
++          CCTK_REAL BtildeiSt_i = mhd_st_xL*BtildexL + mhd_st_yL*BtildeyL + mhd_st_zL*BtildezL;
++
++          // Then compute (Btilde)^2
++          CCTK_REAL Btilde2 = gxxL*BtildexL*BtildexL + gyyL*BtildeyL*BtildeyL + gzzL*BtildezL*BtildezL
++            + 2.0*(gxyL*BtildexL*BtildeyL + gxzL*BtildexL*BtildezL + gyzL*BtildeyL*BtildezL);
++
++#define APPLY_GRFFE_FIXES
++
++          // Now apply constraint: Stilde_i = Stilde_i - (Btilde^i Stilde_i) / (Btilde)^2
++#ifdef APPLY_GRFFE_FIXES
++          mhd_st_xL -= BtildeiSt_i*Btilde_xL/Btilde2;
++          mhd_st_yL -= BtildeiSt_i*Btilde_yL/Btilde2;
++          mhd_st_zL -= BtildeiSt_i*Btilde_zL/Btilde2;
++#endif
++          // Now that tildeS_i has been fixed, let's compute tildeS^i:
++          CCTK_REAL mhd_st_upx = gupxxL*mhd_st_xL + gupxyL*mhd_st_yL + gupxzL*mhd_st_zL;
++          CCTK_REAL mhd_st_upy = gupxyL*mhd_st_xL + gupyyL*mhd_st_yL + gupyzL*mhd_st_zL;
++          CCTK_REAL mhd_st_upz = gupxzL*mhd_st_xL + gupyzL*mhd_st_yL + gupzzL*mhd_st_zL;
++
++          // Just below Eq. 86 in http://arxiv.org/pdf/1310.3274.pdf:
++          CCTK_REAL St2 = mhd_st_xL*mhd_st_upx + mhd_st_yL*mhd_st_upy + mhd_st_zL*mhd_st_upz;
++
++          //* 2. Eq. 92: Factor $f = \sqrt{(1-\gamma_{max}^{-2}){\tilde B}^4/(16 \pi^2 \gamma {\tilde S}^2)}$ 
++
++#ifdef APPLY_GRFFE_FIXES
++          CCTK_REAL gmax = GAMMA_SPEED_LIMIT;
++          if(St2 > (1.0 - 1.0/(gmax*gmax))*Btilde2*Btilde2/ (16.0*M_PI*M_PI*sqrtg*sqrtg)) {
++            CCTK_REAL fact = sqrt((1.0 - 1.0/(gmax*gmax))/St2)*Btilde2/(4.0*M_PI*sqrtg);
++
++            //* 3. ${\tilde S}_i -> {\tilde S}_i min(1,f)
++            mhd_st_xL *= MIN(1.0,fact);
++            mhd_st_yL *= MIN(1.0,fact);
++            mhd_st_zL *= MIN(1.0,fact);
++
++            // Recompute S^i
++            mhd_st_upx = gupxxL*mhd_st_xL + gupxyL*mhd_st_yL + gupxzL*mhd_st_zL;
++            mhd_st_upy = gupxyL*mhd_st_xL + gupyyL*mhd_st_yL + gupyzL*mhd_st_zL;
++            mhd_st_upz = gupxzL*mhd_st_xL + gupyzL*mhd_st_yL + gupzzL*mhd_st_zL;
+   /*
+-    struct timeval start, end;
+-    long mtime, seconds, useconds;
+-    gettimeofday(&start, NULL);
++            printf("%e %e %e | %e %e %e | %e %e %e | oldgamma: %e %e should be > %e vfix\n",x[index],y[index],z[index],
++                   BxL,ByL,BzL,
++                   St2,(1.0 - 1.0/(gmax*gmax))*Btilde2*Btilde2/ (16.0*M_PI*M_PI*sqrtg*sqrtg),gmax,
++                   sqrt(Btilde2 / (Btilde2 - 16*M_PI*M_PI*sqrtg*sqrtg * St2 / Btilde2) ) , Btilde2,16*M_PI*M_PI*sqrtg*sqrtg * St2 / Btilde2  );
++            //exit(1);
+   */
++            // Recompute Stilde^2:
++            St2 = mhd_st_xL*mhd_st_upx + mhd_st_yL*mhd_st_upy + mhd_st_zL*mhd_st_upz;
+ 
+-  int gamma_equals2 = 1;
+-  if (fabs(gamma_th-2.0) > 1.e-10) gamma_equals2 = 0;
+-
+-  int failures=0,font_fixes=0,vel_limited_ptcount=0;
+-  int pointcount=0;
+-  int failures_inhoriz=0;
+-  int pointcount_inhoriz=0;
++            if( St2 >= Btilde2*Btilde2/ (16.0*M_PI*M_PI*sqrtg*sqrtg) ) {
++              printf("ERROR: Velocity cap fix wasn't effective; still have B^2 > E^2\n"); exit(1);
++            }
++            num_vel_limits++;
++          }
++#endif
+ 
+-  int pressure_cap_hit=0;
++          //* 4. Eq. 85: $v^i = 4 pi \alpha \gamma^{ij} {\tilde S}_j \gamma{-1/2} B^{-2} - \beta^i$: 
+ 
+-  CCTK_REAL error_int_numer=0,error_int_denom=0;
++          // See, e.g., Eq 71 in http://arxiv.org/pdf/1310.3274.pdf
++          // ... or end of page 7 on http://arxiv.org/pdf/1310.3274.pdf:
++          CCTK_REAL B2 = Btilde2/(sqrtg*sqrtg);
++          /* 
++             Eq. 75: 
++             v^i = \alpha \gamma^{ij} S_j / \mathcal{B}^2 - \beta^i
++             Eq. 7: \mathcal{B}^{\mu} = B^{\mu}/\sqrt{4 \pi}
++             -> v^i = 4 \pi \alpha \gamma^{ij} S_j / B^2 - \beta^i
++             Eq. 79: \tilde{S_i} = \sqrt{\gamma} S_i
++             -> v^i = 4 \pi \alpha \gamma^{ij} \tilde{S}_j / (\sqrt{\gamma} B^2) - \beta^i
++          */
++          CCTK_REAL vxL = fourpialpha*mhd_st_upx/(sqrtg*B2) - betaxL;
++          CCTK_REAL vyL = fourpialpha*mhd_st_upy/(sqrtg*B2) - betayL;
++          CCTK_REAL vzL = fourpialpha*mhd_st_upz/(sqrtg*B2) - betazL;
++
++          //* 5. Eq. 94: ${\tilde n}_i v^i = 0$ in the current sheet region
++          //     n^i is defined as the normal from the current sheet, which lies in the 
++          //     xy-plane (z=0). So n = (0,0,1) 
++#ifdef APPLY_GRFFE_FIXES
++          if(current_sheet_null_v) {
++            CCTK_REAL zL = z[index];
++            if ( /* R_NS_aligned_rotator defaults to <0, so should work for all cases. */ rL > R_NS_aligned_rotator/Omega_aligned_rotator && fabs(zL) <= (4.0 + 1.0e-2)*dz ) {
++              //vzL = 0.0;
++              vzL = - (vxL*gxzL + vyL*gyzL) / gzzL;
+ 
+-  int imin=0,jmin=0,kmin=0;
+-  int imax=cctk_lsh[0],jmax=cctk_lsh[1],kmax=cctk_lsh[2];
++              // vzL reset: TYPICALLY WOULD RESET CONSERVATIVES TO BE CONSISTENT. LET'S NOT DO THAT, TO AVOID MESSING UP B-FIELDS
+ 
+-  int rho_star_fix_applied=0;
+-  long n_iter=0;
+-#pragma omp parallel for reduction(+:failures,vel_limited_ptcount,font_fixes,pointcount,failures_inhoriz,pointcount_inhoriz,error_int_numer,error_int_denom,pressure_cap_hit,rho_star_fix_applied,n_iter) schedule(static)
+-  for(int k=kmin;k<kmax;k++)
+-    for(int j=jmin;j<jmax;j++)
+-      for(int i=imin;i<imax;i++) {
+-        int index = CCTK_GFINDEX3D(cctkGH,i,j,k);
++              if(1==1) {
++                CCTK_REAL PRIMS[MAXNUMVARS];
++                int ww=0;
++                PRIMS[ww] = vxL;    ww++;
++                PRIMS[ww] = vyL;    ww++;
++                PRIMS[ww] = vzL;    ww++;
++                PRIMS[ww] = BxL;    ww++;
++                PRIMS[ww] = ByL;    ww++;
++                PRIMS[ww] = BzL;    ww++;
+ 
+-        int ww;
+         CCTK_REAL METRIC[NUMVARS_FOR_METRIC],dummy=0;
+         ww=0;
+         // FIXME: NECESSARY?
+@@ -135,289 +241,51 @@
+         METRIC[ww] = gtupxz[index];  ww++;
+         METRIC[ww] = gtupyz[index];  ww++;
+ 
+-        CCTK_REAL PRIMS[MAXNUMVARS];
+-        ww=0;
+-        PRIMS[ww] = rho_b[index]; ww++;
+-        PRIMS[ww] = P[index];     ww++;
+-        PRIMS[ww] = vx[index];    ww++;
+-        PRIMS[ww] = vy[index];    ww++;
+-        PRIMS[ww] = vz[index];    ww++;
+-        PRIMS[ww] = Bx[index];    ww++;
+-        PRIMS[ww] = By[index];    ww++;
+-        PRIMS[ww] = Bz[index];    ww++;
+-
+-        CCTK_REAL CONSERVS[NUM_CONSERVS] = {rho_star[index], mhd_st_x[index],mhd_st_y[index],mhd_st_z[index],tau[index]};
+-
+-        CCTK_REAL METRIC_LAP_PSI4[NUMVARS_METRIC_AUX];
+-        SET_LAPSE_PSI4(METRIC_LAP_PSI4,METRIC);
+-    
+-        CCTK_REAL METRIC_PHYS[NUMVARS_FOR_METRIC];
+-        METRIC_PHYS[GXX]   = METRIC[GXX]*METRIC_LAP_PSI4[PSI4];
+-        METRIC_PHYS[GXY]   = METRIC[GXY]*METRIC_LAP_PSI4[PSI4];
+-        METRIC_PHYS[GXZ]   = METRIC[GXZ]*METRIC_LAP_PSI4[PSI4];
+-        METRIC_PHYS[GYY]   = METRIC[GYY]*METRIC_LAP_PSI4[PSI4];
+-        METRIC_PHYS[GYZ]   = METRIC[GYZ]*METRIC_LAP_PSI4[PSI4];
+-        METRIC_PHYS[GZZ]   = METRIC[GZZ]*METRIC_LAP_PSI4[PSI4];
+-        METRIC_PHYS[GUPXX] = METRIC[GUPXX]*METRIC_LAP_PSI4[PSIM4];
+-        METRIC_PHYS[GUPXY] = METRIC[GUPXY]*METRIC_LAP_PSI4[PSIM4];
+-        METRIC_PHYS[GUPXZ] = METRIC[GUPXZ]*METRIC_LAP_PSI4[PSIM4];
+-        METRIC_PHYS[GUPYY] = METRIC[GUPYY]*METRIC_LAP_PSI4[PSIM4];
+-        METRIC_PHYS[GUPYZ] = METRIC[GUPYZ]*METRIC_LAP_PSI4[PSIM4];
+-        METRIC_PHYS[GUPZZ] = METRIC[GUPZZ]*METRIC_LAP_PSI4[PSIM4];
+-
+-        CCTK_REAL TUPMUNU[10],TDNMUNU[10];
+-
+-        CCTK_REAL shift_xL = METRIC_PHYS[GXX]*METRIC[SHIFTX] + METRIC_PHYS[GXY]*METRIC[SHIFTY] + METRIC_PHYS[GXZ]*METRIC[SHIFTZ];
+-        CCTK_REAL shift_yL = METRIC_PHYS[GXY]*METRIC[SHIFTX] + METRIC_PHYS[GYY]*METRIC[SHIFTY] + METRIC_PHYS[GYZ]*METRIC[SHIFTZ];
+-        CCTK_REAL shift_zL = METRIC_PHYS[GXZ]*METRIC[SHIFTX] + METRIC_PHYS[GYZ]*METRIC[SHIFTY] + METRIC_PHYS[GZZ]*METRIC[SHIFTZ];
+-        CCTK_REAL beta2L   = shift_xL*METRIC[SHIFTX] + shift_yL*METRIC[SHIFTY] + shift_zL*METRIC[SHIFTZ];
+-
+-        // Compute 4-metric, both g_{\mu \nu} and g^{\mu \nu}.
+-        // This is for computing T_{\mu \nu} and T^{\mu \nu}. Also the HARM con2prim lowlevel function requires them.
+-        CCTK_REAL g4dn[4][4],g4up[4][4];
+-        g4dn[0][0] = -SQR(METRIC_LAP_PSI4[LAPSE]) + beta2L;
+-        g4dn[0][1] = g4dn[1][0] = shift_xL;
+-        g4dn[0][2] = g4dn[2][0] = shift_yL;
+-        g4dn[0][3] = g4dn[3][0] = shift_zL;
+-        g4dn[1][1]              = METRIC_PHYS[GXX];
+-        g4dn[1][2] = g4dn[2][1] = METRIC_PHYS[GXY];
+-        g4dn[1][3] = g4dn[3][1] = METRIC_PHYS[GXZ];
+-        g4dn[2][2]              = METRIC_PHYS[GYY];
+-        g4dn[2][3] = g4dn[3][2] = METRIC_PHYS[GYZ];
+-        g4dn[3][3]              = METRIC_PHYS[GZZ];
+-        
+-        CCTK_REAL alpha_inv_squared=SQR(METRIC_LAP_PSI4[LAPSEINV]);
+-        g4up[0][0] = -1.0*alpha_inv_squared;
+-        g4up[0][1] = g4up[1][0] = METRIC[SHIFTX]*alpha_inv_squared;
+-        g4up[0][2] = g4up[2][0] = METRIC[SHIFTY]*alpha_inv_squared;
+-        g4up[0][3] = g4up[3][0] = METRIC[SHIFTZ]*alpha_inv_squared;
+-        g4up[1][1]              = METRIC_PHYS[GUPXX] - METRIC[SHIFTX]*METRIC[SHIFTX]*alpha_inv_squared;
+-        g4up[1][2] = g4up[2][1] = METRIC_PHYS[GUPXY] - METRIC[SHIFTX]*METRIC[SHIFTY]*alpha_inv_squared;
+-        g4up[1][3] = g4up[3][1] = METRIC_PHYS[GUPXZ] - METRIC[SHIFTX]*METRIC[SHIFTZ]*alpha_inv_squared;
+-        g4up[2][2]              = METRIC_PHYS[GUPYY] - METRIC[SHIFTY]*METRIC[SHIFTY]*alpha_inv_squared;
+-        g4up[2][3] = g4up[3][2] = METRIC_PHYS[GUPYZ] - METRIC[SHIFTY]*METRIC[SHIFTZ]*alpha_inv_squared;
+-        g4up[3][3]              = METRIC_PHYS[GUPZZ] - METRIC[SHIFTZ]*METRIC[SHIFTZ]*alpha_inv_squared;
+-
+-        //FIXME: might slow down the code.
+-        if(isnan(CONSERVS[RHOSTAR]*CONSERVS[STILDEX]*CONSERVS[STILDEY]*CONSERVS[STILDEZ]*CONSERVS[TAUENERGY]*PRIMS[BX_CENTER]*PRIMS[BY_CENTER]*PRIMS[BZ_CENTER])) {
+-          CCTK_VInfo(CCTK_THORNSTRING,"NAN FOUND: i,j,k = %d %d %d, x,y,z = %e %e %e , index=%d st_i = %e %e %e, rhostar = %e, tau = %e, Bi = %e %e %e, gij = %e %e %e %e %e %e, Psi6 = %e",
+-                     i,j,k,x[index],y[index],z[index],index,
+-                     CONSERVS[STILDEX],CONSERVS[STILDEY],CONSERVS[STILDEZ],CONSERVS[RHOSTAR],CONSERVS[TAUENERGY],
+-                     PRIMS[BX_CENTER],PRIMS[BY_CENTER],PRIMS[BZ_CENTER],METRIC_PHYS[GXX],METRIC_PHYS[GXY],METRIC_PHYS[GXZ],METRIC_PHYS[GYY],METRIC_PHYS[GYZ],METRIC_PHYS[GZZ],METRIC_LAP_PSI4[PSI6]);
+-        }
++                CCTK_REAL CONSERVS[NUM_CONSERVS] = {0.0, 0.0, 0.0}; // 3 conservative variables: Stilde_x, Stilde_y, Stilde_z
++                GiRaFFE_compute_conservatives(PRIMS,METRIC, CONSERVS);
+         
+-        // Here we use _flux variables as temp storage for original values of conservative variables.. This is used for debugging purposes only.
+-        rho_star_flux[index] = CONSERVS[RHOSTAR];
+-        st_x_flux[index]     = CONSERVS[STILDEX];
+-        st_y_flux[index]     = CONSERVS[STILDEY];
+-        st_z_flux[index]     = CONSERVS[STILDEZ];
+-        tau_flux[index]      = CONSERVS[TAUENERGY];
+-
+-        CCTK_REAL rho_star_orig = CONSERVS[RHOSTAR];
+-        CCTK_REAL mhd_st_x_orig = CONSERVS[STILDEX];
+-        CCTK_REAL mhd_st_y_orig = CONSERVS[STILDEY];
+-        CCTK_REAL mhd_st_z_orig = CONSERVS[STILDEZ];
+-        CCTK_REAL tau_orig      = CONSERVS[TAUENERGY];
+-
+-        int check=0;
+-        struct output_stats stats;
+-        stats.n_iter=0;
+-        stats.vel_limited=0;
+-        stats.failure_checker=0;
+-
+-        if(CONSERVS[RHOSTAR]>0.0) {
+-          // Apply the tau floor
+-          apply_tau_floor(index,tau_atm,rho_b_atm,Psi6threshold,PRIMS,METRIC,METRIC_PHYS,METRIC_LAP_PSI4,stats,eos,  CONSERVS);
+-
+-          stats.font_fixed=0;
+-          for(int ii=0;ii<3;ii++) {
+-            check = harm_primitives_gammalaw_lowlevel(index,i,j,k,x,y,z,METRIC,METRIC_PHYS,METRIC_LAP_PSI4,
+-                                                      CONSERVS,PRIMS,  g4dn,g4up,   stats,eos);
+-            if(check==0) ii=4;
+-            else stats.failure_checker+=100000;
++                mhd_st_xL = CONSERVS[STILDEX];
++                mhd_st_yL = CONSERVS[STILDEY];
++                mhd_st_zL = CONSERVS[STILDEZ];
+           }
+-        } else {
+-          stats.failure_checker+=1;
+-          // Set to atmosphere if rho_star<0.
+-          //FIXME: FOR GAMMA=2 ONLY:
+-          PRIMS[RHOB]      =rho_b_atm;
+-          if(gamma_equals2) {
+-            PRIMS[PRESSURE]=K_poly*SQR(rho_b_atm);
+-          } else {
+-            PRIMS[PRESSURE]=K_poly*pow(rho_b_atm,gamma_th);
++              num_vel_nulls_current_sheet++;
+           }
+-          PRIMS[VX]        =-METRIC[SHIFTX];
+-          PRIMS[VY]        =-METRIC[SHIFTY];
+-          PRIMS[VZ]        =-METRIC[SHIFTZ];
+-
+-          rho_star_fix_applied++;
+         }
++#endif
+ 
+-        // Enforce limits on primitive variables and recompute conservatives.
+-        static const int already_computed_physical_metric_and_inverse=1;
+-        IllinoisGRMHD_enforce_limits_on_primitives_and_recompute_conservs(already_computed_physical_metric_and_inverse,PRIMS,stats,eos,METRIC,g4dn,g4up, TUPMUNU,TDNMUNU,CONSERVS);
+-
+-        rho_star[index] = CONSERVS[RHOSTAR];
+-        mhd_st_x[index] = CONSERVS[STILDEX];
+-        mhd_st_y[index] = CONSERVS[STILDEY];
+-        mhd_st_z[index] = CONSERVS[STILDEZ];
+-        tau[index] = CONSERVS[TAUENERGY];
+-
+-        // Set primitives, and/or provide a better guess.
+-        rho_b[index] = PRIMS[RHOB];
+-        P[index]     = PRIMS[PRESSURE];
+-        vx[index]    = PRIMS[VX];
+-        vy[index]    = PRIMS[VY];
+-        vz[index]    = PRIMS[VZ];
+-
+-        if(update_Tmunu) {
+-          ww=0;
+-          eTtt[index] = TDNMUNU[ww]; ww++;
+-          eTtx[index] = TDNMUNU[ww]; ww++;
+-          eTty[index] = TDNMUNU[ww]; ww++;
+-          eTtz[index] = TDNMUNU[ww]; ww++;
+-          eTxx[index] = TDNMUNU[ww]; ww++;
+-          eTxy[index] = TDNMUNU[ww]; ww++;
+-          eTxz[index] = TDNMUNU[ww]; ww++;
+-          eTyy[index] = TDNMUNU[ww]; ww++;
+-          eTyz[index] = TDNMUNU[ww]; ww++;
+-          eTzz[index] = TDNMUNU[ww];
+-        }
++          CCTK_REAL vx_orig = vx[index];
++          CCTK_REAL vy_orig = vy[index];
++          CCTK_REAL vz_orig = vz[index];
+ 
+-        //Finally, we set h, the enthalpy:
+-        //CCTK_REAL eps = P[index]/rho_b[index]/(GAMMA-1.0);
+-        //h[index] = 1.0 + P[index]/rho_b[index] + eps;
+-
+-        /***************************************************************************************************************************/
+-        // DIAGNOSTICS:
+-        //Pressure cap hit?
+-        /* FIXME
+-        CCTK_REAL P_cold = rho_b[index]*rho_b[index];
+-        if(P[index]/P_cold > 0.99*1e3 && rho_b[index]>100.0*rho_b_atm) {
+-          if(exp(phi[index]*6.0) <= Psi6threshold) pressure_cap_hit++;
+-        }
+-        */
++          vx[index] = vxL;      
++          vy[index] = vyL;      
++          vz[index] = vzL;      
+ 
+         //Now we compute the difference between original & new conservatives, for diagnostic purposes:
+-        error_int_numer += fabs(tau[index] - tau_orig) + fabs(rho_star[index] - rho_star_orig) + 
+-          fabs(mhd_st_x[index] - mhd_st_x_orig) + fabs(mhd_st_y[index] - mhd_st_y_orig) + fabs(mhd_st_z[index] - mhd_st_z_orig);
+-        error_int_denom += tau_orig + rho_star_orig + fabs(mhd_st_x_orig) + fabs(mhd_st_y_orig) + fabs(mhd_st_z_orig);
+-
+-        if(stats.font_fixed==1) font_fixes++;
+-        vel_limited_ptcount+=stats.vel_limited;
+-        if(check!=0) {
+-          failures++;
+-          if(exp(METRIC[PHI]*6.0)>Psi6threshold) {
+-            failures_inhoriz++;
+-            pointcount_inhoriz++;
+-          }
+-        }
+-        pointcount++;
+-        /***************************************************************************************************************************/
+-        failure_checker[index] = stats.failure_checker;
+-        n_iter += stats.n_iter;
+-      }
+-
++          error_int_numer += fabs(mhd_st_xL - mhd_st_x_orig) + fabs(mhd_st_yL - mhd_st_y_orig) + fabs(mhd_st_zL - mhd_st_z_orig);
++          error_int_denom += fabs(mhd_st_x_orig) + fabs(mhd_st_y_orig) + fabs(mhd_st_z_orig);
+   /*
+-    gettimeofday(&end, NULL);
++            if(fabs(vx_orig) > 1e-13 && fabs(vxL-vx_orig)/vx_orig > 1e-2) printf("BAD vx: %e %e | %e %e %e\n",vxL,vx_orig,x[index],y[index],z[index]);
++            if(fabs(vy_orig) > 1e-13 && fabs(vyL-vy_orig)/vy_orig > 1e-2) printf("BAD vy: %e %e | %e %e %e\n",vyL,vy_orig,x[index],y[index],z[index]);
++            if(fabs(vz_orig) > 1e-13 && fabs(vzL-vz_orig)/vz_orig > 1e-2) printf("BAD vz: %e %e | %e %e %e\n",vzL,vz_orig,x[index],y[index],z[index]);
++            error_int_numer += fabs(vxL - vx_orig) + fabs(vyL - vy_orig) + fabs(vzL - vz_orig);
++            error_int_denom += fabs(vx_orig) + fabs(vy_orig) + fabs(vz_orig);
++          */
+ 
+-    seconds  = end.tv_sec  - start.tv_sec;
+-    useconds = end.tv_usec - start.tv_usec;
+ 
+-    mtime = ((seconds) * 1000 + useconds/1000.0) + 0.999;  // We add 0.999 since mtime is a long int; this rounds up the result before setting the value.  Here, rounding down is incorrect.
+-    solutions per second: cctk_lsh[0]*cctk_lsh[1]*cctk_lsh[2] / ((CCTK_REAL)mtime/1000.0),
+-  */
+-  if(CCTK_Equals(verbose, "essential") || CCTK_Equals(verbose, "essential+iteration output")) {
+-    CCTK_VInfo(CCTK_THORNSTRING,"C2P: Lev: %d NumPts= %d | Fixes: Font= %d VL= %d rho*= %d | Failures: %d InHoriz= %d / %d | Error: %.3e, ErrDenom: %.3e | %.2f iters/gridpt",
+-               (int)GetRefinementLevel(cctkGH),
+-               pointcount,font_fixes,vel_limited_ptcount,rho_star_fix_applied,
+-               failures,
+-               failures_inhoriz,pointcount_inhoriz,
+-               error_int_numer/error_int_denom,error_int_denom,
+-               (double)n_iter/( (double)(cctk_lsh[0]*cctk_lsh[1]*cctk_lsh[2]) ));
++          mhd_st_x[index] = mhd_st_xL;
++          mhd_st_y[index] = mhd_st_yL;
++          mhd_st_z[index] = mhd_st_zL;
+   }
+-  
+-  if(pressure_cap_hit!=0) {
+-    //CCTK_VInfo(CCTK_THORNSTRING,"PRESSURE CAP HIT %d TIMES!  Outputting debug file!",pressure_cap_hit);
+   }
+ 
+-  // Very useful con2prim debugger. If the primitives (con2prim) solver fails, this will output all data needed to 
+-  //     debug where and why the solver failed. Strongly suggested for experimenting with new fixes.
+-  if(conserv_to_prims_debug==1) {
+-
+-    ofstream myfile;
+-    char filename[100];
+-    srand(time(NULL));
+-    sprintf(filename,"primitives_debug-%e.dat",rho_star[CCTK_GFINDEX3D(cctkGH,3,15,6)]);
+-    //Alternative, for debugging purposes as well: sprintf(filename,"primitives_debug-%d.dat",rand());
+-    myfile.open (filename, ios::out | ios::binary);
+-    //myfile.open ("data.bin", ios::out | ios::binary);
+-    myfile.write((char*)cctk_lsh, 3*sizeof(int));
+-
+-    myfile.write((char*)&rho_b_atm, 1*sizeof(CCTK_REAL));
+-    myfile.write((char*)&tau_atm, 1*sizeof(CCTK_REAL));
+-
+-    myfile.write((char*)&Psi6threshold, 1*sizeof(CCTK_REAL));
+-
+-    CCTK_REAL gamma_th=2.0;
+-    myfile.write((char*)&gamma_th, 1*sizeof(CCTK_REAL));
+-    myfile.write((char*)&neos,     1*sizeof(int));
+-
+-    myfile.write((char*)gamma_tab, (neos+1)*sizeof(CCTK_REAL));
+-    myfile.write((char*)k_tab,     (neos+1)*sizeof(CCTK_REAL));
+-
+-    myfile.write((char*)eps_tab,   neos*sizeof(CCTK_REAL));
+-    myfile.write((char*)rho_tab,   neos*sizeof(CCTK_REAL));
+-    myfile.write((char*)P_tab,     neos*sizeof(CCTK_REAL));
+-
+-    int fullsize=cctk_lsh[0]*cctk_lsh[1]*cctk_lsh[2];
+-    myfile.write((char*)x,   (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)y,   (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)z,   (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)phi_bssn, (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)gtxx, (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)gtxy, (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)gtxz, (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)gtyy, (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)gtyz, (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)gtzz, (fullsize)*sizeof(CCTK_REAL));
+-
+-    myfile.write((char*)gtupxx, (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)gtupxy, (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)gtupxz, (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)gtupyy, (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)gtupyz, (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)gtupzz, (fullsize)*sizeof(CCTK_REAL));
+-
+-    myfile.write((char*)betax, (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)betay, (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)betaz, (fullsize)*sizeof(CCTK_REAL));
+-
+-    myfile.write((char*)lapm1, (fullsize)*sizeof(CCTK_REAL));
+- 
+-    // HERE WE USE _flux variables as temp storage for original values of conservative variables.. This is used for debugging purposes only.
+-    myfile.write((char*)tau_flux,      (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)st_x_flux, (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)st_y_flux, (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)st_z_flux, (fullsize)*sizeof(CCTK_REAL));
+-
+-    myfile.write((char*)rho_star_flux, (fullsize)*sizeof(CCTK_REAL));
+-
+-    myfile.write((char*)Bx,   (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)By,   (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)Bz,   (fullsize)*sizeof(CCTK_REAL));
+-
+-    myfile.write((char*)vx,   (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)vy,   (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)vz,   (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)P,    (fullsize)*sizeof(CCTK_REAL));
+-    myfile.write((char*)rho_b,(fullsize)*sizeof(CCTK_REAL));
+-
+-    int checker=1063; myfile.write((char*)&checker,sizeof(int));
+-
+-    myfile.close();
+-    CCTK_VInfo(CCTK_THORNSTRING,"Finished writing...");
+-  }
++  CCTK_VInfo(CCTK_THORNSTRING,"FFEC2P: Lev: %d NumPts= %d | Error: %.3e, ErrDenom: %.3e, v_limits: %d / %d = %.3e, v_nulls: %d / %d = %.3e",
++             (int)GetRefinementLevel(cctkGH),
++             cctk_lsh[0]*cctk_lsh[1]*cctk_lsh[2],
++             error_int_numer/(error_int_denom+1e-300),error_int_denom,
++             /**/       num_vel_limits,            cctk_lsh[0]*cctk_lsh[1]*cctk_lsh[2],
++             (CCTK_REAL)num_vel_limits/((CCTK_REAL)cctk_lsh[0]*cctk_lsh[1]*cctk_lsh[2]),
++             /**/       num_vel_nulls_current_sheet,            cctk_lsh[0]*cctk_lsh[1]*cctk_lsh[2],
++             (CCTK_REAL)num_vel_nulls_current_sheet/((CCTK_REAL)cctk_lsh[0]*cctk_lsh[1]*cctk_lsh[2]));
+ }
+ 
+-#include "harm_primitives_lowlevel.C"
+--- IllinoisGRMHD/src/driver_evaluate_MHD_rhs.C	2018-07-30 08:32:44.160008644 -0500
++++ GiRaFFE/src/driver_evaluate_FFE_rhs.C	2017-10-03 22:08:55.329532568 -0500
+@@ -1,5 +1,5 @@
+ /*********************************************
+- * Evaluate RHS of GRMHD & induction equations
++ * Evaluate RHS of GRFFE equations
+  * (vector potential prescription), using the 
+  * generalized Lorenz gauge condition for the 
+  * EM gauge.
+@@ -8,20 +8,20 @@
+  * written by Matt Duez, Yuk Tung Liu, and Branson
+  * Stephens (original version), and then developed
+  * primarily by Zachariah Etienne, Yuk Tung Liu, 
+- * and Vasileios Paschalidis. 
+- *
+- * Rewritten for public release in 2013 
+- *      by Zachariah B. Etienne
++ * and Vasileios Paschalidis, then rewritten for 
++ * public release in 2013 by Zachariah B. Etienne.
+  *
+  * References:
+  * Original unigrid GRMHD evolution prescription: 
+- *    http://arxiv.org/abs/astro-ph/0503420
++ *    https://arxiv.org/abs/astro-ph/0503420
+  * Vector potential formulation in full GR:
+- *    http://arxiv.org/abs/1007.2848
++ *    https://arxiv.org/abs/1007.2848
+  * Improved EM gauge conditions for AMR grids:
+- *    http://arxiv.org/abs/1110.4633
++ *    https://arxiv.org/abs/1110.4633
+  * Generalized Lorenz gauge prescription:
+- *    http://arxiv.org/abs/1207.3354
++ *    https://arxiv.org/abs/1207.3354
++ * IllinoisGRMHD code announcement paper:
++ *    https://arxiv.org/abs/1501.07276
+  *
+  * Note that the Generalized Lorenz gauge strength
+  *  parameter has units of 1/M, just like the \eta
+@@ -30,8 +30,7 @@
+  *  of the CFL condition.
+  *
+  * This version of PPM implements the standard 
+- * Colella & Woodward PPM, though modified as in GRHydro
+- * to have 3 ghostzones instead of 4. 
++ * Colella & Woodward PPM, though assuming P=rho=0.
+  *********************************************/
+ 
+ #include "cctk.h"
+@@ -41,47 +40,34 @@
+ #include <sys/time.h>
+ #include "cctk_Arguments.h"
+ #include "cctk_Parameters.h"
+-#include "IllinoisGRMHD_headers.h" /* Generic #define's and function prototypes */
+-#include "driver_evaluate_MHD_rhs.h" /* Function prototypes for this file only */
++#include "GiRaFFE_headers.h" /* Generic #define's and function prototypes */
++#include "driver_evaluate_FFE_rhs.h" /* Function prototypes for this file only */
+ #include "inlined_functions.C"
+ 
+-extern "C" void IllinoisGRMHD_driver_evaluate_MHD_rhs(CCTK_ARGUMENTS) {
++extern "C" void GiRaFFE_driver_evaluate_FFE_rhs(CCTK_ARGUMENTS) {
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+   int levelnumber = GetRefinementLevel(cctkGH);
+ 
+-  if(CCTK_Equals(verbose, "essential+iteration output")) {
++  //CCTK_VInfo(CCTK_THORNSTRING,"==========================================================");
+     CCTK_VInfo(CCTK_THORNSTRING,"***** Iter. # %d, Lev: %d, Integrating to time: %e *****",cctk_iteration,levelnumber,cctk_delta_time/cctk_levfac[0]+cctk_time);
+-  }
++  // CCTK_VInfo(CCTK_THORNSTRING,"==========================================================");
+   
+-  if( sizeof(CCTK_REAL) < 8 ) CCTK_VError(VERR_DEF_PARAMS,"Error: IllinoisGRMHD assumes that CCTK_REAL is a double precision number. Setting otherwise will likely cause havoc with the conserv_to_prims solver.");
++  if( sizeof(CCTK_REAL) < 8 ) CCTK_VError(VERR_DEF_PARAMS,"Error: GiRaFFE assumes that CCTK_REAL is a double precision number. Setting otherwise will likely cause havoc with the conserv_to_prims solver.");
+ 
+-  if(cctk_nghostzones[0]<3 || cctk_nghostzones[1]<3 || cctk_nghostzones[2]<3) { CCTK_VError(VERR_DEF_PARAMS,"ERROR. Need at least 3 ghostzones for IllinoisGRMHD evolutions."); }
++  if(cctk_nghostzones[0]<3 || cctk_nghostzones[1]<3 || cctk_nghostzones[2]<3) { CCTK_VError(VERR_DEF_PARAMS,"ERROR. Need at least 3 ghostzones for GiRaFFE evolutions."); }
+ 
+   CCTK_REAL dX[3] = { CCTK_DELTA_SPACE(0), CCTK_DELTA_SPACE(1), CCTK_DELTA_SPACE(2) };
+ 
+-  // FIXME: only for single gamma-law EOS.
+-  eos_struct eos;
+-  eos.neos=neos;
+-  eos.K_poly=K_poly;
+-  eos.rho_tab[0]=rho_tab[0];
+-  eos.P_tab[0]=P_tab[0];
+-  eos.gamma_th=gamma_th;
+-  eos.eps_tab[0]=eps_tab[0];
+-  eos.k_tab[0]=k_tab[0];   eos.k_tab[1]=k_tab[1];
+-  eos.gamma_tab[0]=gamma_tab[0]; eos.gamma_tab[1]=gamma_tab[1];
+-
+   // in_prims,out_prims_r, and out_prims_l are arrays of pointers to the actual gridfunctions.
+   gf_and_gz_struct in_prims[MAXNUMVARS],out_prims_r[MAXNUMVARS],out_prims_l[MAXNUMVARS];
+   int which_prims_to_reconstruct[MAXNUMVARS],num_prims_to_reconstruct;
+ 
+-  /* SET POINTERS TO GRMHD GRIDFUNCTIONS */
++  /* SET POINTERS TO GRFFE GRIDFUNCTIONS */
+   // The order here MATTERS, and must be consistent with the global variable declarations in
+-  //   evaluate_MHD_rhs_headers.h (look for RHOB=0, etc.)
+-  //   For example, in_prims[0] _must_ be rho_b.
++  //   evaluate_FFE_rhs_headers.h (look for VX=0, etc.)
++  //   For example, in_prims[0] _must_ be vx.
+   int ww=0;
+-  in_prims[ww].gf=rho_b; out_prims_r[ww].gf=rho_br; out_prims_l[ww].gf=rho_bl; ww++;
+-  in_prims[ww].gf=P;     out_prims_r[ww].gf=Pr;     out_prims_l[ww].gf=Pl;     ww++;
+   in_prims[ww].gf=vx;    out_prims_r[ww].gf=vxr;    out_prims_l[ww].gf=vxl;    ww++;
+   in_prims[ww].gf=vy;    out_prims_r[ww].gf=vyr;    out_prims_l[ww].gf=vyl;    ww++;
+   in_prims[ww].gf=vz;    out_prims_r[ww].gf=vzr;    out_prims_l[ww].gf=vzl;    ww++;
+@@ -105,7 +91,7 @@
+   for(int i=0;i<MAXNUMVARS;i++) for(int j=1;j<=3;j++) { out_prims_l[i].gz_lo[j]=0; out_prims_l[i].gz_hi[j]=0; }
+ 
+   // Convert ADM variables (from ADMBase) to the BSSN-based variables expected by this routine.
+-  IllinoisGRMHD_convert_ADM_to_BSSN__enforce_detgtij_eq_1__and_compute_gtupij(cctkGH,cctk_lsh,  gxx,gxy,gxz,gyy,gyz,gzz,alp,
++  GiRaFFE_convert_ADM_to_BSSN__enforce_detgtij_eq_1__and_compute_gtupij(cctkGH,cctk_lsh,  gxx,gxy,gxz,gyy,gyz,gzz,alp,
+                                                                 gtxx,gtxy,gtxz,gtyy,gtyz,gtzz,
+                                                                 gtupxx,gtupxy,gtupxz,gtupyy,gtupyz,gtupzz,
+                                                                 phi_bssn,psi_bssn,lapm1);
+@@ -143,7 +129,7 @@
+   TUPmunu[ww]=TUPyz; ww++;
+   TUPmunu[ww]=TUPzz; ww++;
+ 
+-  // 1) First initialize {rho_star_rhs,tau_rhs,st_x_rhs,st_y_rhs,st_z_rhs} to zero
++  // 1) First initialize {st_x_rhs,st_y_rhs,st_z_rhs} to zero
+ #pragma omp parallel for
+   for(int k=0;k<cctk_lsh[2];k++) for(int j=0;j<cctk_lsh[1];j++) for(int i=0;i<cctk_lsh[0];i++) {
+         int index=CCTK_GFINDEX3D(cctkGH,i,j,k);
+@@ -152,31 +138,21 @@
+         Az_rhs[index]=0.0;
+         psi6phi_rhs[index]=0.0;
+ 
+-        tau_rhs[index]=0.0;
+-        rho_star_rhs[index]=0.0;
+         st_x_rhs[index]=0.0;
+         st_y_rhs[index]=0.0;
+         st_z_rhs[index]=0.0;
+-
+-        //if(i==17 && j==19 && k==26) CCTK_VInfo(CCTK_THORNSTRING,"CONSSS: %.15e %.15e %.15e %.15e %.15e | %.15e",rho_star[index],mhd_st_x[index],mhd_st_y[index],mhd_st_z[index],tau[index],P[index]);
+       }
+-  // Here, we:
+-  // 1) Compute tau_rhs extrinsic curvature terms, and
+-  // 2) Compute TUPmunu.
+-  // This function is housed in the file: "compute_tau_rhs_extrinsic_curvature_terms_and_TUPmunu.C"
+-  compute_tau_rhs_extrinsic_curvature_terms_and_TUPmunu(cctkGH,cctk_lsh,cctk_nghostzones,dX,metric,in_prims,TUPmunu,eos,
+-                                                        gtupxy,gtupxz,gtupyz,
+-                                                        kxx,kxy,kxz,kyy,kyz,kzz,
+-                                                        tau_rhs);
++  // Here, we compute TUPmunu.
++  // This function is housed in the file: "compute_TUPmunu.C"
++  compute_TUPmunu(cctkGH,cctk_lsh,cctk_nghostzones,dX,metric,in_prims,TUPmunu,
++                  gtupxy,gtupxz,gtupyz);
++
+   int flux_dirn;
+   flux_dirn=1;
+-  // First compute ftilde, which is used for flattening left and right face values
+-  // This function is housed in the file: "reconstruct_set_of_prims_PPM.C"
+-  ftilde_gf_compute(cctkGH,cctk_lsh,flux_dirn, in_prims, ftilde_gf);
+-
++  // ftilde = 0 in GRFFE, since P=rho=0.
+ 
+   /* There are two stories going on here:
+-   * 1) Computation of \partial_x on RHS of \partial_t {rho_star,tau,mhd_st_{x,y,z}}, 
++   * 1) Computation of \partial_x on RHS of \partial_t {mhd_st_{x,y,z}}, 
+    *    via PPM reconstruction onto (i-1/2,j,k), so that 
+    *    \partial_y F = [ F(i+1/2,j,k) - F(i-1/2,j,k) ] / dx
+    * 2) Computation of \partial_t A_i, where A_i are *staggered* gridfunctions,
+@@ -190,8 +166,6 @@
+    *      this, we'll reconstruct again in the y-dir'n to get {vx,vy} at (i-1/2,j-1/2,k)
+    * 2Ab) By_stagger is at (i,j+1/2,k), and we reconstruct below to (i-1/2,j+1/2,k). */
+   ww=0;
+-  which_prims_to_reconstruct[ww]=RHOB;      ww++;
+-  which_prims_to_reconstruct[ww]=PRESSURE;  ww++;
+   which_prims_to_reconstruct[ww]=VX;        ww++;
+   which_prims_to_reconstruct[ww]=VY;        ww++;
+   which_prims_to_reconstruct[ww]=VZ;        ww++;
+@@ -200,31 +174,29 @@
+   which_prims_to_reconstruct[ww]=BZ_CENTER; ww++;
+   which_prims_to_reconstruct[ww]=BY_STAGGER;ww++;
+   num_prims_to_reconstruct=ww;
+-  // This function is housed in the file: "reconstruct_set_of_prims_PPM.C"
+-  reconstruct_set_of_prims_PPM(cctkGH,cctk_lsh,flux_dirn,num_prims_to_reconstruct,which_prims_to_reconstruct,
+-                               eos,in_prims,out_prims_r,out_prims_l,ftilde_gf,temporary);
+-  //Right and left face values of BI_CENTER are used in mhdflux computation (first to compute b^a).
++  // This function is housed in the file: "reconstruct_set_of_prims_PPM_GRFFE.C"
++  reconstruct_set_of_prims_PPM_GRFFE(cctkGH,cctk_lsh,flux_dirn,num_prims_to_reconstruct,which_prims_to_reconstruct,
++                                     in_prims,out_prims_r,out_prims_l,temporary);
++  //Right and left face values of BI_CENTER are used in GRFFE__S_i__flux computation (first to compute b^a).
+   //   Instead of reconstructing, we simply set B^x face values to be consistent with BX_STAGGER.
+ #pragma omp parallel for
+   for(int k=0;k<cctk_lsh[2];k++) for(int j=0;j<cctk_lsh[1];j++) for(int i=0;i<cctk_lsh[0];i++) {
+         int index=CCTK_GFINDEX3D(cctkGH,i,j,k), indexim1=CCTK_GFINDEX3D(cctkGH,i-1+(i==0),j,k); /* indexim1=0 when i=0 */
+         out_prims_r[BX_CENTER].gf[index]=out_prims_l[BX_CENTER].gf[index]=in_prims[BX_STAGGER].gf[indexim1]; }
+-  // Then add fluxes to RHS for hydro variables {rho_b,P,vx,vy,vz}:
++  // Then add fluxes to RHS for hydro variables {vx,vy,vz}:
+   // This function is housed in the file: "add_fluxes_and_source_terms_to_hydro_rhss.C"
+   add_fluxes_and_source_terms_to_hydro_rhss(flux_dirn,cctkGH,cctk_lsh,cctk_nghostzones,dX,   metric,in_prims,TUPmunu,
+-                                            num_prims_to_reconstruct,out_prims_r,out_prims_l,eos,
++                                            num_prims_to_reconstruct,out_prims_r,out_prims_l,
+                                             cmax_x,cmin_x,
+-                                            rho_star_flux,tau_flux,st_x_flux,st_y_flux,st_z_flux,
+-                                            rho_star_rhs,tau_rhs,st_x_rhs,st_y_rhs,st_z_rhs);
++                                            st_x_flux,st_y_flux,st_z_flux,
++                                            st_x_rhs,st_y_rhs,st_z_rhs);
+ 
+   // Note that we have already reconstructed vx and vy along the x-direction, 
+   //   at (i-1/2,j,k). That result is stored in v{x,y}{r,l}.  Bx_stagger data
+   //   are defined at (i+1/2,j,k).
+   // Next goal: reconstruct Bx, vx and vy at (i+1/2,j+1/2,k).
+   flux_dirn=2;
+-  // First compute ftilde, which is used for flattening left and right face values
+-  // This function is housed in the file: "reconstruct_set_of_prims_PPM.C"
+-  ftilde_gf_compute(cctkGH,cctk_lsh,flux_dirn, in_prims, ftilde_gf);
++  // ftilde = 0 in GRFFE, since P=rho=0.
+ 
+   // in_prims[{VXR,VXL,VYR,VYL}].gz_{lo,hi} ghostzones are set to all zeros, which
+   //    is incorrect. We fix this below.
+@@ -235,7 +207,7 @@
+   in_prims[VYL]=out_prims_l[VY];
+ 
+   /* There are two stories going on here: 
+-   * 1) Computation of \partial_y on RHS of \partial_t {rho_star,tau,mhd_st_{x,y,z}}, 
++   * 1) Computation of \partial_y on RHS of \partial_t {mhd_st_{x,y,z}}, 
+    *    via PPM reconstruction onto (i,j-1/2,k), so that 
+    *    \partial_y F = [ F(i,j+1/2,k) - F(i,j-1/2,k) ] / dy
+    * 2) Computation of \partial_t A_i, where A_i are *staggered* gridfunctions,
+@@ -260,13 +232,11 @@
+   which_prims_to_reconstruct[ww]=VXL;       ww++;
+   which_prims_to_reconstruct[ww]=VYL;       ww++;
+   num_prims_to_reconstruct=ww;
+-  // This function is housed in the file: "reconstruct_set_of_prims_PPM.C"
+-  reconstruct_set_of_prims_PPM(cctkGH,cctk_lsh,flux_dirn,num_prims_to_reconstruct,which_prims_to_reconstruct, 
+-                               eos,in_prims,out_prims_r,out_prims_l,ftilde_gf,temporary);
++  // This function is housed in the file: "reconstruct_set_of_prims_PPM_GRFFE.C"
++  reconstruct_set_of_prims_PPM_GRFFE(cctkGH,cctk_lsh,flux_dirn,num_prims_to_reconstruct,which_prims_to_reconstruct, 
++                                     in_prims,out_prims_r,out_prims_l,temporary);
+   ww=0;
+   // Reconstruct other primitives last!
+-  which_prims_to_reconstruct[ww]=RHOB;      ww++;
+-  which_prims_to_reconstruct[ww]=PRESSURE;  ww++;
+   which_prims_to_reconstruct[ww]=VX;        ww++;
+   which_prims_to_reconstruct[ww]=VY;        ww++;
+   which_prims_to_reconstruct[ww]=VZ;        ww++;
+@@ -276,22 +246,22 @@
+   which_prims_to_reconstruct[ww]=BX_STAGGER;ww++;
+   which_prims_to_reconstruct[ww]=BZ_STAGGER;ww++;
+   num_prims_to_reconstruct=ww;
+-  // This function is housed in the file: "reconstruct_set_of_prims_PPM.C"
+-  reconstruct_set_of_prims_PPM(cctkGH,cctk_lsh,flux_dirn,num_prims_to_reconstruct,which_prims_to_reconstruct, 
+-                               eos,in_prims,out_prims_r,out_prims_l,ftilde_gf,temporary);
+-  //Right and left face values of BI_CENTER are used in mhdflux computation (first to compute b^a).
++  // This function is housed in the file: "reconstruct_set_of_prims_PPM_GRFFE.C"
++  reconstruct_set_of_prims_PPM_GRFFE(cctkGH,cctk_lsh,flux_dirn,num_prims_to_reconstruct,which_prims_to_reconstruct, 
++                                     in_prims,out_prims_r,out_prims_l,temporary);
++  //Right and left face values of BI_CENTER are used in GRFFE__S_i__flux computation (first to compute b^a).
+   //   Instead of reconstructing, we simply set B^y face values to be consistent with BY_STAGGER.
+ #pragma omp parallel for
+   for(int k=0;k<cctk_lsh[2];k++) for(int j=0;j<cctk_lsh[1];j++) for(int i=0;i<cctk_lsh[0];i++) {
+         int index=CCTK_GFINDEX3D(cctkGH,i,j,k), indexjm1=CCTK_GFINDEX3D(cctkGH,i,j-1+(j==0),k); /* indexjm1=0 when j=0 */
+         out_prims_r[BY_CENTER].gf[index]=out_prims_l[BY_CENTER].gf[index]=in_prims[BY_STAGGER].gf[indexjm1]; }
+-  // Then add fluxes to RHS for hydro variables {rho_b,P,vx,vy,vz}:
++  // Then add fluxes to RHS for hydro variables {vx,vy,vz}:
+   // This function is housed in the file: "add_fluxes_and_source_terms_to_hydro_rhss.C"
+   add_fluxes_and_source_terms_to_hydro_rhss(flux_dirn,cctkGH,cctk_lsh,cctk_nghostzones,dX,   metric,in_prims,TUPmunu,
+-                                            num_prims_to_reconstruct,out_prims_r,out_prims_l,eos,
++                                            num_prims_to_reconstruct,out_prims_r,out_prims_l,
+                                             cmax_y,cmin_y,
+-                                            rho_star_flux,tau_flux,st_x_flux,st_y_flux,st_z_flux,
+-                                            rho_star_rhs,tau_rhs,st_x_rhs,st_y_rhs,st_z_rhs);
++                                            st_x_flux,st_y_flux,st_z_flux,
++                                            st_x_rhs,st_y_rhs,st_z_rhs);
+ 
+   /*****************************************
+    * COMPUTING RHS OF A_z, BOOKKEEPING NOTE:
+@@ -330,13 +300,11 @@
+   in_prims[VZL]=out_prims_l[VZ];
+ 
+   flux_dirn=3;
+-  // First compute ftilde, which is used for flattening left and right face values
+-  // This function is housed in the file: "reconstruct_set_of_prims_PPM.C"
+-  ftilde_gf_compute(cctkGH,cctk_lsh,flux_dirn, in_prims, ftilde_gf);
++  // ftilde = 0 in GRFFE, since P=rho=0.
+ 
+   /* There are two stories going on here: 
+-   * 1) Single reconstruction to (i,j,k-1/2) for {rho,P,vx,vy,vz,Bx,By,Bz} to compute
+-   *    z-dir'n advection terms in \partial_t {rho_star,tau,mhd_st_{x,y,z}} at (i,j,k)
++   * 1) Single reconstruction to (i,j,k-1/2) for {vx,vy,vz,Bx,By,Bz} to compute
++   *    z-dir'n advection terms in \partial_t {mhd_st_{x,y,z}} at (i,j,k)
+    * 2) Multiple reconstructions for *staggered* gridfunctions A_i:
+    *    \partial_t A_i = \epsilon_{ijk} \psi^{6} (v^j B^k - v^j B^k),
+    *    where \epsilon_{ijk} is the flat-space antisymmetric operator.
+@@ -357,13 +325,11 @@
+   which_prims_to_reconstruct[ww]=VYL;       ww++;
+   which_prims_to_reconstruct[ww]=VZL;       ww++;
+   num_prims_to_reconstruct=ww;
+-  // This function is housed in the file: "reconstruct_set_of_prims_PPM.C"
+-  reconstruct_set_of_prims_PPM(cctkGH,cctk_lsh,flux_dirn,num_prims_to_reconstruct,which_prims_to_reconstruct, 
+-                               eos,in_prims,out_prims_r,out_prims_l,ftilde_gf,temporary);
++  // This function is housed in the file: "reconstruct_set_of_prims_PPM_GRFFE.C"
++  reconstruct_set_of_prims_PPM_GRFFE(cctkGH,cctk_lsh,flux_dirn,num_prims_to_reconstruct,which_prims_to_reconstruct, 
++                                     in_prims,out_prims_r,out_prims_l,temporary);
+   // Reconstruct other primitives last!
+   ww=0;
+-  which_prims_to_reconstruct[ww]=RHOB;      ww++;
+-  which_prims_to_reconstruct[ww]=PRESSURE;  ww++;
+   which_prims_to_reconstruct[ww]=VX;        ww++;
+   which_prims_to_reconstruct[ww]=VY;        ww++;
+   which_prims_to_reconstruct[ww]=VZ;        ww++;
+@@ -373,22 +339,22 @@
+   which_prims_to_reconstruct[ww]=BX_STAGGER; ww++;
+   which_prims_to_reconstruct[ww]=BY_STAGGER; ww++;
+   num_prims_to_reconstruct=ww;
+-  // This function is housed in the file: "reconstruct_set_of_prims_PPM.C"
+-  reconstruct_set_of_prims_PPM(cctkGH,cctk_lsh,flux_dirn,num_prims_to_reconstruct,which_prims_to_reconstruct, 
+-                               eos,in_prims,out_prims_r,out_prims_l,ftilde_gf,temporary);
+-  //Right and left face values of BI_CENTER are used in mhdflux computation (first to compute b^a).
++  // This function is housed in the file: "reconstruct_set_of_prims_PPM_GRFFE.C"
++  reconstruct_set_of_prims_PPM_GRFFE(cctkGH,cctk_lsh,flux_dirn,num_prims_to_reconstruct,which_prims_to_reconstruct, 
++                                     in_prims,out_prims_r,out_prims_l,temporary);
++  //Right and left face values of BI_CENTER are used in GRFFE__S_i__flux computation (first to compute b^a).
+   //   Instead of reconstructing, we simply set B^z face values to be consistent with BZ_STAGGER.
+ #pragma omp parallel for
+   for(int k=0;k<cctk_lsh[2];k++) for(int j=0;j<cctk_lsh[1];j++) for(int i=0;i<cctk_lsh[0];i++) {
+         int index=CCTK_GFINDEX3D(cctkGH,i,j,k), indexkm1=CCTK_GFINDEX3D(cctkGH,i,j,k-1+(k==0)); /* indexkm1=0 when k=0 */
+         out_prims_r[BZ_CENTER].gf[index]=out_prims_l[BZ_CENTER].gf[index]=in_prims[BZ_STAGGER].gf[indexkm1]; }
+-  // Then add fluxes to RHS for hydro variables {rho_b,P,vx,vy,vz}:
++  // Then add fluxes to RHS for hydro variables {vx,vy,vz}:
+   // This function is housed in the file: "add_fluxes_and_source_terms_to_hydro_rhss.C"
+   add_fluxes_and_source_terms_to_hydro_rhss(flux_dirn,cctkGH,cctk_lsh,cctk_nghostzones,dX,   metric,in_prims,TUPmunu,
+-                                            num_prims_to_reconstruct,out_prims_r,out_prims_l,eos,
++                                            num_prims_to_reconstruct,out_prims_r,out_prims_l,
+                                             cmax_z,cmin_z,
+-                                            rho_star_flux,tau_flux,st_x_flux,st_y_flux,st_z_flux,
+-                                            rho_star_rhs,tau_rhs,st_x_rhs,st_y_rhs,st_z_rhs);
++                                            st_x_flux,st_y_flux,st_z_flux,
++                                            st_x_rhs,st_y_rhs,st_z_rhs);
+ 
+   // in_prims[{VYR,VYL,VZR,VZL}].gz_{lo,hi} ghostzones are not set correcty.
+   //    We fix this below.
+@@ -430,9 +396,7 @@
+ 
+   // We reprise flux_dirn=1 to finish up computations of Ai_rhs's!
+   flux_dirn=1;
+-  // First compute ftilde, which is used for flattening left and right face values
+-  // This function is housed in the file: "reconstruct_set_of_prims_PPM.C"
+-  ftilde_gf_compute(cctkGH,cctk_lsh,flux_dirn, in_prims, ftilde_gf);
++  // ftilde = 0 in GRFFE, since P=rho=0.
+ 
+   ww=0;
+   // NOTE! The order of variable reconstruction is important here,
+@@ -443,9 +407,9 @@
+   which_prims_to_reconstruct[ww]=VZL;       ww++;
+   which_prims_to_reconstruct[ww]=BZ_STAGGER;ww++;
+   num_prims_to_reconstruct=ww;
+-  // This function is housed in the file: "reconstruct_set_of_prims_PPM.C"
+-  reconstruct_set_of_prims_PPM(cctkGH,cctk_lsh,flux_dirn,num_prims_to_reconstruct,which_prims_to_reconstruct, 
+-                               eos,in_prims,out_prims_r,out_prims_l,ftilde_gf,temporary);
++  // This function is housed in the file: "reconstruct_set_of_prims_PPM_GRFFE.C"
++  reconstruct_set_of_prims_PPM_GRFFE(cctkGH,cctk_lsh,flux_dirn,num_prims_to_reconstruct,which_prims_to_reconstruct, 
++                                     in_prims,out_prims_r,out_prims_l,temporary);
+ 
+   /*****************************************
+    * COMPUTING RHS OF A_y, BOOKKEEPING NOTE:
+@@ -496,37 +460,32 @@
+   if(max_num_interp_variables>MAXNUMINTERP) {CCTK_VError(VERR_DEF_PARAMS,"Error: Didn't allocate enough space for interp_vars[]."); }
+   // We are FINISHED with v{x,y,z}{r,l} and P{r,l} so we use these 8 gridfunctions' worth of space as temp storage.
+   Lorenz_psi6phi_rhs__add_gauge_terms_to_A_i_rhs(cctkGH,cctk_lsh,cctk_nghostzones,dX,interp_vars,psi6phi, 
+-                                                 vxr,vyr,vzr,vxl,vyl,vzl,Pr,Pl,
++                                                 vxr,vyr,vzr,vxl,vyl,vzl,vxrr,vxrl, /* WARNING: ALL VARIABLES ON THIS LINE ARE OVERWRITTEN FOR TEMP STORAGE */
+                                                  psi6phi_rhs,Ax_rhs,Ay_rhs,Az_rhs);
+ 
+-
+-  return;
+-  /*
+-  // FUN DEBUGGING TOOL (trust me!): 
+   #pragma omp parallel for
+   for(int k=0;k<cctk_lsh[2];k++) for(int j=0;j<cctk_lsh[1];j++) for(int i=0;i<cctk_lsh[0];i++) {
+   int index=CCTK_GFINDEX3D(cctkGH,i,j,k);
+-  //st_x_rhs[index]=0.0;
+-  //st_y_rhs[index]=0.0;
+-  //st_z_rhs[index]=0.0;
+-  //rho_star_rhs[index]=0.0;
+-  //tau_rhs[index]=0.0;
++        if(r[index]<R_NS_aligned_rotator) {
++          st_x_rhs[index]=0.0;
++          st_y_rhs[index]=0.0;
++          st_z_rhs[index]=0.0;
+ 
+   psi6phi_rhs[index] = 0.0;
+   Ax_rhs[index] = 0.0;
+   Ay_rhs[index] = 0.0;
+   Az_rhs[index] = 0.0;
+   }
+-  */
++      }
+ }
+ 
+ // We add #include's here instead of compiling these separately to help ensure that functions are properly inlined.
+ //    These files only include about 800 lines of code in total (~1200 lines in total), but it's arguably more
+ //    convenient to edit a 600 line file than an 1800 line file, so I'd prefer to leave this unconventional structure
+ //    alone.
+-#include "reconstruct_set_of_prims_PPM.C"
+-#include "compute_tau_rhs_extrinsic_curvature_terms_and_TUPmunu.C"
++#include "reconstruct_set_of_prims_PPM_GRFFE.C"
++#include "compute_TUPmunu.C"
+ #include "add_fluxes_and_source_terms_to_hydro_rhss.C"
+-#include "mhdflux.C"
++#include "GRFFE__S_i__flux.C"
+ #include "A_i_rhs_no_gauge_terms.C"
+ #include "Lorenz_psi6phi_rhs__add_gauge_terms_to_A_i_rhs.C"
+--- IllinoisGRMHD/src/driver_evaluate_MHD_rhs.h	2017-01-10 10:54:34.000000000 -0600
++++ GiRaFFE/src/driver_evaluate_FFE_rhs.h	2017-10-03 22:08:55.329532568 -0500
+@@ -2,17 +2,13 @@
+ #define DRIVER_EVALUATE_MHD_RHS_H_
+ 
+ /* PRIVATE FUNCTIONS, Called within driver_evaluate_MHD_rhs.C ONLY */
+-static void ftilde_gf_compute(const cGH *cctkGH,const int *cctk_lsh,const int flux_dirn,gf_and_gz_struct *input,CCTK_REAL *ftilde_gf);
+-static void reconstruct_set_of_prims_PPM(const cGH *cctkGH,const int *cctk_lsh,const int flux_dirn,const int num_prims_to_reconstruct,const int *which_prims_to_reconstruct, 
+-                                         eos_struct &eosi,gf_and_gz_struct *in_prims,gf_and_gz_struct *out_prims_r,gf_and_gz_struct *out_prims_l,
+-                                         CCTK_REAL *ftilde_gf,CCTK_REAL *temporary);
++static void reconstruct_set_of_prims_PPM_GRFFE(const cGH *cctkGH,const int *cctk_lsh,const int flux_dirn,const int num_prims_to_reconstruct,const int *which_prims_to_reconstruct, 
++                                               gf_and_gz_struct *in_prims,gf_and_gz_struct *out_prims_r,gf_and_gz_struct *out_prims_l,CCTK_REAL *temporary);
+ 
+-static void compute_tau_rhs_extrinsic_curvature_terms_and_TUPmunu
++static void compute_TUPmunu
+ (const cGH *cctkGH,const int *cctk_lsh,const int *cctk_nghostzones,CCTK_REAL *dX,CCTK_REAL **metric,gf_and_gz_struct *prims,
+- CCTK_REAL **TUPmunu,eos_struct &eos,
+- CCTK_REAL *gupxy,CCTK_REAL *gupxz,CCTK_REAL *gupyz,
+- CCTK_REAL *kxx,CCTK_REAL *kxy,CCTK_REAL *kxz,CCTK_REAL *kyy,CCTK_REAL *kyz,CCTK_REAL *kzz,
+- CCTK_REAL *tau_rhs);
++ CCTK_REAL **TUPmunu,
++ CCTK_REAL *gupxy,CCTK_REAL *gupxz,CCTK_REAL *gupyz);
+ static void A_i_rhs_no_gauge_terms(const int A_dirn, const cGH *cctkGH,const int *cctk_lsh,const int *cctk_nghostzones,gf_and_gz_struct *out_prims_r,gf_and_gz_struct *out_prims_l,
+                                    CCTK_REAL *phi_interped,CCTK_REAL *cmax_1,CCTK_REAL *cmin_1,CCTK_REAL *cmax_2,CCTK_REAL *cmin_2, CCTK_REAL *A3_rhs);
+ 
+@@ -24,11 +20,9 @@
+ 
+ static void add_fluxes_and_source_terms_to_hydro_rhss(const int flux_dirn,const cGH *cctkGH,const int *cctk_lsh,const int *cctk_nghostzones,CCTK_REAL *dX,
+                                                       CCTK_REAL **metric,gf_and_gz_struct *in_prims,CCTK_REAL **TUPmunu,
+-                                                      int numvars_reconstructed,gf_and_gz_struct *out_prims_r,gf_and_gz_struct *out_prims_l,eos_struct &eos,
++                                                      int numvars_reconstructed,gf_and_gz_struct *out_prims_r,gf_and_gz_struct *out_prims_l,
+                                                       CCTK_REAL *cmax,CCTK_REAL *cmin,
+-                                                      CCTK_REAL *rho_star_flux,CCTK_REAL *tau_flux,CCTK_REAL *st_x_flux,CCTK_REAL *st_y_flux,CCTK_REAL *st_z_flux,
+-                                                      CCTK_REAL *rho_star_rhs,CCTK_REAL *tau_rhs,CCTK_REAL *st_x_rhs,CCTK_REAL *st_y_rhs,CCTK_REAL *st_z_rhs);
+-
+-#include "harm_primitives_headers.h"
++                                                      CCTK_REAL *st_x_flux,CCTK_REAL *st_y_flux,CCTK_REAL *st_z_flux,
++                                                      CCTK_REAL *st_x_rhs,CCTK_REAL *st_y_rhs,CCTK_REAL *st_z_rhs);
+ 
+ #endif /* DRIVER_EVALUATE_MHD_RHS_H_ */
+--- IllinoisGRMHD/src/reconstruct_set_of_prims_PPM.C	2016-08-03 09:25:55.000000000 -0500
++++ GiRaFFE/src/reconstruct_set_of_prims_PPM_GRFFE.C	2017-10-03 22:08:55.329532568 -0500
+@@ -3,8 +3,8 @@
+  * Zachariah B. Etienne (2013)
+  *
+  * This version of PPM implements the standard 
+- * Colella & Woodward PPM, though modified as in GRHydro
+- * to have 3 ghostzones instead of 4. 
++ * Colella & Woodward PPM, but in the GRFFE
++ * limit, where P=rho=0. Thus, e.g., ftilde=0.
+  *****************************************/
+ 
+ #define MINUS2 0
+@@ -18,16 +18,11 @@
+ // You'll find the #define's for LOOP_DEFINE and SET_INDEX_ARRAYS inside:
+ #include "loop_defines_reconstruction.h"
+ 
+-static inline CCTK_REAL ftilde_compute(const int flux_dirn,CCTK_REAL U[MAXNUMVARS][MAXNUMINDICES]);
+ static inline CCTK_REAL slope_limit(CCTK_REAL dU,CCTK_REAL dUp1);
+-static inline void steepen_rho(CCTK_REAL U[MAXNUMVARS][MAXNUMINDICES],CCTK_REAL slope_lim_dU[MAXNUMVARS][MAXNUMINDICES],
+-                               CCTK_REAL gamma_th,CCTK_REAL P_cold,CCTK_REAL gamma_cold,
+-                               CCTK_REAL *rho_br_ppm,CCTK_REAL *rho_bl_ppm);
+-static inline void compute_P_cold__gamma_cold(CCTK_REAL rho_b,eos_struct &eos,   CCTK_REAL &P_cold,CCTK_REAL &gamma_cold);
+ static inline void monotonize(CCTK_REAL U,CCTK_REAL &Ur,CCTK_REAL &Ul);
+ 
+-static void reconstruct_set_of_prims_PPM(const cGH *cctkGH,const int *cctk_lsh,const int flux_dirn,const int num_prims_to_reconstruct,const int *which_prims_to_reconstruct,eos_struct &eos,
+-                                         gf_and_gz_struct *in_prims,gf_and_gz_struct *out_prims_r,gf_and_gz_struct *out_prims_l,CCTK_REAL *ftilde_gf, CCTK_REAL *temporary) {
++static void reconstruct_set_of_prims_PPM_GRFFE(const cGH *cctkGH,const int *cctk_lsh,const int flux_dirn,const int num_prims_to_reconstruct,const int *which_prims_to_reconstruct,
++                                               gf_and_gz_struct *in_prims,gf_and_gz_struct *out_prims_r,gf_and_gz_struct *out_prims_l, CCTK_REAL *temporary) {
+ 
+   CCTK_REAL U[MAXNUMVARS][MAXNUMINDICES],dU[MAXNUMVARS][MAXNUMINDICES],slope_lim_dU[MAXNUMVARS][MAXNUMINDICES],
+     Ur[MAXNUMVARS][MAXNUMINDICES],Ul[MAXNUMVARS][MAXNUMINDICES];
+@@ -47,8 +42,8 @@
+     //                     Ul depends on U at MINUS2,MINUS1,PLUS0,PLUS1.
+     //  However, we define the below loop from MINUS2 to PLUS2. Why not split
+     //     this up and get additional points? The reason is that later on,
+-    //     Ur and Ul depend on ftilde, which is defined from MINUS2 to PLUS2,
+-    //     so we would lose those points anyway.
++    //     Ur and Ul depend on ftilde [FIXME: SET TO ZERO IN GRFFE.], which is
++    //     defined from MINUS2 to PLUS2, so we would lose those points anyway.
+     LOOP_DEFINE(2,2,  cctk_lsh,flux_dirn,  ijkgz_lo_hi,in_prims[whichvar].gz_lo,in_prims[whichvar].gz_hi) {
+       SET_INDEX_ARRAYS(-2,2,flux_dirn);
+       /* *** LOOP 1a: READ INPUT *** */
+@@ -58,7 +53,7 @@
+       /* *** LOOP 1b: DO COMPUTATION *** */
+       /* First, compute simple dU = U(i) - U(i-1), where direction of i 
+        *         is given by flux_dirn, and U is a primitive variable: 
+-       *         {rho_b,P,vx,vy,vz,Bx,By,Bz}. */
++       *         {vx,vy,vz,Bx,By,Bz}. */
+       // Note that for Ur and Ul at i, we must compute dU(i-1),dU(i),dU(i+1), 
+       //         and dU(i+2)
+       dU[whichvar][MINUS1] = U[whichvar][MINUS1]- U[whichvar][MINUS2];  
+@@ -81,62 +76,19 @@
+       Ul[whichvar][PLUS0] = 0.5*(U[whichvar][PLUS0] + U[whichvar][MINUS1]) + (1.0/6.0)*(slope_lim_dU[whichvar][MINUS1] - slope_lim_dU[whichvar][PLUS0]);
+ 
+       /* *** LOOP 1c: WRITE OUTPUT *** */
+-      // Store right face values to {rho_br,Pr,vxr,vyr,vzr,Bxr,Byr,Bzr},
+-      //    and left face values to {rho_bl,Pl,vxl,vyl,vzl,Bxl,Byl,Bzl}
++      // Store right face values to {vxr,vyr,vzr,Bxr,Byr,Bzr},
++      //    and left face values to {vxl,vyl,vzl,Bxl,Byl,Bzl}
+       out_prims_r[whichvar].gf[index_arr[flux_dirn][PLUS0]] = Ur[whichvar][PLUS0];
+       out_prims_l[whichvar].gf[index_arr[flux_dirn][PLUS0]] = Ul[whichvar][PLUS0];      
+     }
+ 
+-    // *** LOOP 2: STEEPEN RHOB ***
+-    // Note that this loop applies ONLY to RHOB.
+-    if(whichvar==RHOB) {
+-      LOOP_DEFINE(2,2,  cctk_lsh,flux_dirn,  ijkgz_lo_hi,in_prims[whichvar].gz_lo,in_prims[whichvar].gz_hi) {
+-	SET_INDEX_ARRAYS(-2,2,flux_dirn);
+-	// Set rho and P separately, since within this loop,
+-	//  1) steepen_rho() depends on RHOB(MINUS2,MINUS1,PLUS0,PLUS1,PLUS2)
+-
+-	// Read in all primitives between MINUS2 & PLUS2. Store to U.
+-	for(int ii=MINUS2;ii<=PLUS2;ii++) U[RHOB][ii]     = in_prims[RHOB    ].gf[index_arr[flux_dirn][ii]];
+-	for(int ii=MINUS1;ii<=PLUS1;ii++) U[PRESSURE][ii] = in_prims[PRESSURE].gf[index_arr[flux_dirn][ii]];
+-	Ur[RHOB][PLUS0] = out_prims_r[RHOB].gf[index_arr[flux_dirn][PLUS0]];
+-	Ul[RHOB][PLUS0] = out_prims_l[RHOB].gf[index_arr[flux_dirn][PLUS0]];
+-
+-	dU[whichvar][MINUS1] = U[whichvar][MINUS1]- U[whichvar][MINUS2];  
+-	dU[whichvar][PLUS0]  = U[whichvar][PLUS0] - U[whichvar][MINUS1]; 
+-	dU[whichvar][PLUS1]  = U[whichvar][PLUS1] - U[whichvar][PLUS0];  
+-	dU[whichvar][PLUS2]  = U[whichvar][PLUS2] - U[whichvar][PLUS1];  
+-
+-	slope_lim_dU[whichvar][MINUS1]=slope_limit(dU[whichvar][MINUS1],dU[whichvar][PLUS0]);
+-	//slope_lim_dU[whichvar][PLUS0] =slope_limit(dU[whichvar][PLUS0], dU[whichvar][PLUS1]);
+-	slope_lim_dU[whichvar][PLUS1] =slope_limit(dU[whichvar][PLUS1], dU[whichvar][PLUS2]);
+-
+-	// Steepen rho
+-	// DEPENDENCIES: RHOB face values, RHOB(MINUS2,MINUS1,PLUS0,PLUS1,PLUS2), P(MINUS1,PLUS0,PLUS1), and slope_lim_dU[RHOB](MINUS1,PLUS1)
+-	CCTK_REAL P_cold=0,gamma_cold=0;
+-	compute_P_cold__gamma_cold(U[RHOB][PLUS0],eos,  P_cold,gamma_cold);
+-	steepen_rho(U,slope_lim_dU,   eos.gamma_th,P_cold,gamma_cold,  Ur[RHOB],Ul[RHOB]);
+-
+-	// Output rho
+-	out_prims_r[RHOB].gf[index_arr[flux_dirn][PLUS0]] = Ur[RHOB][PLUS0];
+-	out_prims_l[RHOB].gf[index_arr[flux_dirn][PLUS0]] = Ul[RHOB][PLUS0];
+-      }
+-    }
++    // *** LOOP 2 (REMOVED): STEEPEN RHOB. RHOB DOES NOT EXIST IN GRFFE EQUATIONS ***
+   }
+ 
+-  /* ORIGINAL PPM REQUIRES AT LEAST 4 GHOSTZONES, which can add
+-   *  significantly to the size of AMR ref. boundaries.
+-   *  To reduce to 3 ghostzones, we comment the following lines out:
+-   * if ((P[indexp1] - P[indexm1]) <= 0.0) {
+-   * f = MAX(ftilde,ftilde_p1);
+-   * } else {
+-   * f = MAX(ftilde,ftilde_m1);
+-   * }
+-   */
+-
+   // *** LOOP 3: FLATTEN BASED ON FTILDE AND MONOTONIZE ***
+   for(int ww=0;ww<num_prims_to_reconstruct;ww++) {
+     int whichvar=which_prims_to_reconstruct[ww];
+-    // ftilde() depends on P(MINUS2,MINUS1,PLUS1,PLUS2)
++    // ftilde() depends on P(MINUS2,MINUS1,PLUS1,PLUS2), THUS IS SET TO ZERO IN GRFFE
+     LOOP_DEFINE(2,2,  cctk_lsh,flux_dirn,  ijkgz_lo_hi,in_prims[whichvar].gz_lo,in_prims[whichvar].gz_hi) {
+       SET_INDEX_ARRAYS(0,0,flux_dirn);
+       
+@@ -145,10 +97,10 @@
+       Ul[whichvar][PLUS0] = out_prims_l[whichvar].gf[index_arr[flux_dirn][PLUS0]];
+ 
+       // ftilde_gf was computed in the function compute_ftilde_gf(), called before this routine
+-      CCTK_REAL ftilde = ftilde_gf[index_arr[flux_dirn][PLUS0]];
++      //CCTK_REAL ftilde = ftilde_gf[index_arr[flux_dirn][PLUS0]];
+       // ...and then flatten (local operation)
+-      Ur[whichvar][PLUS0]   = U[whichvar][PLUS0]*ftilde + Ur[whichvar][PLUS0]*(1.0-ftilde);
+-      Ul[whichvar][PLUS0]   = U[whichvar][PLUS0]*ftilde + Ul[whichvar][PLUS0]*(1.0-ftilde);
++      Ur[whichvar][PLUS0]   = Ur[whichvar][PLUS0];
++      Ul[whichvar][PLUS0]   = Ul[whichvar][PLUS0];
+ 
+       // Then monotonize
+       monotonize(U[whichvar][PLUS0],Ur[whichvar][PLUS0],Ul[whichvar][PLUS0]);
+@@ -156,10 +108,10 @@
+       out_prims_r[whichvar].gf[index_arr[flux_dirn][PLUS0]] = Ur[whichvar][PLUS0];
+       out_prims_l[whichvar].gf[index_arr[flux_dirn][PLUS0]] = Ul[whichvar][PLUS0];
+     }
+-    // Ur depends on ftilde, which depends on points of U between MINUS2 and PLUS2
++    // FIXME: ftilde=0 in GRFFE. Ur depends on ftilde, which depends on points of U between MINUS2 and PLUS2
+     out_prims_r[whichvar].gz_lo[flux_dirn]+=2; 
+     out_prims_r[whichvar].gz_hi[flux_dirn]+=2;
+-    // Ul depends on ftilde, which depends on points of U between MINUS2 and PLUS2
++    // FIXME: ftilde=0 in GRFFE. Ul depends on ftilde, which depends on points of U between MINUS2 and PLUS2
+     out_prims_l[whichvar].gz_lo[flux_dirn]+=2;
+     out_prims_l[whichvar].gz_hi[flux_dirn]+=2;
+   }
+@@ -222,50 +174,6 @@
+   return 0.0;
+ }
+ 
+-// standard Colella-Woodward parameters:
+-//    K0 = 0.1d0, eta1 = 20.0, eta2 = 0.05, epsilon = 0.01d0
+-#define K0      0.1
+-#define ETA1   20.0
+-#define ETA2    0.05
+-#define EPSILON 0.01
+-static inline void steepen_rho(CCTK_REAL U[MAXNUMVARS][MAXNUMINDICES],CCTK_REAL slope_lim_dU[MAXNUMVARS][MAXNUMINDICES],CCTK_REAL gamma_th,CCTK_REAL P_cold,CCTK_REAL gamma_cold,
+-                               CCTK_REAL *rho_br_ppm,CCTK_REAL *rho_bl_ppm) {
+-
+-  // Next compute centered differences d RHOB and d^2 RHOB
+-  CCTK_REAL d1rho_b     = 0.5*(U[RHOB][PLUS1] - U[RHOB][MINUS1]);
+-  CCTK_REAL d2rho_b_m1  = U[RHOB][PLUS0] - 2.0*U[RHOB][MINUS1] + U[RHOB][MINUS2];
+-  CCTK_REAL d2rho_b_p1  = U[RHOB][PLUS2] - 2.0*U[RHOB][PLUS1]  + U[RHOB][PLUS0];
+-
+-  // Compute effective Gamma = (partial P / partial rho0)_s /(P/rho0)
+-  CCTK_REAL Gamma = gamma_th + (gamma_cold-gamma_th)*P_cold/U[PRESSURE][PLUS0];
+-  CCTK_REAL contact_discontinuity_check = Gamma*K0*fabs(U[RHOB][PLUS1]-U[RHOB][MINUS1])*  
+-    MIN(U[PRESSURE][PLUS1],U[PRESSURE][MINUS1])  
+-    -fabs(U[PRESSURE][PLUS1]-U[PRESSURE][MINUS1])*MIN(U[RHOB][PLUS1],U[RHOB][MINUS1]);
+-  CCTK_REAL second_deriv_check = -d2rho_b_p1*d2rho_b_m1;
+-  CCTK_REAL relative_change_check = fabs(2.0*d1rho_b) - EPSILON*MIN(U[RHOB][PLUS1],U[RHOB][MINUS1]);
+-
+-  if(contact_discontinuity_check >= 0.0 && second_deriv_check >= 0.0 
+-     && relative_change_check >= 0.0) {
+-
+-    CCTK_REAL eta_tilde=0.0;
+-    if (fabs(d1rho_b) > 0.0) {
+-      eta_tilde = -(1.0/6.0)*(d2rho_b_p1-d2rho_b_m1)/(2.0*d1rho_b);
+-    }
+-    CCTK_REAL eta = MAX(0.0,MIN(ETA1*(eta_tilde - ETA2),1.0));
+-    // Next compute Urp1 and Ul for RHOB, using the MC prescription:
+-    // Ur_p1 = U_p1   - 0.5*slope_lim_dU_p1
+-    CCTK_REAL rho_br_mc_p1 = U[RHOB][PLUS1] - 0.5*slope_lim_dU[RHOB][PLUS1];
+-    // Ul = U_m1 + 0.5*slope_lim_dU_m1
+-    // Based on this line of code, Ur[index] = a_j - \delta_m a_j / 2. (cf. Eq. 65 in Marti & Muller's "PPM Method for 1D Relativistic Hydro." paper)
+-    //    So: Ur[indexp1] = a_{j+1} - \delta_m a_{j+1} / 2. This is why we have rho_br_mc[indexp1]
+-    CCTK_REAL rho_bl_mc    = U[RHOB][MINUS1] + 0.5*slope_lim_dU[RHOB][MINUS1];
+-
+-    rho_bl_ppm[PLUS0] = rho_bl_ppm[PLUS0]*(1.0-eta) + rho_bl_mc*eta; 
+-    rho_br_ppm[PLUS0] = rho_br_ppm[PLUS0]*(1.0-eta) + rho_br_mc_p1*eta;
+-
+-  }
+-}
+-
+ static inline void monotonize(CCTK_REAL U,CCTK_REAL &Ur,CCTK_REAL &Ul) {
+   CCTK_REAL dU = Ur - Ul;
+   CCTK_REAL mU = 0.5*(Ur+Ul);
+@@ -284,76 +192,3 @@
+     return;
+   }
+ }
+-
+-static inline void compute_P_cold__gamma_cold(CCTK_REAL rho_b,eos_struct &eos,   CCTK_REAL &P_cold,CCTK_REAL &gamma_cold) {
+-  // This code handles equations of state of the form defined
+-  // in Eqs 13-16 in http://arxiv.org/pdf/0802.0200.pdf
+-
+-  // Default in case rho_b == 0.0
+-  if(rho_b==0.0) { P_cold = 0.0; gamma_cold = eos.gamma_tab[0]; return; }
+-
+-  if(eos.neos==1) {
+-    // Eq. 14 of http://arxiv.org/pdf/0802.0200.pdf :
+-    // P_{cold} = K_i rho_i^{\Gamma_i}
+-    P_cold = eos.k_tab[0]*fasterpow_ppm_reconstruct(rho_b,eos.gamma_tab[0]);
+-    gamma_cold = eos.gamma_tab[0];
+-    return;
+-  }
+-  for(int nn=1;nn<eos.neos;nn++) {
+-    if (rho_b <= eos.rho_tab[nn]  &&  rho_b > eos.rho_tab[nn-1]) {
+-      P_cold = eos.k_tab[nn]*fasterpow_ppm_reconstruct(rho_b,eos.gamma_tab[nn]);
+-      gamma_cold = eos.gamma_tab[nn];
+-    }
+-  }
+-  if (rho_b > eos.rho_tab[eos.neos-1]) {
+-    P_cold = eos.k_tab[eos.neos]*fasterpow_ppm_reconstruct(rho_b,eos.gamma_tab[eos.neos]);
+-    gamma_cold = eos.gamma_tab[eos.neos];
+-  }
+-}
+-
+-#define OMEGA1   0.75
+-#define OMEGA2  10.0
+-#define EPSILON2 0.33
+-static void ftilde_gf_compute(const cGH *cctkGH,const int *cctk_lsh,const int flux_dirn,gf_and_gz_struct *in_prims,CCTK_REAL *ftilde_gf) {
+-  int ijkgz_lo_hi[4][2];
+-  CCTK_REAL U[MAXNUMVARS][MAXNUMINDICES];
+-  /*Remove gcc unused variable warning/error Re: Pragma statement in loop define:*/
+-  CCTK_REAL dU,slope_lim_dU,Ur,Ul; dU=slope_lim_dU=Ur=Ul=0.0; dU*=0;
+-  // Compute ftilde, which is used for flattening left and right face values
+-  LOOP_DEFINE(2,2,  cctk_lsh,flux_dirn,  ijkgz_lo_hi,in_prims[VX+(flux_dirn-1)].gz_lo,in_prims[VX+(flux_dirn-1)].gz_hi) {
+-    SET_INDEX_ARRAYS(-2,2,flux_dirn);
+-    for(int ii=MINUS2;ii<=PLUS2;ii++) U[PRESSURE][ii] = in_prims[PRESSURE].gf[index_arr[flux_dirn][ii]];
+-    U[VX+(flux_dirn-1)][MINUS1] = in_prims[VX+(flux_dirn-1)].gf[index_arr[flux_dirn][MINUS1]];
+-    U[VX+(flux_dirn-1)][PLUS1]  = in_prims[VX+(flux_dirn-1)].gf[index_arr[flux_dirn][PLUS1]];
+-
+-    // Compute ftilde, which is used for flattening left and right face values
+-    // DEPENDENCIES: P(MINUS2,MINUS1,PLUS1,PLUS2) and v^m(MINUS1,PLUS1), where m=flux_dirn={1,2,3}={x,y,z}.
+-    ftilde_gf[index_arr[flux_dirn][PLUS0]] = ftilde_compute(flux_dirn,U);
+-  }
+-}
+-
+-static inline CCTK_REAL ftilde_compute(const int flux_dirn,CCTK_REAL U[MAXNUMVARS][MAXNUMINDICES]) {
+-  CCTK_REAL dP1 = U[PRESSURE][PLUS1] - U[PRESSURE][MINUS1];
+-  CCTK_REAL dP2 = U[PRESSURE][PLUS2] - U[PRESSURE][MINUS2];
+-
+-  // MODIFICATION TO STANDARD PPM:
+-  // Cure roundoff error issues when dP1==0 or dP2==0 to 15 or more significant digits.
+-  CCTK_REAL avg1=0.5*(U[PRESSURE][PLUS1] + U[PRESSURE][MINUS1]);
+-  CCTK_REAL avg2=0.5*(U[PRESSURE][PLUS2] + U[PRESSURE][MINUS2]);
+-  if(fabs(dP1)/avg1<1e-15) dP1=0.0; /* If this is triggered, there is NO shock */
+-  if(fabs(dP2)/avg2<1e-15) dP2=0.0; /* If this is triggered alone, there may be a shock. Otherwise if triggered with above, NO shock. */
+-
+-  CCTK_REAL dP1_over_dP2=1.0;
+-  if (dP2 != 0.0) dP1_over_dP2 = dP1/dP2;
+-
+-  CCTK_REAL q1 = (dP1_over_dP2-OMEGA1)*OMEGA2;
+-  CCTK_REAL q2 = fabs(dP1)/MIN(U[PRESSURE][PLUS1],U[PRESSURE][MINUS1]);
+-
+-  // w==0 -> NOT inside a shock
+-  CCTK_REAL w=0.0;
+-
+-  // w==1 -> inside a shock
+-  if (q2 > EPSILON2 && q2*( (U[VX+(flux_dirn-1)][MINUS1]) - (U[VX+(flux_dirn-1)][PLUS1]) ) > 0.0) w = 1.0;
+-
+-  return MIN(1.0, w*MAX(0.0,q1));
+-}

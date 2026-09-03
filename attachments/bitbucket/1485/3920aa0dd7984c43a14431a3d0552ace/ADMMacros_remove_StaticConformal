@@ -1,0 +1,640 @@
+Index: doc/documentation.tex
+===================================================================
+--- doc/documentation.tex	(revision 117)
++++ doc/documentation.tex	(working copy)
+@@ -107,8 +107,8 @@
+ 
+ This thorn provides various macros which can be used to calculate
+ quantities, such as the Christoffel Symbol or Riemann Tensor
+-components, using the basic variables of thorn \textbf{ADMBase} (and
+-\textbf{StaticConformal} if required).  The macros can be used in both
++components, using the basic variables of thorn \textbf{ADMBase}.
++The macros can be used in both
+ Fortran and C code.  The macros work pointwise to calculate quantities
+ at the grid point $(\texttt{i},\texttt{j},\texttt{k})$; it's up to you
+ to loop over all the grid points where you want computations done.
+Index: src/macro/DZZDG_declare.h
+===================================================================
+--- src/macro/DZZDG_declare.h	(revision 117)
++++ src/macro/DZZDG_declare.h	(working copy)
+@@ -37,7 +37,7 @@
+ #undef  DZZDG_OODZ2
+ #define DZZDG_OODZ2 dzzdg_oodz2
+ #undef  DZZDG_DZZDPSI_O_PSI
+-#define DZZDG_DZZDPSI_O_PSI psizz(i,j,k)
++#define DZZDG_DZZDPSI_O_PSI 0.
+ 
+ /* Declare internal variables */
+       CCTK_REAL DZZDG_FAC
+@@ -75,7 +75,7 @@
+ #undef  DZZDG_OODZ2
+ #define DZZDG_OODZ2 dzzdg_oodz2
+ #undef  DZZDG_DZZDPSI_O_PSI
+-#define DZZDG_DZZDPSI_O_PSI psizz[ijk]
++#define DZZDG_DZZDPSI_O_PSI 0.
+ 
+ /* Declare internal variables */
+ CCTK_REAL DZZDG_FAC;
+Index: src/macro/DXDG_guts.h
+===================================================================
+--- src/macro/DXDG_guts.h	(revision 117)
++++ src/macro/DXDG_guts.h	(working copy)
+@@ -18,13 +18,8 @@
+ 
+ #ifdef FCODE 
+ 
+-      IF (conformal_state .eq. 0) THEN
+-        DXDG_PSI4 = 1
+-        DXDG_FAC  = 0
+-      ELSE
+-        DXDG_PSI4 = DXDG_PSI**4
+-        DXDG_FAC  = 4*DXDG_PSI4*DXDG_DXDPSI_O_PSI
+-      ENDIF
++      DXDG_PSI4 = 1
++      DXDG_FAC  = 0
+ 
+       DXDG_DXDGXX = DXDCG_DXDCGXX*DXDG_PSI4 + DXDG_FAC*DXDG_GXX
+       DXDG_DXDGXY = DXDCG_DXDCGXY*DXDG_PSI4 + DXDG_FAC*DXDG_GXY
+@@ -37,9 +32,9 @@
+ 
+ #ifdef CCODE
+ 
+-      DXDG_PSI4 = ((*conformal_state == 0)?1:DXDG_PSI*DXDG_PSI*DXDG_PSI*DXDG_PSI);
++      DXDG_PSI4 = 1;
+ 
+-      DXDG_FAC  = ((*conformal_state == 0)?0:4*DXDG_PSI4*DXDG_DXDPSI_O_PSI);
++      DXDG_FAC  = 0;
+ 
+       DXDG_DXDGXX = DXDCG_DXDCGXX*DXDG_PSI4 + DXDG_FAC*DXDG_GXX;
+       DXDG_DXDGXY = DXDCG_DXDCGXY*DXDG_PSI4 + DXDG_FAC*DXDG_GXY;
+Index: src/macro/DZZDG_guts.h
+===================================================================
+--- src/macro/DZZDG_guts.h	(revision 117)
++++ src/macro/DZZDG_guts.h	(working copy)
+@@ -22,13 +22,8 @@
+ 
+ #include "ADM_Derivative.h"
+ 
+-      /* Factor involving 2nd derivative of conformal factor */ 
+-      IF (conformal_state .eq. 0) THEN
+-        DZZDG_FAC  = 0
+-      ELSE
+-        DZZDG_FAC  = DZDG_PSI4*(4*DZZDG_DZZDPSI_O_PSI \
+-                   + 12*DZDG_DZDPSI_O_PSI*DZDG_DZDPSI_O_PSI)
+-      ENDIF
++      /* Factor involving 2nd derivative of conformal factor, nowadays zero */ 
++      DZZDG_FAC  = 0
+ 
+       if (local_spatial_order.eq.2) then
+         DZZDG_DZZDGXX = 2*DZDCG_DZDCGXX*DZDG_FAC + DZZDG_FAC*DZDG_GXX \
+@@ -71,9 +66,8 @@
+ 
+ #ifdef CCODE
+ 
+-      /* Factor involving 2nd derivative of conformal factor */ 
+-      DZZDG_FAC   = ((*conformal_state == 0)?0:
+-              DZDG_PSI4*(4*DZZDG_DZZDPSI_O_PSI + 12*DZDG_DZDPSI_O_PSI*DZDG_DZDPSI_O_PSI));
++      /* Factor involving 2nd derivative of conformal factor, nowadays zero */ 
++      DZZDG_FAC   = 0;
+ 
+       /* Now calculate the second deriatives */
+       DZZDG_DZZDGXX = 2*DZDCG_DZDCGXX*DZDG_FAC+DZZDG_FAC*DZDG_GXX+DZDG_PSI4
+Index: src/macro/DYDG_guts.h
+===================================================================
+--- src/macro/DYDG_guts.h	(revision 117)
++++ src/macro/DYDG_guts.h	(working copy)
+@@ -18,13 +18,8 @@
+ 
+ #ifdef FCODE 
+ 
+-      IF (conformal_state .eq. 0) THEN
+-        DYDG_PSI4 = 1
+-        DYDG_FAC  = 0
+-      ELSE
+-        DYDG_PSI4 = DYDG_PSI**4
+-        DYDG_FAC  = 4*DYDG_PSI4*DYDG_DYDPSI_O_PSI
+-      ENDIF
++      DYDG_PSI4 = 1
++      DYDG_FAC  = 0
+ 
+       DYDG_DYDGXX = DYDCG_DYDCGXX*DYDG_PSI4 + DYDG_FAC*DYDG_GXX
+       DYDG_DYDGXY = DYDCG_DYDCGXY*DYDG_PSI4 + DYDG_FAC*DYDG_GXY
+@@ -37,9 +32,9 @@
+ 
+ #ifdef CCODE
+ 
+-      DYDG_PSI4 = ((*conformal_state == 0)?1:DYDG_PSI*DYDG_PSI*DYDG_PSI*DYDG_PSI);
++      DYDG_PSI4 = 1;
+ 
+-      DYDG_FAC  = ((*conformal_state == 0)?0:4*DYDG_PSI4*DYDG_DYDPSI_O_PSI);
++      DYDG_FAC  = 0;
+ 
+       DYDG_DYDGXX = DYDCG_DYDCGXX*DYDG_PSI4 + DYDG_FAC*DYDG_GXX;
+       DYDG_DYDGXY = DYDCG_DYDCGXY*DYDG_PSI4 + DYDG_FAC*DYDG_GXY;
+Index: src/macro/DXYDG_declare.h
+===================================================================
+--- src/macro/DXYDG_declare.h	(revision 117)
++++ src/macro/DXYDG_declare.h	(working copy)
+@@ -94,7 +94,7 @@
+ #undef  DXYDG_OO4DXDY
+ #define DXYDG_OO4DXDY dxydg_oo4dxdy
+ #undef  DXYDG_DXYDPSI_O_PSI
+-#define DXYDG_DXYDPSI_O_PSI psixy(i,j,k)
++#define DXYDG_DXYDPSI_O_PSI 0.
+ 
+ /* Declare internal variables */
+       CCTK_REAL DXYDG_FAC
+@@ -187,7 +187,7 @@
+ #undef  DXYDG_OO4DXDY
+ #define DXYDG_OO4DXDY dxydg_oo4dxdy
+ #undef  DXYDG_DXYDPSI_O_PSI
+-#define DXYDG_DXYDPSI_O_PSI psixy[ijk]
++#define DXYDG_DXYDPSI_O_PSI 0.
+ 
+ /* Declare internal variables */
+ CCTK_REAL DXYDG_FAC;
+Index: src/macro/DCGDT_declare.h
+===================================================================
+--- src/macro/DCGDT_declare.h	(revision 117)
++++ src/macro/DCGDT_declare.h	(working copy)
+@@ -35,7 +35,7 @@
+ #undef  DCGDT_KZZ 
+ #define DCGDT_KZZ kzz(i,j,k)
+ #undef  DCGDT_PSI 
+-#define DCGDT_PSI psi(i,j,k)
++#define DCGDT_PSI 1.
+ 
+ /* Internal variables */
+ #undef  DCGDT_IPSI4
+@@ -87,7 +87,7 @@
+ #undef  DCGDT_KZZ 
+ #define DCGDT_KZZ kzz[ijk]
+ #undef  DCGDT_PSI 
+-#define DCGDT_PSI psi[ijk]
++#define DCGDT_PSI 1.
+ 
+ /* Internal variables */
+ #undef  DCGDT_IPSI4
+Index: src/macro/DCGDT_guts.h
+===================================================================
+--- src/macro/DCGDT_guts.h	(revision 117)
++++ src/macro/DCGDT_guts.h	(working copy)
+@@ -25,19 +25,6 @@
+       DCGDT_DCGYZDT = - 2*DCGDT_A*DCGDT_KYZ
+       DCGDT_DCGZZDT = - 2*DCGDT_A*DCGDT_KZZ
+ 
+-      IF (conformal_state .gt. 0) THEN
+-
+-        DCGDT_IPSI4 = 1D0/(DCGDT_PSI**4)
+-        
+-        DCGDT_DCGXXDT = DCGDT_DCGXXDT*DCGDT_IPSI4
+-        DCGDT_DCGXYDT = DCGDT_DCGXYDT*DCGDT_IPSI4
+-        DCGDT_DCGXZDT = DCGDT_DCGXZDT*DCGDT_IPSI4
+-        DCGDT_DCGYYDT = DCGDT_DCGYYDT*DCGDT_IPSI4
+-        DCGDT_DCGYZDT = DCGDT_DCGYZDT*DCGDT_IPSI4
+-        DCGDT_DCGZZDT = DCGDT_DCGZZDT*DCGDT_IPSI4
+-
+-      END IF
+-
+       IF (shift_state .ne. 0) THEN
+ 
+ #include "LIEG_guts.h"
+@@ -62,20 +49,6 @@
+       DCGDT_DCGYZDT = - 2*DCGDT_A*DCGDT_KYZ;
+       DCGDT_DCGZZDT = - 2*DCGDT_A*DCGDT_KZZ;
+ 
+-      if (*conformal_state > 0) 
+-      {
+-
+-        DCGDT_IPSI4 = 1/(DCGDT_PSI*DCGDT_PSI*DCGDT_PSI*DCGDT_PSI);
+-        
+-        DCGDT_DCGXXDT = DCGDT_DCGXXDT*DCGDT_IPSI4;
+-        DCGDT_DCGXYDT = DCGDT_DCGXYDT*DCGDT_IPSI4;
+-        DCGDT_DCGXZDT = DCGDT_DCGXZDT*DCGDT_IPSI4;
+-        DCGDT_DCGYYDT = DCGDT_DCGYYDT*DCGDT_IPSI4;
+-        DCGDT_DCGYZDT = DCGDT_DCGYZDT*DCGDT_IPSI4;
+-        DCGDT_DCGZZDT = DCGDT_DCGZZDT*DCGDT_IPSI4;
+-
+-      }
+-
+       if (*shift_state != 0)
+       {
+ 
+Index: src/macro/DZDG_guts.h
+===================================================================
+--- src/macro/DZDG_guts.h	(revision 117)
++++ src/macro/DZDG_guts.h	(working copy)
+@@ -18,13 +18,8 @@
+ 
+ #ifdef FCODE 
+ 
+-      IF (conformal_state .eq. 0) THEN
+-        DZDG_PSI4 = 1
+-        DZDG_FAC  = 0
+-      ELSE
+-        DZDG_PSI4 = DZDG_PSI**4
+-        DZDG_FAC  = 4*DZDG_PSI4*DZDG_DZDPSI_O_PSI
+-      ENDIF
++      DZDG_PSI4 = 1
++      DZDG_FAC  = 0
+ 
+       DZDG_DZDGXX = DZDCG_DZDCGXX*DZDG_PSI4 + DZDG_FAC*DZDG_GXX
+       DZDG_DZDGXY = DZDCG_DZDCGXY*DZDG_PSI4 + DZDG_FAC*DZDG_GXY
+@@ -37,9 +32,9 @@
+ 
+ #ifdef CCODE
+ 
+-      DZDG_PSI4 = ((*conformal_state == 0)?1:DZDG_PSI*DZDG_PSI*DZDG_PSI*DZDG_PSI);
++      DZDG_PSI4 = 1;
+ 
+-      DZDG_FAC  = ((*conformal_state == 0)?0:4*DZDG_PSI4*DZDG_DZDPSI_O_PSI);
++      DZDG_FAC  = 0;
+ 
+       DZDG_DZDGXX = DZDCG_DZDCGXX*DZDG_PSI4 + DZDG_FAC*DZDG_GXX;
+       DZDG_DZDGXY = DZDCG_DZDCGXY*DZDG_PSI4 + DZDG_FAC*DZDG_GXY;
+Index: src/macro/DYZDG_declare.h
+===================================================================
+--- src/macro/DYZDG_declare.h	(revision 117)
++++ src/macro/DYZDG_declare.h	(working copy)
+@@ -94,7 +94,7 @@
+ #undef  DYZDG_OO4DYDZ
+ #define DYZDG_OO4DYDZ dyzdg_oo4dydz
+ #undef  DYZDG_DYZDPSI_O_PSI
+-#define DYZDG_DYZDPSI_O_PSI psiyz(i,j,k)
++#define DYZDG_DYZDPSI_O_PSI 0.
+ 
+ /* Declare internal variables */
+       CCTK_REAL DYZDG_FAC
+@@ -187,7 +187,7 @@
+ #undef  DYZDG_OO4DYDZ
+ #define DYZDG_OO4DYDZ dyzdg_oo4dydz
+ #undef  DYZDG_DYZDPSI_O_PSI
+-#define DYZDG_DYZDPSI_O_PSI psiyz[ijk]
++#define DYZDG_DYZDPSI_O_PSI 0.
+ 
+ /* Declare internal variables */
+ CCTK_REAL DYZDG_FAC;
+Index: src/macro/DXDG_declare.h
+===================================================================
+--- src/macro/DXDG_declare.h	(revision 117)
++++ src/macro/DXDG_declare.h	(working copy)
+@@ -17,10 +17,10 @@
+ 
+ /* Input variables */
+ #undef  DXDG_PSI
+-#define DXDG_PSI psi(i,j,k)
++#define DXDG_PSI 1.
+ 
+ #undef  DXDG_DXDPSI_O_PSI
+-#define DXDG_DXDPSI_O_PSI psix(i,j,k)
++#define DXDG_DXDPSI_O_PSI 0.
+ 
+ #undef  DXDG_GXX    
+ #define DXDG_GXX    gxx(i,j,k)
+@@ -74,10 +74,10 @@
+ 
+ /* Input variables */
+ #undef  DXDG_PSI
+-#define DXDG_PSI psi[ijk]
++#define DXDG_PSI 1.
+ 
+ #undef  DXDG_DXDPSI_O_PSI
+-#define DXDG_DXDPSI_O_PSI psix[ijk]
++#define DXDG_DXDPSI_O_PSI 0.
+ 
+ #undef  DXDG_GXX    
+ #define DXDG_GXX    gxx[ijk]
+Index: src/macro/DZDG_declare.h
+===================================================================
+--- src/macro/DZDG_declare.h	(revision 117)
++++ src/macro/DZDG_declare.h	(working copy)
+@@ -17,10 +17,10 @@
+ 
+ /* Input variables */
+ #undef  DZDG_PSI
+-#define DZDG_PSI psi(i,j,k)
++#define DZDG_PSI 1.
+ 
+ #undef  DZDG_DZDPSI_O_PSI
+-#define DZDG_DZDPSI_O_PSI psiz(i,j,k)
++#define DZDG_DZDPSI_O_PSI 0.
+ 
+ #undef  DZDG_GXX    
+ #define DZDG_GXX    gxx(i,j,k)
+@@ -90,10 +90,10 @@
+ /* Input variables */
+ 
+ #undef  DZDG_PSI
+-#define DZDG_PSI psi[ijk]
++#define DZDG_PSI 1.
+ 
+ #undef  DZDG_DZDPSI_O_PSI
+-#define DZDG_DZDPSI_O_PSI psiz[ijk]
++#define DZDG_DZDPSI_O_PSI 0.
+ 
+ #undef  DZDG_GXX    
+ #define DZDG_GXX    gxx[ijk]
+Index: src/macro/DXXDG_guts.h
+===================================================================
+--- src/macro/DXXDG_guts.h	(revision 117)
++++ src/macro/DXXDG_guts.h	(working copy)
+@@ -22,13 +22,8 @@
+ 
+ #include "ADM_Derivative.h"
+ 
+-      /* Factor involving 2nd derivative of conformal factor */ 
+-      IF (conformal_state .eq. 0) THEN
+-        DXXDG_FAC  = 0
+-      ELSE
+-        DXXDG_FAC  = DXDG_PSI4*(4*DXXDG_DXXDPSI_O_PSI \
+-                                + 12*DXDG_DXDPSI_O_PSI*DXDG_DXDPSI_O_PSI)
+-      ENDIF
++      /* Factor involving 2nd derivative of conformal factor, nowadays zero */ 
++      DXXDG_FAC  = 0
+       
+       /* Now calculate the second derivatives */
+ 
+@@ -74,9 +69,8 @@
+ 
+ #ifdef CCODE
+ 
+-/* Factor involving 2nd derivative of conformal factor */ 
+-DXXDG_FAC   = ((*conformal_state == 0)?0:
+-              DXDG_PSI4*(4*DXXDG_DXXDPSI_O_PSI + 12*DXDG_DXDPSI_O_PSI*DXDG_DXDPSI_O_PSI));
++/* Factor involving 2nd derivative of conformal factor, nowadays zero */ 
++DXXDG_FAC   = 0;
+ 
+ /* Now calculate the second derivatives */
+       DXXDG_DXXDGXX = 2*DXDCG_DXDCGXX*DXDG_FAC+DXXDG_FAC*DXDG_GXX+DXDG_PSI4
+Index: src/macro/DXYDG_guts.h
+===================================================================
+--- src/macro/DXYDG_guts.h	(revision 117)
++++ src/macro/DXYDG_guts.h	(working copy)
+@@ -24,13 +24,8 @@
+ 
+ #include "ADM_Derivative.h"
+ 
+-      /* Factor involving 2nd derivative of conformal factor */ 
+-      IF (conformal_state .eq. 0) THEN
+-        DXYDG_FAC  = 0
+-      ELSE
+-        DXYDG_FAC  = DXDG_PSI4*(4*DXYDG_DXYDPSI_O_PSI + \
+-                     12*DXDG_DXDPSI_O_PSI*DYDG_DYDPSI_O_PSI)
+-      ENDIF
++      /* Factor involving 2nd derivative of conformal factor, nowadays zero */ 
++      DXYDG_FAC  = 0
+       
+       /* Now calculate the second deriatives */
+       if (local_spatial_order.eq.2) then
+@@ -75,9 +70,8 @@
+ 
+ #ifdef CCODE
+ 
+-/* Factor involving 2nd derivative of conformal factor */ 
+-      DXYDG_FAC   = ((*conformal_state == 0)?0:
+-              DXDG_PSI4*(4*DXYDG_DXYDPSI_O_PSI + 12*DXDG_DXDPSI_O_PSI*DYDG_DYDPSI_O_PSI));
++/* Factor involving 2nd derivative of conformal factor, nowadays zero */ 
++      DXYDG_FAC   = 0;
+ 
+ /* Now calculate the second deriatives */
+       DXYDG_DXYDGXX = DYDCG_DYDCGXX*DXDG_FAC+DXDCG_DXDCGXX*DYDG_FAC+DXYDG_FAC*DXDG_GXX
+Index: src/macro/DXZDG_guts.h
+===================================================================
+--- src/macro/DXZDG_guts.h	(revision 117)
++++ src/macro/DXZDG_guts.h	(working copy)
+@@ -24,13 +24,8 @@
+ 
+ #include "ADM_Derivative.h"
+ 
+-      /* Factor involving 2nd derivative of conformal factor */ 
+-      IF (conformal_state .eq. 0) THEN
+-        DXZDG_FAC  = 0
+-      ELSE
+-        DXZDG_FAC  =  DXDG_PSI4*(4*DXZDG_DXZDPSI_O_PSI \
+-                   + 12*DXDG_DXDPSI_O_PSI*DZDG_DZDPSI_O_PSI)
+-      ENDIF
++      /* Factor involving 2nd derivative of conformal factor, nowadays zero */ 
++      DXZDG_FAC  = 0
+ 
+       /* Now calculate the second deriatives */
+       if (local_spatial_order.eq.2) then 
+@@ -77,9 +72,8 @@
+ 
+ #ifdef CCODE
+ 
+-      /* Factor involving 2nd derivative of conformal factor */ 
+-      DXZDG_FAC   = ((*conformal_state == 0)?0:
+-              DXDG_PSI4*(4*DXZDG_DXZDPSI_O_PSI + 12*DXDG_DXDPSI_O_PSI*DZDG_DZDPSI_O_PSI));
++      /* Factor involving 2nd derivative of conformal factor, nowadays zero */ 
++      DXZDG_FAC   = 0;
+ 
+       /* Now calculate the second deriatives */
+       DXZDG_DXZDGXX = DZDCG_DZDCGXX*DXDG_FAC+DXDCG_DXDCGXX*DZDG_FAC+DXZDG_FAC*DXDG_GXX+
+Index: src/macro/DETG_guts.h
+===================================================================
+--- src/macro/DETG_guts.h	(revision 117)
++++ src/macro/DETG_guts.h	(working copy)
+@@ -13,11 +13,7 @@
+ 
+ #ifdef FCODE
+ 
+-      IF (conformal_state .eq. 0) THEN
+-         DETG_PSI4 = 1.0d0
+-      ELSE
+-         DETG_PSI4 = DETG_PSI**4
+-      ENDIF
++      DETG_PSI4 = 1.0d0
+ 
+       DETG_TEMPXX =  DETG_GYY*DETG_GZZ - DETG_GYZ*DETG_GYZ
+       DETG_TEMPXY =  DETG_GXZ*DETG_GYZ - DETG_GXY*DETG_GZZ
+@@ -37,7 +33,7 @@
+ 
+ #ifdef CCODE
+ 
+-DETG_PSI4 = ((*conformal_state == 0)?1:DETG_PSI*DETG_PSI*DETG_PSI*DETG_PSI);
++DETG_PSI4 = 1;
+ 
+ DETG_TEMPXX =  DETG_GYY*DETG_GZZ - DETG_GYZ*DETG_GYZ;
+ DETG_TEMPXY =  DETG_GXZ*DETG_GYZ - DETG_GXY*DETG_GZZ;
+Index: src/macro/DXXDG_declare.h
+===================================================================
+--- src/macro/DXXDG_declare.h	(revision 117)
++++ src/macro/DXXDG_declare.h	(working copy)
+@@ -37,7 +37,7 @@
+ #undef  DXXDG_OODX2
+ #define DXXDG_OODX2 dxxdg_oodx2
+ #undef  DXXDG_DXXDPSI_O_PSI
+-#define DXXDG_DXXDPSI_O_PSI psixx(i,j,k)
++#define DXXDG_DXXDPSI_O_PSI 0.
+ 
+ /* Declare internal variables */
+       CCTK_REAL DXXDG_FAC
+@@ -76,7 +76,7 @@
+ #undef  DXXDG_OODX2
+ #define DXXDG_OODX2 dxxdg_oodx2
+ #undef  DXXDG_DXXDPSI_O_PSI
+-#define DXXDG_DXXDPSI_O_PSI psixx[ijk]
++#define DXXDG_DXXDPSI_O_PSI 0.
+ 
+ /* Declare internal variables */
+ CCTK_REAL DXXDG_FAC;
+Index: src/macro/DXZDG_declare.h
+===================================================================
+--- src/macro/DXZDG_declare.h	(revision 117)
++++ src/macro/DXZDG_declare.h	(working copy)
+@@ -94,7 +94,7 @@
+ #undef  DXZDG_OO4DXDZ
+ #define DXZDG_OO4DXDZ dxzdg_oo4dxdz
+ #undef  DXZDG_DXZDPSI_O_PSI
+-#define DXZDG_DXZDPSI_O_PSI psixz(i,j,k)
++#define DXZDG_DXZDPSI_O_PSI 0.
+ 
+ /* Declare internal variables */
+       CCTK_REAL DXZDG_FAC
+@@ -187,7 +187,7 @@
+ #undef  DXZDG_OO4DXDZ
+ #define DXZDG_OO4DXDZ dxzdg_oo4dxdz
+ #undef  DXZDG_DXZDPSI_O_PSI
+-#define DXZDG_DXZDPSI_O_PSI psixz[ijk]
++#define DXZDG_DXZDPSI_O_PSI 0.
+ 
+ /* Declare internal variables */
+ CCTK_REAL DXZDG_FAC;
+Index: src/macro/DYYDG_guts.h
+===================================================================
+--- src/macro/DYYDG_guts.h	(revision 117)
++++ src/macro/DYYDG_guts.h	(working copy)
+@@ -22,13 +22,8 @@
+ 
+ #include "ADM_Derivative.h"
+ 
+-      /* Factor involving 2nd derivative of conformal factor */ 
+-      IF (conformal_state .eq. 0) THEN
+-        DYYDG_FAC  = 0
+-      ELSE
+-        DYYDG_FAC  = DYDG_PSI4*(4*DYYDG_DYYDPSI_O_PSI \
+-                                + 12*DYDG_DYDPSI_O_PSI*DYDG_DYDPSI_O_PSI)
+-      ENDIF
++      /* Factor involving 2nd derivative of conformal factor, nowadays zero */ 
++      DYYDG_FAC  = 0
+ 
+       /* Now calculate the second deriatives */
+       if (local_spatial_order.eq.2) then 
+@@ -73,9 +68,8 @@
+ 
+ #ifdef CCODE
+ 
+-      /* Factor involving 2nd derivative of conformal factor */ 
+-      DYYDG_FAC   = ((*conformal_state == 0)?0:
+-              DYDG_PSI4*(4*DYYDG_DYYDPSI_O_PSI + 12*DYDG_DYDPSI_O_PSI*DYDG_DYDPSI_O_PSI));
++      /* Factor involving 2nd derivative of conformal factor, nowadays zero */ 
++      DYYDG_FAC   = 0;
+ 
+       /* Now calculate the second deriatives */
+       DYYDG_DYYDGXX = 2*DYDCG_DYDCGXX*DYDG_FAC+DYYDG_FAC*DYDG_GXX+DYDG_PSI4
+Index: src/macro/DYYDG_declare.h
+===================================================================
+--- src/macro/DYYDG_declare.h	(revision 117)
++++ src/macro/DYYDG_declare.h	(working copy)
+@@ -37,7 +37,7 @@
+ #undef  DYYDG_OODY2
+ #define DYYDG_OODY2 dyydg_oody2
+ #undef  DYYDG_DYYDPSI_O_PSI
+-#define DYYDG_DYYDPSI_O_PSI psiyy(i,j,k)
++#define DYYDG_DYYDPSI_O_PSI 0.
+ 
+ /* Declare internal variables */
+       CCTK_REAL DYYDG_FAC
+@@ -75,7 +75,7 @@
+ #undef  DYYDG_OODY2
+ #define DYYDG_OODY2 dyydg_oody2
+ #undef  DYYDG_DYYDPSI_O_PSI
+-#define DYYDG_DYYDPSI_O_PSI psiyy[ijk]
++#define DYYDG_DYYDPSI_O_PSI 0.
+ 
+ /* Declare internal variables */
+ CCTK_REAL DYYDG_FAC;
+Index: src/macro/DETG_declare.h
+===================================================================
+--- src/macro/DETG_declare.h	(revision 117)
++++ src/macro/DETG_declare.h	(working copy)
+@@ -14,7 +14,7 @@
+ 
+ /* Input variables */
+ #undef  DETG_PSI
+-#define DETG_PSI psi(i,j,k)
++#define DETG_PSI 1.
+ 
+ #undef  DETG_GXX
+ #define DETG_GXX gxx(i,j,k)
+@@ -70,7 +70,7 @@
+ 
+ /* Input variables */
+ #undef  DETG_PSI
+-#define DETG_PSI psi[ijk]
++#define DETG_PSI 1.
+ 
+ #undef  DETG_GXX
+ #define DETG_GXX gxx[ijk]
+Index: src/macro/DYDG_declare.h
+===================================================================
+--- src/macro/DYDG_declare.h	(revision 117)
++++ src/macro/DYDG_declare.h	(working copy)
+@@ -17,10 +17,10 @@
+ 
+ /* Input variables */
+ #undef  DYDG_PSI
+-#define DYDG_PSI psi(i,j,k)
++#define DYDG_PSI 1.
+ 
+ #undef  DYDG_DYDPSI_O_PSI
+-#define DYDG_DYDPSI_O_PSI psiy(i,j,k)
++#define DYDG_DYDPSI_O_PSI 0.
+ 
+ #undef  DYDG_GXX    
+ #define DYDG_GXX    gxx(i,j,k)
+@@ -89,10 +89,10 @@
+ /* Input variables */
+ 
+ #undef  DYDG_PSI
+-#define DYDG_PSI psi[ijk]
++#define DYDG_PSI 1.
+ 
+ #undef  DYDG_DYDPSI_O_PSI
+-#define DYDG_DYDPSI_O_PSI psiy[ijk]
++#define DYDG_DYDPSI_O_PSI 0.
+ 
+ #undef  DYDG_GXX    
+ #define DYDG_GXX    gxx[ijk]
+Index: src/macro/DYZDG_guts.h
+===================================================================
+--- src/macro/DYZDG_guts.h	(revision 117)
++++ src/macro/DYZDG_guts.h	(working copy)
+@@ -24,13 +24,8 @@
+ 
+ #include "ADM_Derivative.h"
+ 
+-      /* Factor involving 2nd derivative of conformal factor */ 
+-      IF (conformal_state .eq. 0) THEN
+-        DYZDG_FAC  = 0
+-      ELSE
+-        DYZDG_FAC  = DYDG_PSI4*(4*DYZDG_DYZDPSI_O_PSI \
+-                                + 12*DYDG_DYDPSI_O_PSI*DZDG_DZDPSI_O_PSI)
+-      ENDIF
++      /* Factor involving 2nd derivative of conformal factor, nowadays zero */ 
++      DYZDG_FAC  = 0
+       
+       /* Now calculate the second deriatives */
+       if (local_spatial_order.eq.2) then
+@@ -74,9 +69,8 @@
+ 
+ #ifdef CCODE
+ 
+-      /* Factor involving 2nd derivative of conformal factor */ 
+-      DYZDG_FAC   = ((*conformal_state == 0)?0:
+-              DYDG_PSI4*(4*DYZDG_DYZDPSI_O_PSI + 12*DYDG_DYDPSI_O_PSI*DZDG_DZDPSI_O_PSI));
++      /* Factor involving 2nd derivative of conformal factor, nowadays zero */ 
++      DYZDG_FAC   = 0;
+ 
+       /* Now calculate the second deriatives */
+       DYZDG_DYZDGXX = DZDCG_DZDCGXX*DYDG_FAC+DYDCG_DYDCGXX*DZDG_FAC+DYZDG_FAC*DYDG_GXX

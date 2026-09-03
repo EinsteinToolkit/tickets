@@ -1,0 +1,36 @@
+diff --git a/Carpet/CarpetIOASCII/src/ioascii.cc b/Carpet/CarpetIOASCII/src/ioascii.cc
+index c7dab0a..add15e9 100644
+--- a/Carpet/CarpetIOASCII/src/ioascii.cc
++++ b/Carpet/CarpetIOASCII/src/ioascii.cc
+@@ -230,14 +230,19 @@ namespace CarpetIOASCII {
+   template<int outdim>
+   int IOASCII<outdim>::OutputGH (const cGH* const cctkGH)
+   {
++    DECLARE_CCTK_PARAMETERS;
++
+     ostringstream timer_name;
+     timer_name << "OutputGH<" << outdim << ">";
+     Carpet::Timer timer(timer_name.str());
+ 
+     timer.start();
+-    for (int vi=0; vi<CCTK_NumVars(); ++vi) {
+-      if (TimeToOutput(cctkGH, vi)) {
+-	TriggerOutput(cctkGH, vi);
++    CheckSteerableParameters (cctkGH);
++    if (strcmp (my_out_vars, "")) {
++      for (int vi=0; vi<CCTK_NumVars(); ++vi) {
++        if (TimeToOutput(cctkGH, vi)) {
++  	  TriggerOutput(cctkGH, vi);
++        }
+       }
+     }
+     timer.stop();
+@@ -259,8 +264,6 @@ namespace CarpetIOASCII {
+       return 0;
+     }
+     
+-    CheckSteerableParameters (cctkGH);
+-    
+     // check if output for this variable was requested
+     if (not requests.at(vindex)) {
+       return 0;

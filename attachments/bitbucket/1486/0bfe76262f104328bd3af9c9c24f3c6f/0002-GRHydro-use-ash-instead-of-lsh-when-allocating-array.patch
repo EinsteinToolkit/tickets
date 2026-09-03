@@ -1,0 +1,187 @@
+From fb40b3800881be341f2a8774104222d882a9d617 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Tue, 29 Oct 2013 13:29:22 -0700
+Subject: [PATCH 2/2] GRHydro: use ash instead of lsh when allocating arrays
+
+---
+ src/GRHydro_ENOReconstruct_drv.F90     |  8 ++++----
+ src/GRHydro_MP5Reconstruct_drv.F90     |  8 ++++----
+ src/GRHydro_PPMMReconstruct_drv.F90    |  8 ++++----
+ src/GRHydro_PPMReconstruct_drv.F90     |  2 +-
+ src/GRHydro_PPMReconstruct_drv_opt.F90 |  2 +-
+ src/GRHydro_ReconstructPoly.F90        | 16 ++++++++--------
+ src/GRHydro_TVDReconstruct_drv.F90     |  2 +-
+ src/GRHydro_WENOReconstruct_drv.F90    |  8 ++++----
+ 8 files changed, 27 insertions(+), 27 deletions(-)
+
+diff --git a/src/GRHydro_ENOReconstruct_drv.F90 b/src/GRHydro_ENOReconstruct_drv.F90
+index 7ad118d..66f60aa 100644
+--- a/src/GRHydro_ENOReconstruct_drv.F90
++++ b/src/GRHydro_ENOReconstruct_drv.F90
+@@ -61,7 +61,7 @@ subroutine GRHydro_ENOReconstruct_drv(CCTK_ARGUMENTS)
+ 
+   CCTK_INT :: ierr
+ 
+-  allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
++  allocate(trivial_rp(cctk_ash(1),cctk_ash(2),cctk_ash(3)),STAT=ierr)
+   if (ierr .ne. 0) then
+     call CCTK_WARN(0, "Allocation problems with trivial_rp")
+   end if
+@@ -69,9 +69,9 @@ subroutine GRHydro_ENOReconstruct_drv(CCTK_ARGUMENTS)
+   
+   
+ !!$ The dum variables are used as dummies if MHD on but divergence cleaning off
+-  allocate(dum(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),&
+-       dump(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),&
+-       dumm(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
++  allocate(dum(cctk_ash(1),cctk_ash(2),cctk_ash(3)),&
++       dump(cctk_ash(1),cctk_ash(2),cctk_ash(3)),&
++       dumm(cctk_ash(1),cctk_ash(2),cctk_ash(3)),STAT=ierr)
+ 
+   if (ierr .ne. 0) then
+     call CCTK_WARN(0, "Allocation problems with dum dump dumm")
+diff --git a/src/GRHydro_MP5Reconstruct_drv.F90 b/src/GRHydro_MP5Reconstruct_drv.F90
+index c3404d2..ac8ad68 100644
+--- a/src/GRHydro_MP5Reconstruct_drv.F90
++++ b/src/GRHydro_MP5Reconstruct_drv.F90
+@@ -65,15 +65,15 @@ subroutine GRHydro_MP5Reconstruct_drv(CCTK_ARGUMENTS)
+   CCTK_INT :: ierr
+ 
+ 
+-  allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
++  allocate(trivial_rp(cctk_ash(1),cctk_ash(2),cctk_ash(3)),STAT=ierr)
+   if (ierr .ne. 0) then
+     call CCTK_WARN(0, "Allocation problems with trivial_rp")
+   end if
+   
+ !!$ The dum variables are used as dummies if MHD on but divergence cleaning off
+-  allocate(dum(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),&
+-       dump(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),&
+-       dumm(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
++  allocate(dum(cctk_ash(1),cctk_ash(2),cctk_ash(3)),&
++       dump(cctk_ash(1),cctk_ash(2),cctk_ash(3)),&
++       dumm(cctk_ash(1),cctk_ash(2),cctk_ash(3)),STAT=ierr)
+ 
+   if (ierr .ne. 0) then
+     call CCTK_WARN(0, "Allocation problems with dum dump dumm")
+diff --git a/src/GRHydro_PPMMReconstruct_drv.F90 b/src/GRHydro_PPMMReconstruct_drv.F90
+index 003f8c9..bba844a 100644
+--- a/src/GRHydro_PPMMReconstruct_drv.F90
++++ b/src/GRHydro_PPMMReconstruct_drv.F90
+@@ -61,15 +61,15 @@ subroutine GRHydro_PPMMReconstruct_drv(CCTK_ARGUMENTS)
+ 
+   CCTK_INT :: ierr
+ 
+-  allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
++  allocate(trivial_rp(cctk_ash(1),cctk_ash(2),cctk_ash(3)),STAT=ierr)
+   if (ierr .ne. 0) then
+     call CCTK_WARN(0, "Allocation problems with trivial_rp")
+   end if
+   
+ !!$ The dum variables are used as dummies if MHD on but divergence cleaning off
+-  allocate(dum(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),&
+-       dump(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),&
+-       dumm(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
++  allocate(dum(cctk_ash(1),cctk_ash(2),cctk_ash(3)),&
++       dump(cctk_ash(1),cctk_ash(2),cctk_ash(3)),&
++       dumm(cctk_ash(1),cctk_ash(2),cctk_ash(3)),STAT=ierr)
+ 
+   call SpaceMask_GetTypeBits(type_bitsx, "Hydro_RiemannProblemX")
+   call SpaceMask_GetStateBits(trivialx, "Hydro_RiemannProblemX", &
+diff --git a/src/GRHydro_PPMReconstruct_drv.F90 b/src/GRHydro_PPMReconstruct_drv.F90
+index 985847f..036e228 100644
+--- a/src/GRHydro_PPMReconstruct_drv.F90
++++ b/src/GRHydro_PPMReconstruct_drv.F90
+@@ -57,7 +57,7 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+ 
+   logical :: apply_enhanced_ppm
+ 
+-  allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
++  allocate(trivial_rp(cctk_ash(1),cctk_ash(2),cctk_ash(3)),STAT=ierr)
+   if (ierr .ne. 0) then
+     call CCTK_WARN(0, "Allocation problems with trivial_rp")
+   end if
+diff --git a/src/GRHydro_PPMReconstruct_drv_opt.F90 b/src/GRHydro_PPMReconstruct_drv_opt.F90
+index fdee925..d69cf42 100644
+--- a/src/GRHydro_PPMReconstruct_drv_opt.F90
++++ b/src/GRHydro_PPMReconstruct_drv_opt.F90
+@@ -90,7 +90,7 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+     pvup = loc(vel)
+   end if
+ 
+-  allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
++  allocate(trivial_rp(cctk_ash(1),cctk_ash(2),cctk_ash(3)),STAT=ierr)
+   if (ierr .ne. 0) then
+     call CCTK_WARN(0, "Allocation problems with trivial_rp")
+   end if
+diff --git a/src/GRHydro_ReconstructPoly.F90 b/src/GRHydro_ReconstructPoly.F90
+index 6501d1a..60c8a00 100644
+--- a/src/GRHydro_ReconstructPoly.F90
++++ b/src/GRHydro_ReconstructPoly.F90
+@@ -74,18 +74,18 @@ subroutine ReconstructionPolytype(CCTK_ARGUMENTS)
+ 
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+ 
+-  allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
++  allocate(trivial_rp(cctk_ash(1),cctk_ash(2),cctk_ash(3)),STAT=ierr)
+   if (ierr .ne. 0) then
+     call CCTK_WARN(0, "Allocation problems with trivial_rp")
+   end if
+   
+-  allocate(psi4(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),&
+-       lbetax(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),&
+-       lbetay(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),&
+-       lbetaz(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),&
+-       dum(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),&
+-       dump(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),&
+-       dumm(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
++  allocate(psi4(cctk_ash(1),cctk_ash(2),cctk_ash(3)),&
++       lbetax(cctk_ash(1),cctk_ash(2),cctk_ash(3)),&
++       lbetay(cctk_ash(1),cctk_ash(2),cctk_ash(3)),&
++       lbetaz(cctk_ash(1),cctk_ash(2),cctk_ash(3)),&
++       dum(cctk_ash(1),cctk_ash(2),cctk_ash(3)),&
++       dump(cctk_ash(1),cctk_ash(2),cctk_ash(3)),&
++       dumm(cctk_ash(1),cctk_ash(2),cctk_ash(3)),STAT=ierr)
+ 
+   if (ierr .ne. 0) then
+     call CCTK_WARN(0, "Allocation problems with lbeta")
+diff --git a/src/GRHydro_TVDReconstruct_drv.F90 b/src/GRHydro_TVDReconstruct_drv.F90
+index 880e35e..f0956f1 100644
+--- a/src/GRHydro_TVDReconstruct_drv.F90
++++ b/src/GRHydro_TVDReconstruct_drv.F90
+@@ -84,7 +84,7 @@ subroutine TVDReconstruct_drv(g11, g12, g13, g22, g23, g33, vup, Bprim)
+   CCTK_REAL, DIMENSION(:,:,:,:), ALLOCATABLE :: wvel ! vel*w_lorentz
+   CCTK_REAL :: agxx,agxy,agxz,agyy,agyz,agzz         ! metric components
+ 
+-  allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
++  allocate(trivial_rp(cctk_ash(1),cctk_ash(2),cctk_ash(3)),STAT=ierr)
+   if (ierr .ne. 0) then
+     call CCTK_WARN(0, "Allocation problems with trivial_rp")
+   end if
+diff --git a/src/GRHydro_WENOReconstruct_drv.F90 b/src/GRHydro_WENOReconstruct_drv.F90
+index 80e72bd..0e77d04 100644
+--- a/src/GRHydro_WENOReconstruct_drv.F90
++++ b/src/GRHydro_WENOReconstruct_drv.F90
+@@ -125,15 +125,15 @@ subroutine GRHydro_WENOReconstruct_drv(CCTK_ARGUMENTS)
+ !   CCTK_REAL, dimension(ny) :: vxY,vyY,vzY
+ !   CCTK_REAL, dimension(nz) :: vxZ,vyZ,vzZ
+   
+-  allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
++  allocate(trivial_rp(cctk_ash(1),cctk_ash(2),cctk_ash(3)),STAT=ierr)
+   if (ierr .ne. 0) then
+     call CCTK_WARN(0, "Allocation problems with trivial_rp")
+   end if
+   
+ !!$ The dum variables are used as dummies if MHD on but divergence cleaning off
+-  allocate(dum(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),&
+-       dump(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),&
+-       dumm(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
++  allocate(dum(cctk_ash(1),cctk_ash(2),cctk_ash(3)),&
++       dump(cctk_ash(1),cctk_ash(2),cctk_ash(3)),&
++       dumm(cctk_ash(1),cctk_ash(2),cctk_ash(3)),STAT=ierr)
+ 
+   if (ierr .ne. 0) then
+     call CCTK_WARN(0, "Allocation problems with dum dump dumm")
+-- 
+1.8.4.3
+

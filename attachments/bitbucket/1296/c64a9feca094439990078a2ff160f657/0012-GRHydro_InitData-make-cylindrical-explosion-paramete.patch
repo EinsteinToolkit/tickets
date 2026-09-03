@@ -1,0 +1,83 @@
+From 4e3e88ffe7861f6ae85cfb3cbe2befcefcbecb9b Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Fri, 22 Mar 2013 20:42:53 -0700
+Subject: [PATCH 12/12] GRHydro_InitData: make cylindrical explosion
+ parameters parameters
+
+tie Gamma value used to that of eos_omni's gamma law eos
+---
+ param.ccl                             |   21 +++++++++++++++++++++
+ src/GRHydro_CylindricalExplosionM.F90 |   18 +++---------------
+ 2 files changed, 24 insertions(+), 15 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index 9ae8c56..09f3109 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -280,6 +280,27 @@ CCTK_REAL cyl_r_outer "Outer Radius"
+   (0:* :: "Any positive number"
+ } 1.0
+ 
++# the defaults are Komissarov's values
++CCTK_REAL cyl_rho_inner "density in inner core"
++{
++  (0:* :: "any positive number"
++} 1.d-4
++
++CCTK_REAL cyl_press_inner "pressure in inner core"
++{
++  (0:* :: "any positive number"
++} 3.d-5
++
++CCTK_REAL cyl_rho_outer "density in outer region"
++{
++  (0:* :: "any positive number"
++} 1.d-2
++
++CCTK_REAL cyl_press_outer "pressure in outer region"
++{
++  (0:* :: "any positive number"
++} 1.d0
++
+ # For magnetic advected loop test:
+ 
+ KEYWORD advectedloop_type "2-dimensional or 3-dimensional?"
+diff --git a/src/GRHydro_CylindricalExplosionM.F90 b/src/GRHydro_CylindricalExplosionM.F90
+index 6c76542..f8a0a7a 100644
+--- a/src/GRHydro_CylindricalExplosionM.F90
++++ b/src/GRHydro_CylindricalExplosionM.F90
+@@ -74,21 +74,7 @@ subroutine GRHydro_cylindricalexplosionM(CCTK_ARGUMENTS)
+   bvczl = Bz_init
+   
+ !!$Adiabatic index for test
+-  gam = (4.d0/3.d0)
+-
+-!!$Inner radius and outer radius (Komissarov's defaults)
+-!  r_inner = 8.d-1 
+-!  r_outer = 1.d0
+-  r_inner = cyl_r_inner
+-  r_outer = cyl_r_outer
+-  
+-!!$Inner values
+-  rhol   = 1.d-4
+-  pressl = 3.d-5
+-
+-!!$Outer values
+-  rhor   = 1.d-2
+-  pressr = 1.d0
++  gam = gl_gamma
+ 
+   nx = cctk_lsh(1)
+   ny = cctk_lsh(2)
+@@ -99,6 +85,8 @@ subroutine GRHydro_cylindricalexplosionM(CCTK_ARGUMENTS)
+       do k=1,nz
+ 
+ !!$direction represents the cylindrical radius here.
++!!$TODO: maybe switch these over so that shocktube_tube choses the axis of the
++!!$cylinder instead of the apparently random mapping
+         if (CCTK_EQUALS(shocktube_type,"xshock")) then
+            direction = sqrt((x(i,j,k)-shock_xpos)**2+&
+                 (y(i,j,k)-shock_ypos)**2)
+-- 
+1.7.10.4
+

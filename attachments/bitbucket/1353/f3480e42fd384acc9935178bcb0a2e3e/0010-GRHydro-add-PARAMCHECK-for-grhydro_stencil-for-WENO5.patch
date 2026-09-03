@@ -1,0 +1,28 @@
+From a11632e4869c5d35a14321a1306918860f6c25a3 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Wed, 8 May 2013 22:31:46 -0700
+Subject: [PATCH 10/12] GRHydro: add PARAMCHECK for grhydro_stencil for WENO5
+
+WENO5 needs at least a stencil width of 3
+---
+ src/GRHydro_ParamCheck.F90 |    4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/GRHydro_ParamCheck.F90 b/src/GRHydro_ParamCheck.F90
+index 1891462..b2aaf37 100644
+--- a/src/GRHydro_ParamCheck.F90
++++ b/src/GRHydro_ParamCheck.F90
+@@ -53,6 +53,10 @@ subroutine GRHydro_ParamCheck(CCTK_ARGUMENTS)
+     end if
+   end if
+ 
++  if (CCTK_EQUALS(recon_method,"weno").and.(GRHydro_stencil < 3)) then
++    call CCTK_PARAMWARN("The stencil size must be at least 3 to use WENO reconstruction.")
++  end if
++
+   if (CCTK_EQUALS(recon_method,"eno").and.(GRHydro_stencil < eno_order)) then
+     call CCTK_PARAMWARN("The stencil size must be at least the order of the reconstruction to use ENO reconstruction")
+   end if
+-- 
+1.7.10.4
+

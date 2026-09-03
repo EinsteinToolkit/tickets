@@ -1,0 +1,86 @@
+From: Erik Schnetter <eschnetter@perimeterinstitute.ca>
+Date: 2012-05-05
+Subject: Allow different boundary conditions in ADMBase
+
+Introduce a parameter ADMBase::admbase_boundary_condition selection
+which boundary condition ADMBase applies.
+
+
+Index: arrangements/EinsteinBase/ADMBase/src/InitSymBound.c
+===================================================================
+--- arrangements/EinsteinBase/ADMBase/src/InitSymBound.c	(revision 65)
++++ arrangements/EinsteinBase/ADMBase/src/InitSymBound.c	(working copy)
+@@ -123,9 +123,22 @@
+ }
+ 
+ /* A macro for selecting boundary conditions and checking for errors */
+-#define ADMBASE_BC(NAME, STENCIL)                                               \
+-    {if (Boundary_SelectGroupForBC(cctkGH, CCTK_ALL_FACES, STENCIL, -1, NAME, "flat") < 0) \
+-        CCTK_WARN(0, "Failed to register BC for "NAME"!");}
++static void select_bc(cGH const* const cctkGH, char const* const groupname)
++{
++  DECLARE_CCTK_PARAMETERS;
++  
++  int const ierr =
++    Boundary_SelectGroupForBC(cctkGH, CCTK_ALL_FACES, 1, -1,
++                              groupname, admbase_boundary_condition);
++  if (ierr < 0)
++  {
++    CCTK_VWarn (CCTK_WARN_ABORT,
++                __LINE__, __FILE__, CCTK_THORNSTRING,
++                "Failed to select boundary conditions for group %s",
++                groupname);
++  }
++}
++
+ /* Select boundary conditions on ADMBase variables */
+ void ADMBase_Boundaries(CCTK_ARGUMENTS)
+ {
+@@ -153,23 +166,22 @@
+   if (CCTK_EQUALS(evolution_method, "none"  ) ||
+       CCTK_EQUALS(evolution_method, "static")) 
+   {
+-    ADMBASE_BC("ADMBase::metric", stencil);
+-    ADMBASE_BC("ADMBase::curv", stencil);
++    select_bc(cctkGH, "ADMBase::metric");
++    select_bc(cctkGH, "ADMBase::curv");
+   }
+ 
+   if (CCTK_EQUALS(lapse_evolution_method, "static"))
+-    ADMBASE_BC("ADMBase::lapse", stencil);
++    select_bc(cctkGH, "ADMBase::lapse");
+ 
+   if (!CCTK_EQUALS(initial_dtlapse, "none") &&
+        CCTK_EQUALS(dtlapse_evolution_method, "static"))
+-    ADMBASE_BC("ADMBase::dtlapse", stencil);
++    select_bc(cctkGH, "ADMBase::dtlapse");
+ 
+   if (!CCTK_EQUALS(initial_shift, "none") &&
+        CCTK_EQUALS(shift_evolution_method, "static"))
+-    ADMBASE_BC("ADMBase::shift", stencil);
++    select_bc(cctkGH, "ADMBase::shift");
+ 
+   if (!CCTK_EQUALS(initial_dtshift, "none") &&
+        CCTK_EQUALS(dtshift_evolution_method, "static"))
+-    ADMBASE_BC("ADMBase::dtshift", stencil);
++    select_bc(cctkGH, "ADMBase::dtshift");
+ }
+-#undef ADMBase_BC
+Index: arrangements/EinsteinBase/ADMBase/param.ccl
+===================================================================
+--- arrangements/EinsteinBase/ADMBase/param.ccl	(revision 65)
++++ arrangements/EinsteinBase/ADMBase/param.ccl	(working copy)
+@@ -61,6 +61,13 @@
+ 
+ 
+ 
++STRING admbase_boundary_condition "Boundary condition for ADMBase variables"
++{
++  "" :: "must be a registered boundary condition"
++} "none"
++
++
++
+ KEYWORD metric_type "The semantics of the metric variables (physical, static conformal, etc)"
+ {
+   "physical" :: "metric and extrinsic curvature are the physical ones"

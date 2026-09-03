@@ -1,0 +1,422 @@
+Index: distribute-watch
+===================================================================
+--- distribute-watch	(revision 1423)
++++ distribute-watch	(working copy)
+@@ -7,6 +7,11 @@
+ 
+ 
+ 
++# TODO:
++# 1. Examine testsuite status
++
++
++
+ logdir = "log"
+ 
+ 
+Index: distribute
+===================================================================
+--- distribute	(revision 1423)
++++ distribute	(working copy)
+@@ -9,13 +9,14 @@
+ #    1. syncs the current source tree to the machine (if not local),
+ #    2. configures and builds from scratch both a debug and a
+ #       production configuration,
+-#    3. submits a test job, and
+-#    4. waits until the test job has finished.
++#    3. runs the testsuite,
++#    4. submits a test job, and
++#    5. waits until the test job has finished.
+ #
+-# The options --no-sync, --no-build, --no-clean, --no-reconfig, and
+-# --no-submit fine-tune the behaviour in the obvious way. The options
+-# --configuration=..., --thornlist=..., --parfile=..., and
+-# --walltime=... are also available.
++# The options --no-sync, --no-build, --no-clean, --no-reconfig,
++# --no-testsuite, and --no-submit fine-tune the behaviour in the
++# obvious way. The options --configuration=..., --thornlist=...,
++# --parfile=..., and --walltime=... are also available.
+ #
+ # Non-option arguments specify the set of machines on which the test
+ # should be performed. For example, I could use
+@@ -80,6 +81,16 @@
+ 
+ 
+ 
++# TODO:
++# 1. use "dist" as default configuration, not "sim"
++# 2. use different, built-in thornlist by default
++# 3. handle "memory=0" gracefully
++# 4. output simulation status (after "examining simulation status")
++# 5. output (remote) stdout file name when a simulation aborted
++# 6. examine testsuite output (and handle ignore-fail test cases)
++
++
++
+ import getopt
+ import math
+ import os
+@@ -166,6 +174,7 @@
+                                 "build", "no-build",
+                                 "clean", "no-clean",
+                                 "reconfig", "no-reconfig",
++                                "testsuite", "no-testsuite",
+                                 "submit", "no-submit",
+                                 "debug", "no-debug",
+                                 "configuration=",
+@@ -187,6 +196,13 @@
+     assert default!=None
+     return default
+ 
++def optfloat (options, name, default=None):
++    for option, value in options:
++        if option == ("--%s" % name):
++            return float(value)
++    assert default!=None
++    return default
++
+ def optstr (options, name, default=None):
+     for option, value in options:
+         if option == ("--%s" % name):
+@@ -194,12 +210,13 @@
+     assert default!=None
+     return default
+ 
+-do_sync     = optbool (options, "sync"    , True)
+-do_build    = optbool (options, "build"   , True)
+-do_clean    = optbool (options, "clean"   , True)
+-do_reconfig = optbool (options, "reconfig", True)
+-do_submit   = optbool (options, "submit"  , True)
+-do_debug    = optbool (options, "debug"  , True)
++do_sync      = optbool (options, "sync"     , True)
++do_build     = optbool (options, "build"    , True)
++do_clean     = optbool (options, "clean"    , True)
++do_reconfig  = optbool (options, "reconfig" , True)
++do_testsuite = optbool (options, "testsuite", True)
++do_submit    = optbool (options, "submit"   , True)
++do_debug     = optbool (options, "debug"    , True)
+ 
+ configuration = optstr (options, "configuration", "")
+ thornlist     = optstr (options, "thornlist",     "manifest/einsteintoolkit.th")
+@@ -210,11 +227,11 @@
+ #walltime = optstr (options, "walltime", "1:00:00")
+ parfile  = optstr (options, "parfile", "recover.par")
+ walltime = optstr (options, "walltime", "0:15:00")
+-sleep_time = int(optstr (options, "sleeptime", "60"))
+-
+ #parfile  = optstr (options, "parfile", "empty.par")
+ #walltime = optstr (options, "walltime", "0:10:00")
+ 
++sleep_time = optfloat (options, "sleeptime", 60.0)
++
+ machines = argv
+ if machines==[]:
+     machines = all_machines
+@@ -355,6 +372,7 @@
+     execute(command)
+ 
+ 
++
+ def list_simulations(machine):
+     command = flatten([["./simfactory/bin/sim"], get_remotes(machine),
+                        ["list-simulations"]])
+@@ -362,11 +380,7 @@
+ 
+ 
+ 
+-def get_status(machine):
+-    (path, file) = os.path.split(parfile)
+-    file = re.sub(r"\.[^.]*$", "", file) # remove suffix
+-    simulation = "%s-%s-%s" % (file, machine, date)
+-    
++def get_status(machine, simulation):
+     # Examine the simulation status
+     command = flatten([["./simfactory/bin/sim"], get_remotes(machine),
+                        ["list-simulations", simulation]])
+@@ -383,12 +397,74 @@
+ 
+ 
+ 
++def run_testsuite(machine):
++    if configuration:
++        if "--debug" in options:
++            configurations = ["%s-debug" % configuration]
++        else:
++            configurations = [configuration]
++    else:
++        configurations = []
++    
++    simulation = "testsuite-%s-%s" % (machine, date)
++    
++    status = get_status(machine, simulation)
++    if status != 'E':
++        fatal("Simulation exist before it is created")
++    
++    max_threads = int(get_mdb_entry(machine, "num-threads"))
++    ppn         = int(get_mdb_entry(machine, "ppn"))
++    max_nodes   = int(get_mdb_entry(machine, "nodes"))
++    procs       = 2
++    nodes       = max(1, procs / ppn)
++    nodes       = min(max_nodes, nodes)
++    cores       = nodes * ppn
++    procs       = min(cores, procs)
++    threads     = min(1, cores / procs)
++    threads     = max(max_threads, threads)
++    ppn_used    = procs * threads / nodes
++    info ("   Running %d processes with %d threads on %d cores of %d nodes" %
++          (procs, threads, cores, nodes))
++    
++    if configuration:
++        config_opts = ["--config", configuration]
++    else:
++        config_opts = []
++    
++    # Create and submit
++    command = flatten([["./simfactory/bin/sim"], get_remotes(machine),
++                       ["create-submit", simulation,
++                        "--testsuite"],
++                       ["--configuration=%s" % c for c in configurations],
++                       ["--parfile=%s" % parfile,
++                        "--walltime=%s" % walltime,
++                        "--procs=%s" % cores,
++                        "--ppn-used=%s" % ppn_used,
++                        "--num-threads=%s" % threads], config_opts])
++    execute(command)
++    
++    status = get_status(machine, simulation)
++    if status not in ['Q', 'R', 'F']:
++        fatal ("Simulation is not active after it has been submitted")
++    
++    return simulation
++
++
++
+ def create_submit(machine):
++    if configuration:
++        if "--debug" in options:
++            configurations = ["%s-debug" % configuration]
++        else:
++            configurations = [configuration]
++    else:
++        configurations = []
++    
+     (path, file) = os.path.split(parfile)
+     file = re.sub(r"\.[^.]*$", "", file) # remove suffix
+     simulation = "%s-%s-%s" % (file, machine, date)
+     
+-    status = get_status(machine)
++    status = get_status(machine, simulation)
+     if status != 'E':
+         fatal("Simulation exist before it is created")
+     
+@@ -401,6 +477,8 @@
+     nodes = max(min(want_nodes, max_nodes),
+                 int(math.ceil(want_memory / memory)))
+     procs = nodes * ppn
++    info ("   Running %d processes with %d threads on %d cores of %d nodes" %
++          (procs / num_threads, num_threads, procs, nodes))
+     
+     # In Python 2.5, this could be inlined with
+     #
+@@ -415,25 +493,24 @@
+ 
+     # Create and submit
+     command = flatten([["./simfactory/bin/sim"], get_remotes(machine),
+-                       ["create-submit", simulation,
+-                        "--parfile=%s" % parfile,
++                       ["create-submit", simulation],
++                       ["--configuration=%s" % c for c in configurations],
++                       ["--parfile=%s" % parfile,
+                         "--walltime=%s" % walltime,
+                         "--procs=%s" % procs,
+                         "--num-threads=%s" % num_threads], config_opts])
+     execute(command)
+     
+-    status = get_status(machine)
++    status = get_status(machine, simulation)
+     if status not in ['Q', 'R', 'F']:
+         fatal ("Simulation is not active after it has been submitted")
++    
++    return simulation
+ 
+ 
+ 
+-def submit(machine):
+-    (path, file) = os.path.split(parfile)
+-    file = re.sub(r"\.[^.]*$", "", file) # remove suffix
+-    simulation = "%s-%s-%s" % (file, machine, date)
+-    
+-    status = get_status(machine)
++def submit(machine, simulation):
++    status = get_status(machine, simulation)
+     if status not in ['I', 'F']:
+         fatal("Simulation is not inactive or finished before it is submitted")
+     
+@@ -442,18 +519,14 @@
+                        ["submit", simulation]])
+     execute(command)
+     
+-    status = get_status(machine)
++    status = get_status(machine, simulation)
+     if status not in ['Q', 'R', 'F']:
+         fatal("Simulation is not active after it has been submitted")
+ 
+ 
+ 
+-def presubmit(machine):
+-    (path, file) = os.path.split(parfile)
+-    file = re.sub(r"\.[^.]*$", "", file) # remove suffix
+-    simulation = "%s-%s-%s" % (file, machine, date)
+-    
+-    status = get_status(machine)
++def presubmit(machine, simulation):
++    status = get_status(machine, simulation)
+     if status not in ['Q', 'R', 'F']:
+         fatal("Simulation is not active before it is presubmitted")
+     
+@@ -462,28 +535,20 @@
+                        ["submit", simulation]])
+     execute(command)
+     
+-    status = get_status(machine)
++    status = get_status(machine, simulation)
+     if status not in ['Q', 'R', 'F']:
+         fatal("Simulation is not active after it has been submitted")
+ 
+ 
+ 
+-def show_output(machine):
+-    (path, file) = os.path.split(parfile)
+-    file = re.sub(r"\.[^.]*$", "", file) # remove suffix
+-    simulation = "%s-%s-%s" % (file, machine, date)
+-    
++def show_output(machine, simulation):
+     command = flatten([["./simfactory/bin/sim"], get_remotes(machine),
+                        ["show-output", simulation]])
+     execute(command)
+ 
+ 
+ 
+-def check_output(machine):
+-    (path, file) = os.path.split(parfile)
+-    file = re.sub(r"\.[^.]*$", "", file) # remove suffix
+-    simulation = "%s-%s-%s" % (file, machine, date)
+-    
++def check_output(machine, simulation):
+     command = flatten([["./simfactory/bin/sim"], get_remotes(machine),
+                        ["show-output", simulation]])
+     output = get_output(command)
+@@ -493,17 +558,13 @@
+ 
+ 
+ 
+-def wait(machine):
+-    (path, file) = os.path.split(parfile)
+-    file = re.sub(r"\.[^.]*$", "", file) # remove suffix
+-    simulation = "%s-%s-%s" % (file, machine, date)
+-
++def wait(machine, simulation):
+     my_sleep_time = sleep_time
+-    max_sleep_time = my_sleep_time         # seconds
++    max_sleep_time = 60.0       # seconds
+     while True:
+         # Examine the simulation status
+         info("Examining simulation status...")
+-        status = get_status(machine)
++        status = get_status(machine, simulation)
+         if status not in ['I', 'Q', 'R', 'F']:
+             fatal("Simulation is neither inactive nor active")
+         if status in ['I', 'F']:
+@@ -524,7 +585,7 @@
+     
+     # Examine the simulation output
+     info("Examining simulation output...")
+-    status = check_output(machine)
++    status = check_output(machine, simulation)
+     if status == 'S':
+         info("Simulation finished successfully.")
+     else:
+@@ -533,14 +594,10 @@
+ 
+ 
+ 
+-def cleanup(machine):
+-    (path, file) = os.path.split(parfile)
+-    file = re.sub(r"\.[^.]*$", "", file) # remove suffix
+-    simulation = "%s-%s-%s" % (file, machine, date)
+-    
++def cleanup(machine, simulation):
+     # Ensure simulation is active and finished (i.e. ready to be
+     # cleaned up)
+-    status = get_status (machine)
++    status = get_status(machine, simulation)
+     if status not in ['I', 'F']:
+         fatal("Simulation is not inactive or finished before cleanup")
+     # Clean up
+@@ -548,7 +605,7 @@
+                        ["cleanup", simulation]])
+     execute(command)
+     # Ensure simulation is inactive
+-    status = get_status (machine)
++    status = get_status(machine, simulation)
+     if status != 'I':
+         fatal("Simulation is not inactive after cleanup")
+ 
+@@ -574,32 +631,47 @@
+         build(machine, build_options)
+         info("Current configurations:")
+         list_configurations(machine)
++        info
+     
+     info("Current simulations:")
+     list_simulations(machine)
++    if do_testsuite:
++        info("Running testsuite...")
++        sim = run_testsuite(machine)
++        info("Waiting for testsuite...")
++        wait(machine, sim)
++        info("Cleaning up testsuite...")
++        cleanup(machine, sim)
++        info("Testsuite output:")
++        show_output(machine, sim)
++        info
++    
++    info("Current simulations:")
++    list_simulations(machine)
+     if do_submit:
+         info("Submitting test job...")
+-        create_submit(machine)
++        sim = create_submit(machine)
+         info("Waiting for test job...")
+-        wait(machine)
++        wait(machine, sim)
+         info("Cleaning up test job...")
+-        cleanup(machine)
++        cleanup(machine, sim)
+         info("Submitting a second test job...")
+-        submit(machine)
++        submit(machine, sim)
+         info("Presubmitting second test job...")
+-        presubmit(machine)
++        presubmit(machine, sim)
+         info("Waiting for second test job...")
+-        wait(machine)
+-        info("Waiting for %d seconds..." % sleep_time)
++        wait(machine, sim)
++        info("Waiting for %g seconds..." % sleep_time)
+         time.sleep(sleep_time)
+         info("Waiting for second test job again...")
+-        wait(machine)
++        wait(machine, sim)
+         info("Cleaning up second test job...")
+-        cleanup(machine)
++        cleanup(machine, sim)
+         info("Current simulations:")
+         list_simulations(machine)
+         info("Simulation output:")
+-        show_output(machine)
++        show_output(machine, sim)
++        info
+ 
+ 
+ 

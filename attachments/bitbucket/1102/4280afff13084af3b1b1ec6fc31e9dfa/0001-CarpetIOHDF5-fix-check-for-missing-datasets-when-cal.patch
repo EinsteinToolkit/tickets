@@ -1,0 +1,66 @@
+From e9f925d0098e282b6d9a41c5b82fb7aeceba7212 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Fri, 14 Sep 2012 09:53:38 -0700
+Subject: [PATCH 1/2] CarpetIOHDF5: fix check for missing datasets when called
+ in FileReader mode
+
+only check datasets whose variables were actually requested to be read
+---
+ Carpet/CarpetIOHDF5/src/Input.cc |   19 +++++++++++++++++--
+ 1 file changed, 17 insertions(+), 2 deletions(-)
+
+diff --git a/Carpet/CarpetIOHDF5/src/Input.cc b/Carpet/CarpetIOHDF5/src/Input.cc
+index efd5f31..759a1d0 100644
+--- a/Carpet/CarpetIOHDF5/src/Input.cc
++++ b/Carpet/CarpetIOHDF5/src/Input.cc
+@@ -522,7 +522,18 @@ int Recover (cGH* cctkGH, const char *basefilename, int called_from)
+     }
+   }
+ 
++  // in filereader mode, mark all variables that are not requested as being
++  // read completely, mark all timelevels > 0 as being read completely
+   const ioGH* ioUtilGH = (const ioGH*) CCTK_GHExtension (cctkGH, "IO");
++  if (not in_recovery and ioUtilGH->do_inVars) {
++    for (unsigned int vindex = 0; vindex < read_completely.size(); vindex++) {
++      const int timestep = ioUtilGH->do_inVars[vindex];
++      for (unsigned int tl = 0 ; tl < read_completely[vindex].size() ; ++tl) {
++        read_completely[vindex][tl] = tl > 0 or not timestep;
++      }
++    }
++  }
++
+   CarpetIOHDF5GH* myGH =
+                   (CarpetIOHDF5GH*) CCTK_GHExtension (cctkGH, CCTK_THORNSTRING);
+   // allocate list of recovery filenames
+@@ -673,6 +684,10 @@ int Recover (cGH* cctkGH, const char *basefilename, int called_from)
+       }
+ 
+       for (unsigned int tl = 0; tl < read_completely[vindex].size(); tl++) {
++        if (called_from == FILEREADER_DATA and not
++            (not ioUtilGH->do_inVars or ioUtilGH->do_inVars[vindex])) {
++          continue;
++        }
+         all_done &= read_completely[vindex][tl];
+         if (not read_completely[vindex][tl] and not warned_about_multiple_files[vindex][tl]) {
+           static bool warned_once_already = false;
+@@ -725,7 +740,7 @@ int Recover (cGH* cctkGH, const char *basefilename, int called_from)
+ 
+     for (unsigned int tl = 0; tl < read_completely[vindex].size(); tl++) {
+       if (called_from == FILEREADER_DATA and not
+-          (ioUtilGH->do_inVars and ioUtilGH->do_inVars[vindex])) {
++          (not ioUtilGH->do_inVars or ioUtilGH->do_inVars[vindex])) {
+         continue;
+       }
+       if (called_from == FILEREADER_DATA and tl > 0) {
+@@ -799,7 +814,7 @@ int Recover (cGH* cctkGH, const char *basefilename, int called_from)
+       if (CCTK_GroupTypeFromVarI (vindex) == CCTK_GF or reflevel == 0) {
+         for (size_t tl = 0; tl < read_completely[vindex].size(); tl++) {
+           if (called_from != FILEREADER_DATA or
+-              (ioUtilGH->do_inVars and ioUtilGH->do_inVars[vindex]))
++              (not ioUtilGH->do_inVars or ioUtilGH->do_inVars[vindex]))
+           {
+             if (read_completely[vindex][tl]) {
+               int const gindex = CCTK_GroupIndexFromVarI (vindex);
+-- 
+1.7.10.4
+

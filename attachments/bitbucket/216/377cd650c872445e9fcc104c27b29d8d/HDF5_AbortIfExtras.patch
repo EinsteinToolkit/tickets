@@ -1,0 +1,22 @@
+Index: HDF5.sh
+===================================================================
+--- HDF5.sh	(revision 27)
++++ HDF5.sh	(working copy)
+@@ -8,8 +8,17 @@
+ set -x                          # Output commands
+ set -e                          # Abort on errors
+ 
++################################################################################
++# Check for old mechanism
++################################################################################
+ 
++choose_hdf5=`echo $HDF5 | tr '[:upper:]' '[:lower:]'`
+ 
++if test  "X$choose_hdf5" = 'Xyes' ; then 
++    echo "Error: Setting HDF5 = yes is incompatible with the HDF5 thorn.  Please remove HDF5 = yes."
++    exit 1
++fi
++
+ ################################################################################
+ # Search
+ ################################################################################

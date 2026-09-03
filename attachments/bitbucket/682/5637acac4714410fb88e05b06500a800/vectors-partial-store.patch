@@ -1,0 +1,171 @@
+Subject: Simplify API for partial vector stores
+From: Erik Schnetter <eschnetter@perimeterinstitute.ca>
+Date: 2011-11-26
+
+Implement vec_store_nta_partial, which offers a simpler interface,
+similar to the one used in OpenCL.
+
+
+Index: src/vectors-8-SSE2.h
+===================================================================
+--- src/vectors-8-SSE2.h	(revision 35)
++++ src/vectors-8-SSE2.h	(working copy)
+@@ -125,6 +125,34 @@
+ #  define vec8_store_nta(p,x) (_mm_stream_pd(&(p),x))
+ #endif
+ 
++// Store a partial vector (aligned and non-temporal)
++#define vec8_store_partial_prepare(i,imin,imax)                 \
++  bool const v8stp_lo = (i)>=(imin);                            \
++  bool const v8stp_hi = (i)+CCTK_REAL_VEC_SIZE<(imax)
++#if VECTORISE_STREAMING_STORES && defined(__SSE4A__)
++#  define vec8_store_nta_partial(p,x)                           \
++  ({                                                            \
++    if (CCTK_BUILTIN_EXPECT(v8stp_lo and v8stp_hi, true)) {     \
++      vec8_store_nta(p,x);                                      \
++    } else if (v8stp_lo) {                                      \
++      _mm_stream_sd(&p,x);                                      \
++    } else if (v8stp_lo) {                                      \
++      _mm_stream_sd(&p+1, vec8_swap10(x));                      \
++    }                                                           \
++  })
++#else
++#  define vec8_store_nta_partial(p,x)                           \
++  ({                                                            \
++    if (CCTK_BUILTIN_EXPECT(v8stp_lo and v8stp_hi, true)) {     \
++      vec8_store_nta(p,x);                                      \
++    } else if (v8stp_lo) {                                      \
++      _mm_storel_pd(&p,x);                                      \
++    } else if (v8stp_hi) {                                      \
++      _mm_storeh_pd(&p+1,x);                                    \
++    }                                                           \
++  })
++#endif
++
+ // Store a lower or higher partial vector (aligned and non-temporal)
+ #if ! VECTORISE_STREAMING_STORES
+ #  define vec8_store_nta_partial_lo(p,x,n) (_mm_storel_pd(&(p),x))
+Index: src/vectors-4-default.h
+===================================================================
+--- src/vectors-4-default.h	(revision 35)
++++ src/vectors-4-default.h	(working copy)
+@@ -49,6 +49,7 @@
+ // Unaligned store
+ #define vec4_store_nta(p,x) ((p)=(x))
+ 
++#define vec4_store_nta_partial(p,x,i,imin,imax) (vec4_store_nta(p,x))
+ // Store the n lower elements of a vector to memory
+ #define vec4_store_nta_partial_lo(p,x,n) (assert(0))
+ // Store the n higher elements of a vector into memory. This stores
+Index: src/vectors-8-default.h
+===================================================================
+--- src/vectors-8-default.h	(revision 35)
++++ src/vectors-8-default.h	(working copy)
+@@ -49,6 +49,8 @@
+ // Unaligned store
+ #define vec8_store_nta(p,x) ((p)=(x))
+ 
++#define vec8_store_partial_prepare(i,imin,imax) ((void)0)
++#define vec8_store_nta_partial(p,x) (vec8_store_nta(p,x))
+ // Store the n lower elements of a vector to memory
+ #define vec8_store_nta_partial_lo(p,x,n) (assert(0))
+ // Store the n higher elements of a vector into memory. This stores
+Index: src/test.cc
+===================================================================
+--- src/test.cc	(revision 35)
++++ src/test.cc	(working copy)
+@@ -126,6 +126,16 @@
+   VECTEST("vec_store", sv, b[i]);
+   sv = av; vec_store_nta(*s, bv);
+   VECTEST("vec_store_nta", sv, b[i]);
++  for (int dlo=-1; dlo<=CCTK_REAL_VEC_SIZE; ++dlo) {
++    for (int dhi=dlo; dhi<=CCTK_REAL_VEC_SIZE; ++dhi) {
++      sv = av;
++      vec_store_partial_prepare(0, dlo, dhi);
++      vec_store_nta_partial(*s, bv);
++      snprintf (testname, sizeof testname,
++                "vec_store_nta_partial[%d,%d]", dlo, dhi);
++      VECTEST(testname, sv, i>=dlo && i<dhi ? b[i] : a[i]);
++    }
++  }
+   /* The partial stores are not implemented for d==0 and
+      d==CCTK_REAL_VEC_SIZE-1 (because these are trivial) */
+   for (int d=1; d<CCTK_REAL_VEC_SIZE-1; ++d) {
+Index: src/vectors.h
+===================================================================
+--- src/vectors.h	(revision 35)
++++ src/vectors.h	(working copy)
+@@ -61,6 +61,8 @@
+ #  define vec_loadu_maybe3          vec4_loadu_maybe3
+ #  define vec_store                 vec4_store
+ #  define vec_store_nta             vec4_store_nta
++#  define vec_store_partial_prepare vec4_store_partial_prepare
++#  define vec_store_nta_partial     vec4_store_nta_partial
+ #  define vec_store_nta_partial_lo  vec4_store_nta_partial_lo
+ #  define vec_store_nta_partial_hi  vec4_store_nta_partial_hi
+ #  define vec_store_nta_partial_mid vec4_store_nta_partial_mid
+@@ -107,7 +113,9 @@
+ #  define vec_loadu_maybe           vec8_loadu_maybe
+ #  define vec_loadu_maybe3          vec8_loadu_maybe3
+ #  define vec_store                 vec8_store
++#  define vec_store_partial_prepare vec8_store_partial_prepare
+ #  define vec_store_nta             vec8_store_nta
++#  define vec_store_nta_partial     vec8_store_nta_partial
+ #  define vec_store_nta_partial_lo  vec8_store_nta_partial_lo
+ #  define vec_store_nta_partial_hi  vec8_store_nta_partial_hi
+ #  define vec_store_nta_partial_mid vec8_store_nta_partial_mid
+Index: src/vectors-8-AVX.h
+===================================================================
+--- src/vectors-8-AVX.h	(revision 35)
++++ src/vectors-8-AVX.h	(working copy)
+@@ -103,6 +103,50 @@
+ #  define vec8_store_nta(p,x) (_mm256_stream_pd(&(p),x))
+ #endif
+ 
++// Store a partial vector (aligned and non-temporal)
++#define vec8_store_partial_prepare(i,imin_,imax_)                       \
++  bool v8stp_all;                                                       \
++  __m256i v8stp_mask;                                                   \
++  ({                                                                    \
++    ptrdiff_t const imin1=(imin_);                                      \
++    ptrdiff_t const imin=imin1;                                         \
++    ptrdiff_t const imax1=(imax_);                                      \
++    ptrdiff_t const imax=imax1;                                         \
++                                                                        \
++    v8stp_all = i>=imin and i+CCTK_REAL_VEC_SIZE<imax;                  \
++                                                                        \
++    if (not CCTK_BUILTIN_EXPECT(v8stp_all, true)) {                     \
++      /*                                                                \
++        __m256i const v8stp_mask =                                      \
++          _mm256_andnot_pd(_mm256_add_epi64(_mm256_set1_epi64x(i-imin), \
++                                            vec_index),                 \
++                           _mm256_add_epi64(_mm256_set1_epi64x(i-imax), \
++                                            vec_index));                \
++      */                                                                \
++      __m128i const termlo0 =                                           \
++        _mm_add_epi64(_mm_set1_epi64x(i-imin), _mm_set_epi64x(0,1));    \
++      __m128i const termup0 =                                           \
++        _mm_add_epi64(_mm_set1_epi64x(i-imax), _mm_set_epi64x(0,1));    \
++      __m128i const term0 = _mm_andnot_si128(termlo0, termup0);         \
++      __m128i const termlo1 =                                           \
++        _mm_add_epi64(_mm_set1_epi64x(i-imin), _mm_set_epi64x(2,3));    \
++      __m128i const termup1 =                                           \
++        _mm_add_epi64(_mm_set1_epi64x(i-imax), _mm_set_epi64x(2,3));    \
++      __m128i const term1 = _mm_andnot_si128(termlo1, termup1);         \
++      v8stp_mask =                                                      \
++        _mm256_insertf128_si256(_mm256_castsi128_si256(term0), term1, 1); \
++    }                                                                   \
++  })
++
++#define vec8_store_nta_partial(p,x)             \
++  ({                                            \
++    if (CCTK_BUILTIN_EXPECT(v8stp_all, true)) { \
++      vec8_store_nta(p,x);                      \
++    } else {                                    \
++      _mm256_maskstore_pd(&p,v8stp_mask,x);     \
++    }                                           \
++  })
++
+ // Store a lower or higher partial vector (aligned and non-temporal);
+ // the non-temporal hint is probably ignored
+ static const k8const_t k8store_lo_union[5] =

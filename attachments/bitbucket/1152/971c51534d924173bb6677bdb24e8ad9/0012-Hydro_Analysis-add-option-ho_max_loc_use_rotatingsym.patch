@@ -1,0 +1,51 @@
+From 291e49dce6fc24bcfd4d5d2cc37b151f93469dff Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Thu, 15 Mar 2012 04:48:56 -0700
+Subject: [PATCH 12/12] Hydro_Analysis: add option
+ ho_max_loc_use_rotatingsymmetry180 to map found
+ maximum into positive x half-plane assuming
+ pi-symmetry
+
+---
+ param.ccl            |    4 ++++
+ src/Hydro_Analysis.c |    9 +++++++--
+ 2 files changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index 35180a5..1cde440 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -28,6 +28,10 @@ BOOLEAN Hydro_Analysis_rho_max_loc_only_positive_x "Restrict location search for
+ {
+ } "false"
+ 
++BOOLEAN Hydro_Analysis_rho_max_loc_use_rotatingsymmetry180 "Map found maxima into positive x half-plane assuming pi-symmetry" STEERABLE = always
++{
++} "false"
++
+ 
+ BOOLEAN Hydro_Analysis_comp_vol_weighted_center_of_mass "Look for the location of the volume-weighted center of mass" STEERABLE = recover
+ {
+diff --git a/src/Hydro_Analysis.c b/src/Hydro_Analysis.c
+index 7fe0a13..df5cda8 100644
+--- a/src/Hydro_Analysis.c
++++ b/src/Hydro_Analysis.c
+@@ -145,8 +145,13 @@ void Hydro_Analysis_LocationSearch_Search(CCTK_ARGUMENTS)
+                          *Hydro_Analysis_rho_max);
+             }
+           }
+-          local_rho_max_loc[0] += x[i3D];
+-          local_rho_max_loc[1] += y[i3D];
++          if (Hydro_Analysis_rho_max_loc_use_rotatingsymmetry180) {
++            local_rho_max_loc[0] += x[i3D] < 0 ? -x[i3D] : x[i3D]; // sign(x[i3D]) in both cases
++            local_rho_max_loc[1] += x[i3D] < 0 ? -y[i3D] : y[i3D];
++          } else {
++            local_rho_max_loc[0] += x[i3D];
++            local_rho_max_loc[1] += y[i3D];
++          }
+           local_rho_max_loc[2] += z[i3D];
+           local_rho_max_loc[3] += 1.;
+         }
+-- 
+1.7.10.4
+

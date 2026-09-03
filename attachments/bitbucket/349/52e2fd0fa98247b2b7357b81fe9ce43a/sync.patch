@@ -1,0 +1,132 @@
+Index: lib/sim-sync.py
+===================================================================
+--- lib/sim-sync.py	(revision 1297)
++++ lib/sim-sync.py	(working copy)
+@@ -116,42 +116,13 @@
+     sshcmd = simlib.GetSSHCommand(trampoline, sshcmd)
+     sshcmd = DefineDatabase.SubAll(sshcmd)
+     
+-    rsyncfiles = []
++    # This could optionally specify a subdirectory to rsync. We would
++    # then use a different rules file
++    rsyncfiles = ['./']
+ 
+     rsyncoptions = ['--archive', '--hard-links', '--sparse', '--verbose', '--progress', '--partial',
+-                    '--stats', '--compress', '--delete', '--delete-excluded']
+-        
+-    # sync source tree
+-    if sync_sourcetree:
+-        sources = simenv.ConfigurationDatabase.GetConfigOption('sync-sources')
+-        #dprint("sync-sources is: %s " % sources)
+-        if type(sources) == list:
+-            for r in sources:
+-                rp = simlib.BuildPath(local_sourcedir, r)
+-                #display("checking if %s exists" % rp)
+-                if os.path.exists(rp):
+-                    rsyncfiles.append(r)
+-    
+-    # sync par files
+-    if sync_parfiles:
+-        sources = simenv.ConfigurationDatabase.GetConfigOption('sync-parfiles')
+-        #dprint("sync-parfiles is: %s " % sources)
+-        if type(sources) == list:
+-            for r in sources:
+-                rp = simlib.BuildPath(local_sourcedir, r)
+-                #display("checking if %s exists" % rp)
+-                if os.path.exists(rp):
+-                    rsyncfiles.append(r)
++                    '--stats', '--compress', '--delete', '--filter \'merge simfactory/etc/filter.rules\'']
+ 
+-    # build excludes
+-    sources = simenv.ConfigurationDatabase.GetConfigOption('sync-excludes')
+-    if type(sources) == list:
+-        for r in sources:
+-            r = r.strip()
+-
+-            if len(r) > 0:
+-                rsyncoptions.append("--exclude '%s'" % r)
+-
+     fullpath = "%s@%s:%s%s%s" % (machineEntry.user, machineEntry.hostname, sourcebasedir, os.sep, local_suffix)
+     
+     arguments = " ".join(simlib.GetArguments())
+Index: etc/defs.ini
+===================================================================
+--- etc/defs.ini	(revision 1297)
++++ etc/defs.ini	(working copy)
+@@ -3,38 +3,4 @@
+ # any <<EOT...EOT entries are converted internally to lists, since all
+ # these options do actually represent lists of files
+ 
+-# Official Cactus, SimFactory, and GetComponents entries
+-sync-sources   = <<EOT
+-CONTRIBUTORS
+-COPYRIGHT
+-Makefile
+-arrangements
+-bin
+-lib
+-manifest
+-repos
+-simfactory
+-src
+-utils
+-EOT
+-
+-# Official Cactus, SimFactory, and GetComponents entries
+-sync-parfiles  = <<EOT
+-examples
+-par
+-EOT
+-
+-sync-excludes  = <<EOT
+-_darcs
+-CVS
+-doxygen
+-.#*
+-.DS_Store
+-.git
+-.hg
+-.svn
+-*~
+-EOT
+-# *.pyc
+-
+ default-configuration-name = sim
+Index: etc/filter.rules
+===================================================================
+--- etc/filter.rules	(revision 0)
++++ etc/filter.rules	(revision 0)
+@@ -0,0 +1,33 @@
++# This file contains the list of files to include/exclude.  See "man
++# rsync" for details.  The first matching pattern is used, whether it
++# is an include or an exclude.  If no pattern matches, the file is
++# included.
++
++# User specified filters
++: .rsync.rules
++
++# Official Cactus, SimFactory, and GetComponents entries
+++ /CONTRIBUTORS
+++ /COPYRIGHT
+++ /Makefile
+++ /arrangements
+++ /bin
+++ /examples
+++ /lib
+++ /manifest
+++ /par
+++ /repos
+++ /simfactory
+++ /src
+++ /utils
++
++# Files to exclude
++-C
++-p _darcs
++- doxygen
++- .DS_Store
++
++# Compiled simfactory python files
++-p *.pyc
++
++- *

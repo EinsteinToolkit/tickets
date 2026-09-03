@@ -1,0 +1,94 @@
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 75)
++++ param.ccl	(working copy)
+@@ -6,7 +6,7 @@
+ 
+ 
+ 
+-BOOLEAN poison_boundaries "Fill the symmetry boundary with a poison value before the symmetry is applied, and check afterwards whether it has been overwritten"
++BOOLEAN poison_boundaries "Fill the symmetry boundary with a poison value before the symmetry is applied" STEERABLE=always
+ {
+ } "no"
+ 
+@@ -14,3 +14,7 @@
+ {
+   0:255 :: "Must fit into a byte.  Use 0 for zero, 255 for nan, and e.g. 113 for a large value."
+ } 254
++
++BOOLEAN check_boundaries "Check the boundaries for poison" STEERABLE=always
++{
++} "no"
+Index: src/rotatingsymmetry90.c
+===================================================================
+--- src/rotatingsymmetry90.c	(revision 75)
++++ src/rotatingsymmetry90.c	(working copy)
+@@ -646,7 +646,7 @@
+       ierr = Util_TableDestroy (options);
+       assert (!ierr);
+       
+-      if (poison_boundaries) {
++      if (check_boundaries) {
+         /* check destination grid points for poison */
+         int have_bnd = 1;
+         for (q=0; q<ndirs; ++q) {
+@@ -673,6 +673,7 @@
+             break;
+           case CCTK_VARIABLE_REAL: {
+             int poison_found = 0;
++            int nonfinite_found = 0;
+             CCTK_REAL const * restrict const varptr = varptrs[var];
+             CCTK_REAL poison;
+             memset (&poison, poison_value, sizeof poison);
+@@ -681,14 +682,25 @@
+                 for (i=imin[2]; i<imax[0]; ++i) {
+                   const int ind = CCTK_GFINDEX3D(cctkGH, i, j, k);
+                   if (memcmp (&varptr[ind], &poison, sizeof poison) == 0) {
+-                    printf ("   ijk=[%d,%d,%d]\n", i, j, k);
++                    printf ("   poison ijk=[%d,%d,%d] val=%g\n",
++                            i, j, k, (double)varptr[ind]);
+                     poison_found = 1;
+                   }
++                  if (! isfinite(varptr[ind])) {
++                    printf ("   nonfinite ijk=[%d,%d,%d] val=%g\n",
++                            i, j, k, (double)varptr[ind]);
++                    nonfinite_found = 1;
++                  }
+                 }
+               }
+             }
+-            if (poison_found) {
+-              printf ("Poison found:\n");
++            if (poison_found || nonfinite_found) {
++              if (poison_found) {
++                printf ("Poison found:\n");
++              }
++              if (nonfinite_found) {
++                printf ("Non-finite number found:\n");
++              }
+               printf ("   levfac=[%d,%d,%d]\n", cctk_levfac[0], cctk_levfac[1], cctk_levfac[2]);
+               printf ("   origin_space=[%g,%g,%g]\n", cctk_origin_space[0], cctk_origin_space[1], cctk_origin_space[2]);
+               printf ("   delta_space=[%g,%g,%g]\n", cctk_delta_space[0], cctk_delta_space[1], cctk_delta_space[2]);
+@@ -696,7 +708,12 @@
+               printf ("   lsh=[%d,%d,%d]\n", cctk_lsh[0], cctk_lsh[1], cctk_lsh[2]);
+               printf ("   gsh=[%d,%d,%d]\n", cctk_gsh[0], cctk_gsh[1], cctk_gsh[2]);
+               printf ("   bbox=[%d,%d,%d,%d,%d,%d]\n", cctk_bbox[0], cctk_bbox[1], cctk_bbox[2], cctk_bbox[3], cctk_bbox[4], cctk_bbox[5]);
+-              CCTK_WARN (CCTK_WARN_ABORT, "Poison found in symmetry regions -- there is an error in this thorn");
++              if (poison_found) {
++                CCTK_WARN (CCTK_WARN_ABORT, "Poison found in symmetry regions -- there is an error in this thorn");
++              }
++              if (nonfinite_found) {
++                CCTK_WARN (CCTK_WARN_ALERT, "Non-finite number found in symmetry regions");
++              }
+             }
+             break;
+           }
+@@ -707,7 +724,7 @@
+             assert (0);
+           } /* switch grouptype */
+         } /* if bbox */
+-      } /* if poison_boundaries */
++      } /* if check_boundaries */
+       
+       /* take parity into account */
+       have_local_bbox = 1;

@@ -1,0 +1,61 @@
+From 0b54952a56aec0a22783c138358ae694cbcc498e Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@caltech.edu>
+Date: Sun, 22 Apr 2012 19:13:42 -0700
+Subject: [PATCH] CarpetRegrid2: do not create temporary empty boxes in
+ snap_to_coarse
+
+we enlarge the box by a coarse step and shrink it at the end, which effectivey
+prevents any intermediate boxes to be empty
+---
+ Carpet/CarpetRegrid2/src/property.cc |   22 +++++++++++++++++-----
+ 1 file changed, 17 insertions(+), 5 deletions(-)
+
+diff --git a/Carpet/CarpetRegrid2/src/property.cc b/Carpet/CarpetRegrid2/src/property.cc
+index c8ad169..967c6e7 100644
+--- a/Carpet/CarpetRegrid2/src/property.cc
++++ b/Carpet/CarpetRegrid2/src/property.cc
+@@ -256,6 +256,7 @@ namespace CarpetRegrid2 {
+            ibb = regions.at(rl).begin(); ibb != regions.at(rl).end(); ++ ibb)
+     {
+       ibbox const& bb = *ibb;
++      ibbox aa;
+       
+       // We want to align the current level (without its buffer zones)
+       // with the next coarser level. Conceptually, we therefore
+@@ -267,17 +268,28 @@ namespace CarpetRegrid2 {
+       // the current grid, and expand by N points again. This sequence
+       // is correct for both vertex and cell centred grids, and N is
+       // determined by the number of buffer zones.
++      //
++      // In order to avoid producing intermediate empty boxes, expand by
++      // reffact to ensure that the box encloses at least two coarse points,
++      // then shrink by this amount at the end again.
+       
+       // N is the number of buffer zones modulo the refinement factor.
+       // We cannot shrink the domain (since we cannot shrink
+       // bboxsets). For alignment, only operations modulo the
+       // refinement factor are relevant.
+       
+-      snapped |= bb.
+-        expand(reffact-1 - buffers % reffact).
+-        contracted_for(cbase).
+-        expanded_for(base).
+-        expand(buffers % reffact);
++      aa = bb;
++      assert(not aa.empty());
++      aa = aa.expand(reffact + reffact-1 - buffers % reffact);
++      assert(not aa.empty());
++      aa = aa.contracted_for(cbase);
++      assert(not aa.empty());
++      aa = aa.expanded_for(base);
++      assert(not aa.empty());
++      aa = aa.expand(buffers % reffact - reffact);
++      assert(not aa.empty());
++
++      snapped |= aa;
+     }
+     
+     return snapped;
+-- 
+1.7.10.4
+

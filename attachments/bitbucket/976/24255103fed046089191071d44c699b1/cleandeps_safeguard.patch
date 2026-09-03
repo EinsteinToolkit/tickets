@@ -1,0 +1,15 @@
+Index: lib/make/make.configuration
+===================================================================
+--- lib/make/make.configuration	(revision 4850)
++++ lib/make/make.configuration	(working copy)
+@@ -291,7 +291,9 @@
+ 
+ cleandeps:
+ 	@echo Deleting all dependency files in $(TOP)
+-	find $(TOP)/build \( -name '*.[d]' -o -name '*.a' \) -exec rm {} \;
++	if test -d $(TOP)/build; then \
++          find $(TOP)/build \( -name '*.[d]' -o -name '*.a' \) -exec rm {} \; ; \
++        fi
+ 
+ cleanobjs:
+ 	@echo Deleting all object files in $(TOP)

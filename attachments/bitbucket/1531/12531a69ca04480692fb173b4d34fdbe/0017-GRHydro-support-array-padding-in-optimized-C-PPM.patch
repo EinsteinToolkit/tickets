@@ -1,0 +1,103 @@
+From bbc44612b47b95a76c38cab7dc5ebd5ae1e4b021 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Mon, 25 Nov 2013 21:10:58 -0800
+Subject: [PATCH 17/36] GRHydro: support array padding in optimized C++ PPM
+
+---
+ src/GRHydro_PPMReconstruct_drv_opt.cc | 35 +++++++++++------------------------
+ 1 file changed, 11 insertions(+), 24 deletions(-)
+
+diff --git a/src/GRHydro_PPMReconstruct_drv_opt.cc b/src/GRHydro_PPMReconstruct_drv_opt.cc
+index 191fb17..76a9ce7 100644
+--- a/src/GRHydro_PPMReconstruct_drv_opt.cc
++++ b/src/GRHydro_PPMReconstruct_drv_opt.cc
+@@ -65,13 +65,12 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+     Bprim=Bvec;
+   }
+ 
+-  int nx=cctk_lsh[0];
+-  int ny=cctk_lsh[1];
+-  int nz=cctk_lsh[2];
+-  int nxy=nx*ny;
+-  int nxyz=nxy*nz;
++  const int nx=cctk_ash[0];
++  const int ny=cctk_ash[1];
++  const int nz=cctk_ash[2];
++  const int nxy=nx*ny;
++  const int nxyz=nxy*nz;
+ 
+-  //Is there a more efficient way?
+   int nmax_xyz=MAX(nx,MAX(ny,nz));
+ 
+   int type_bitsx,type_bitsy,type_bitsz;
+@@ -306,11 +305,7 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+           CCTK_WARN(0, "Someone needs to figure out which variables to pass for Avec");
+         }
+         
+-        //This needs to be fixed into a loop for the the template version!
+-        //WE'll need booleans arguments corresponding to the following 
+-        //ppm1d_cxx<do_temp,do_ye,do_mhd,clean_divergence,ppm_detect>
+-        
+-        ppm1d_cxx_func(nx,CCTK_DELTA_SPACE(0),
++        ppm1d_cxx_func(cctk_lsh[0],CCTK_DELTA_SPACE(0),
+            &rho1d[0],&velx1d[0],&vely1d[0],&velz1d[0],&eps1d[0],&press1d[0],&temp1d[0],
+            &ye1d[0],&Bvcx1d[0],&Bvcy1d[0],&Bvcz1d[0],&psidc1d[0],
+            &rho1d_minus[0],&velx1d_minus[0],&vely1d_minus[0],&velz1d_minus[0],&eps1d_minus[0],&temp1d_minus[0],
+@@ -354,7 +349,7 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+           }
+         }
+         for (i=0; i<nx; i++) {
+-          SpaceMask_SetStateBits(space_mask, i+j*nx+k*nx*ny, type_bitsx, not_trivialx);
++          SpaceMask_SetStateBits(space_mask, CCTK_GFINDEX3D(cctkGH, i,j,k), type_bitsx, not_trivialx);
+         }
+       }
+     }  
+@@ -396,12 +391,8 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+           CCTK_WARN(0, "Someone needs to figure out which variables to pass for Avec");
+         }
+         
+-        //This needs to be fixed into a loop for the the template version!
+-        //WE'll need booleans arguments corresponding to the following 
+-        //ppm1d_cxx<do_temp,do_ye,do_mhd,clean_divergence,ppm_detect>
+-        
+         ppm1d_cxx_func
+-          (ny,CCTK_DELTA_SPACE(1),
++          (cctk_lsh[1],CCTK_DELTA_SPACE(1),
+            &rho1d[0],&vely1d[0],&velz1d[0],&velx1d[0],&eps1d[0],&press1d[0],&temp1d[0],
+            &ye1d[0],&Bvcy1d[0],&Bvcz1d[0],&Bvcx1d[0],&psidc1d[0],
+            &rho1d_minus[0],&vely1d_minus[0],&velz1d_minus[0],&velx1d_minus[0],&eps1d_minus[0],&temp1d_minus[0],
+@@ -445,7 +436,7 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+           }
+         }
+         for (i=0; i<ny; i++) {
+-          SpaceMask_SetStateBits(space_mask, j+i*nx+k*nx*ny, type_bitsy, not_trivialy);
++          SpaceMask_SetStateBits(space_mask, CCTK_GFINDEX3D(cctkGH, j,i,k), type_bitsy, not_trivialy);
+         }
+         
+       }
+@@ -488,12 +479,8 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+           CCTK_WARN(0, "Someone needs to figure out which variables to pass for Avec");
+         }
+         
+-        //This needs to be fixed into a loop for the the template version!
+-        //WE'll need booleans arguments corresponding to the following 
+-        //ppm1d_cxx<do_temp,do_ye,do_mhd,clean_divergence,ppm_detect>
+-        
+         ppm1d_cxx_func
+-          (nz,CCTK_DELTA_SPACE(2),
++          (cctk_lsh[2],CCTK_DELTA_SPACE(2),
+            &rho1d[0],&velz1d[0],&velx1d[0],&vely1d[0],&eps1d[0],&press1d[0],&temp1d[0],
+            &ye1d[0],&Bvcz1d[0],&Bvcx1d[0],&Bvcy1d[0],&psidc1d[0],
+            &rho1d_minus[0],&velz1d_minus[0],&velx1d_minus[0],&vely1d_minus[0],&eps1d_minus[0],&temp1d_minus[0],
+@@ -537,7 +524,7 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+           }
+         }
+         for (i=0; i<nz; i++) {
+-          SpaceMask_SetStateBits(space_mask, j+k*nx+i*nx*ny, type_bitsz, not_trivialz);
++          SpaceMask_SetStateBits(space_mask, CCTK_GFINDEX3D(cctkGH, j,k,i), type_bitsz, not_trivialz);
+         }
+         
+       }
+-- 
+1.9.0
+

@@ -1,0 +1,36 @@
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 55)
++++ schedule.ccl	(working copy)
+@@ -181,6 +181,8 @@
+   {
+   } "Set up hydro excision mask"
+ 
++  # the strange double scheduling is required to ensure that no out-of-bounds
++  # vector access happens in Carpet
+   schedule HydroBase_InitExcisionMask in HydroBase_ExcisionMaskSetup
+   {
+     LANG: C
+@@ -188,9 +190,21 @@
+     # GLOBAL is global-late in PostRegrid and PostRegridInitial
+     # since we would always like to run before any possibly local routine
+     # modifying the mask, we run global-early
+-    OPTIONS: global-early loop-local
++    # Unfortunately right now (2012-07-04) global-early PostRegrid routines
++    # crash the code.
++    OPTIONS: global loop-local
+   } "Initialize hydro excision mask to 'no excision everywhere'"
+ 
++  schedule HydroBase_InitExcisionMask at PostRegridInitial BEFORE HydroBase_InitExcisionMask
++  {
++    LANG: C
++  } "Initialize hydro excision mask to 'no excision everywhere'"
++
++  schedule HydroBase_InitExcisionMask at PostRegrid BEFORE HydroBase_InitExcisionMask
++  {
++    LANG: C
++  } "Initialize hydro excision mask to 'no excision everywhere'"
++
+   schedule GROUP HydroBase_ExcisionHasBeenSet at CCTK_PostStep
+   {
+   } "Group to schedule thorns changing the mask before and thorns using the mask after"

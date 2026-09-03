@@ -1,0 +1,508 @@
+
+Property changes on: .
+___________________________________________________________________
+Modified: svn:mergeinfo
+   Merged /trunk:r517
+
+Index: src/Con2Prim_fortran_interfaces.F90
+===================================================================
+--- src/Con2Prim_fortran_interfaces.F90	(revision 519)
++++ src/Con2Prim_fortran_interfaces.F90	(working copy)
+@@ -1,3 +1,5 @@
++#include "cctk.h"
++
+ module Con2Prim_fortran_interfaces
+   implicit none
+ 
+@@ -83,25 +85,3 @@
+   end interface
+ 
+ end module Con2Prim_fortran_interfaces
+-
+-module Eigenproblem_interfaces
+-  implicit none
+-
+-  interface
+-
+-  subroutine eigenvalues(handle,rho,velx,vely,velz,eps,w_lorentz,&
+-     lam,gxx,gxy,gxz,gyy,gyz,gzz,u,alp,beta)
+-
+-    implicit none
+-
+-    CCTK_REAL rho,velx,vely,velz,eps,w_lorentz
+-    CCTK_REAL lam(5)
+-    CCTK_REAL gxx,gxy,gxz,gyy,gyz,gzz
+-    CCTK_REAL alp,beta,u
+-    CCTK_INT handle
+-  end subroutine
+-
+-  end interface
+-
+-end module Eigenproblem_interfaces
+-
+Index: src/GRHydro_Con2PrimM.F90
+===================================================================
+--- src/GRHydro_Con2PrimM.F90	(revision 519)
++++ src/GRHydro_Con2PrimM.F90	(working copy)
+@@ -12,7 +12,6 @@
+ #include "cctk_Arguments.h"
+ #include "cctk_Functions.h"
+ #include "SpaceMask.h"
+-#include "GRHydro_InterfacesM.h"
+ #include "GRHydro_Macros.h"
+ 
+ #define ITER_TOL (1.0e-8)
+Index: src/GRHydro_InterfacesAM.h
+===================================================================
+--- src/GRHydro_InterfacesAM.h	(revision 519)
++++ src/GRHydro_InterfacesAM.h	(working copy)
+@@ -1,95 +0,0 @@
+-module Con2PrimAM_fortran_interfaces
+-  implicit none
+-
+-  interface
+-
+-     subroutine GRHydro_Con2PrimM_pt(  handle, keytemp, prec, &
+-                                       local_gam, dens, &
+-                        sx,  sy,  sz, &
+-                        tau, &
+-                        Bconsx,  Bconsy,  Bconsz, &
+-                        xye, xtemp, &
+-                        rho, &
+-                        velx,  vely,  velz,&
+-                        epsilon,  pressure,&
+-                        Bx,  By,  Bz, &
+-                        bsq,&
+-                        w_lorentz, &
+-                        gxx,  gxy,  gxz, &
+-                        gyy,  gyz,  gzz, &
+-                        uxx, uxy, uxz,&
+-                        uyy, uyz, uzz,&
+-                        det,&
+-                        epsnegative, &
+-                        retval)
+-
+-       implicit none       
+-       CCTK_INT handle
+-       CCTK_INT keytemp
+-       CCTK_REAL prec
+-       CCTK_REAL local_gam
+-       CCTK_REAL dens 
+-       CCTK_REAL sx, sy, sz
+-       CCTK_REAL tau 
+-       CCTK_REAL Bconsx, Bconsy, Bconsz
+-       CCTK_REAL xye
+-       CCTK_REAL xtemp 
+-       CCTK_REAL rho
+-       CCTK_REAL velx, vely, velz
+-       CCTK_REAL epsilon, pressure
+-       CCTK_REAL Bx, By, Bz
+-       CCTK_REAL bsq
+-       CCTK_REAL w_lorentz
+-       CCTK_REAL gxx, gxy, gxz 
+-       CCTK_REAL gyy, gyz, gzz
+-       CCTK_REAL uxx, uxy, uxz
+-       CCTK_REAL uyy, uyz, uzz
+-       CCTK_REAL det
+-       CCTK_INT epsnegative
+-       CCTK_REAL retval
+-     end subroutine  GRHydro_Con2PrimM_pt
+-
+-  subroutine GRHydro_Con2PrimM_Polytype_pt(  handle, local_gam,&
+-                        dens, &
+-                        sx,  sy,  sz, &
+-                        sc, &
+-                        Bconsx,  Bconsy,  Bconsz, &
+-                        rho, &
+-                        velx,  vely,  velz,&
+-                        epsilon,  pressure,&
+-                        Bx,  By,  Bz, &
+-                        bsq,&
+-                        w_lorentz, &
+-                        gxx,  gxy,  gxz, &
+-                        gyy,  gyz,  gzz, &
+-                        uxx, uxy, uxz,&
+-                        uyy, uyz, uzz,&
+-                        det,&
+-                        epsnegative, &
+-                        retval)
+-
+-       implicit none       
+-       CCTK_INT handle
+-       CCTK_REAL local_gam
+-       CCTK_REAL dens 
+-       CCTK_REAL sx, sy, sz
+-       CCTK_REAL sc 
+-       CCTK_REAL Bconsx, Bconsy, Bconsz
+-       CCTK_REAL rho
+-       CCTK_REAL velx, vely, velz
+-       CCTK_REAL epsilon, pressure
+-       CCTK_REAL Bx, By, Bz
+-       CCTK_REAL bsq
+-       CCTK_REAL w_lorentz
+-       CCTK_REAL gxx, gxy, gxz 
+-       CCTK_REAL gyy, gyz, gzz
+-       CCTK_REAL uxx, uxy, uxz
+-       CCTK_REAL uyy, uyz, uzz
+-       CCTK_REAL det
+-       CCTK_INT epsnegative
+-       CCTK_REAL retval
+-     end subroutine  GRHydro_Con2PrimM_Polytype_pt
+-
+-  end interface
+-
+-end module Con2PrimAM_fortran_interfaces
+Index: src/GRHydro_Interfaces.h
+===================================================================
+--- src/GRHydro_Interfaces.h	(revision 519)
++++ src/GRHydro_Interfaces.h	(working copy)
+@@ -1,107 +0,0 @@
+-module Con2Prim_fortran_interfaces
+-  implicit none
+-
+-  interface
+-
+-     subroutine Con2Prim_pt(handle, &
+-          dens, &
+-          sx, sy, sz, &
+-          tau, &
+-          rho, &
+-          velx, vely, velz, &
+-          epsilon, press, &
+-          w_lorentz, &
+-          uxx, uxy, uxz, &
+-          uyy, uyz, uzz, &
+-          det, &
+-          x, y, z, r, &
+-          epsnegative, &
+-          GRHydro_rho_min, pmin, epsmin, &
+-          GRHydro_reflevel, GRHydro_C2P_failed)
+-       
+-       implicit none
+-       CCTK_INT  handle
+-       CCTK_REAL dens
+-       CCTK_REAL sx, sy, sz
+-       CCTK_REAL tau
+-       CCTK_REAL rho 
+-       CCTK_REAL velx, vely, velz
+-       CCTK_REAL epsilon, press
+-       CCTK_REAL w_lorentz
+-       CCTK_REAL uxx, uxy, uxz
+-       CCTK_REAL uyy, uyz, uzz
+-       CCTK_REAL det
+-       CCTK_REAL x, y, z, r
+-       logical  epsnegative
+-       CCTK_REAL GRHydro_rho_min, pmin, epsmin
+-       CCTK_INT  GRHydro_reflevel
+-       CCTK_REAL GRHydro_C2P_failed    
+-     end subroutine Con2Prim_pt
+-
+-     subroutine Con2Prim_ptPolytype(GRHydro_polytrope_handle, &
+-          dens, &
+-          sx, sy, sz, &
+-          tau, &
+-          rho, &
+-          velx, vely, velz, &
+-          eps, press, &
+-          w_lorentz, &
+-          uxx, uxy, uxz, uyy, uyz, uzz, &
+-          det, &
+-          x, y, z, r, &
+-          GRHydro_rho_min, &
+-          GRHydro_reflevel, GRHydro_C2P_failed)
+-          
+-       implicit none
+-       CCTK_INT  GRHydro_polytrope_handle
+-       CCTK_REAL dens
+-       CCTK_REAL sx, sy, sz
+-       CCTK_REAL tau
+-       CCTK_REAL rho 
+-       CCTK_REAL velx, vely, velz
+-       CCTK_REAL eps, press
+-       CCTK_REAL w_lorentz
+-       CCTK_REAL uxx, uxy, uxz
+-       CCTK_REAL uyy, uyz, uzz
+-       CCTK_REAL det
+-       CCTK_REAL x, y, z, r
+-       CCTK_REAL GRHydro_rho_min
+-       CCTK_INT  GRHydro_reflevel
+-       CCTK_REAL GRHydro_C2P_failed
+-     end subroutine Con2Prim_ptPolytype
+-
+-     subroutine Con2Prim_ptTracer(cons_tracer, tracer, dens)
+-       implicit none  
+-       CCTK_REAL cons_tracer, tracer, dens
+-     end subroutine Con2Prim_ptTracer
+-
+-     subroutine Con2Prim_ptBoundsTracer(cons_tracer, tracer, rho, one_over_w_lorentz, det)
+-       implicit none
+-       CCTK_REAL cons_tracer, tracer, rho, one_over_w_lorentz, det
+-     end subroutine Con2Prim_ptBoundsTracer
+-
+-  end interface
+-
+-end module Con2Prim_fortran_interfaces
+-
+-module Eigenproblem_interfaces
+-  implicit none
+-
+-  interface
+-
+-  subroutine eigenvalues(handle,rho,velx,vely,velz,eps,w_lorentz,&
+-     lam,gxx,gxy,gxz,gyy,gyz,gzz,u,alp,beta)
+-
+-    implicit none
+-
+-    CCTK_REAL rho,velx,vely,velz,eps,w_lorentz
+-    CCTK_REAL lam(5)
+-    CCTK_REAL gxx,gxy,gxz,gyy,gyz,gzz
+-    CCTK_REAL alp,beta,u
+-    CCTK_INT handle
+-  end subroutine
+-
+-  end interface
+-
+-end module Eigenproblem_interfaces
+-
+Index: src/Con2PrimM_fortran_interfaces.F90
+===================================================================
+--- src/Con2PrimM_fortran_interfaces.F90	(revision 519)
++++ src/Con2PrimM_fortran_interfaces.F90	(working copy)
+@@ -1,3 +1,5 @@
++#include "cctk.h"
++
+ module Con2PrimM_fortran_interfaces
+   implicit none
+ 
+Index: src/GRHydro_Con2PrimAM.F90
+===================================================================
+--- src/GRHydro_Con2PrimAM.F90	(revision 519)
++++ src/GRHydro_Con2PrimAM.F90	(working copy)
+@@ -13,7 +13,6 @@
+ #include "cctk_Arguments.h"
+ #include "cctk_Functions.h"
+ #include "SpaceMask.h"
+-#include "GRHydro_InterfacesAM.h"
+ #include "GRHydro_Macros.h"
+ 
+ #define ITER_TOL (1.0e-8)
+@@ -187,7 +186,6 @@
+            det = SPATIAL_DETERMINANT(g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k))
+            sdet = sqrt(det)
+ 
+-
+            call UpperMetric(uxx,uxy,uxz,uyy,uyz,uzz,det,&
+                 g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),&
+                 g23(i,j,k),g33(i,j,k))        
+@@ -345,7 +343,11 @@
+               Bconsz_tmp = sdet*Bvecz_tmp 
+ 
+               keytemp = 0
+-
++              !Watch out for the values returned to b2. Here b2 is the Bprim^2
++              !while inside the point-wise con2prim routines it is the square
++              !of the comoving B-field, b^{\mu} b_{\mu}. It is overwritten 
++              !in this routine, but we may need to find a better notation 
++              !avoid future confusions.
+               call GRHydro_Con2PrimM_pt(GRHydro_eos_handle, keytemp, &
+                    GRHydro_eos_rf_prec, local_gam(1), dens(i,j,k), &
+                    scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3), tau(i,j,k), &
+@@ -358,7 +360,13 @@
+                    epsnegative,GRHydro_C2P_failed(i,j,k))
+ 
+               if(evolve_entropy.ne.0) then
++                if(GRHydro_C2P_failed(i,j,k).ne.0) then
++                  !Use previous time step for rho:
+                  entropy(i,j,k) = entropycons(i,j,k)/dens(i,j,k)*rho(i,j,k)
++                else
++                  !Use the current correct value of rho returned by con2prim:
++                  entropy(i,j,k) = entropycons(i,j,k)/dens(i,j,k)*rho_tmp
++                endif
+               endif
+ 
+               if(GRHydro_C2P_failed(i,j,k).ne.0) then
+@@ -447,6 +455,19 @@
+                   Bconsy_tmp = sdet*Bvecy_tmp
+                   Bconsz_tmp = sdet*Bvecz_tmp
+ 
++                  if(evolve_entropy.ne.0) then
++                    call GRHydro_Con2PrimM_ptee(GRHydro_eos_handle, keytemp, &
++                         GRHydro_eos_rf_prec, local_gam(1), dens(i,j,k), &
++                         scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3), tau(i,j,k), &
++                         Bconsx_tmp,Bconsy_tmp,Bconsz_tmp, &
++                         entropycons(i,j,k), xye(1), &
++                         xtemp(1),rho_tmp,velx_tmp,vely_tmp,velz_tmp,&
++                         eps_tmp,press_tmp,Bvecx_tmp,Bvecy_tmp,Bvecz_tmp,b2,&
++                         w_lorentz_tmp,g11(i,j,k),g12(i,j,k),g13(i,j,k),&
++                         g22(i,j,k),g23(i,j,k),g33(i,j,k), &
++                         uxx,uxy,uxz,uyy,uyz,uzz,det, &
++                         epsnegative,GRHydro_C2P_failed(i,j,k))
++                  else
+                   call GRHydro_Con2PrimM_Polytype_pt(GRHydro_eos_handle, local_pgam, &
+                        dens(i,j,k),scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3), sc, &
+                        Bconsx_tmp, Bconsy_tmp, Bconsz_tmp, rho_tmp,&
+@@ -455,6 +476,7 @@
+                        g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k), &
+                        uxx,uxy,uxz,uyy,uyz,uzz,det, &
+                        epsnegative,GRHydro_C2P_failed(i,j,k))
++                  end if 
+ 
+                   rho(i,j,k) = rho_tmp 
+                   press(i,j,k) = press_tmp 
+@@ -682,12 +704,8 @@
+ 
+               !!$ tau does need to take into account the existing B-field
+               !!$ with w_lorentz=1, we find tau = sqrtdet*(rho (1+eps+b^2/2)) - dens  [Press drops out]
+-              tau(i,j,k)  = sdet * (rho(i,j,k)*(1.0+eps(i,j,k)+b2/2.0)) - dens(i,j,k)
++              tau(i,j,k)  = sdet * (rho(i,j,k)*eps(i,j,k)+b2/2.0)
+ 
+-              if(tau(i,j,k).le.sdet*b2*0.5d0)then
+-                tau(i,j,k) = GRHydro_tau_min + sdet*b2*0.5d0
+-              endif
+-
+            end if
+ 
+         end do
+@@ -870,6 +888,7 @@
+            if(evolve_Y_e.ne.0) then
+               Y_e(i,j,k) = Y_e_con(i,j,k) / dens(i,j,k)
+            endif
++
+            Bconsx_tmp = sqrt(avg_detl)*Bvecxminus(i,j,k)
+            Bconsy_tmp = sqrt(avg_detl)*Bvecyminus(i,j,k)
+            Bconsz_tmp = sqrt(avg_detl)*Bveczminus(i,j,k)
+@@ -1109,7 +1128,6 @@
+ !!$    do j = GRHydro_stencil + 1, ny - GRHydro_stencil
+ !!$      do i = GRHydro_stencil + 1, nx - GRHydro_stencil
+ 
+-
+   !$OMP PARALLEL DO PRIVATE(i,j,k,itracer,&
+   !$OMP uxx, uxy, uxz, uyy, uyz, uzz, det, epsnegative, &
+   !$OMP Bconsx_tmp, Bconsy_tmp, Bconsz_tmp, &
+Index: src/GRHydro_Con2Prim.F90
+===================================================================
+--- src/GRHydro_Con2Prim.F90	(revision 519)
++++ src/GRHydro_Con2Prim.F90	(working copy)
+@@ -11,7 +11,6 @@
+ #include "cctk_Arguments.h"
+ #include "cctk_Functions.h"
+ #include "SpaceMask.h"
+-#include "GRHydro_Interfaces.h"
+ #include "GRHydro_Macros.h"
+ 
+  /*@@
+Index: src/GRHydro_InterfacesM.h
+===================================================================
+--- src/GRHydro_InterfacesM.h	(revision 519)
++++ src/GRHydro_InterfacesM.h	(working copy)
+@@ -1,95 +0,0 @@
+-module Con2PrimM_fortran_interfaces
+-  implicit none
+-
+-  interface
+-
+-     subroutine GRHydro_Con2PrimM_pt(  handle, keytemp, prec, &
+-                                       local_gam, dens, &
+-                        sx,  sy,  sz, &
+-                        tau, &
+-                        Bconsx,  Bconsy,  Bconsz, &
+-                        xye, xtemp, &
+-                        rho, &
+-                        velx,  vely,  velz,&
+-                        epsilon,  pressure,&
+-                        Bx,  By,  Bz, &
+-                        bsq,&
+-                        w_lorentz, &
+-                        gxx,  gxy,  gxz, &
+-                        gyy,  gyz,  gzz, &
+-                        uxx, uxy, uxz,&
+-                        uyy, uyz, uzz,&
+-                        det,&
+-                        epsnegative, &
+-                        retval)
+-
+-       implicit none       
+-       CCTK_INT handle
+-       CCTK_INT keytemp
+-       CCTK_REAL prec
+-       CCTK_REAL local_gam
+-       CCTK_REAL dens 
+-       CCTK_REAL sx, sy, sz
+-       CCTK_REAL tau 
+-       CCTK_REAL Bconsx, Bconsy, Bconsz
+-       CCTK_REAL xye
+-       CCTK_REAL xtemp 
+-       CCTK_REAL rho
+-       CCTK_REAL velx, vely, velz
+-       CCTK_REAL epsilon, pressure
+-       CCTK_REAL Bx, By, Bz
+-       CCTK_REAL bsq
+-       CCTK_REAL w_lorentz
+-       CCTK_REAL gxx, gxy, gxz 
+-       CCTK_REAL gyy, gyz, gzz
+-       CCTK_REAL uxx, uxy, uxz
+-       CCTK_REAL uyy, uyz, uzz
+-       CCTK_REAL det
+-       CCTK_INT epsnegative
+-       CCTK_REAL retval
+-     end subroutine  GRHydro_Con2PrimM_pt
+-
+-  subroutine GRHydro_Con2PrimM_Polytype_pt(  handle, local_gam,&
+-                        dens, &
+-                        sx,  sy,  sz, &
+-                        sc, &
+-                        Bconsx,  Bconsy,  Bconsz, &
+-                        rho, &
+-                        velx,  vely,  velz,&
+-                        epsilon,  pressure,&
+-                        Bx,  By,  Bz, &
+-                        bsq,&
+-                        w_lorentz, &
+-                        gxx,  gxy,  gxz, &
+-                        gyy,  gyz,  gzz, &
+-                        uxx, uxy, uxz,&
+-                        uyy, uyz, uzz,&
+-                        det,&
+-                        epsnegative, &
+-                        retval)
+-
+-       implicit none       
+-       CCTK_INT handle
+-       CCTK_REAL local_gam
+-       CCTK_REAL dens 
+-       CCTK_REAL sx, sy, sz
+-       CCTK_REAL sc 
+-       CCTK_REAL Bconsx, Bconsy, Bconsz
+-       CCTK_REAL rho
+-       CCTK_REAL velx, vely, velz
+-       CCTK_REAL epsilon, pressure
+-       CCTK_REAL Bx, By, Bz
+-       CCTK_REAL bsq
+-       CCTK_REAL w_lorentz
+-       CCTK_REAL gxx, gxy, gxz 
+-       CCTK_REAL gyy, gyz, gzz
+-       CCTK_REAL uxx, uxy, uxz
+-       CCTK_REAL uyy, uyz, uzz
+-       CCTK_REAL det
+-       CCTK_INT epsnegative
+-       CCTK_REAL retval
+-     end subroutine  GRHydro_Con2PrimM_Polytype_pt
+-
+-  end interface
+-
+-end module Con2PrimM_fortran_interfaces
+Index: src/make.code.defn
+===================================================================
+--- src/make.code.defn	(revision 519)
++++ src/make.code.defn	(working copy)
+@@ -76,7 +76,9 @@
+ 	GRHydro_EvolutionMask.F90\
+ 	GRHydro_WENOReconstruct.F90\
+ 	GRHydro_WENOScalars.F90 \
+-	GRHydro_MP5Reconstruct.F90
++	GRHydro_MP5Reconstruct.F90 \
++	Con2Prim_fortran_interfaces.F90 \
++	Con2PrimM_fortran_interfaces.F90
+ 
+ # Subdirectories containing source files
+ SUBDIRS = 

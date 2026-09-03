@@ -1,0 +1,439 @@
+From 84418f601a9e68db15a3eb5bb6477cb984e074ae Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Tue, 28 May 2013 21:42:28 -0700
+Subject: [PATCH 17/24] GRHydro: write floating point operations in left/right
+ symmetric manner
+
+* write DIFF_X_4 in an explicitly symmetric manner
+  this ensures that the order of evaluation is such that symmetry in i+/-1
+  is preserved by the numerical derivative
+
+* add code to make ePPM and Source  more symmetric
+  this is an attempt to better preserve the CoM in long runs by
+  eliminating asymmetries between left and right. This is fragile in
+  that it does not make the code more robust against existing
+  roundoff-level asymmetries, it only prevents them from developping.
+---
+ src/GRHydro_PPM.F90    |  176 ++++++++++++++++++++++++------------------------
+ src/GRHydro_Source.F90 |    6 ++
+ 2 files changed, 93 insertions(+), 89 deletions(-)
+
+diff --git a/src/GRHydro_PPM.F90 b/src/GRHydro_PPM.F90
+index 465e1f9..dd945eb 100644
+--- a/src/GRHydro_PPM.F90
++++ b/src/GRHydro_PPM.F90
+@@ -145,7 +145,7 @@ trivial_rp = .true.
+          dvely(i) = 0.5d0 * (vy(i+1) - vy(i-1))
+          dvelz(i) = 0.5d0 * (vz(i+1) - vz(i-1))
+          dpress(i) = press(i+1) - press(i-1)
+-         d2rho(i) = (rho(i+1) - 2.d0 * rho(i) + rho(i-1))! / 6.d0 / dx / dx
++         d2rho(i) = ((rho(i+1) + rho(i-1)) - 2.d0 * rho(i))! / 6.d0 / dx / dx
+          ! since we use d2rho only for the condition d2rho(i+1)*d2rhoi(i-1)<0 
+          ! the denominator is not necessary
+       end do
+@@ -209,9 +209,9 @@ trivial_rp = .true.
+       if ((min(a(i),a(i+1)) .le. ah) .and. (ah .le. max(a(i),a(i+1)))) then       &&\
+          alim = ah   &&\
+       else &&\
+-         D2a  = 3.0d0 * (a(i)   - 2.0d0*ah     + a(i+1))                                     &&\
+-         D2aL =         (a(i-1) - 2.0d0*a(i)   + a(i+1))                                     &&\
+-         D2aR =         (a(i)   - 2.0d0*a(i+1) + a(i+2))                                     &&\
++         D2a  = 3.0d0 * ((a(i)   + a(i+1)) - 2.0d0*ah    )                                 &&\
++         D2aL =         ((a(i-1) + a(i+1)) - 2.0d0*a(i)  )                                 &&\
++         D2aR =         ((a(i)   + a(i+2)) - 2.0d0*a(i+1))                                 &&\
+          D2aLim = sign(one, D2a)*min(C*abs(D2aL), C*abs(D2aR), abs(D2a))/3.0d0             &&\
+          if (D2a*D2aR .ge. 0 .and. D2a*D2aL .ge. 0) then                     &&\
+             alim = 0.5d0*(a(i)+a(i+1)) - D2aLim &&\
+@@ -224,9 +224,9 @@ trivial_rp = .true.
+       if ((min(a(i),a(i+1)) .le. ah) .and. (ah .le. max(a(i),a(i+1)))) then       &&\
+          alim = ah   &&\
+       else &&\
+-         D2a  = 3.0d0 * (a(i)   - 2.0d0*ah     + a(i+1))                                     &&\
+-         D2aL =         (a(i-1) - 2.0d0*a(i)   + a(i+1))                                     &&\
+-         D2aR =         (a(i)   - 2.0d0*a(i+1) + a(i+2))                                     &&\
++         D2a  = 3.0d0 * ((a(i)   + a(i+1)) - 2.0d0*ah    )                                 &&\
++         D2aL =         ((a(i-1) + a(i+1)) - 2.0d0*a(i)  )                                 &&\
++         D2aR =         ((a(i)   + a(i+2)) - 2.0d0*a(i+1))                                 &&\
+          D2aLim = sign(one, D2a)*min(C*abs(D2aL), C*abs(D2aR), abs(D2a))/3.0d0             &&\
+          if (D2a*D2aR .ge. 0 .and. D2a*D2aL .ge. 0 .and. abs(D2aLim) .lt. abs(0.5d0*(a(i)+a(i+1)))) then                     &&\
+             alim = 0.5d0*(a(i)+a(i+1)) - D2aLim &&\
+@@ -319,7 +319,7 @@ trivial_rp = .true.
+       do i = 3, nx - 2
+          if ( (d2rho(i+1)*d2rho(i-1) < 0.d0).and.(abs(rho(i+1)-rho(i-1)) - &
+             ppm_epsilon_shock * min(abs(rho(i+1)), abs(rho(i-1))) > 0.d0) ) then
+-         etatilde = (rho(i-2) - rho(i+2) + 4.d0 * drho(i)) / (drho(i) * 12.d0)
++         etatilde = ((rho(i-2) - rho(i+2)) + 4.d0 * drho(i)) / (drho(i) * 12.d0)
+          else
+          etatilde = 0.d0
+          end if
+@@ -540,12 +540,12 @@ trivial_rp = .true.
+       daplus = aplus(i)-a(i)   &&\
+       daminus = a(i)-aminus(i) &&\
+       if (daplus*daminus .le. 0 .or. (a(i-2)-a(i))*(a(i)-a(i+2)) .le. 0) then &&\
+-         D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                                           && \
+-         D2aC = a(i-1) - 2.0d0*a(i)   + a(i+1)                                                     &&\
+-         D2aL = a(i-2) - 2.0d0*a(i-1) + a(i)                                                       &&\
+-         D2aLL = a(i-3) - 2.0d0*a(i-2) + a(i-1)                                                       &&\
+-         D2aR = a(i)   - 2.0d0*a(i+1) + a(i+2)                                                     &&\
+-         D2aRR = a(i+1)   - 2.0d0*a(i+2) + a(i+3)                                                     &&\
++         D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                  &&\
++         D2aC =  (a(i-1) + a(i+1)) - 2.0d0*a(i)                               &&\
++         D2aL =  (a(i-2) + a(i)  ) - 2.0d0*a(i-1)                             &&\
++         D2aLL = (a(i-3) + a(i-1)) - 2.0d0*a(i-2)                             &&\
++         D2aR =  (a(i)   + a(i+2)) - 2.0d0*a(i+1)                             &&\
++         D2aRR = (a(i+1) + a(i+3)) - 2.0d0*a(i+2)                             &&\
+          D3a = D2aR - D2aC   &&\
+          D3aL = D2aC - D2aL  &&\
+          D3aR = D2aRR - D2aR &&\
+@@ -568,9 +568,9 @@ trivial_rp = .true.
+                      aplus(i)  = a(i) + daplus * rhi     &&\
+                      aminus(i) = a(i) - daminus * rhi    &&\
+                   else if (abs(daminus) .ge. 2.0d0*abs(daplus)) then   &&\
+-                     aminus(i)  = a(i) - 2.0d0*(1.0d0-rhi)*daplus - rhi*daminus   &&\
++                     aminus(i)  = a(i) - (2.0d0*(1.0d0-rhi)*daplus + rhi*daminus) &&\
+                   else if (abs(daplus) .ge. 2.0d0*abs(daminus)) then &&\
+-                     aplus(i)  = a(i) + 2.0d0*(1.0d0-rhi)*daminus + rhi*daplus   &&\
++                     aplus(i)  = a(i) + (2.0d0*(1.0d0-rhi)*daminus + rhi*daplus)   &&\
+                   endif &&\
+             endif &&\
+          endif &&\
+@@ -594,12 +594,12 @@ trivial_rp = .true.
+       daplus = aplus(i)-a(i)   &&\
+       daminus = a(i)-aminus(i) &&\
+       if (daplus*daminus .le. 0 .or. (a(i-2)-a(i))*(a(i)-a(i+2)) .le. 0) then &&\
+-         D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                                           && \
+-         D2aC = a(i-1) - 2.0d0*a(i)   + a(i+1)                                                     &&\
+-         D2aL = a(i-2) - 2.0d0*a(i-1) + a(i)                                                       &&\
+-         D2aLL = a(i-3) - 2.0d0*a(i-2) + a(i-1)                                                       &&\
+-         D2aR = a(i)   - 2.0d0*a(i+1) + a(i+2)                                                     &&\
+-         D2aRR = a(i+1)   - 2.0d0*a(i+2) + a(i+3)                                                     &&\
++         D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                  &&\
++         D2aC =  (a(i-1) + a(i+1)) - 2.0d0*a(i)                               &&\
++         D2aL =  (a(i-2) + a(i)  ) - 2.0d0*a(i-1)                             &&\
++         D2aLL = (a(i-3) + a(i-1)) - 2.0d0*a(i-2)                             &&\
++         D2aR =  (a(i)   + a(i+2)) - 2.0d0*a(i+1)                             &&\
++         D2aRR = (a(i+1) + a(i+3)) - 2.0d0*a(i+2)                             &&\
+          D3a = D2aR - D2aC   &&\
+          D3aL = D2aC - D2aL  &&\
+          D3aR = D2aRR - D2aR &&\
+@@ -623,9 +623,9 @@ trivial_rp = .true.
+                      aplus(i)  = a(i) + daplus * rhi     &&\
+                      aminus(i) = a(i) - daminus * rhi    &&\
+                   else if (abs(daminus) .ge. 2.0d0*abs(daplus)) then   &&\
+-                     aminus(i)  = a(i) - 2.0d0*(1.0d0-rhi)*daplus - rhi*daminus   &&\
++                     aminus(i)  = a(i) - (2.0d0*(1.0d0-rhi)*daplus + rhi*daminus)  &&\
+                   else if (abs(daplus) .ge. 2.0d0*abs(daminus)) then &&\
+-                     aplus(i)  = a(i) + 2.0d0*(1.0d0-rhi)*daminus + rhi*daplus   &&\
++                     aplus(i)  = a(i) + (2.0d0*(1.0d0-rhi)*daminus + rhi*daplus)   &&\
+                   endif &&\
+                else &&\
+                   if (daplus*daminus .lt. 0) then        &&\
+@@ -667,10 +667,10 @@ trivial_rp = .true.
+       daplus = aplus(i)-a(i)   &&\
+       daminus = a(i)-aminus(i) &&\
+       if (daplus*daminus .le. 0 .or. (a(i-2)-a(i))*(a(i)-a(i+2)) .le. 0) then &&\
+-         D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                                           && \
+-         D2aC = a(i-1) - 2.0d0*a(i)   + a(i+1)                                                     &&\
+-         D2aL = a(i-2) - 2.0d0*a(i-1) + a(i)                                                       &&\
+-         D2aR = a(i)   - 2.0d0*a(i+1) + a(i+2)                                                     &&\
++         D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                  &&\
++         D2aC = (a(i-1) + a(i+1)) - 2.0d0*a(i)                                &&\
++         D2aL = (a(i-2) + a(i)  ) - 2.0d0*a(i-1)                              &&\
++         D2aR = (a(i)   + a(i+2)) - 2.0d0*a(i+1)                              &&\
+          if (sign(one, D2a) .eq. sign(one, D2aC) .and. sign(one, D2a) .eq. sign(one, D2aL) .and. sign(one, D2a) .eq. sign(one, D2aR)) then &&\
+             D2aLim = sign(one, D2a) * min(C*abs(D2aL), C*abs(D2aR), C*abs(D2aC), abs(D2a))  &&\
+          else                                                      &&\
+@@ -686,9 +686,9 @@ trivial_rp = .true.
+                   aplus(i)  = a(i) + daplus * rhi     &&\
+                   aminus(i) = a(i) - daminus * rhi    &&\
+                else if (abs(daminus) .ge. 2.0d0*abs(daplus)) then   &&\
+-                  aminus(i)  = a(i) - 2.0d0*(1.0d0-rhi)*daplus - rhi*daminus   &&\
++                  aminus(i)  = a(i) - (2.0d0*(1.0d0-rhi)*daplus + rhi*daminus)   &&\
+                else if (abs(daplus) .ge. 2.0d0*abs(daminus)) then &&\
+-                  aplus(i)  = a(i) + 2.0d0*(1.0d0-rhi)*daminus + rhi*daplus   &&\
++                  aplus(i)  = a(i) + (2.0d0*(1.0d0-rhi)*daminus + rhi*daplus)   &&\
+                endif &&\
+          endif &&\
+          trivial_rp(i-1) = .false.                                 &&\
+@@ -712,10 +712,10 @@ trivial_rp = .true.
+       daplus = aplus(i)-a(i)   &&\
+       daminus = a(i)-aminus(i) &&\
+       if (daplus*daminus .le. 0 .or. (a(i-2)-a(i))*(a(i)-a(i+2)) .le. 0) then &&\
+-         D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                                           && \
+-         D2aC = a(i-1) - 2.0d0*a(i)   + a(i+1)                                                     &&\
+-         D2aL = a(i-2) - 2.0d0*a(i-1) + a(i)                                                       &&\
+-         D2aR = a(i)   - 2.0d0*a(i+1) + a(i+2)                                                     &&\
++         D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                  && \
++         D2aC = (a(i-1) + a(i+1)) - 2.0d0*a(i)                                &&\
++         D2aL = (a(i-2) + a(i)  ) - 2.0d0*a(i-1)                              &&\
++         D2aR = (a(i)   + a(i+2)) - 2.0d0*a(i+1)                              &&\
+          if (sign(one, D2a) .eq. sign(one, D2aC) .and. sign(one, D2a) .eq. sign(one, D2aL) .and. sign(one, D2a) .eq. sign(one, D2aR)) then &&\
+             D2aLim = sign(one, D2a) * min(C*abs(D2aL), C*abs(D2aR), C*abs(D2aC), abs(D2a))  &&\
+          else                                                      &&\
+@@ -732,9 +732,9 @@ trivial_rp = .true.
+                   aplus(i)  = a(i) + daplus * rhi     &&\
+                   aminus(i) = a(i) - daminus * rhi    &&\
+                else if (abs(daminus) .ge. 2.0d0*abs(daplus)) then   &&\
+-                  aminus(i)  = a(i) - 2.0d0*(1.0d0-rhi)*daplus - rhi*daminus   &&\
++                  aminus(i)  = a(i) - (2.0d0*(1.0d0-rhi)*daplus + rhi*daminus)   &&\
+                else if (abs(daplus) .ge. 2.0d0*abs(daminus)) then &&\
+-                  aplus(i)  = a(i) + 2.0d0*(1.0d0-rhi)*daminus + rhi*daplus   &&\
++                  aplus(i)  = a(i) + (2.0d0*(1.0d0-rhi)*daminus + rhi*daplus)   &&\
+                endif &&\
+             else &&\
+                if (daplus*daminus .lt. 0) then        &&\
+@@ -1045,7 +1045,6 @@ subroutine SimplePPM_temperature_1d(apply_enhanced_ppm,&
+ 
+   logical :: cond
+   
+-
+ #define STEEP(x,dx,dmx)                                              \
+          if ( (x(i+1) - x(i)) * (x(i) - x(i-1)) > 0.d0 ) then           &&\
+             dmx(i) = sign(one, dx(i)) *                                   \
+@@ -1099,9 +1098,9 @@ subroutine SimplePPM_temperature_1d(apply_enhanced_ppm,&
+       if ((min(a(i),a(i+1)) .le. ah) .and. (ah .le. max(a(i),a(i+1)))) then       &&\
+          alim = ah   &&\
+       else &&\
+-         D2a  = 3.0d0 * (a(i)   - 2.0d0*ah     + a(i+1))                                     &&\
+-         D2aL =         (a(i-1) - 2.0d0*a(i)   + a(i+1))                                     &&\
+-         D2aR =         (a(i)   - 2.0d0*a(i+1) + a(i+2))                                     &&\
++         D2a  = 3.0d0 * ((a(i)   + a(i+1)) - 2.0d0*ah    )                                     &&\
++         D2aL =         ((a(i-1) + a(i+1)) - 2.0d0*a(i)  )                                     &&\
++         D2aR =         ((a(i)   + a(i+2)) - 2.0d0*a(i+1))                                     &&\
+          D2aLim = sign(one, D2a)*min(C*abs(D2aL), C*abs(D2aR), abs(D2a))/3.0d0             &&\
+          if (D2a*D2aR .ge. 0 .and. D2a*D2aL .ge. 0) then                     &&\
+             alim = 0.5d0*(a(i)+a(i+1)) - D2aLim &&\
+@@ -1114,9 +1113,9 @@ subroutine SimplePPM_temperature_1d(apply_enhanced_ppm,&
+       if ((min(a(i),a(i+1)) .le. ah) .and. (ah .le. max(a(i),a(i+1)))) then       &&\
+          alim = ah   &&\
+       else &&\
+-         D2a  = 3.0d0 * (a(i)   - 2.0d0*ah     + a(i+1))                                     &&\
+-         D2aL =         (a(i-1) - 2.0d0*a(i)   + a(i+1))                                     &&\
+-         D2aR =         (a(i)   - 2.0d0*a(i+1) + a(i+2))                                     &&\
++         D2a  = 3.0d0 * ((a(i)   + a(i+1)) - 2.0d0*ah    )                                     &&\
++         D2aL =         ((a(i-1) + a(i+1)) - 2.0d0*a(i)  )                                     &&\
++         D2aR =         ((a(i)   + a(i+2)) - 2.0d0*a(i+1))                                     &&\
+          D2aLim = sign(one, D2a)*min(C*abs(D2aL), C*abs(D2aR), abs(D2a))/3.0d0             &&\
+          if (D2a*D2aR .ge. 0 .and. D2a*D2aL .ge. 0 .and. abs(D2aLim) .lt. abs(0.5d0*(a(i)+a(i+1)))) then                     &&\
+             alim = 0.5d0*(a(i)+a(i+1)) - D2aLim &&\
+@@ -1221,12 +1220,12 @@ subroutine SimplePPM_temperature_1d(apply_enhanced_ppm,&
+       daplus = aplus(i)-a(i)   &&\
+       daminus = a(i)-aminus(i) &&\
+       if (daplus*daminus .le. 0 .or. (a(i-2)-a(i))*(a(i)-a(i+2)) .le. 0) then &&\
+-         D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                                           && \
+-         D2aC = a(i-1) - 2.0d0*a(i)   + a(i+1)                                                     &&\
+-         D2aL = a(i-2) - 2.0d0*a(i-1) + a(i)                                                       &&\
+-         D2aLL = a(i-3) - 2.0d0*a(i-2) + a(i-1)                                                       &&\
+-         D2aR = a(i)   - 2.0d0*a(i+1) + a(i+2)                                                     &&\
+-         D2aRR = a(i+1)   - 2.0d0*a(i+2) + a(i+3)                                                     &&\
++         D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                  &&\
++         D2aC  = (a(i-1) + a(i+1)) - 2.0d0*a(i)                               &&\
++         D2aL  = (a(i-2) + a(i)  ) - 2.0d0*a(i-1)                             &&\
++         D2aLL = (a(i-3) + a(i-1)) - 2.0d0*a(i-2)                             &&\
++         D2aR  = (a(i)   + a(i+2)) - 2.0d0*a(i+1)                             &&\
++         D2aRR = (a(i+1) + a(i+3)) - 2.0d0*a(i+2)                             &&\
+          D3a = D2aR - D2aC   &&\
+          D3aL = D2aC - D2aL  &&\
+          D3aR = D2aRR - D2aR &&\
+@@ -1249,9 +1248,9 @@ subroutine SimplePPM_temperature_1d(apply_enhanced_ppm,&
+                      aplus(i)  = a(i) + daplus * rhi     &&\
+                      aminus(i) = a(i) - daminus * rhi    &&\
+                   else if (abs(daminus) .ge. 2.0d0*abs(daplus)) then   &&\
+-                     aminus(i)  = a(i) - 2.0d0*(1.0d0-rhi)*daplus - rhi*daminus   &&\
++                     aminus(i)  = a(i) - (2.0d0*(1.0d0-rhi)*daplus + rhi*daminus)   &&\
+                   else if (abs(daplus) .ge. 2.0d0*abs(daminus)) then &&\
+-                     aplus(i)  = a(i) + 2.0d0*(1.0d0-rhi)*daminus + rhi*daplus   &&\
++                     aplus(i)  = a(i) + (2.0d0*(1.0d0-rhi)*daminus + rhi*daplus)   &&\
+                   endif &&\
+             endif &&\
+          endif &&\
+@@ -1271,12 +1270,12 @@ subroutine SimplePPM_temperature_1d(apply_enhanced_ppm,&
+       daplus = aplus(i)-a(i)   &&\
+       daminus = a(i)-aminus(i) &&\
+       if (daplus*daminus .le. 0 .or. (a(i-2)-a(i))*(a(i)-a(i+2)) .le. 0) then &&\
+-         D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                                           && \
+-         D2aC = a(i-1) - 2.0d0*a(i)   + a(i+1)                                                     &&\
+-         D2aL = a(i-2) - 2.0d0*a(i-1) + a(i)                                                       &&\
+-         D2aLL = a(i-3) - 2.0d0*a(i-2) + a(i-1)                                                       &&\
+-         D2aR = a(i)   - 2.0d0*a(i+1) + a(i+2)                                                     &&\
+-         D2aRR = a(i+1)   - 2.0d0*a(i+2) + a(i+3)                                                     &&\
++         D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                  &&\
++         D2aC  = (a(i-1) + a(i+1)) - 2.0d0*a(i)                               &&\
++         D2aL  = (a(i-2) + a(i)  ) - 2.0d0*a(i-1)                             &&\
++         D2aLL = (a(i-3) + a(i-1)) - 2.0d0*a(i-2)                             &&\
++         D2aR  = (a(i)   + a(i+2)) - 2.0d0*a(i+1)                             &&\
++         D2aRR = (a(i+1) + a(i+3)) - 2.0d0*a(i+2)                             &&\
+          D3a = D2aR - D2aC   &&\
+          D3aL = D2aC - D2aL  &&\
+          D3aR = D2aRR - D2aR &&\
+@@ -1300,9 +1299,9 @@ subroutine SimplePPM_temperature_1d(apply_enhanced_ppm,&
+                      aplus(i)  = a(i) + daplus * rhi     &&\
+                      aminus(i) = a(i) - daminus * rhi    &&\
+                   else if (abs(daminus) .ge. 2.0d0*abs(daplus)) then   &&\
+-                     aminus(i)  = a(i) - 2.0d0*(1.0d0-rhi)*daplus - rhi*daminus   &&\
++                     aminus(i)  = a(i) - (2.0d0*(1.0d0-rhi)*daplus + rhi*daminus)   &&\
+                   else if (abs(daplus) .ge. 2.0d0*abs(daminus)) then &&\
+-                     aplus(i)  = a(i) + 2.0d0*(1.0d0-rhi)*daminus + rhi*daplus   &&\
++                     aplus(i)  = a(i) + (2.0d0*(1.0d0-rhi)*daminus + rhi*daplus)   &&\
+                   endif &&\
+                else &&\
+                   if (daplus*daminus .lt. 0) then        &&\
+@@ -1339,10 +1338,10 @@ subroutine SimplePPM_temperature_1d(apply_enhanced_ppm,&
+       daplus = aplus(i)-a(i)   &&\
+       daminus = a(i)-aminus(i) &&\
+       if (daplus*daminus .le. 0 .or. (a(i-2)-a(i))*(a(i)-a(i+2)) .le. 0) then &&\
+-         D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                                           && \
+-         D2aC = a(i-1) - 2.0d0*a(i)   + a(i+1)                                                     &&\
+-         D2aL = a(i-2) - 2.0d0*a(i-1) + a(i)                                                       &&\
+-         D2aR = a(i)   - 2.0d0*a(i+1) + a(i+2)                                                     &&\
++         D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                  &&\
++         D2aC = (a(i-1) + a(i+1)) - 2.0d0*a(i)                                &&\
++         D2aL = (a(i-2) + a(i)  ) - 2.0d0*a(i-1)                              &&\
++         D2aR = (a(i)   + a(i+2)) - 2.0d0*a(i+1)                              &&\
+          if (sign(one, D2a) .eq. sign(one, D2aC) .and. sign(one, D2a) .eq. sign(one, D2aL) .and. sign(one, D2a) .eq. sign(one, D2aR)) then &&\
+             D2aLim = sign(one, D2a) * min(C*abs(D2aL), C*abs(D2aR), C*abs(D2aC), abs(D2a))  &&\
+          else                                                      &&\
+@@ -1358,9 +1357,9 @@ subroutine SimplePPM_temperature_1d(apply_enhanced_ppm,&
+                   aplus(i)  = a(i) + daplus * rhi     &&\
+                   aminus(i) = a(i) - daminus * rhi    &&\
+                else if (abs(daminus) .ge. 2.0d0*abs(daplus)) then   &&\
+-                  aminus(i)  = a(i) - 2.0d0*(1.0d0-rhi)*daplus - rhi*daminus   &&\
++                  aminus(i)  = a(i) - (2.0d0*(1.0d0-rhi)*daplus + rhi*daminus)   &&\
+                else if (abs(daplus) .ge. 2.0d0*abs(daminus)) then &&\
+-                  aplus(i)  = a(i) + 2.0d0*(1.0d0-rhi)*daminus + rhi*daplus   &&\
++                  aplus(i)  = a(i) + (2.0d0*(1.0d0-rhi)*daminus + rhi*daplus)   &&\
+                endif &&\
+          endif &&\
+       else                                                         &&\
+@@ -1380,10 +1379,10 @@ subroutine SimplePPM_temperature_1d(apply_enhanced_ppm,&
+       daplus = aplus(i)-a(i)   &&\
+       daminus = a(i)-aminus(i) &&\
+       if (daplus*daminus .le. 0 .or. (a(i-2)-a(i))*(a(i)-a(i+2)) .le. 0) then &&\
+-         D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                                           && \
+-         D2aC = a(i-1) - 2.0d0*a(i)   + a(i+1)                                                     &&\
+-         D2aL = a(i-2) - 2.0d0*a(i-1) + a(i)                                                       &&\
+-         D2aR = a(i)   - 2.0d0*a(i+1) + a(i+2)                                                     &&\
++         D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                  &&\
++         D2aC = (a(i-1) + a(i+1)) - 2.0d0*a(i)                                &&\
++         D2aL = (a(i-2) + a(i)  ) - 2.0d0*a(i-1)                              &&\
++         D2aR = (a(i)   + a(i+2)) - 2.0d0*a(i+1)                              &&\
+          if (sign(one, D2a) .eq. sign(one, D2aC) .and. sign(one, D2a) .eq. sign(one, D2aL) .and. sign(one, D2a) .eq. sign(one, D2aR)) then &&\
+             D2aLim = sign(one, D2a) * min(C*abs(D2aL), C*abs(D2aR), C*abs(D2aC), abs(D2a))  &&\
+          else                                                      &&\
+@@ -1400,9 +1399,9 @@ subroutine SimplePPM_temperature_1d(apply_enhanced_ppm,&
+                   aplus(i)  = a(i) + daplus * rhi     &&\
+                   aminus(i) = a(i) - daminus * rhi    &&\
+                else if (abs(daminus) .ge. 2.0d0*abs(daplus)) then   &&\
+-                  aminus(i)  = a(i) - 2.0d0*(1.0d0-rhi)*daplus - rhi*daminus   &&\
++                  aminus(i)  = a(i) - (2.0d0*(1.0d0-rhi)*daplus + rhi*daminus)   &&\
+                else if (abs(daplus) .ge. 2.0d0*abs(daminus)) then &&\
+-                  aplus(i)  = a(i) + 2.0d0*(1.0d0-rhi)*daminus + rhi*daplus   &&\
++                  aplus(i)  = a(i) + (2.0d0*(1.0d0-rhi)*daminus + rhi*daplus)   &&\
+                endif &&\
+             else &&\
+                if (daplus*daminus .lt. 0) then        &&\
+@@ -1772,7 +1771,6 @@ subroutine SimplePPM_ye_1d(apply_enhanced_ppm,&
+ 
+   CCTK_REAL :: D2a, D2aL, D2aR, D2aC, D2aLim, rhi, daplus, daminus, D3a, D3aLL, D3aL, D3aR, D2aLL, D2aRR, D3aMin, D3aMax
+ 
+-  
+   do i = 2, nx - 1
+        dpress(i) = press(i+1) - press(i-1)
+   end do
+@@ -1836,9 +1834,9 @@ subroutine SimplePPM_ye_1d(apply_enhanced_ppm,&
+       if ((min(a(i),a(i+1)) .le. ah) .and. (ah .le. max(a(i),a(i+1)))) then       &&\
+          alim = ah   &&\
+       else &&\
+-         D2a  = 3.0d0 * (a(i)   - 2.0d0*ah     + a(i+1))                                     &&\
+-         D2aL =         (a(i-1) - 2.0d0*a(i)   + a(i+1))                                     &&\
+-         D2aR =         (a(i)   - 2.0d0*a(i+1) + a(i+2))                                     &&\
++         D2a  = 3.0d0 * ((a(i)   + a(i+1)) - 2.0d0*ah    )                   &&\
++         D2aL =         ((a(i-1) + a(i+1)) - 2.0d0*a(i)  )                   &&\
++         D2aR =         ((a(i)   + a(i+2)) - 2.0d0*a(i+1))                   &&\
+          if (D2a*D2aR .ge. 0 .and. D2a*D2aL .ge. 0) then                     &&\
+             alim = 0.5d0*(a(i)+a(i+1)) - sign(one, D2a)*min(C*abs(D2aL), C*abs(D2aR), abs(D2a))/3.0d0 &&\
+          else                                                                             &&\
+@@ -1928,12 +1926,12 @@ subroutine SimplePPM_ye_1d(apply_enhanced_ppm,&
+       daplus = aplus(i)-a(i)   &&\
+       daminus = a(i)-aminus(i) &&\
+       if (daplus*daminus .le. 0 .or. (a(i-2)-a(i))*(a(i)-a(i+2)) .le. 0) then &&\
+-         D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                                           && \
+-         D2aC = a(i-1) - 2.0d0*a(i)   + a(i+1)                                                     &&\
+-         D2aL = a(i-2) - 2.0d0*a(i-1) + a(i)                                                       &&\
+-         D2aLL = a(i-3) - 2.0d0*a(i-2) + a(i-1)                                                       &&\
+-         D2aR = a(i)   - 2.0d0*a(i+1) + a(i+2)                                                     &&\
+-         D2aRR = a(i+1)   - 2.0d0*a(i+2) + a(i+3)                                                     &&\
++         D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                  &&\
++         D2aC  = (a(i-1) + a(i+1)) - 2.0d0*a(i)                               &&\
++         D2aL  = (a(i-2) + a(i)  ) - 2.0d0*a(i-1)                             &&\
++         D2aLL = (a(i-3) + a(i-1)) - 2.0d0*a(i-2)                             &&\
++         D2aR  = (a(i)   + a(i+2)) - 2.0d0*a(i+1)                             &&\
++         D2aRR = (a(i+1) + a(i+3)) - 2.0d0*a(i+2)                             &&\
+          D3a = D2aR - D2aC   &&\
+          D3aL = D2aC - D2aL  &&\
+          D3aR = D2aRR - D2aR &&\
+@@ -1956,9 +1954,9 @@ subroutine SimplePPM_ye_1d(apply_enhanced_ppm,&
+                      aplus(i)  = a(i) + daplus * rhi     &&\
+                      aminus(i) = a(i) - daminus * rhi    &&\
+                   else if (abs(daminus) .ge. 2.0d0*abs(daplus)) then   &&\
+-                     aminus(i)  = a(i) - 2.0d0*(1.0d0-rhi)*daplus - rhi*daminus   &&\
++                     aminus(i)  = a(i) - (2.0d0*(1.0d0-rhi)*daplus + rhi*daminus)   &&\
+                   else if (abs(daplus) .ge. 2.0d0*abs(daminus)) then &&\
+-                     aplus(i)  = a(i) + 2.0d0*(1.0d0-rhi)*daminus + rhi*daplus   &&\
++                     aplus(i)  = a(i) + (2.0d0*(1.0d0-rhi)*daminus + rhi*daplus)   &&\
+                   endif &&\
+             endif &&\
+          endif &&\
+@@ -1981,10 +1979,10 @@ subroutine SimplePPM_ye_1d(apply_enhanced_ppm,&
+       daplus = aplus(i)-a(i)   &&\
+       daminus = a(i)-aminus(i) &&\
+       if (daplus*daminus .le. 0 .or. (a(i-2)-a(i))*(a(i)-a(i+2)) .le. 0) then &&\
+-         D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                                           && \
+-         D2aC = a(i-1) - 2.0d0*a(i)   + a(i+1)                                                     &&\
+-         D2aL = a(i-2) - 2.0d0*a(i-1) + a(i)                                                       &&\
+-         D2aR = a(i)   - 2.0d0*a(i+1) + a(i+2)                                                     &&\
++         D2a  = - (12.0d0*a(i) - 6.0d0*(aminus(i)+aplus(i)))                  &&\
++         D2aC = (a(i-1) + a(i+1)) - 2.0d0*a(i)                                &&\
++         D2aL = (a(i-2) + a(i)  ) - 2.0d0*a(i-1)                              &&\
++         D2aR = (a(i)   + a(i+2)) - 2.0d0*a(i+1)                              &&\
+          if (sign(one, D2a) .eq. sign(one, D2aC) .and. sign(one, D2a) .eq. sign(one, D2aL) .and. sign(one, D2a) .eq. sign(one, D2aR)) then &&\
+             D2aLim = sign(one, D2a) * min(C*abs(D2aL), C*abs(D2aR), C*abs(D2aC), abs(D2a))  &&\
+          else                                                      &&\
+@@ -2000,9 +1998,9 @@ subroutine SimplePPM_ye_1d(apply_enhanced_ppm,&
+                   aplus(i)  = a(i) + daplus * rhi     &&\
+                   aminus(i) = a(i) - daminus * rhi    &&\
+                else if (abs(daminus) .ge. 2.0d0*abs(daplus)) then   &&\
+-                  aminus(i)  = a(i) - 2.0d0*(1.0d0-rhi)*daplus - rhi*daminus   &&\
++                  aminus(i)  = a(i) - (2.0d0*(1.0d0-rhi)*daplus + rhi*daminus)   &&\
+                else if (abs(daplus) .ge. 2.0d0*abs(daminus)) then &&\
+-                  aplus(i)  = a(i) + 2.0d0*(1.0d0-rhi)*daminus + rhi*daplus   &&\
++                  aplus(i)  = a(i) + (2.0d0*(1.0d0-rhi)*daminus + rhi*daplus)   &&\
+                endif &&\
+          endif      &&\
+       else                                                         &&\
+diff --git a/src/GRHydro_Source.F90 b/src/GRHydro_Source.F90
+index 9a3c2f8..553c916 100644
+--- a/src/GRHydro_Source.F90
++++ b/src/GRHydro_Source.F90
+@@ -15,12 +15,18 @@
+ 
+ ! Fourth order f.d.
+ 
++#if(1)
++#define DIFF_X_4(q) ((q(i-2,j,k)-q(i+2,j,k)) + 8.d0 * (q(i+1,j,k) - q(i-1,j,k))) / 12.d0 * ida
++#define DIFF_Y_4(q) ((q(i,j-2,k)-q(i,j+2,k)) + 8.d0 * (q(i,j+1,k) - q(i,j-1,k))) / 12.d0 * idb
++#define DIFF_Z_4(q) ((q(i,j,k-2)-q(i,j,k+2)) + 8.d0 * (q(i,j,k+1) - q(i,j,k-1))) / 12.d0 * idc
++#else
+ #define DIFF_X_4(q) (-q(i+2,j,k) + 8.d0 * q(i+1,j,k) - 8.d0 * q(i-1,j,k) + \
+                       q(i-2,j,k)) / 12.d0 * ida
+ #define DIFF_Y_4(q) (-q(i,j+2,k) + 8.d0 * q(i,j+1,k) - 8.d0 * q(i,j-1,k) + \
+                       q(i,j-2,k)) / 12.d0 * idb
+ #define DIFF_Z_4(q) (-q(i,j,k+2) + 8.d0 * q(i,j,k+1) - 8.d0 * q(i,j,k-1) + \
+                       q(i,j,k-2)) / 12.d0 * idc
++#endif
+ 
+ #include "cctk.h"
+ #include "cctk_Parameters.h"
+-- 
+1.7.10.4
+

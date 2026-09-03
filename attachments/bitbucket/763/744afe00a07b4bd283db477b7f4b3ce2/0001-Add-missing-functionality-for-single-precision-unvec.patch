@@ -1,0 +1,32 @@
+From 929d9dec7acd52ef2650c4dc5eb26f35fc5b31ba Mon Sep 17 00:00:00 2001
+From: Barry Wardell <barry.wardell@gmail.com>
+Date: Fri, 2 Mar 2012 09:15:02 +0000
+Subject: [PATCH] Add missing functionality for single precision unvectorised
+ architecture.
+
+---
+ src/vectors-4-default.h |    5 ++++-
+ 1 files changed, 4 insertions(+), 1 deletions(-)
+
+diff --git a/src/vectors-4-default.h b/src/vectors-4-default.h
+index 874f471..361a7dd 100644
+--- a/src/vectors-4-default.h
++++ b/src/vectors-4-default.h
+@@ -46,10 +46,13 @@
+ 
+ // Aligned store
+ #define vec4_store(p,x) ((p)=(x))
++#define vec4_storeu(p,x) ((p)=(x))
++
+ // Unaligned store
+ #define vec4_store_nta(p,x) ((p)=(x))
+ 
+-#define vec4_store_nta_partial(p,x,i,imin,imax) (vec4_store_nta(p,x))
++#define vec4_store_partial_prepare(i,imin,imax) (0)
++#define vec4_store_nta_partial(p,x) (vec4_store_nta(p,x))
+ // Store the n lower elements of a vector to memory
+ #define vec4_store_nta_partial_lo(p,x,n) (assert(0))
+ // Store the n higher elements of a vector into memory. This stores
+-- 
+1.7.7.4
+

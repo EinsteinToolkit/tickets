@@ -1,0 +1,38 @@
+From 66869ceca63a957c1859d7f817c16feb6ede9186 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Wed, 1 Aug 2012 11:43:12 -0700
+Subject: [PATCH 04/11] CarpetIOHDF5: do not re-parse files for patches when
+ using open_one_input_file_at_a_time
+
+---
+ Carpet/CarpetIOHDF5/src/Input.cc |    7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/Carpet/CarpetIOHDF5/src/Input.cc b/Carpet/CarpetIOHDF5/src/Input.cc
+index f8f16a8..c8c6579 100644
+--- a/Carpet/CarpetIOHDF5/src/Input.cc
++++ b/Carpet/CarpetIOHDF5/src/Input.cc
+@@ -550,8 +550,10 @@ int Recover (cGH* cctkGH, const char *basefilename, int called_from)
+                     in_recovery ? "checkpoint" : "input", file.filename);
+       }
+ 
+-      // browse through all datasets contained in this file
+-      HDF5_ERROR (H5Giterate (file.file, "/", NULL, BrowseDatasets, &file));
++      if (file.patches.size() == 0) {
++        // browse through all datasets contained in this file
++        HDF5_ERROR (H5Giterate (file.file, "/", NULL, BrowseDatasets, &file));
++      }
+     }
+     assert (file.patches.size() > 0);
+     if (myGH->recovery_filename_list and not myGH->recovery_filename_list[i]) {
+@@ -659,7 +661,6 @@ int Recover (cGH* cctkGH, const char *basefilename, int called_from)
+     if (open_one_input_file_at_a_time) {
+       HDF5_ERROR (H5Fclose (file.file));
+       file.file = -1;
+-      file.patches.clear();
+       free(file.filename);
+       file.filename = NULL;
+     }
+-- 
+1.7.10.4
+

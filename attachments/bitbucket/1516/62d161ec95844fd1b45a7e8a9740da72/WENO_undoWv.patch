@@ -1,0 +1,85 @@
+Index: src/GRHydro_WENOReconstruct_drv.F90
+===================================================================
+--- src/GRHydro_WENOReconstruct_drv.F90	(revision 594)
++++ src/GRHydro_WENOReconstruct_drv.F90	(working copy)
+@@ -104,8 +104,6 @@
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+-  CCTK_REAL, DIMENSION(cctk_ash1,cctk_ash2,cctk_ash3) :: g11, g12, g13, g22, g23, g33
+-  pointer (pg11,g11), (pg12,g12), (pg13,g13), (pg22,g22), (pg23,g23), (pg33,g33)
+ 
+   integer :: nx, ny, nz, i, j, k, itracer
+ 
+@@ -223,6 +221,9 @@
+                  call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
+                     w_lorentz(:,j,k)*vel(:,j,k,3),velzminus(:,j,k),velzplus(:,j,k),&
+                     trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call undo_Wv(nx, velxminus(:,j,k), velyminus(:,j,k), velzminus(:,j,k),&
++                                  velxplus(:,j,k),velyplus(:,j,k),velzplus(:,j,k),&
++                                  gxx(:,j,k),gxy(:,j,k),gxz(:,j,k),gyy(:,j,k),gyz(:,j,k),gzz(:,j,k))
+                else
+                  call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
+                     w_lorentz(:,j,k)*lvel(:,j,k,1),velxminus(:,j,k),velxplus(:,j,k),&
+@@ -233,10 +234,10 @@
+                  call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
+                     w_lorentz(:,j,k)*lvel(:,j,k,3),velzminus(:,j,k),velzplus(:,j,k),&
+                     trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++                 call undo_Wv(nx, velxminus(:,j,k), velyminus(:,j,k), velzminus(:,j,k),&
++                                  velxplus(:,j,k),velyplus(:,j,k),velzplus(:,j,k),&
++                                  gaa(:,j,k),gab(:,j,k),gac(:,j,k),gbb(:,j,k),gbc(:,j,k),gcc(:,j,k))
+                end if
+-               call undo_Wv(nx, velxminus(:,j,k), velyminus(:,j,k), velzminus(:,j,k),&
+-                                velxplus(:,j,k),velyplus(:,j,k),velzplus(:,j,k),&
+-                                g11(:,j,k),g12(:,j,k),g13(:,j,k),g22(:,j,k),g23(:,j,k),g33(:,j,k))
+             endif
+             call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(1),&
+                  eps(:,j,k),epsminus(:,j,k),epsplus(:,j,k),&
+@@ -376,6 +377,9 @@
+                  call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
+                     w_lorentz(j,:,k)*vel(j,:,k,3),velzminus(j,:,k),velzplus(j,:,k),&
+                     trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call undo_Wv(ny, velyminus(j,:,k), velzminus(j,:,k), velxminus(j,:,k),&
++                                  velyplus(j,:,k),velzplus(j,:,k),velxplus(j,:,k),&
++                                  gyy(j,:,k), gyz(j,:,k), gxy(j,:,k), gzz(j,:,k), gxz(j,:,k), gxx(j,:,k))
+                else
+                  call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
+                     w_lorentz(j,:,k)*lvel(j,:,k,1),velxminus(j,:,k),velxplus(j,:,k),&
+@@ -386,10 +390,10 @@
+                  call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
+                     w_lorentz(j,:,k)*lvel(j,:,k,3),velzminus(j,:,k),velzplus(j,:,k),&
+                     trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++                 call undo_Wv(ny, velyminus(j,:,k), velzminus(j,:,k), velxminus(j,:,k),&
++                                  velyplus(j,:,k),velzplus(j,:,k),velxplus(j,:,k),&
++                                  gbb(j,:,k), gbc(j,:,k), gab(j,:,k), gcc(j,:,k), gac(j,:,k), gaa(j,:,k))
+                end if
+-               call undo_Wv(ny, velyminus(j,:,k), velzminus(j,:,k), velxminus(j,:,k),&
+-                                velyplus(j,:,k),velzplus(j,:,k),velxplus(j,:,k),&
+-                                g22(j,:,k), g23(j,:,k), g12(j,:,k), g33(j,:,k), g13(j,:,k), g11(j,:,k))
+             endif
+             call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(2),&
+                  eps(j,:,k),epsminus(j,:,k),epsplus(j,:,k),&
+@@ -529,6 +533,9 @@
+                  call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
+                     w_lorentz(j,k,:)*vel(j,k,:,3),velzminus(j,k,:),velzplus(j,k,:),&
+                     trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call undo_Wv(nz, velzminus(j,k,:), velxminus(j,k,:), velyminus(j,k,:),&
++                                  velzplus(j,k,:),velxplus(j,k,:),velyplus(j,k,:),&
++                                  gzz(j,k,:), gxz(j,k,:), gyz(j,k,:), gxx(j,k,:), gxy(j,k,:),gyy(j,k,:))
+                else
+                  call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
+                     w_lorentz(j,k,:)*lvel(j,k,:,1),velxminus(j,k,:),velxplus(j,k,:),&
+@@ -539,10 +546,10 @@
+                  call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
+                     w_lorentz(j,k,:)*lvel(j,k,:,3),velzminus(j,k,:),velzplus(j,k,:),&
+                     trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++                 call undo_Wv(nz, velzminus(j,k,:), velxminus(j,k,:), velyminus(j,k,:),&
++                                  velzplus(j,k,:),velxplus(j,k,:),velyplus(j,k,:),&
++                                  gcc(j,k,:), gac(j,k,:), gbc(j,k,:), gaa(j,k,:), gab(j,k,:),gbb(j,k,:))
+                end if
+-               call undo_Wv(nz, velzminus(j,k,:), velxminus(j,k,:), velyminus(j,k,:),&
+-                                velzplus(j,k,:),velxplus(j,k,:),velyplus(j,k,:),&
+-                                g33(j,k,:), g13(j,k,:), g23(j,k,:), g11(j,k,:), g12(j,k,:),g22(j,k,:))
+             endif
+             call GRHydro_WENOReconstruct1d(WENO_order,cctk_lsh(3),&
+                  eps(j,k,:),epsminus(j,k,:),epsplus(j,k,:),&

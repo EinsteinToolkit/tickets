@@ -1,0 +1,100 @@
+From 157bcead564eef88790034e0bbe1c20527aaa2b6 Mon Sep 17 00:00:00 2001
+From: Bruno Coutinho Mundim <bcmsma@astro.rit.edu>
+Date: Sun, 7 Oct 2012 15:53:10 -0400
+Subject: [PATCH 3/3] GRHydro: Unify function interface for
+ GRHydro_Con2PrimM_pt.c and
+ GRHydro_Con2PrimM_pt_EOSOmni.c
+
+* Interestingly Cactus doesn't complain about the function interface in
+interface.ccl. It has the old set of arguments for that function and declare it
+as written in Fortran instead of C.
+
+* Cylindrical explosion works again with GRHydro_Con2PrimM_pt.c routine. You
+can just swap both routines in make.code.defn
+---
+ src/GRHydro_Con2PrimM_pt.c         |   10 +++++++---
+ src/GRHydro_Con2PrimM_pt_EOSOmni.c |   10 +++++++++-
+ src/make.code.defn                 |    2 +-
+ 3 files changed, 17 insertions(+), 5 deletions(-)
+
+diff --git a/src/GRHydro_Con2PrimM_pt.c b/src/GRHydro_Con2PrimM_pt.c
+index bbd326e..2a85ba7 100644
+--- a/src/GRHydro_Con2PrimM_pt.c
++++ b/src/GRHydro_Con2PrimM_pt.c
+@@ -104,12 +104,13 @@ static CCTK_REAL pressure_rho0_w(CCTK_REAL rho0, CCTK_REAL w,CCTK_REAL gammaeos)
+   return((gammaeos-1.)*(w - rho0)/gammaeos) ;
+ }
+ 
+-
+ void CCTK_FCALL CCTK_FNAME(GRHydro_Con2PrimM_pt) (
+-    CCTK_INT  *handle, CCTK_REAL *gamma_eos,
++    CCTK_INT  *handle, CCTK_INT *keytemp, CCTK_REAL *prec, 
++    CCTK_REAL *gamma_eos,
+     CCTK_REAL *dens_in, 
+     CCTK_REAL *sx_in, CCTK_REAL *sy_in, CCTK_REAL *sz_in, 
+     CCTK_REAL *tau_in, CCTK_REAL *Bconsx_in, CCTK_REAL *Bconsy_in, CCTK_REAL *Bconsz_in, 
++    CCTK_REAL *y_e_in, CCTK_REAL *temp_in,
+     CCTK_REAL *rho, 
+     CCTK_REAL *velx, CCTK_REAL *vely, CCTK_REAL *velz,
+     CCTK_REAL *epsilon, CCTK_REAL *pressure,
+@@ -185,12 +186,15 @@ RETURN VALUE: of retval = (i*100 + j)  where
+              ( used to be  5 -> failure: rho,uu <= 0   but now sets epsnegative to non-zero )
+ 
+ **********************************************************************************/
++
+ void CCTK_FCALL CCTK_FNAME(GRHydro_Con2PrimM_pt)  ( 
+-    CCTK_INT  *handle, CCTK_REAL *gamma_eos,
++    CCTK_INT  *handle, CCTK_INT *keytemp, CCTK_REAL *prec,
++    CCTK_REAL *gamma_eos,
+     CCTK_REAL *dens_in, 
+     CCTK_REAL *sx_in, CCTK_REAL *sy_in, CCTK_REAL *sz_in, 
+     CCTK_REAL *tau_in,     
+     CCTK_REAL *Bconsx_in, CCTK_REAL *Bconsy_in, CCTK_REAL *Bconsz_in, 
++    CCTK_REAL *y_e_in, CCTK_REAL* temp_in,
+     CCTK_REAL *rho, 
+     CCTK_REAL *velx, CCTK_REAL *vely, CCTK_REAL *velz,
+     CCTK_REAL *epsilon, CCTK_REAL *pressure,
+diff --git a/src/GRHydro_Con2PrimM_pt_EOSOmni.c b/src/GRHydro_Con2PrimM_pt_EOSOmni.c
+index 4a52414..8a72a6b 100644
+--- a/src/GRHydro_Con2PrimM_pt_EOSOmni.c
++++ b/src/GRHydro_Con2PrimM_pt_EOSOmni.c
+@@ -369,7 +369,12 @@ void CCTK_FCALL CCTK_FNAME(GRHydro_Con2PrimM_pt)  (
+  
+   CCTK_REAL dum1,dum2;
+   p = pressure_rho0_eps_eosomni(rho0,*epsilon,&dum1,&dum2,&eosvars) ;  // EOSOMNI
+-  //  p = pressure_rho0_u(rho0,u,gammaeos) ;  // EOS
++  CCTK_REAL p2 = pressure_rho0_u(rho0,u,gammaeos) ;  // EOS
++
++  if (fabs(p-p2) > 1.0e-8){
++    printf("p = %20.16g,  p2 = %20.16g, delta pressure = %20.16g \n",p, p2, p-p2);
++  }
++
+   w = rho0 + u + p ;
+ 
+   W_last = w*gammasq ;
+@@ -406,6 +411,9 @@ void CCTK_FCALL CCTK_FNAME(GRHydro_Con2PrimM_pt)  (
+   if( ((*retval) != 0.) || (W == FAIL_VAL) ) {
+     *retval = *retval*100.+1.;
+     fprintf(stdout," *retval      = %26.16e \n", *retval      );
++    fprintf(stdout," x_3d[%d] = %26.16e \n", 0, x_3d[0]     );
++    fprintf(stdout," x_3d[%d] = %26.16e \n", 1, x_3d[1]     );
++    fprintf(stdout," x_3d[%d] = %26.16e \n", 2, x_3d[2]     );
+     return;
+   }
+   else{
+diff --git a/src/make.code.defn b/src/make.code.defn
+index b1042c7..0100cae 100644
+--- a/src/make.code.defn
++++ b/src/make.code.defn
+@@ -45,7 +45,7 @@ SRCS = 	Utils.F90 \
+ 	GRHydro_EoSChangeGamma.F90 \
+ 	GRHydro_Tmunu.F90 \
+ 	GRHydro_Con2PrimM.F90 \
+-	GRHydro_Con2PrimM_pt_EOSOmni.c \
++	GRHydro_Con2PrimM_pt.c \
+ 	GRHydro_Con2PrimM_polytype_pt.c \
+ 	GRHydro_EigenproblemM.F90 \
+ 	GRHydro_FluxM.F90 \
+-- 
+1.7.10.4
+

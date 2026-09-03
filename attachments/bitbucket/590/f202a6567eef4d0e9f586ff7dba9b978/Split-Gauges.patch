@@ -1,0 +1,312 @@
+diff --git a/m/McLachlan_BSSN.m b/m/McLachlan_BSSN.m
+index 20ff871..b44af3b 100644
+--- a/m/McLachlan_BSSN.m
++++ b/m/McLachlan_BSSN.m
+@@ -740,6 +740,131 @@ evolCalc =
+   }
+ };
+ 
++LapseCalc =
++{
++  Name -> thorn <> "_Lapse",
++  Schedule -> {"In " <> thorn <> "_evolCalcGroup " <>
++	       "AFTER (" <> thorn <> "_RHS1 " <> thorn
++                <> "_RHS2) BEFORE (" <> thorn <> "_Advect)"},
++  Conditional -> Parameter["lapse_evolution_method"] == thorn,
++  Where -> InteriorNoSync,
++  Shorthands -> {dir[ua]},
++  Equations ->
++  {
++    dir[ua]    -> Sign[beta[ua]],
++    dot[alpha] -> - harmonicF alpha^harmonicN
++                    (+ LapseACoeff       A
++                     + ((1 - LapseACoeff)
++                        (+ trK - IfCCZ4[2 Theta, 0]
++                         + AlphaDriver (alpha - 1))))
++                  + LapseAdvectionCoeff Upwind[beta[ua], alpha, la],
++
++    dot[A]     -> + (LapseACoeff
++                     (+ dot[trK] - IfCCZ4[2 dot[Theta], 0]
++                      - AlphaDriver A))
++                  + LapseACoeff (
++                    + LapseAdvectionCoeff       Upwind[beta[ua], A, la]
++                    + (1 - LapseAdvectionCoeff) Upwind[beta[ua], trK, la])
++  }
++};
++
++harmonicLapseCalc =
++{
++  Name -> thorn <> "_HarmonicLapse",
++  Schedule -> {"In " <> thorn <> "_evolCalcGroup " <>
++	       "AFTER (" <> thorn <> "_RHS1 " <> thorn <>
++               "_RHS2) BEFORE (" <> thorn <> "_Advect)"},
++  Conditional -> Parameter["lapse_evolution_method"] == thorn <> "_Harmonic",
++  Where -> InteriorNoSync,
++  Shorthands -> {dir[ua]},
++  Equations ->
++  {
++    dir[ua]    -> Sign[beta[ua]],
++    dot[alpha] -> - alpha^2 ( + trK - IfCCZ4[2 Theta, 0]
++                              + AlphaDriver (alpha - 1) )
++                  + LapseAdvectionCoeff Upwind[beta[ua], alpha, la],
++    dot[A]     -> 0
++  }
++};
++
++OnePlusLogLapseCalc =
++{
++  Name -> thorn <> "_1PlusLogLapse",
++  Schedule -> {"In " <> thorn <> "_evolCalcGroup " <>
++	       "AFTER (" <> thorn <> "_RHS1 " <> thorn <>
++               "_RHS2) BEFORE (" <> thorn <> "_Advect)"},
++  Conditional -> Parameter["lapse_evolution_method"] == thorn <> "_1+Log",
++  Where -> InteriorNoSync,
++  Shorthands -> {dir[ua]},
++  Equations ->
++  {
++    dir[ua]    -> Sign[beta[ua]],
++    dot[alpha] -> - 2 alpha ( + trK - IfCCZ4[2 Theta, 0]
++                              + AlphaDriver (alpha - 1) )
++                  + LapseAdvectionCoeff Upwind[beta[ua], alpha, la],
++    dot[A]     -> 0
++  }
++};
++
++ShiftCalc =
++{
++  Name -> thorn <> "_Shift",
++  Schedule -> {"In " <> thorn <> "_evolCalcGroup " <>
++	       "AFTER (" <> thorn <> "_RHS1 " <> thorn <>
++               "_RHS2) BEFORE (" <> thorn <> "_Advect)"},
++  Conditional -> Parameter["shift_evolution_method"] == thorn,
++  Where -> InteriorNoSync,
++  Shorthands -> {dir[ua],detgt,gtu[ua,ub],eta,theta},
++  Equations ->
++  {
++    dir[ua]    -> Sign[beta[ua]],
++
++    detgt -> 1 (* detgtExpr *),
++
++    (* This leads to simpler code... *)
++    gtu[ua,ub]   -> 1/detgt detgtExpr MatrixInverse [gt[ua,ub]],
++
++    eta -> etaExpr,
++    theta -> thetaExpr,
++
++    dot[beta[ua]] -> IfThen[harmonicShift,
++                            - 1/2 gtu[ua,uj] phi alpha
++                              (- 2 alpha PD[phi,lj]
++                               + 2 phi PD[alpha,lj]
++                               + gtu[uk,ul] phi alpha
++                                 (PD[gt[lk,ll],lj] - 2 PD[gt[lj,lk],ll])),
++                            (* else *)
++                            + theta ShiftGammaCoeff
++                              (+ ShiftBCoeff B[ua]
++                               + (1 - ShiftBCoeff)
++                                 (Xt[ua] - eta BetaDriver beta[ua]))]
++                     + ShiftAdvectionCoeff Upwind[beta[ub], beta[ua], lb],
++    dot[B[ua]]    -> + ShiftBCoeff (dot[Xt[ua]] - eta BetaDriver B[ua])
++                     + ShiftBCoeff (
++                       + ShiftAdvectionCoeff Upwind[beta[ub], B[ua], lb]
++                       + ((1 - ShiftAdvectionCoeff)
++                          Upwind[beta[ub], Xt[ua], lb]))
++  }
++};
++
++gamma2ShiftCalc =
++{
++  Name -> thorn <> "_gamma2Shift",
++  Schedule -> {"In " <> thorn <> "_evolCalcGroup " <>
++               "AFTER (" <> thorn <> "_RHS1 " <> thorn <>
++               "_RHS2) BEFORE (" <> thorn <> "_Advect)"},
++  Conditional -> Parameter["shift_evolution_method"] == thorn <> "_gamma2",
++  Where -> InteriorNoSync,
++  Shorthands -> {eta},
++  Equations ->
++  {
++    eta -> etaExpr,
++
++    dot[beta[ua]] -> B[ua],
++    dot[B[ua]]    -> alpha^ShiftAlphaPower*ShiftGammaCoeff*dot[Xt[ua]] - eta B[ua]
++  }
++};
++
+ advectCalc =
+ {
+   Name -> thorn <> "_Advect",
+@@ -769,24 +894,7 @@ advectCalc =
+ 
+           dot[trK] -> dot[trK] + Upwind[beta[ua], trK, la],
+ 
+-    dot[At[la,lb]] -> dot[At[la,lb]] + Upwind[beta[uc], At[la,lb], lc],
+-
+-        dot[alpha] -> dot[alpha]
+-                      + LapseAdvectionCoeff Upwind[beta[ua], alpha, la],
+-
+-            dot[A] -> dot[A]
+-                      + LapseACoeff (
+-                        + LapseAdvectionCoeff       Upwind[beta[ua], A, la]
+-                        + (1 - LapseAdvectionCoeff) Upwind[beta[ua], trK, la]),
+-
+-     dot[beta[ua]] -> dot[beta[ua]]
+-                      + ShiftAdvectionCoeff Upwind[beta[ub], beta[ua], lb],
+-
+-        dot[B[ua]] -> dot[B[ua]]
+-                      + ShiftBCoeff (
+-                        + ShiftAdvectionCoeff Upwind[beta[ub], B[ua], lb]
+-                        + ((1 - ShiftAdvectionCoeff)
+-                           Upwind[beta[ub], Xt[ua], lb]))
++    dot[At[la,lb]] -> dot[At[la,lb]] + Upwind[beta[uc], At[la,lb], lc]
+   }
+ };
+ 
+@@ -799,10 +907,10 @@ evolCalc1 = PartialCalculation[evolCalc, "1",
+     dot[gt[la,lb]],
+     dot[Xt[ui]],
+     dot[trK],
+-    dot[alpha],
++(*    dot[alpha],
+     dot[A],
+     dot[beta[ua]],
+-    dot[B[ua]],
++    dot[B[ua]], *)
+     IfCCZ4[dot[Theta]]
+   }];
+ 
+@@ -818,7 +926,8 @@ dissCalc =
+ {
+   Name -> thorn <> "_Dissipation",
+   Schedule -> {"IN " <> thorn <> "_evolCalcGroup " <>
+-               "AFTER (" <> thorn <> "_RHS1 " <> thorn <> "_RHS2)"},
++               "AFTER (" <> thorn <> "_RHS1 " <> thorn <> "_RHS2 " 
++                         <> thorn <> "_Advect)"},
+   ConditionalOnKeyword -> {"apply_dissipation", "always"},
+   Where -> InteriorNoSync,
+   Shorthands -> {epsdiss[ua]},
+@@ -827,8 +936,41 @@ dissCalc =
+     epsdiss[ua] -> EpsDiss,
+     Sequence@@Table[
+       dot[var]       -> dot[var] + epsdiss[ux] PDdiss[var,lx],
+-      {var, {phi, gt[la,lb], Xt[ui], IfCCZ4[Theta], trK, At[la,lb],
+-             alpha, A, beta[ua], B[ua]}}]
++      {var, {phi, gt[la,lb], Xt[ui], IfCCZ4[Theta], trK, At[la,lb]}}]
++  }
++};
++
++dissLapseCalc =
++{
++  Name -> thorn <> "_DissipationLapse",
++  Schedule -> {"IN " <> thorn <> "_evolCalcGroup " <>
++               "AFTER (" <> thorn <> "_Lapse " <> thorn <> "_Advect)"},
++  Conditional -> Parameter["apply_dissipation"] == "always" && (Parameter["lapse_evolution_method"] == thorn || Parameter["lapse_evolution_method"] == thorn <> "_Harmonic" || Parameter["lapse_evolution_method"] == thorn <> "_1+Log"),
++  Where -> InteriorNoSync,
++  Shorthands -> {epsdiss[ua]},
++  Equations ->
++  {
++    epsdiss[ua] -> EpsDiss,
++    Sequence@@Table[
++      dot[var]       -> dot[var] + epsdiss[ux] PDdiss[var,lx],
++      {var, {alpha, A}}]
++  }
++};
++
++dissShiftCalc =
++{
++  Name -> thorn <> "_DissipationShift",
++  Schedule -> {"IN " <> thorn <> "_evolCalcGroup " <>
++               "AFTER (" <> thorn <> "_Shift " <> thorn <> "_Advect)"},
++  Conditional -> Parameter["apply_dissipation"] == "always" && (Parameter["shift_evolution_method"] == thorn || Parameter["shift_evolution_method"] == thorn <> "_gamma2"),
++  Where -> InteriorNoSync,
++  Shorthands -> {epsdiss[ua]},
++  Equations ->
++  {
++    epsdiss[ua] -> EpsDiss,
++    Sequence@@Table[
++      dot[var]       -> dot[var] + epsdiss[ux] PDdiss[var,lx],
++      {var, {beta[ua], B[ua]}}]
+   }
+ };
+ 
+@@ -1170,11 +1312,11 @@ extendedKeywordParameters =
+   },
+   {
+     Name -> "ADMBase::lapse_evolution_method",
+-    AllowedValues -> {thorn}
++    AllowedValues -> {thorn, thorn <> "_Harmonic", thorn <> "_1+Log"}
+   },
+   {
+     Name -> "ADMBase::shift_evolution_method",
+-    AllowedValues -> {thorn}
++    AllowedValues -> {thorn, thorn <> "_gamma2"}
+   },
+   {
+     Name -> "ADMBase::dtlapse_evolution_method",
+@@ -1233,7 +1375,8 @@ keywordParameters =
+   {
+     Name -> "dt_lapse_shift_method",
+     Description -> "Treatment of ADMBase dtlapse and dtshift",
+-    AllowedValues -> {"correct",
++    AllowedValues -> {"none",
++	              "correct",
+                       "noLapseShiftAdvection" (* omit lapse and shift advection terms (faster) *)
+                      },
+     Default -> "correct"
+@@ -1374,7 +1517,14 @@ Join[
+   convertFromADMBaseGammaCalc,
+   (* evolCalc, *)
+   evolCalc1, evolCalc2,
++  LapseCalc,
++  harmonicLapseCalc,
++  OnePlusLogLapseCalc,
++  ShiftCalc,
++  gamma2ShiftCalc,
+   dissCalc,
++  dissLapseCalc,
++  dissShiftCalc,
+   advectCalc,
+   initRHSCalc,
+   (* evol1Calc, evol2Calc, *)
+diff --git a/m/prototype/ML_BSSN_Helper/param.ccl b/m/prototype/ML_BSSN_Helper/param.ccl
+index d0efc9d..cdb9bb5 100644
+--- a/m/prototype/ML_BSSN_Helper/param.ccl
++++ b/m/prototype/ML_BSSN_Helper/param.ccl
+@@ -9,6 +9,7 @@ USES CCTK_INT MoL_Num_Constrained_Vars
+ SHARES: ADMBase
+ 
+ USES KEYWORD evolution_method
++USES KEYWORD lapse_evolution_method
+ 
+ SHARES: GenericFD
+ 
+diff --git a/m/prototype/ML_BSSN_Helper/src/RegisterSlicing.c b/m/prototype/ML_BSSN_Helper/src/RegisterSlicing.c
+index 46eeb80..0177578 100644
+--- a/m/prototype/ML_BSSN_Helper/src/RegisterSlicing.c
++++ b/m/prototype/ML_BSSN_Helper/src/RegisterSlicing.c
+@@ -1,9 +1,25 @@
+ #include <cctk.h>
++#include "cctk_Parameters.h"
+ #include <Slicing.h>
+ 
+ int
+ ML_BSSN_RegisterSlicing (void)
+ {
+-  Einstein_RegisterSlicing ("ML_BSSN");
+-  return 0;
++  DECLARE_CCTK_PARAMETERS
++
++  if (CCTK_Equals(lapse_evolution_method, "ML_BSSN"))
++  {
++    Einstein_RegisterSlicing ("ML_BSSN");
++    return 0;
++  }
++  if (CCTK_Equals(lapse_evolution_method, "ML_BSSN_Harmonic"))
++  {
++    Einstein_RegisterSlicing ("ML_BSSN_Harmonic");
++    return 0;
++  }
++  if (CCTK_Equals(lapse_evolution_method, "ML_BSSN_1+Log"))
++  {
++    Einstein_RegisterSlicing ("ML_BSSN_1+Log");
++    return 0;
++  }
+ }

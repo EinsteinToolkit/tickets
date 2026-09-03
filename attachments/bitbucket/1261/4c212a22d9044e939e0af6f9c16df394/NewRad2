@@ -1,0 +1,102 @@
+Index: newrad.cc
+===================================================================
+--- newrad.cc	(revision 20)
++++ newrad.cc	(working copy)
+@@ -308,13 +308,10 @@
+             
+             // one of the faces is a boundary
+             bool have_bnd = false;
+-            // all boundary faces are physical boundaries
+-            bool all_physbnd = true;
+             // at least one boundary face is a physical boundary
+             bool any_physbnd = false;
+-            // all boundary faces are either physical boundaries or
+-            // ghost zones
+-            bool all_physbnd_or_ghostbnd = true;
++            // all boundary faces are not inter-processor boundaries
++            bool all_not_ipbnd = true;
+             
+             int bmin[3], bmax[3];
+             for (int d=0; d<3; ++d) {
+@@ -323,10 +320,8 @@
+                 bmin[d] = 0;
+                 bmax[d] = imin[d];
+                 have_bnd = true;
+-                all_physbnd = all_physbnd and is_physbnd[2*d+0];
+                 any_physbnd = any_physbnd or is_physbnd[2*d+0];
+-                all_physbnd_or_ghostbnd = all_physbnd_or_ghostbnd and
+-                  (is_physbnd[2*d+0] or not is_ipbnd[2*d+0]);
++                all_not_ipbnd = all_not_ipbnd and not is_ipbnd[2*d+0];
+                 break;
+               case 0:
+                 bmin[d] = imin[d];
+@@ -336,16 +331,14 @@
+                 bmin[d] = imax[d];
+                 bmax[d] = cctkGH->cctk_lsh[d];
+                 have_bnd = true;
+-                all_physbnd = all_physbnd and is_physbnd[2*d+1];
+                 any_physbnd = any_physbnd or is_physbnd[2*d+1];
+-                all_physbnd_or_ghostbnd = all_physbnd_or_ghostbnd and
+-                  (is_physbnd[2*d+1] or not is_ipbnd[2*d+1]);
++                all_not_ipbnd = all_not_ipbnd and not is_ipbnd[2*d+1];
+                 break;
+               }
+             }
+             assert (have_bnd);  // must be true since nnz>0
+             
+-            if (have_bnd and any_physbnd and all_physbnd_or_ghostbnd) {
++            if (have_bnd and any_physbnd and all_not_ipbnd) {
+               newrad_kernel (cctkGH, bmin, bmax, dir,
+                              var, rhs, x,y,z,r, var0, v0, radpower);
+             }
+Index: extrap.cc
+===================================================================
+--- extrap.cc	(revision 20)
++++ extrap.cc	(working copy)
+@@ -119,13 +119,10 @@
+             
+             // one of the faces is a boundary
+             bool have_bnd = false;
+-            // all boundary faces are physical boundaries
+-            bool all_physbnd = true;
+             // at least one boundary face is a physical boundary
+             bool any_physbnd = false;
+-            // all boundary faces are either physical boundaries or
+-            // ghost zones
+-            bool all_physbnd_or_ghostbnd = true;
++            // all boundary faces are not inter-processor boundaries
++            bool all_not_ipbnd = true;
+             
+             int bmin[3], bmax[3];
+             for (int d=0; d<3; ++d) {
+@@ -134,10 +131,8 @@
+                 bmin[d] = 0;
+                 bmax[d] = imin[d];
+                 have_bnd = true;
+-                all_physbnd = all_physbnd and is_physbnd[2*d+0];
+                 any_physbnd = any_physbnd or is_physbnd[2*d+0];
+-                all_physbnd_or_ghostbnd = all_physbnd_or_ghostbnd and
+-                  (is_physbnd[2*d+0] or is_ipbnd[2*d+0]);
++                all_not_ipbnd = all_not_ipbnd and not is_ipbnd[2*d+0];
+                 break;
+               case 0:
+                 bmin[d] = imin[d];
+@@ -147,16 +142,14 @@
+                 bmin[d] = imax[d];
+                 bmax[d] = cctkGH->cctk_lsh[d];
+                 have_bnd = true;
+-                all_physbnd = all_physbnd and is_physbnd[2*d+1];
+                 any_physbnd = any_physbnd or is_physbnd[2*d+1];
+-                all_physbnd_or_ghostbnd = all_physbnd_or_ghostbnd and
+-                  (is_physbnd[2*d+1] or not is_ipbnd[2*d+1]);
++                all_not_ipbnd = all_not_ipbnd and not is_ipbnd[2*d+1];
+                 break;
+               }
+             }
+             assert (have_bnd);  // must be true since nnz>0
+             
+-            if (have_bnd and any_physbnd and all_physbnd_or_ghostbnd) {
++            if (have_bnd and any_physbnd and all_not_ipbnd) {
+               extrap_kernel (cctkGH, bmin, bmax, dir, var);
+             }
+             

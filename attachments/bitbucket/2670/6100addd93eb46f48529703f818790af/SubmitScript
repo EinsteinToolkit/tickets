@@ -1,0 +1,15 @@
+#! /bin/bash
+
+# This submitscript is used internally by simfactory as a template during the
+# sim setup and sim setup-silent commands
+# Edit at your own risk
+
+cd /public/home/guolj/nr/etk/Cactus
+CHAINED_JOB_ID=''
+if [ "${CHAINED_JOB_ID}" != '' ]; then
+    while ps "${CHAINED_JOB_ID}" >/dev/null; do
+        sleep 60
+    done
+fi
+echo "fuck1"
+exec /public/home/guolj/nr/etk/Cactus/repos/simfactory2/bin/sim run projectdns_maxwell_65_300_1_11251505_ --basedir=/public/home/guolj/nr/etk/simulations --machine=tc6000 --restart-id=0 

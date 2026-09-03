@@ -1,0 +1,107 @@
+Index: src/TestLoop.c
+===================================================================
+--- src/TestLoop.c	(revision 8)
++++ src/TestLoop.c	(working copy)
+@@ -22,10 +22,12 @@
+       sum_all += r[ind1d];
+     } CCTK_ENDLOOP1_ALL (loop1_all);
+     
+-    int blo[1], bhi[1];
++    int blo[1], bhi[1], bboxlo[1], bboxhi[1];
+     for (int d=0; d<1; ++d) {
+       blo[d] = cctk_nghostzones[d];
+       bhi[d] = cctk_nghostzones[d];
++      bboxlo[d] = cctk_bbox[2*d+0];
++      bboxhi[d] = cctk_bbox[2*d+1];
+     }
+     
+     CCTK_REAL sum_int = 0.0;
+@@ -37,8 +39,8 @@
+     } CCTK_ENDLOOP1_INTERIOR (loop1_interior);
+     
+     CCTK_REAL sum_bnd = 0.0;
+-    CCTK_LOOP1_BOUNDARIES (loop1_boundaries, cctkGH, i,
+-                           blo[0], bhi[0])
++    CCTK_LOOP1_BOUNDARIES (loop1_boundaries, cctkGH, i, ni,
++                         blo[0], bhi[0], bboxlo[0], bboxhi[0])
+     {
+       int const ind1d = CCTK_GFINDEX1D (cctkGH, i);
+       sum_bnd += r[ind1d];
+@@ -58,10 +60,12 @@
+       sum_all += r[ind2d];
+     } CCTK_ENDLOOP2_ALL (loop2_all);
+   
+-    int blo[2], bhi[2];
++    int blo[2], bhi[2], bboxlo[2], bboxhi[2];
+     for (int d=0; d<2; ++d) {
+       blo[d] = cctk_nghostzones[d];
+       bhi[d] = cctk_nghostzones[d];
++      bboxlo[d] = cctk_bbox[2*d+0];
++      bboxhi[d] = cctk_bbox[2*d+1];
+     }
+   
+     CCTK_REAL sum_int = 0.0;
+@@ -73,8 +77,9 @@
+     } CCTK_ENDLOOP2_INTERIOR (loop2_interior);
+   
+     CCTK_REAL sum_bnd = 0.0;
+-    CCTK_LOOP2_BOUNDARIES (loop2_boundaries, cctkGH, i,j,
+-                           blo[0],blo[1], bhi[0],bhi[1])
++    CCTK_LOOP2_BOUNDARIES (loop2_boundaries, cctkGH, i,j, ni,nj,
++                           blo[0],blo[1], bhi[0],bhi[1],
++                           bboxlo[0],bboxlo[1], bboxhi[0],bboxhi[1])
+     {
+       int const ind2d = CCTK_GFINDEX2D (cctkGH, i,j);
+       sum_bnd += r[ind2d];
+@@ -94,10 +99,12 @@
+       sum_all += r[ind3d];
+     } CCTK_ENDLOOP3_ALL (loop3_all);
+   
+-    int blo[3], bhi[3];
++    int blo[3], bhi[3], bboxlo[3], bboxhi[3];
+     for (int d=0; d<3; ++d) {
+       blo[d] = cctk_nghostzones[d];
+       bhi[d] = cctk_nghostzones[d];
++      bboxlo[d] = cctk_bbox[2*d+0];
++      bboxhi[d] = cctk_bbox[2*d+1];
+     }
+   
+     CCTK_REAL sum_int = 0.0;
+@@ -109,8 +116,9 @@
+     } CCTK_ENDLOOP3_INTERIOR (loop3_interior);
+   
+     CCTK_REAL sum_bnd = 0.0;
+-    CCTK_LOOP3_BOUNDARIES (loop3_boundaries, cctkGH, i,j,k,
+-                           blo[0],blo[1],blo[2], bhi[0],bhi[1],bhi[2])
++    CCTK_LOOP3_BOUNDARIES (loop3_boundaries, cctkGH, i,j,k, ni,nj,nk,
++                           blo[0],blo[1],blo[2], bhi[0],bhi[1],bhi[2],
++                           bboxlo[0],bboxlo[1],bboxlo[2], bboxhi[0],bboxhi[1],bboxhi[2])
+     {
+       int const ind3d = CCTK_GFINDEX3D (cctkGH, i,j,k);
+       sum_bnd += r[ind3d];
+@@ -130,10 +138,12 @@
+       sum_all += r[ind4d];
+     } CCTK_ENDLOOP4_ALL (loop4_all);
+   
+-    int blo[4], bhi[4];
++    int blo[4], bhi[4], bboxlo[4], bboxhi[4];
+     for (int d=0; d<4; ++d) {
+       blo[d] = cctk_nghostzones[d];
+       bhi[d] = cctk_nghostzones[d];
++      bboxlo[d] = cctk_bbox[2*d+0];
++      bboxhi[d] = cctk_bbox[2*d+1];
+     }
+   
+     CCTK_REAL sum_int = 0.0;
+@@ -145,8 +155,9 @@
+     } CCTK_ENDLOOP4_INTERIOR (loop4_interior);
+   
+     CCTK_REAL sum_bnd = 0.0;
+-    CCTK_LOOP4_BOUNDARIES (loop4_boundaries, cctkGH, i,j,k,l,
+-                           blo[0],blo[1],blo[2],blo[3], bhi[0],bhi[1],bhi[2],bhi[3])
++    CCTK_LOOP4_BOUNDARIES (loop4_boundaries, cctkGH, i,j,k,l, ni,nj,nk,nl,
++                           blo[0],blo[1],blo[2],blo[3], bhi[0],bhi[1],bhi[2],bhi[3],
++                           bboxlo[0],bboxlo[1],bboxlo[2],bboxlo[3], bboxhi[0],bboxhi[1],bboxhi[2],bboxhi[3])
+     {
+       int const ind4d = CCTK_GFINDEX4D (cctkGH, i,j,k,l);
+       sum_bnd += r[ind4d];

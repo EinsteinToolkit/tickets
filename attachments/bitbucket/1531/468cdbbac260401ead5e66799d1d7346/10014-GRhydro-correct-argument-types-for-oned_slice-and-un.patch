@@ -1,0 +1,38 @@
+From 589d63033ab3621b73a43f0626ade98925e81222 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Tue, 26 Nov 2013 12:23:15 -0800
+Subject: [PATCH 14/36] GRhydro: correct argument types for oned_slice and
+ unslice
+
+---
+ src/GRHydro_PPMReconstruct_drv_opt.cc | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/src/GRHydro_PPMReconstruct_drv_opt.cc b/src/GRHydro_PPMReconstruct_drv_opt.cc
+index 3f5610f..ed755ac 100644
+--- a/src/GRHydro_PPMReconstruct_drv_opt.cc
++++ b/src/GRHydro_PPMReconstruct_drv_opt.cc
+@@ -22,18 +22,16 @@ using namespace std;
+ 
+ extern "C" CCTK_INT GRHydro_UseGeneralCoordinates(const cGH * cctkGH);
+ 
+-static void oned_slice(int npt,int nstart,int nstride,CCTK_REAL* vec3d,vector<CCTK_REAL> vec1d)
++static void oned_slice(int npt,int nstart,int nstride,CCTK_REAL const * restrict vec3d,vector<CCTK_REAL>& vec1d)
+ {
+   int i;
+   for (i=0; i<npt; i++)vec1d[i] = vec3d[nstart+i*nstride];
+-  return;
+ }
+ 
+-static void oned_unslice(int npt,int nstart,int nstride,vector<CCTK_REAL> vec1d,CCTK_REAL* vec3d)
++static void oned_unslice(int npt,int nstart,int nstride,vector<CCTK_REAL>& vec1d,CCTK_REAL * restrict vec3d)
+ {
+   int i;
+   for (i=0; i<npt; i++)vec3d[nstart+i*nstride]=vec1d[i];
+-  return;
+ }
+ 
+ /*
+-- 
+1.8.5.3
+

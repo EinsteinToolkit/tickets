@@ -1,0 +1,503 @@
+From 0cfa6081498d0e98c6381d97b05f8e20382c1c36 Mon Sep 17 00:00:00 2001
+From: abdik <abdik@tapir.caltech.edu>
+Date: Fri, 10 May 2013 10:21:53 -0700
+Subject: [PATCH 09/24] GRHydro: add option to switch to oPPM on a given
+ refinement level
+
+When reconstruction method is enhanced PPM, this change allows using old
+PPM on one refinement level, whereas the rest of the reflevels will use
+enhanced PPM.
+
+It is only for hydro, but could be extended to MHD also.
+---
+ param.ccl                          |    5 ++++
+ src/GRHydro_PPM.F90                |   46 ++++++++++++++++++++++--------------
+ src/GRHydro_PPMReconstruct_drv.F90 |   46 ++++++++++++++++++++++++++----------
+ src/GRHydro_ReconstructPoly.F90    |   37 ++++++++++++++++++++++-------
+ 4 files changed, 95 insertions(+), 39 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index 89e825b..84d6245 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -252,6 +252,11 @@ boolean use_enhanced_ppm "Use the enhanced ppm reconstruction method proposed by
+ {
+ } no
+ 
++int GRHydro_oppm_reflevel "Ref level where oPPM is used instead of ePPM (used with use_enhaced_ppm=yes)."
++{
++  -1:10 :: "0-10 (the reflevel number) or -1 (off)" 
++} -1
++
+ real enhanced_ppm_C2 "Parameter for enhancecd ppm limiter. Default from McCorquodale & Colella 2011" STEERABLE=ALWAYS
+ {
+    *:* :: "must be greater than 1. According to Colella&Sekora 2008, enhanced ppm is insensitive to C in [1.25,5]"
+diff --git a/src/GRHydro_PPM.F90 b/src/GRHydro_PPM.F90
+index 2f65bcb..cbe31a8 100644
+--- a/src/GRHydro_PPM.F90
++++ b/src/GRHydro_PPM.F90
+@@ -52,7 +52,7 @@ end subroutine PPM_TVD
+   (iand(mask((i)),(type_bits)).eq.(state_bits))
+ 
+ 
+-subroutine SimplePPM_1d(handle,poly,&
++subroutine SimplePPM_1d(apply_enhanced_ppm,handle,poly,&
+      nx,dx,rho,velx,vely,velz,eps,press,rhominus,&
+      velxminus,velyminus,velzminus,epsminus,rhoplus,velxplus,velyplus,&
+      velzplus,epsplus,trivial_rp, hydro_excision_mask,&
+@@ -68,6 +68,8 @@ subroutine SimplePPM_1d(handle,poly,&
+ 
+   CCTK_REAL, parameter :: one = 1
+ 
++  logical :: apply_enhanced_ppm
++
+   CCTK_INT :: handle,poly,nx
+   CCTK_REAL :: dx
+   CCTK_REAL, dimension(nx) :: rho,velx,vely,velz,eps
+@@ -131,7 +133,7 @@ trivial_rp = .true.
+          end if
+ 
+ 
+-  if (use_enhanced_ppm .eq. 0) then
++  if (.not.apply_enhanced_ppm) then
+       !! This is the original PPM algorithm by Colella & Woodward 1984.
+ 
+       !!$  Average slopes delta_m(a). See (1.7) of Colella and Woodward, p.178
+@@ -310,11 +312,11 @@ trivial_rp = .true.
+ !!$So this is just dropped from eq. (3.2) of C&W.
+ !!$We can get around this by just rescaling the constant k0 (ppm_k0 here).
+ 
+-  if (use_enhanced_ppm .eq. 0) then 
++  if (.not.apply_enhanced_ppm) then 
+    ! Only for 1984 PPM scheme!
+    if (ppm_detect .ne. 0) then
+       
+-      if (use_enhanced_ppm .eq. 1) then
++      if (apply_enhanced_ppm) then
+          ! make sure drho, d2rho and dmrho are computed everywhere!
+          do i = 2, nx-1
+                drho(i) = 0.5d0 * (rho(i+1) - rho(i-1))
+@@ -470,7 +472,7 @@ trivial_rp = .true.
+   end do
+ 
+ 
+-   if (use_enhanced_ppm .eq. 0) then
++   if (.not.apply_enhanced_ppm) then
+       ! In 1984 PPM, flattening is applied before constraining parabolic profiles.
+       if (PPM3) then !!$ Implement C&W, page 197, but with a workaround which allows to use stencil=3.
+          do i = 3, nx - 2
+@@ -777,7 +779,7 @@ trivial_rp = .true.
+       endif   
+ 
+ 
+-   if (use_enhanced_ppm .eq. 1) then
++   if (apply_enhanced_ppm) then
+       !! Constrain parabolic profiles, PPM 2011/2008
+       if (PPM3) then
+             do i = 3, nx - 2
+@@ -852,7 +854,7 @@ trivial_rp = .true.
+     
+   endif
+ 
+-  if (use_enhanced_ppm .eq. 0) then
++  if (.not.apply_enhanced_ppm) then
+      !! Constrain parabolic profiles, PPM 1984
+      do i = GRHydro_stencil, nx - GRHydro_stencil + 1
+          ! original Colella&Woodward monotonicity preservation
+@@ -1019,7 +1021,7 @@ return
+ end subroutine SimplePPM_1d
+ 
+ !!!! routine for doing PPM to temperature
+-subroutine SimplePPM_temperature_1d(&
++subroutine SimplePPM_temperature_1d(apply_enhanced_ppm,&     
+      nx,dx,velx,temperature,press,&
+      tempminus,&
+      tempplus, hydro_excision_mask)
+@@ -1031,6 +1033,8 @@ subroutine SimplePPM_temperature_1d(&
+ 
+   DECLARE_CCTK_PARAMETERS
+ 
++  logical :: apply_enhanced_ppm 
++
+   CCTK_REAL, parameter :: one = 1.0d0
+ 
+   CCTK_INT :: nx
+@@ -1063,7 +1067,7 @@ subroutine SimplePPM_temperature_1d(&
+          end if
+ 
+ 
+-  if (use_enhanced_ppm .eq. 0) then
++  if (.not.apply_enhanced_ppm) then
+       !! This is the original PPM algorithm by Colella & Woodward 1984.
+ 
+       !!$  Average slopes delta_m(a). See (1.7) of Colella and Woodward, p.178
+@@ -1165,7 +1169,7 @@ subroutine SimplePPM_temperature_1d(&
+       do i = 2, nx-1
+          dpress(i) = press(i+1) - press(i-1)
+       end do
+-
++      
+    endif
+ 
+ !!$  Zone flattening. See appendix of C&W, p. 197-8.
+@@ -1187,7 +1191,7 @@ subroutine SimplePPM_temperature_1d(&
+   end do
+ 
+ 
+-   if (use_enhanced_ppm .eq. 0) then
++   if (.not.apply_enhanced_ppm) then
+       ! In 1984 PPM, flattening is applied before constraining parabolic profiles.
+       if (PPM3) then !!$ Implement C&W, page 197, but with a workaround which allows to use stencil=3.
+          do i = 3, nx - 2
+@@ -1439,7 +1443,7 @@ subroutine SimplePPM_temperature_1d(&
+       endif   
+ 
+ 
+-   if (use_enhanced_ppm .eq. 1) then
++   if (apply_enhanced_ppm) then
+       !! Constrain parabolic profiles, PPM 2011/2008
+       if (PPM3) then
+             do i = 3, nx - 2
+@@ -1469,7 +1473,7 @@ subroutine SimplePPM_temperature_1d(&
+     
+   endif
+ 
+-  if (use_enhanced_ppm .eq. 0) then
++  if (.not.apply_enhanced_ppm) then
+      !! Constrain parabolic profiles, PPM 1984
+      do i = GRHydro_stencil, nx - GRHydro_stencil + 1
+          ! original Colella&Woodward monotonicity preservation
+@@ -1535,7 +1539,8 @@ end subroutine SimplePPM_temperature_1d
+ 
+ 
+ 
+-subroutine SimplePPM_tracer_1d(nx,dx,rho,velx,vely,velz, &
++subroutine SimplePPM_tracer_1d(apply_enhanced_ppm,&
++     nx,dx,rho,velx,vely,velz, &
+      tracer,tracerminus,tracerplus,press)
+ 
+   USE GRHydro_Scalars
+@@ -1544,6 +1549,8 @@ subroutine SimplePPM_tracer_1d(nx,dx,rho,velx,vely,velz, &
+ 
+   DECLARE_CCTK_PARAMETERS
+ 
++  logical :: apply_enhanced_ppm
++
+   CCTK_REAL, parameter :: one = 1
+ 
+   CCTK_INT :: nx
+@@ -1749,7 +1756,8 @@ subroutine SimplePPM_tracer_1d(nx,dx,rho,velx,vely,velz, &
+ end subroutine SimplePPM_tracer_1d
+ 
+ 
+-subroutine SimplePPM_ye_1d(nx,dx,rho,velx,vely,velz, &
++subroutine SimplePPM_ye_1d(apply_enhanced_ppm,&
++     nx,dx,rho,velx,vely,velz, &
+      Y_e,Y_e_minus,Y_e_plus,press)
+ 
+   USE GRHydro_Scalars
+@@ -1758,6 +1766,8 @@ subroutine SimplePPM_ye_1d(nx,dx,rho,velx,vely,velz, &
+ 
+   DECLARE_CCTK_PARAMETERS
+ 
++  logical :: apply_enhanced_ppm
++
+   CCTK_REAL, parameter :: one = 1
+ 
+   CCTK_INT :: nx
+@@ -1779,7 +1789,7 @@ subroutine SimplePPM_ye_1d(nx,dx,rho,velx,vely,velz, &
+   end do
+ 
+   
+-  if (use_enhanced_PPM .eq. 0) then
++  if (.not.apply_enhanced_PPM) then
+   
+    !!$  Average slopes delta_m(a). See (1.7) of Colella and Woodward, p.178
+    !!$  This is the expression for an even grid.
+@@ -1900,7 +1910,7 @@ subroutine SimplePPM_ye_1d(nx,dx,rho,velx,vely,velz, &
+     end if
+   end do
+ 
+-  if (use_enhanced_ppm .eq. 0) then
++  if (.not.apply_enhanced_ppm) then
+       if (PPM3) then
+          do i = 3, nx - 2
+             flatten = tilde_flatten(i)
+@@ -2018,7 +2028,7 @@ subroutine SimplePPM_ye_1d(nx,dx,rho,velx,vely,velz, &
+ 
+ 
+ 
+-  if (use_enhanced_ppm .eq. 1) then
++  if (apply_enhanced_ppm) then
+       ! Constrain parabolic profiles
+       if (PPM3) then
+          do i = GRHydro_stencil, nx - GRHydro_stencil + 1
+diff --git a/src/GRHydro_PPMReconstruct_drv.F90 b/src/GRHydro_PPMReconstruct_drv.F90
+index 2f30fae..da4d1cf 100644
+--- a/src/GRHydro_PPMReconstruct_drv.F90
++++ b/src/GRHydro_PPMReconstruct_drv.F90
+@@ -69,6 +69,8 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+   CCTK_REAL, DIMENSION(:,:,:), POINTER :: beta1, beta2, beta3
+   CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
+ 
++  logical :: apply_enhanced_ppm
++
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+     g11 => gaa
+     g12 => gab
+@@ -118,6 +120,14 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+   ny = cctk_lsh(2)
+   nz = cctk_lsh(3)
+ 
++  ! if use_enhanced_ppm, allow old PPM on one level
++  if (GRHydro_oppm_reflevel .eq. (-1) .or. &
++       GRHydro_reflevel .ne. GRHydro_oppm_reflevel) then
++     apply_enhanced_ppm = use_enhanced_ppm .ne. 0
++  else
++     apply_enhanced_ppm = .false.
++  end if
++
+ !!$ Initialize variables that store reconstructed quantities:
+ 
+   !$OMP PARALLEL DO PRIVATE(i,j,k)
+@@ -166,7 +176,8 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+          !$OMP PARALLEL DO PRIVATE(i, j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+            do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+-           call SimplePPM_1d(GRHydro_eos_handle,0,nx,CCTK_DELTA_SPACE(1),&
++           call SimplePPM_1d(apply_enhanced_ppm,&
++                GRHydro_eos_handle,0,nx,CCTK_DELTA_SPACE(1),&
+                 rho(:,j,k),velx(:,j,k),vely(:,j,k),velz(:,j,k),eps(:,j,k),&
+                 press(:,j,k),rhominus(:,j,k),velxminus(:,j,k),velyminus(:,j,k),&
+                 velzminus(:,j,k),epsminus(:,j,k),rhoplus(:,j,k),&
+@@ -192,7 +203,8 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+-               call SimplePPM_temperature_1d(nx,CCTK_DELTA_SPACE(1),velx(:,j,k), & 
++               call SimplePPM_temperature_1d(apply_enhanced_ppm,&
++                    nx,CCTK_DELTA_SPACE(1),velx(:,j,k), & 
+                     temperature(:,j,k),press(:,j,k),&
+                     tempminus(:,j,k),tempplus(:,j,k), hydro_excision_mask)
+             end do
+@@ -203,7 +215,8 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+-               call SimplePPM_tracer_1d(nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
++               call SimplePPM_tracer_1d(apply_enhanced_ppm,&
++                    nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
+                     velx(:,j,k),vely(:,j,k),velz(:,j,k), &
+                     tracer(:,j,k,:),tracerminus(:,j,k,:),tracerplus(:,j,k,:), &
+                     press(:,j,k))
+@@ -215,7 +228,8 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+-               call SimplePPM_ye_1d(nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
++               call SimplePPM_ye_1d(apply_enhanced_ppm,&
++                    nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
+                     velx(:,j,k),vely(:,j,k),velz(:,j,k), &
+                     Y_e(:,j,k),Y_e_minus(:,j,k),Y_e_plus(:,j,k), &
+                     press(:,j,k))
+@@ -228,7 +242,8 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+         !$OMP PARALLEL DO PRIVATE(i, j, k)
+         do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+           do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+-            call SimplePPM_1d(GRHydro_eos_handle,0,ny,CCTK_DELTA_SPACE(2),&
++            call SimplePPM_1d(apply_enhanced_ppm,&
++                 GRHydro_eos_handle,0,ny,CCTK_DELTA_SPACE(2),&
+                  rho(j,:,k),vely(j,:,k),velz(j,:,k),velx(j,:,k),eps(j,:,k),&
+                  press(j,:,k),rhominus(j,:,k),velyminus(j,:,k),velzminus(j,:,k),&
+                  velxminus(j,:,k),epsminus(j,:,k),rhoplus(j,:,k),&
+@@ -254,7 +269,8 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+-               call SimplePPM_temperature_1d(ny,CCTK_DELTA_SPACE(2),vely(j,:,k), & 
++               call SimplePPM_temperature_1d(apply_enhanced_ppm,&
++                    ny,CCTK_DELTA_SPACE(2),vely(j,:,k), & 
+                     temperature(j,:,k),press(j,:,k),&
+                     tempminus(j,:,k),tempplus(j,:,k), hydro_excision_mask)
+             end do
+@@ -265,7 +281,8 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+-              call SimplePPM_tracer_1d(ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
++              call SimplePPM_tracer_1d(apply_enhanced_ppm,&
++                   ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
+                    vely(j,:,k),velz(j,:,k),velx(j,:,k), &
+                    tracer(j,:,k,:),tracerminus(j,:,k,:),tracerplus(j,:,k,:), &
+                    press(j,:,k))
+@@ -277,7 +294,8 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+-               call SimplePPM_ye_1d(ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
++               call SimplePPM_ye_1d(apply_enhanced_ppm,&
++                    ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
+                     vely(j,:,k),velz(j,:,k),velx(j,:,k), &
+                     Y_e(j,:,k),Y_e_minus(j,:,k),Y_e_plus(j,:,k), &
+                     press(j,:,k))
+@@ -290,7 +308,8 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+         !$OMP PARALLEL DO PRIVATE(i, j, k)
+         do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+           do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+-            call SimplePPM_1d(GRHydro_eos_handle,0,nz,CCTK_DELTA_SPACE(3),&
++            call SimplePPM_1d(apply_enhanced_ppm,&
++                 GRHydro_eos_handle,0,nz,CCTK_DELTA_SPACE(3),&
+                  rho(j,k,:),velz(j,k,:),velx(j,k,:),vely(j,k,:),eps(j,k,:),&
+                  press(j,k,:),rhominus(j,k,:),velzminus(j,k,:),velxminus(j,k,:),&
+                  velyminus(j,k,:),epsminus(j,k,:),rhoplus(j,k,:),&
+@@ -316,7 +335,8 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+-               call SimplePPM_temperature_1d(nz,CCTK_DELTA_SPACE(3),velz(j,k,:), & 
++               call SimplePPM_temperature_1d(apply_enhanced_ppm,&
++                    nz,CCTK_DELTA_SPACE(3),velz(j,k,:), & 
+                     temperature(j,k,:),press(j,k,:),&
+                     tempminus(j,k,:),tempplus(j,k,:), hydro_excision_mask)
+             end do
+@@ -328,7 +348,8 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+          do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+ 
+-               call SimplePPM_tracer_1d(nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
++               call SimplePPM_tracer_1d(apply_enhanced_ppm,&
++                    nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
+                     velz(j,k,:),velx(j,k,:),vely(j,k,:), &
+                     tracer(j,k,:,:),tracerminus(j,k,:,:),tracerplus(j,k,:,:), &
+                     press(j,k,:))
+@@ -340,7 +361,8 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+-               call SimplePPM_ye_1d(nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
++               call SimplePPM_ye_1d(apply_enhanced_ppm,&
++                    nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
+                     velz(j,k,:),velx(j,k,:),vely(j,k,:), &
+                     Y_e(j,k,:),Y_e_minus(j,k,:),Y_e_plus(j,k,:), &
+                     press(j,k,:))
+diff --git a/src/GRHydro_ReconstructPoly.F90 b/src/GRHydro_ReconstructPoly.F90
+index 9f30cb7..1e3a5b8 100644
+--- a/src/GRHydro_ReconstructPoly.F90
++++ b/src/GRHydro_ReconstructPoly.F90
+@@ -52,6 +52,8 @@ subroutine ReconstructionPolytype(CCTK_ARGUMENTS)
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+ 
++  logical :: apply_enhanced_ppm
++
+   integer :: nx, ny, nz, i, j, k, itracer
+ 
+   logical, dimension(:,:,:), allocatable :: trivial_rp
+@@ -109,6 +111,14 @@ subroutine ReconstructionPolytype(CCTK_ARGUMENTS)
+   call SpaceMask_GetStateBits(not_trivialz, "Hydro_RiemannProblemZ", &
+        &"not_trivial")
+ 
++  ! if use_enhanced_ppm, allow old PPM on one level
++  if (GRHydro_oppm_reflevel .eq. (-1) .or. &
++       GRHydro_reflevel .ne. GRHydro_oppm_reflevel) then
++     apply_enhanced_ppm = use_enhanced_ppm .ne. 0
++  else
++     apply_enhanced_ppm = .false.
++  end if
++
+   nx = cctk_lsh(1)
+   ny = cctk_lsh(2)
+   nz = cctk_lsh(3)
+@@ -329,7 +339,8 @@ subroutine ReconstructionPolytype(CCTK_ARGUMENTS)
+         !$OMP PARALLEL DO PRIVATE(i, j, k)
+         do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+           do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+-            call SimplePPM_1d(GRHydro_eos_handle,1,nx,CCTK_DELTA_SPACE(1),&
++            call SimplePPM_1d(apply_enhanced_ppm,&
++                 GRHydro_eos_handle,1,nx,CCTK_DELTA_SPACE(1),&
+                  rho(:,j,k),velx(:,j,k),vely(:,j,k),velz(:,j,k),eps(:,j,k),&
+                  press(:,j,k),rhominus(:,j,k),velxminus(:,j,k),velyminus(:,j,k),&
+                  velzminus(:,j,k),epsminus(:,j,k),rhoplus(:,j,k),&
+@@ -356,7 +367,8 @@ subroutine ReconstructionPolytype(CCTK_ARGUMENTS)
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+-               call SimplePPM_tracer_1d(nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
++               call SimplePPM_tracer_1d(apply_enhanced_ppm,&
++                    nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
+                     velx(:,j,k),vely(:,j,k),velz(:,j,k), &
+                     tracer(:,j,k,:),tracerminus(:,j,k,:),tracerplus(:,j,k,:), &
+                     press(:,j,k))
+@@ -368,7 +380,8 @@ subroutine ReconstructionPolytype(CCTK_ARGUMENTS)
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+-               call SimplePPM_tracer_1d(nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
++               call SimplePPM_tracer_1d(apply_enhanced_ppm,&
++                    nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
+                     velx(:,j,k),vely(:,j,k),velz(:,j,k), &
+                     Y_e(:,j,k),Y_e_minus(:,j,k),Y_e_plus(:,j,k), &
+                     press(:,j,k))
+@@ -440,7 +453,8 @@ subroutine ReconstructionPolytype(CCTK_ARGUMENTS)
+         !$OMP PARALLEL DO PRIVATE(i, j, k)
+         do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+           do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+-            call SimplePPM_1d(GRHydro_eos_handle,1,ny,CCTK_DELTA_SPACE(2),&
++            call SimplePPM_1d(apply_enhanced_ppm,&
++                 GRHydro_eos_handle,1,ny,CCTK_DELTA_SPACE(2),&
+                  rho(j,:,k),vely(j,:,k),velz(j,:,k),velx(j,:,k),eps(j,:,k),&
+                  press(j,:,k),rhominus(j,:,k),velyminus(j,:,k),velzminus(j,:,k),&
+                  velxminus(j,:,k),epsminus(j,:,k),rhoplus(j,:,k),&
+@@ -467,7 +481,8 @@ subroutine ReconstructionPolytype(CCTK_ARGUMENTS)
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+-              call SimplePPM_tracer_1d(ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
++              call SimplePPM_tracer_1d(apply_enhanced_ppm,&
++                   ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
+                    vely(j,:,k),velz(j,:,k),velx(j,:,k), &
+                    tracer(j,:,k,:),tracerminus(j,:,k,:),tracerplus(j,:,k,:), &
+                    press(j,:,k))
+@@ -479,7 +494,8 @@ subroutine ReconstructionPolytype(CCTK_ARGUMENTS)
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+-               call SimplePPM_tracer_1d(ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
++               call SimplePPM_tracer_1d(apply_enhanced_ppm,&
++                    ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
+                     velx(j,:,k),vely(j,:,k),velz(j,:,k), &
+                     Y_e(j,:,k),Y_e_minus(j,:,k),Y_e_plus(j,:,k), &
+                     press(j,:,k))
+@@ -551,7 +567,8 @@ subroutine ReconstructionPolytype(CCTK_ARGUMENTS)
+         !$OMP PARALLEL DO PRIVATE(i, j, k)
+         do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+           do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+-            call SimplePPM_1d(GRHydro_eos_handle,1,nz,CCTK_DELTA_SPACE(3),&
++            call SimplePPM_1d(apply_enhanced_ppm,&
++                 GRHydro_eos_handle,1,nz,CCTK_DELTA_SPACE(3),&
+                  rho(j,k,:),velz(j,k,:),velx(j,k,:),vely(j,k,:),eps(j,k,:),&
+                  press(j,k,:),rhominus(j,k,:),velzminus(j,k,:),velxminus(j,k,:),&
+                  velyminus(j,k,:),epsminus(j,k,:),rhoplus(j,k,:),&
+@@ -579,7 +596,8 @@ subroutine ReconstructionPolytype(CCTK_ARGUMENTS)
+          do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+ 
+-               call SimplePPM_tracer_1d(nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
++               call SimplePPM_tracer_1d(apply_enhanced_ppm,&
++                    nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
+                     velz(j,k,:),velx(j,k,:),vely(j,k,:), &
+                     tracer(j,k,:,:),tracerminus(j,k,:,:),tracerplus(j,k,:,:), &
+                     press(j,k,:))
+@@ -591,7 +609,8 @@ subroutine ReconstructionPolytype(CCTK_ARGUMENTS)
+          !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+-               call SimplePPM_tracer_1d(nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
++               call SimplePPM_tracer_1d(apply_enhanced_ppm,&
++                    nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
+                     velx(j,k,:),vely(j,k,:),velz(j,k,:), &
+                     Y_e(j,k,:),Y_e_minus(j,k,:),Y_e_plus(j,k,:), &
+                     press(j,k,:))
+-- 
+1.7.10.4
+

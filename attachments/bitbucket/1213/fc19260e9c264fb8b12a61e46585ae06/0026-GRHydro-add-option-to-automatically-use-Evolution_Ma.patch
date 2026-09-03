@@ -1,0 +1,148 @@
+From dd3808196ee1b2f9acd797cc80520b621c3a7f6c Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Thu, 10 Jan 2013 14:22:20 -0800
+Subject: [PATCH] GRHydro: add option to automatically use Evolution_Mask if
+ possible
+
+---
+ param.ccl                        |    7 +++++--
+ src/GRHydro_Con2Prim.F90         |    6 ++++--
+ src/GRHydro_EvolutionMask.F90    |   24 ++++++++++++++++++++++--
+ src/GRHydro_ParamCheck.F90       |    4 ++--
+ test/tov_carpetevolutionmask.par |    2 +-
+ 5 files changed, 34 insertions(+), 9 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index d36ab19..ae3d647 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -83,9 +83,12 @@ USES REAL poly_k
+ 
+ restricted:
+ 
+-BOOLEAN use_evolution_mask "Set this to 'true' to skip validity tests in regions where CarpetEvolutionMask::evolution_mask vanishes." STEERABLE=ALWAYS
++KEYWORD use_evolution_mask "Set this to 'true' to skip validity tests in regions where CarpetEvolutionMask::evolution_mask vanishes." STEERABLE=ALWAYS
+ {
+-} "false"
++  "always" :: "use the mask"
++  "auto"   :: "check if CarpetEvolutionMask is active, then use the mask"
++  "never"  :: "do not use the mask"
++} "never"
+ 
+ BOOLEAN GRHydro_enable_internal_excision "Set this to 'false' to disable the thorn-internal excision." STEERABLE=ALWAYS
+ {
+diff --git a/src/GRHydro_Con2Prim.F90 b/src/GRHydro_Con2Prim.F90
+index e1f0302..81afb02 100644
+--- a/src/GRHydro_Con2Prim.F90
++++ b/src/GRHydro_Con2Prim.F90
+@@ -2244,8 +2244,10 @@ subroutine check_GRHydro_C2P_failed(CCTK_ARGUMENTS)
+   CCTK_REAL, DIMENSION(cctk_ash1,cctk_ash2,cctk_ash3) :: evolution_mask
+   CCTK_POINTER_TO_CONST :: evolution_mask_ptr
+   pointer (evolution_mask_ptr, evolution_mask)
++  CCTK_INT :: check_evolution_mask
+ 
+-  call GRHydro_DeclareEvolutionMask(cctkGH, evolution_mask_ptr)
++  call GRHydro_DeclareEvolutionMask(cctkGH, evolution_mask_ptr, &
++                                    check_evolution_mask)
+ 
+ !  call CCTK_INFO("Checking the C2P failure mask.")
+ 
+@@ -2276,7 +2278,7 @@ subroutine check_GRHydro_C2P_failed(CCTK_ARGUMENTS)
+            end if 
+ 
+           ! do not collapse conditions since Fortran does not guarantee an order
+-          if (use_evolution_mask.ne.0) then
++          if (check_evolution_mask.ne.0) then
+             if (evolution_mask(i,j,k).eq.0d0) then 
+               cycle
+             end if
+diff --git a/src/GRHydro_EvolutionMask.F90 b/src/GRHydro_EvolutionMask.F90
+index 9378309..d23ff08 100644
+--- a/src/GRHydro_EvolutionMask.F90
++++ b/src/GRHydro_EvolutionMask.F90
+@@ -56,11 +56,19 @@ CONTAINS
+          @vcomment
+          @endvar
+       
++         @var     evolution_mask_valid
++         @vdesc   set to 1 if evolution_mask is valid, 0 otherwise
++         @vtype   CCTK_INT
++         @vio     out
++         @vcomment
++         @endvar
++      
+          @returntype none
+          @returndesc
+          @endreturndesc
+       @@*/
+-      subroutine GRHydro_DeclareEvolutionMask(cctkGH, evolution_mask)
++      subroutine GRHydro_DeclareEvolutionMask(cctkGH, evolution_mask, &
++                                              evolution_mask_valid)
+ 
+         implicit none
+ 
+@@ -69,9 +77,19 @@ CONTAINS
+ 
+         CCTK_POINTER_TO_CONST :: cctkGH
+         CCTK_POINTER :: evolution_mask
++        CCTK_INT :: evolution_mask_valid
++
+         integer, save :: evolution_mask_idx = -1
++        logical :: try_use_mask
++        integer :: evolution_mask_active
++
++        call CCTK_IsImplementationActive(evolution_mask_active, &
++                                         "CarpetEvolutionMask")
++        try_use_mask = CCTK_EQUALS(use_evolution_mask, "always") .or.   &
++                       (CCTK_EQUALS(use_evolution_mask, "auto") .and. &
++                        evolution_mask_active .ne. 0)
+ 
+-        if (use_evolution_mask.ne.0) then
++        if (try_use_mask) then
+           if (evolution_mask_idx .eq. -1) then
+             call CCTK_VarIndex(evolution_mask_idx,&
+                                "CarpetEvolutionMask::evolution_mask")
+@@ -80,8 +98,10 @@ CONTAINS
+           if (evolution_mask .eq. CCTK_NullPointer()) then
+             call CCTK_Warn(CCTK_WARN_ABORT, "Could not get pointer to evolution_mask. Is CarpetEvolutionMask active?")
+           end if
++          evolution_mask_valid = 1
+         else
+           evolution_mask = CCTK_NullPointer()
++          evolution_mask_valid = 0
+         end if
+ 
+       end subroutine
+diff --git a/src/GRHydro_ParamCheck.F90 b/src/GRHydro_ParamCheck.F90
+index 1ab2a40..1891462 100644
+--- a/src/GRHydro_ParamCheck.F90
++++ b/src/GRHydro_ParamCheck.F90
+@@ -152,10 +152,10 @@ subroutine GRHydro_ParamCheck(CCTK_ARGUMENTS)
+     end if
+   end if
+ 
+-  if(use_evolution_mask.ne.0) then
++  if(CCTK_EQUALS(use_evolution_mask, "always")) then
+     call CCTK_VarIndex(evolution_mask_idx, "CarpetEvolutionMask::evolution_mask")
+     if(evolution_mask_idx .lt.  0) then
+-      call CCTK_PARAMWARN("You activated use_evolution_mask but I cannot find 'CarpetEvolutionMask::evolution_mask'. If you use Carpet, then you should activate thorn 'CarpetEvolutionMask', if using PUGH then evolution_mask makes no sense and you should disable this option.")
++      call CCTK_PARAMWARN("You set use_evolution_mask='always' but I cannot find 'CarpetEvolutionMask::evolution_mask'. If you use Carpet, then you should activate thorn 'CarpetEvolutionMask', if using PUGH then evolution_mask makes no sense and you should disable this option.")
+     end if
+   end if
+ 
+diff --git a/test/tov_carpetevolutionmask.par b/test/tov_carpetevolutionmask.par
+index abed8aa..39dabd6 100644
+--- a/test/tov_carpetevolutionmask.par
++++ b/test/tov_carpetevolutionmask.par
+@@ -97,7 +97,7 @@ CarpetEvolutionMask::enforce_mask = yes
+ CarpetEvolutionMask::enforce_vars = "
+ GRHydro::dens GRHydro::scon
+ "
+-GRHydro::use_evolution_mask = yes
++GRHydro::use_evolution_mask = always
+ 
+ 
+ IO::out_dir			= $parfile
+-- 
+1.7.10.4
+

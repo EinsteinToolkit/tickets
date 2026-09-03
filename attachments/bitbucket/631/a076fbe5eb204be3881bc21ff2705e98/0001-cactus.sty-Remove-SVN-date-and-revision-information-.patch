@@ -1,0 +1,55 @@
+From 8256cdb7e52df837f77995277d226dcaeb47fb20 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Wed, 19 Oct 2011 20:22:23 +0200
+Subject: [PATCH] cactus.sty: Remove SVN date and revision information from
+ documentation
+
+This SVN information causes problems when Cactus is not stored in SVN.
+---
+ doc/latex/cactus.sty |   14 +++-----------
+ 1 files changed, 3 insertions(+), 11 deletions(-)
+
+diff --git a/doc/latex/cactus.sty b/doc/latex/cactus.sty
+index 08c31c6..857b8ae 100644
+--- a/doc/latex/cactus.sty
++++ b/doc/latex/cactus.sty
+@@ -2,25 +2,17 @@
+ %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ \NeedsTeXFormat{LaTeX2e}
+ 
+-\def\CA@styledate{\CA@getsvndate $Date$}
+-\def\CA@styleversion{\CA@getsvnversion $Revision$}
+-
+-
+-
+ %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ 
+-\def\CA@getsvndate    $#1:#2-#3-#4 #5:#6:#7${#2/#3/#4}
+-\def\CA@getsvnversion $#1:#2${#2}
+-
+ \IfFileExists{../interface.ccl} % Is this the documentation.tex for a thorn?
+ {
+-  \ProvidesPackage{../../../../doc/latex/cactus}[\CA@styledate \CA@styleversion]
++  \ProvidesPackage{../../../../doc/latex/cactus}
+ }
+ {
+   \IfFileExists{../FAQ} % Is this the UsersGuide or MaintGuide?
+   {
+-    \ProvidesPackage{../latex/cactus}[\CA@styledate \CA@styleversion]
++    \ProvidesPackage{../latex/cactus}
+   }
+   {
+     \IfFileExists{../../../arrangements/README} % Is this the
+@@ -30,7 +22,7 @@
+       \ProvidesPackage{../../../doc/latex/cactus}
+     }
+     {
+-      \ProvidesPackage{cactus}[\CA@styledate \CA@styleversion]
++      \ProvidesPackage{cactus}
+     }
+   }
+ }
+-- 
+1.7.5.4
+

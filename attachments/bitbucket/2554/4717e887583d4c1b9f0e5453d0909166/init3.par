@@ -1,0 +1,173 @@
+#==============================================================================
+
+ActiveThorns = " boundary time cartgrid3d ioutil iobasic nanchecker CoordBase  Slab SphericalSurface LocalReduce MoL Carpet CarpetInterp2 CarpetIOASCII CarpetLib CarpetReduce CarpetSlab CarpetRegrid2 CarpetIOHDF5 CarpetIOScalar  InitBase SymBase LoopControl GSL "
+LoopControl::settle_after_iteration = 0 
+
+
+ActiveThorns = "TimerReport"
+
+TimerReport::out_every    = 512
+TimerReport::out_filename = "TimerReport"
+Carpet::output_timers_every = 512
+#------------------------------------------------------------------------------
+
+# Run parameters
+#------------------------------------------------------------------------------
+
+# Grid
+
+mol::ode_method                        = "RK4"
+mol::mol_intermediate_steps            = 4
+mol::mol_num_scratch_levels            = 1
+#mol::initial_data_is_crap = true
+
+
+
+CoordBase::domainsize       = "minmax"
+CoordBase::xmin             = -400
+CoordBase::ymin             = -400
+CoordBase::zmin             = -400
+CoordBase::xmax             = 400
+CoordBase::ymax             = 400
+CoordBase::zmax             = 400
+CoordBase::spacing          = "numcells"
+CoordBase::ncells_x         = 50
+CoordBase::ncells_y         = 50
+CoordBase::ncells_z         = 50
+CartGrid3D::type            = "coordbase"
+CartGrid3D::domain          = "full"
+CartGrid3D::bitant_plane    = "xy"
+CartGrid3D::avoid_originx   = no
+CartGrid3D::avoid_originy   = no
+CartGrid3D::avoid_originz   = no
+
+CoordBase::boundary_size_x_lower        = 1
+CoordBase::boundary_size_y_lower        = 1
+CoordBase::boundary_size_z_lower        = 1
+CoordBase::boundary_shiftout_x_lower    = 0
+CoordBase::boundary_shiftout_y_lower    = 0
+CoordBase::boundary_shiftout_z_lower    = 0
+
+CoordBase::boundary_size_x_upper        = 1
+CoordBase::boundary_size_y_upper        = 1
+CoordBase::boundary_size_z_upper        = 1
+
+driver::ghost_size                        = 4
+
+#---------------------------------------------------------------------------
+
+#cactus::cctk_itlast                     = 2000
+#cactus::cctk_itlast                     = 0
+
+#--- fisheye
+#fisheye::fisheye_active                 = "no"
+
+
+#time::dtfac                        = .007421875
+time::dtfac                        = .25
+Carpet::domain_from_coordbase       = yes
+Carpet::prolongation_order_space   = 5
+Carpet::prolongation_order_time    = 2
+Carpet::max_refinement_levels      = 4 #5
+Carpet::use_buffer_zones = yes
+Carpet::verbose           = no
+Carpet::schedule_barriers = no
+Carpet::veryverbose       = no
+#Carpet::constant_load_per_processor = yes
+
+CarpetLib::output_bboxes  = no
+CarpetLib::check_bboxes              = no
+CarpetLib::interleave_communications = yes
+CarpetLib::combine_sends             = yes
+
+Carpet::init_3_timelevels = "yes"
+Carpet::init_fill_timelevels = "no"
+Carpet::enable_all_storage     = no
+Carpet::regrid_during_recovery = no
+
+
+CarpetRegrid2::regrid_every = 32
+
+CarpetRegrid2::num_centres = 2
+CarpetRegrid2::symmetry_rotating180 = yes
+
+CarpetRegrid2::num_levels_1 = 4
+CarpetRegrid2::position_x_1 = 2.5
+CarpetRegrid2::position_y_1 = 0
+CarpetRegrid2::position_z_1 = 0
+CarpetRegrid2::radius_1[ 1] = 220
+CarpetRegrid2::radius_1[ 2] = 110
+CarpetRegrid2::radius_1[ 3] = 55
+CarpetRegrid2::radius_1[ 4] = 25
+CarpetRegrid2::radius_1[ 5] = 10
+CarpetRegrid2::radius_1[ 6] = 5
+CarpetRegrid2::radius_1[ 7] = 2
+CarpetRegrid2::radius_1[ 8] = .75
+CarpetRegrid2::radius_1[ 9] = 0.3
+CarpetRegrid2::radius_1[10] = 0.25
+
+CarpetRegrid2::num_levels_2 = 4
+CarpetRegrid2::position_x_2 = -2.5
+CarpetRegrid2::position_y_2 = 0
+CarpetRegrid2::position_z_2 = 0
+CarpetRegrid2::radius_2[ 1] = 220
+CarpetRegrid2::radius_2[ 2] = 110
+CarpetRegrid2::radius_2[ 3] = 55
+CarpetRegrid2::radius_2[ 4] = 25
+CarpetRegrid2::radius_2[ 5] = 10
+CarpetRegrid2::radius_2[ 6] = 5
+CarpetRegrid2::radius_2[ 7] = 2
+CarpetRegrid2::radius_2[ 8] = .75
+CarpetRegrid2::radius_2[ 9] = 0.3
+CarpetRegrid2::radius_2[10] = 0.25
+
+
+# MODEL 
+initbase::initial_data_setup_method = init_some_levels
+ActiveThorns="TestInit3"
+
+#------------------------------------------------------------------------------
+# Output
+#------------------------------------------------------------------------------
+IO::out_dir                             = $parfile
+IO::out_fileinfo   			= "none"
+
+
+
+
+CarpetIOASCII::out1D_d=no
+#ADMMacros::spatial_order=4
+CarpetIOScalar::outScalar_vars = "TestInit3::EvolvedScalars"
+CarpetIOScalar::outScalar_every = 1
+CarpetIOScalar::outScalar_reductions = "minimum maximum norm2 norm_inf"
+
+#==============================================================================
+NaNChecker::check_every 	=	1
+NaNChecker::check_vars	 	=	"TestInit3::EvolvedScalars"
+#NaNChecker::action_if_found	=	"terminate"
+NaNChecker::action_if_found	=	"abort"
+NaNChecker::check_after=2
+
+cactus::terminate="iteration"
+cactus::cctk_itlast = 16
+
+
+#
+CarpetIOHDF5::out2D_every=1
+CarpetIOHDF5::out2D_vars= "TestInit3::EvolvedScalars TestInit3::TestScalars"
+CarpetIOHDF5::out3D_every=1
+CarpetIOHDF5::out3D_vars= "TestInit3::EvolvedScalars TestInit3::TestScalars"
+CarpetIOHDF5::output_all_timelevels = true
+
+
+CarpetIOHDF5::checkpoint = "yes"
+
+IO::checkpoint_ID = "no"
+IO::checkpoint_every = 9750
+IO::checkpoint_keep=2
+IO::checkpoint_on_terminate = yes
+
+
+IO::recover = "autoprobe"
+IO::checkpoint_dir="check"
+IO::recover_dir="check"

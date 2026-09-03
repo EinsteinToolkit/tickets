@@ -1,0 +1,36 @@
+From dddce2db88342f3bb215cebb4121fe8a0d33ccd9 Mon Sep 17 00:00:00 2001
+From: Christian Reisswig <reisswig@scriwalker.(none)>
+Date: Thu, 5 Apr 2012 18:44:40 -0700
+Subject: [PATCH 05/13] GRHydro: Verbosity on which boundary selction routine
+ is executed.
+
+---
+ src/GRHydro_Boundaries.F90 |    5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/GRHydro_Boundaries.F90 b/src/GRHydro_Boundaries.F90
+index 099e195..b3d153d 100644
+--- a/src/GRHydro_Boundaries.F90
++++ b/src/GRHydro_Boundaries.F90
+@@ -199,6 +199,8 @@ subroutine GRHydro_Boundaries(CCTK_ARGUMENTS)
+ 
+   general_coordinates = GRHydro_UseGeneralCoordinates(cctkGH)
+ 
++  if (verbose.eq.1) call CCTK_INFO("Selecting conserved BC (and primitive BC if selected)")
++
+ !!$Flat boundaries if required  
+ 
+   if (CCTK_EQUALS(bound,"flat")) then
+@@ -381,6 +383,9 @@ subroutine GRHydro_SelectPrimitiveBoundaries(CCTK_ARGUMENTS)
+ ! The commented out code are those primitives which do not require and explicit
+ ! initial guess for Con2Prim. The guesses are either not needed or computed from other quantities!
+ 
++  if (verbose.eq.1) call CCTK_INFO("Selecting primitive BC")
++
++
+   if (CCTK_EQUALS(bound,"flat")) then
+     
+     !ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-- 
+1.7.10
+

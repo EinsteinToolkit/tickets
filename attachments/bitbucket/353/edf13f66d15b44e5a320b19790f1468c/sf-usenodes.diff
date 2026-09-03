@@ -1,0 +1,89 @@
+Index: lib/simrestart.py
+===================================================================
+--- lib/simrestart.py	(revision 1291)
++++ lib/simrestart.py	(working copy)
+@@ -828,48 +884,13 @@
+         self.run()
+         
+ 
+-    def GenerateNodefile(self):
+-
+-        mpi_nodefile = simlib.BuildPath(self.RestartDir, 'NODELIST')
+-        info("mpi_nodefile: %s" % mpi_nodefile)
+-
+-        if not(os.path.exists(mpi_nodefile)):
+-
+-            nodes = simlib.GetUseNodes()
+-
+-            if len(nodes) > 0:
+-                nodelist = "\n".join(nodes)
+-            else:
+-                nodefiles = ['PE_HOSTFILE', 'PBS_NODEFILE']
+-                found = False
+-                for nf in nodefiles:
+-                    if os.environ.has_key(nf):
+-                        contents = simlib.GetFileContents(os.environ[nf])
+-                        nodelist = contents.split("\n")
+-                        found = True
+-
+-                if not found:
+-                    nodelist = ['localhost']
+-
+-            info("mpi nodelist: %s" % nodelist)
+-            simlib.WriteContents(mpi_nodefile, '%s\n' % "\n".join(nodelist))
+-
+-            self.SimulationLog.Write("mpi_nodefile did not exist, so we attempted to make it. The contents are below")
+-            self.SimulationLog.Write("\n".join(nodelist))
+-
+-        else:
+-            contents = simlib.GetFileContents(mpi_nodefile)
+-            info("mpi nodelist: %s" % contents.split("\n"))
+-
+-            self.SimulationLog.Write("mpi nodelist existed, contents are below")
+-            self.SimulationLog.Write(contents)
+-
+-        os.environ['PBS_NODEFILE'] = mpi_nodefile
+-        os.environ['PE_NODEFILE'] = mpi_nodefile
+-        
+     def run(self, debug=False):
+         
+         assert(self.Initialized)
+Index: lib/simlib.py
+===================================================================
+--- lib/simlib.py	(revision 1291)
++++ lib/simlib.py	(working copy)
+@@ -571,15 +571,6 @@
+     
+     return mm
+ 
+-def GetUseNodes():
+-    
+-    if not(simenv.OptionsManager.HasOption('use-nodes')):
+-        return []
+-    
+-    nodes = simenv.OptionsManager.GetOption('use-nodes')
+-    
+-    return nodes.split(",")
+-    
+ def GetDefaultConfiguration():
+ 
+     dEntry = simenv.ConfigurationDatabase.GetConfigOption("default-configuration-name")
+Index: etc/options/sim-manage.ini
+===================================================================
+--- etc/options/sim-manage.ini	(revision 1291)
++++ etc/options/sim-manage.ini	(working copy)
+@@ -26,14 +26,6 @@
+ argformat = <file>
+ argtype = nonnull
+ 
+-[use-nodes]
+-long = --use-nodes
+-desc = use these specific nodes when launching a simulation
+-negatable = no
+-arg = yes
+-argformat = <node,node,node>
+-argtype = nonnull
+-
+ [recover]
+ long = --recover
+ #short

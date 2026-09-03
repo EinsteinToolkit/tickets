@@ -1,0 +1,143 @@
+From f12ac06b5709ed73f27ab5c087eeecc3c6983fb7 Mon Sep 17 00:00:00 2001
+From: Christian Reisswig <reisswig@scriwalker.(none)>
+Date: Tue, 9 Apr 2013 00:25:22 -0700
+Subject: [PATCH 1/2] GRHydro: Critical bugfix: Con2Prim was probably never
+ executed in
+
+post_recover_variables or for new points in post_regrid since excision
+mask does typically not get initialized before MoL_PostStep!
+
+Also: Instead of aborting Con2Prim, set points to atmopshere for a point
+where hydro_excision_mask > 0.
+---
+ src/GRHydro_Con2Prim.F90 |   65 +++++++++++++++++++++++++++++++++++++++++-----
+ src/GRHydro_HLLE.F90     |    2 +-
+ 2 files changed, 59 insertions(+), 8 deletions(-)
+
+diff --git a/src/GRHydro_Con2Prim.F90 b/src/GRHydro_Con2Prim.F90
+index 40a3898..5a931f4 100644
+--- a/src/GRHydro_Con2Prim.F90
++++ b/src/GRHydro_Con2Prim.F90
+@@ -117,6 +117,24 @@ subroutine Conservative2Primitive(CCTK_ARGUMENTS)
+       do i = 1, nx
+ 
+ #if 0
++         if (dens(i,j,k).ne.dens(i,j,k)) then
++            !$OMP CRITICAL
++            call CCTK_WARN(1,"dens NAN at entry of Con2Prim")
++            write(warnline,"(A10,i5)") "reflevel: ",GRHydro_reflevel
++            call CCTK_WARN(1,warnline)
++            write(warnline,"(3i5,1P10E15.6)") i,j,k,x(i,j,k),y(i,j,k),z(i,j,k)
++            call CCTK_WARN(1,warnline)
++            write(warnline,"(1P10E15.6)") rho(i,j,k),dens(i,j,k),eps(i,j,k)
++            call CCTK_WARN(1,warnline)
++            write(warnline,'(a32,2i3)') 'hydro_excision_mask, atmosphere_mask: ', hydro_excision_mask(i,j,k), atmosphere_mask(i,j,k)
++            call CCTK_WARN(1,warnline)
++            call CCTK_WARN(0,"Aborting!!!")
++            !$OMP END CRITICAL
++         endif
++#endif
++
++
++#if 0
+         !$OMP CRITICAL
+          if (rho(i,j,k).le.0.0d0) then
+             call CCTK_WARN(1,"rho less than zero at entry of Con2Prim")
+@@ -131,10 +149,10 @@ subroutine Conservative2Primitive(CCTK_ARGUMENTS)
+          !$OMP END CRITICAL
+ #endif
+ 
+-        !do not compute if in atmosphere or in excised region
+-        if ((atmosphere_mask(i,j,k) .ne. 0) .or. &
+-            (hydro_excision_mask(i,j,k) .ne. 0)) cycle
+-         
++        
++        !do not compute if in atmosphere region!
++        if (atmosphere_mask(i,j,k) .gt. 0) cycle
++        
+         epsnegative = .false.
+ 
+         det = SPATIAL_DETERMINANT(g11(i,j,k),g12(i,j,k),g13(i,j,k), \
+@@ -143,6 +161,38 @@ subroutine Conservative2Primitive(CCTK_ARGUMENTS)
+              g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),&
+              g23(i,j,k),g33(i,j,k))        
+ 
++        ! In excised region, set to atmosphere!    
++        if (GRHydro_enable_internal_excision /= 0 .and. (hydro_excision_mask(i,j,k) .gt. 0)) then
++           SET_ATMO_MIN(dens(i,j,k), sqrt(det)*GRHydro_rho_min, r(i,j,k)) !sqrt(det)*GRHydro_rho_min !/(1.d0+GRHydro_atmo_tolerance)
++           SET_ATMO_MIN(rho(i,j,k), GRHydro_rho_min, r(i,j,k)) !GRHydro_rho_min
++           scon(i,j,k,:) = 0.d0
++           vup(i,j,k,:) = 0.d0
++           w_lorentz(i,j,k) = 1.d0
++
++           if(evolve_temper.ne.0) then
++              ! set hot atmosphere values
++              temperature(i,j,k) = grhydro_hot_atmo_temp
++              y_e(i,j,k) = grhydro_hot_atmo_Y_e
++              y_e_con(i,j,k) = y_e(i,j,k) * dens(i,j,k)
++              keytemp = 1
++              call EOS_Omni_press(GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,n,&
++                   rho(i,j,k),eps(i,j,k),temperature(i,j,k),y_e(i,j,k),&
++                   press(i,j,k),keyerr,anyerr)
++           else
++              keytemp = 0
++              call EOS_Omni_press(GRHydro_polytrope_handle,keytemp,GRHydro_eos_rf_prec,n,&
++                   rho(i,j,k),eps(i,j,k),xtemp,xye,press(i,j,k),keyerr,anyerr)
++
++              call EOS_Omni_EpsFromPress(GRHydro_polytrope_handle,keytemp,GRHydro_eos_rf_prec,n,&
++                   rho(i,j,k),eps(i,j,k),xtemp,xye,press(i,j,k),eps(i,j,k),keyerr,anyerr)
++           endif
++
++           ! w_lorentz=1, so the expression for tau reduces to:
++           tau(i,j,k)  = sqrt(det) * (rho(i,j,k)+rho(i,j,k)*eps(i,j,k)) - dens(i,j,k)
++           
++           cycle
++        endif
++        
+ !!$        if (det < 0.e0) then  
+ !!$          call CCTK_WARN(0, "nan produced (det negative)")
+ !!$        end if
+@@ -169,7 +219,6 @@ subroutine Conservative2Primitive(CCTK_ARGUMENTS)
+ 
+          !if ( dens(i,j,k) .le. sqrt(det)*GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance) ) then
+          IF_BELOW_ATMO(dens(i,j,k), sqrt(det)*GRHydro_rho_min, GRHydro_atmo_tolerance, r(i,j,k)) then
+-
+            SET_ATMO_MIN(dens(i,j,k), sqrt(det)*GRHydro_rho_min, r(i,j,k)) !sqrt(det)*GRHydro_rho_min !/(1.d0+GRHydro_atmo_tolerance)
+            SET_ATMO_MIN(rho(i,j,k), GRHydro_rho_min, r(i,j,k)) !GRHydro_rho_min
+            scon(i,j,k,:) = 0.d0
+@@ -429,7 +478,8 @@ subroutine Con2Prim_pt(handle, dens, sx, sy, sz, tau, rho, velx, vely, &
+   n=1;keytemp=0;anyerr=0;keyerr(1)=0
+   xpress=0.0d0;xtemp=0.0d0;xye=0.0d0
+ ! end EOS Omni vars
+- 
++
++
+ !!$  Undensitize the variables 
+ 
+   udens = dens /sqrt(det)
+@@ -439,7 +489,8 @@ subroutine Con2Prim_pt(handle, dens, sx, sy, sz, tau, rho, velx, vely, &
+   utau = tau /sqrt(det)
+   s2 = usx*usx*uxx + usy*usy*uyy + usz*usz*uzz + 2.*usx*usy*uxy + &
+        2.*usx*usz*uxz + 2.*usy*usz*uyz
+-
++  
++  
+ !!$  Set initial guess for pressure:
+   call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+                       rho,epsilon,xtemp,xye,xpress,keyerr,anyerr)
+diff --git a/src/GRHydro_HLLE.F90 b/src/GRHydro_HLLE.F90
+index deb37e3..3816930 100644
+--- a/src/GRHydro_HLLE.F90
++++ b/src/GRHydro_HLLE.F90
+@@ -108,7 +108,7 @@ subroutine H_viscosity(CCTK_ARGUMENTS)
+       
+         !do not compute if in atmosphere or in excised region
+         if ((atmosphere_mask(i,j,k) .ne. 0) .or. &
+-            (hydro_excision_mask(i,j,k) .ne. 0)) cycle
++            (GRHydro_enable_internal_excision /= 0 .and. (hydro_excision_mask(i,j,k) .gt. 0))) cycle
+ 
+ !!$  Set required fluid quantities
+         if (evolve_temper.ne.1) then
+-- 
+1.7.10.4
+

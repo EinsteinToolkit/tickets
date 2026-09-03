@@ -1,0 +1,205 @@
+Subject: CarpetReduce: Handle excised regions when testing domain volume
+From: Erik Schnetter <eschnetter@perimeterinstitute.ca>
+Date: 2011-10-23
+
+Introduce a grid scalar CarpetReduce::excised_cells that tallies the
+volume that is excised from reduction operations, as is done e.g. in
+CarpetMask. This allows testing the correctness of the weight grid
+function for reduction operations in the presence of excision.
+
+
+CarpetReduce: Handle excised regions when testing domain volume
+
+diff -r 10c4b42bac9f Carpet/CarpetMask/interface.ccl
+--- a/Carpet/CarpetMask/interface.ccl	Wed Oct 19 17:50:05 2011 -0400
++++ b/Carpet/CarpetMask/interface.ccl	Sun Oct 23 21:30:27 2011 -0400
+@@ -3,3 +3,5 @@
+ IMPLEMENTS: CarpetMask
+ 
+ INHERITS: grid SphericalSurface
++
++USES INCLUDE HEADER: CarpetReduce_bits.h
+diff -r 10c4b42bac9f Carpet/CarpetMask/src/mask_excluded.cc
+--- a/Carpet/CarpetMask/src/mask_excluded.cc	Wed Oct 19 17:50:05 2011 -0400
++++ b/Carpet/CarpetMask/src/mask_excluded.cc	Sun Oct 23 21:30:27 2011 -0400
+@@ -8,6 +8,8 @@
+ 
+ #include "mask_excluded.hh"
+ 
++#include <CarpetReduce_bits.h>
++
+ 
+ 
+ namespace CarpetMask {
+@@ -26,15 +28,27 @@
+     DECLARE_CCTK_ARGUMENTS;
+     DECLARE_CCTK_PARAMETERS;
+     
+-    CCTK_INT * const iweight =
++    CCTK_INT * restrict const iweight =
+       static_cast <CCTK_INT *>
+       (CCTK_VarDataPtr (cctkGH, 0, "CarpetReduce::iweight"));
+     
+-    if (not iweight) {
++    CCTK_REAL * restrict const excised_cells =
++      static_cast <CCTK_REAL *>
++      (CCTK_VarDataPtr (cctkGH, 0, "CarpetReduce::excised_cells"));
++
++    if (not iweight or not excised_cells) {
+       CCTK_WARN (CCTK_WARN_ABORT,
+                  "CarpetReduce is not active, or CarpetReduce::iweight does not have storage");
+     }
+     
++    // Volume of a grid cell on this level, in terms of coarse grid
++    // cells
++    CCTK_REAL const cell_volume =
++      1.0 / (cctk_levfac[0] * cctk_levfac[1] * cctk_levfac[2]);
++    
++    unsigned const bits = BMSK(cctk_dim);
++    CCTK_REAL const factor = 1.0 / bits;
++    
+     for (int n = 0; n < 10; ++ n) {
+       
+       CCTK_REAL const r0 = excluded_radius[n];
+@@ -60,6 +74,8 @@
+               dx2 + dy2 + dz2 >= r2 :
+               dx2 + dy2 + dz2 <= r2)
+           {
++            // Tally up the weight we are removing
++            * excised_cells += cell_volume * factor * BCNT(iweight[ind]);
+             iweight[ind] = 0;
+           }
+           
+diff -r 10c4b42bac9f Carpet/CarpetMask/src/mask_surface.cc
+--- a/Carpet/CarpetMask/src/mask_surface.cc	Wed Oct 19 17:50:05 2011 -0400
++++ b/Carpet/CarpetMask/src/mask_surface.cc	Sun Oct 23 21:30:27 2011 -0400
+@@ -11,6 +11,8 @@
+ 
+ #include "mask_surface.hh"
+ 
++#include <CarpetReduce_bits.h>
++
+ 
+ 
+ namespace CarpetMask {
+@@ -67,15 +69,27 @@
+       last_output.resize (num_excluded, -1);
+     }
+     
+-    CCTK_INT * const iweight =
++    CCTK_INT * restrict const iweight =
+       static_cast <CCTK_INT *>
+       (CCTK_VarDataPtr (cctkGH, 0, "CarpetReduce::iweight"));
+     
+-    if (not iweight) {
++    CCTK_REAL * restrict const excised_cells =
++      static_cast <CCTK_REAL *>
++      (CCTK_VarDataPtr (cctkGH, 0, "CarpetReduce::excised_cells"));
++    
++    if (not iweight or not excised_cells) {
+       CCTK_WARN (CCTK_WARN_ABORT,
+                  "CarpetReduce is not active, or CarpetReduce::iweight does not have storage");
+     }
+     
++    // Volume of a grid cell on this level, in terms of coarse grid
++    // cells
++    CCTK_REAL const cell_volume =
++      1.0 / (cctk_levfac[0] * cctk_levfac[1] * cctk_levfac[2]);
++    
++    unsigned const bits = BMSK(cctk_dim);
++    CCTK_REAL const factor = 1.0 / bits;
++    
+     for (int n = 0; n < num_excluded; ++ n) {
+       
+       int const sn = excluded_surface[n];
+@@ -127,6 +141,8 @@
+               sqrt (pow (dx, 2) + pow (dy, 2) + pow (dz, 2));
+             if (rho < 1.0e-12) {
+               // Always excise the surface origin
++              // Tally up the weight we are removing
++              * excised_cells += cell_volume * factor * BCNT(iweight[ind]);
+               iweight[ind] = 0;
+             } else {
+               CCTK_REAL theta =
+@@ -171,6 +187,8 @@
+               CCTK_REAL const dr =
+                 sf_radius[a + maxntheta * (b + maxnphi * sn)];
+               if (rho <= dr * shrink_factor) {
++                // Tally up the weight we are removing
++                * excised_cells += cell_volume * factor * BCNT(iweight[ind]);
+                 iweight[ind] = 0;
+               }
+             }
+diff -r 10c4b42bac9f Carpet/CarpetReduce/interface.ccl
+--- a/Carpet/CarpetReduce/interface.ccl	Wed Oct 19 17:50:05 2011 -0400
++++ b/Carpet/CarpetReduce/interface.ccl	Sun Oct 23 21:30:27 2011 -0400
+@@ -17,6 +17,8 @@
+ 
+ uses include header: loopcontrol.h
+ 
++includes header: bits.h IN CarpetReduce_bits.h
++
+ 
+ 
+ CCTK_INT FUNCTION                           \
+@@ -90,3 +92,5 @@
+ REAL weight TYPE=gf TAGS='prolongation="none" InterpNumTimelevels=1 checkpoint="no"' "Weight function"
+ 
+ REAL one TYPE=gf TAGS='prolongation="none" InterpNumTimelevels=1 checkpoint="no"' "Constant one"
++
++CCTK_REAL excised_cells TYPE=scalar TAGS='checkpoint="no"' "Excised (ignored) volume in the simulation domain, in terms of coarse grid cells"
+diff -r 10c4b42bac9f Carpet/CarpetReduce/schedule.ccl
+--- a/Carpet/CarpetReduce/schedule.ccl	Wed Oct 19 17:50:05 2011 -0400
++++ b/Carpet/CarpetReduce/schedule.ccl	Sun Oct 23 21:30:27 2011 -0400
+@@ -9,6 +9,7 @@
+ 
+ # Should this move to a new thorn MaskBase?
+ STORAGE: weight
++STORAGE: excised_cells
+ 
+ 
+ 
+diff -r 10c4b42bac9f Carpet/CarpetReduce/src/mask_allocate.c
+--- a/Carpet/CarpetReduce/src/mask_allocate.c	Wed Oct 19 17:50:05 2011 -0400
++++ b/Carpet/CarpetReduce/src/mask_allocate.c	Sun Oct 23 21:30:27 2011 -0400
+@@ -17,4 +17,7 @@
+   
+   CCTK_EnableGroupStorage (cctkGH, "CarpetReduce::iweight");
+   CCTK_EnableGroupStorage (cctkGH, "CarpetReduce::one");
++  
++  /* Initialise excised cell count */
++  * excised_cells = 0.0;
+ }
+diff -r 10c4b42bac9f Carpet/CarpetReduce/src/mask_test.c
+--- a/Carpet/CarpetReduce/src/mask_test.c	Wed Oct 19 17:50:05 2011 -0400
++++ b/Carpet/CarpetReduce/src/mask_test.c	Sun Oct 23 21:30:27 2011 -0400
+@@ -102,9 +102,14 @@
+       
+     } /* for m */
+     
++    /* Don't count excised regions towards the domain volume */
++    domain_volume -= * excised_cells;
++    
+     if (verbose) {
+       CCTK_VInfo (CCTK_THORNSTRING,
+-                  "Simulation domain volume: %.17g", (double)domain_volume);
++                  "Simulation domain volume:  %.17g", (double)domain_volume);
++      CCTK_VInfo (CCTK_THORNSTRING,
++                  "Additional excised volume: %.17g", (double)*excised_cells);
+     }
+     
+     int const there_is_a_problem =
+@@ -113,9 +118,11 @@
+     if (there_is_a_problem) {
+       if (!verbose) {
+         CCTK_VInfo (CCTK_THORNSTRING,
+-                    "Simulation domain volume: %.15g", (double)domain_volume);
++                    "Simulation domain volume:  %.17g", (double)domain_volume);
+         CCTK_VInfo (CCTK_THORNSTRING,
+-                    "Reduction weight sum:     %.15g", (double)sum_weight);
++                    "Additional excised volume: %.17g", (double)*excised_cells);
++        CCTK_VInfo (CCTK_THORNSTRING,
++                    "Reduction weight sum:      %.17g", (double)sum_weight);
+       }
+       CCTK_VWarn (CCTK_WARN_ALERT, __LINE__, __FILE__, CCTK_THORNSTRING,
+                   "Simulation domain volume and reduction weight sum differ");

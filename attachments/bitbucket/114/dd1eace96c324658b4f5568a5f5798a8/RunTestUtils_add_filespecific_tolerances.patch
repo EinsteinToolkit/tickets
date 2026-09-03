@@ -1,0 +1,179 @@
+Index: RunTestUtils.pl
+===================================================================
+--- RunTestUtils.pl	(revision 4725)
++++ RunTestUtils.pl	(working copy)
+@@ -148,6 +148,7 @@
+   my($testdata,$config_data,$rundata) = @_;
+   my($line_number, $line);
+   my($test, $ABSTOL, $RELTOL);
++  my($VarExpABSTOL, $VarExpRELTOL);
+ 
+   my $arrangement_dir = "$config_data->{'CCTK_DIR'}${sep}arrangements${sep}";
+   foreach $thorn (split(" ",$testdata->{"THORNS"}))
+@@ -188,6 +189,18 @@
+       {
+         $RELTOL = $rundata->{"$thorn RELTOL"}=$1;
+       }
++      elsif ($line =~ m/^\s*VarExpABSTOL\s*(\S*)\s*(\S*)\s*$/i)
++      {
++        my $varRegex=$1;
++        $rundata->{"$thorn VarExpABSTOL"}{$varRegex}=$2;
++        $VarExpABSTOL=$$rundata{"$thorn VarExpABSTOL"};
++      }
++      elsif ($line =~ m/^\s*VarExpRELTOL\s*(\S*)\s*(\S*)\s*$/i)
++      {
++        my $varRegex=$1;
++        $rundata->{"$thorn VarExpRELTOL"}{$varRegex}= $2;
++        $VarExpRELTOL=$$rundata{"$thorn VarExpRELTOL"};
++      }
+       elsif ($line =~ m/^\s*NPROCS\s+(\d+)\s*$/i)
+       {
+         $NPROCS = $rundata->{"$thorn NPROCS"} = $1;
+@@ -198,11 +211,13 @@
+       }
+       elsif ($line =~ m/^\s*TEST\s*(.*)/i)
+       {
+-        ($test, $ABSTOL, $RELTOL, $NPROCS, $line_number) =
++        ($test, $ABSTOL, $RELTOL, $VarExpABSTOL, $VarExpRELTOL, $NPROCS, $line_number) =
+           &ParseTestBlock($line_number, \@config);
+         $rundata->{"$thorn $test ABSTOL"} = $ABSTOL;
+         $rundata->{"$thorn $test RELTOL"} = $RELTOL;
+         $rundata->{"$thorn $test NPROCS"} = $NPROCS;
++        $rundata->{"$thorn $test VarExpABSTOL"} = $VarExpABSTOL;
++        $rundata->{"$thorn $test VarExpRELTOL"} = $VarExpRELTOL;
+       }
+       else
+       {
+@@ -210,7 +225,6 @@
+       }
+     }
+   }
+-
+   return $testdata;
+ }
+ 
+@@ -218,6 +232,7 @@
+ {
+   my ($line_number, $data) = @_;
+   my ($Test, $ABSTOL, $RELTOL, $NPROCS) = ();
++  my (%VarExpABSTOL, %VarExpRELTOL) = ();
+ 
+   $data->[$line_number] =~ m/^\s*PROVIDES\s*(.*)/i;
+ 
+@@ -244,6 +259,18 @@
+         $RELTOL = $1;
+         next;
+       }
++      elsif ($data->[$line_number] =~ m/^\s*VarExpABSTOL\s*(\S*)\s*(\S*)\s*$/i)
++      {
++        my $varRegex=$1;
++        $VarExpABSTOL{$varRegex} = $2;
++        next;
++      }
++      elsif ($data->[$line_number] =~ m/^\s*VarExpRELTOL\s*(\S*)\s*(\S*)\s*$/i)
++      {
++        my $varRegex=$1;
++        $VarExpRELTOL{$varRegex} = $2;
++        next;
++      }
+       elsif ($data->[$line_number] =~ m/^\s*NPROCS\s+(\d+)\s*$/i)
+       {
+         $NPROCS = $1;
+@@ -259,7 +286,12 @@
+       }
+     }
+   }
+-  return ($Test, $ABSTOL, $RELTOL, $NPROCS, $line_number);
++  #foreach $field ( sort keys %VarExpRELTOL )
++  #{
++  #   print "   $field has value .... $VarExpRELTOL{$field}\n";
++  #}
++  #print "HELLO!  Should have just printed new hashes!\n";
++  return ($Test, $ABSTOL, $RELTOL, \%VarExpABSTOL, \%VarExpRELTOL, $NPROCS, $line_number);
+ }
+ 
+ sub FindTestArchiveFiles
+@@ -524,7 +556,28 @@
+ 
+   foreach $field ( sort keys %$database )
+   {
+-    print "$field has value\n   $database->{$field}\n";
++    # If field is a hash table reference, descend into hash
++    if ( ref $database->{$field} eq "HASH" )
++    {
++       my $subhashfield;
++       my $reftoSubhash=$$database{$field};
++       my $hashSize = scalar( keys %$reftoSubhash );
++       if ( $hashSize == 0 )
++       {
++         print "$field is an empty hash.\n";
++         next;
++       }
++       print "$field is a hash.  Descending into it.\n";
++       foreach $subhashfield ( sort keys %$reftoSubhash )
++       {
++         print "    Field $subhashfield of hash \'$field\' has value \n";
++         print "          $database->{$field}->{$subhashfield}\n";
++       }
++    }
++    else
++    {
++       print "$field has value\n   $database->{$field}\n";
++    }
+   }
+ }
+ 
+@@ -1067,6 +1120,42 @@
+       $rundata->{"$thorn $test $file NFAILSTRONG"}=0;
+       $rundata->{"$thorn $test $file NFAILWEAK"}=0;
+ 
++      my $freltol=$reltol;
++      my $fabstol=$abstol;
++      # Check for file/variable-specific tolerances. Test overrides thorn which overrides global.
++      my $refVarExpAbsTolThorn=$$runconfig{"$thorn VarExpABSTOL"};
++      my $refVarExpRelTolThorn=$$runconfig{"$thorn VarExpRELTOL"};
++      my $refVarExpAbsTolTest=$$runconfig{"$thorn $test VarExpABSTOL"};
++      my $refVarExpRelTolTest=$$runconfig{"$thorn $test VarExpRELTOL"};
++      if ( scalar( keys %$refVarExpAbsTolThorn ) )
++      {
++         foreach $varRegex ( sort keys %$refVarExpAbsTolThorn )
++         {
++            if ( $file =~ m/$varRegex/i ) { $fabstol=$refVarExpAbsTolThorn->{$varRegex}; }
++         }
++      }
++      if ( scalar( keys %$refVarExpAbsTolTest ) )
++      {
++         foreach $varRegex ( sort keys %$refVarExpAbsTolTest )
++         {
++            if ( $file =~ m/$varRegex/i ) { $fabstol=$refVarExpAbsTolTest->{$varRegex}; };
++         }
++      }
++      if ( scalar( keys %$refVarExpRelTolThorn ) )
++      {
++         foreach $varRegex ( sort keys %$refVarExpRelTolThorn )
++         {
++            if ( $file =~ m/$varRegex/i ) { $freltol=$refVarExpRelTolThorn->{$varRegex}; }
++         }
++      }
++      if ( scalar( keys %$refVarExpRelTolTest ) )
++      {
++         foreach $varRegex ( sort keys %$refVarExpRelTolTest )
++         {
++            if ( $file =~ m/$varRegex/i ) { $freltol=$refVarExpRelTolTest->{$varRegex}; }
++         }
++      }
++
+       if ( -s $newfile && -s $oldfile)
+       {
+         open (INORIG, "<$oldfile") || print "Warning: Archive file $oldfile not found";
+@@ -1126,8 +1215,8 @@
+ 
+             for ($count = 0; $count < $nold; $count++)
+             {
+-              my $vreltol = $reltol * $valmax[$count];
+-              my $vtol = $abstol > $vreltol ? $abstol : $vreltol;
++              my $vreltol = $freltol * $valmax[$count];
++              my $vtol = $fabstol > $vreltol ? $fabstol : $vreltol;
+               if ($absdiff[$count] >= $vtol) {
+                 $rundata->{"$thorn $test $file NFAILSTRONG"}++;
+                 last;

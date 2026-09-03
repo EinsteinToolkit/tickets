@@ -1,0 +1,75 @@
+From 214af078301d1ff5ef238ec8fba0a71e5e37693f Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Tue, 12 Nov 2013 18:02:13 -0800
+Subject: [PATCH 10/18] EOS_Omni: declare global variables restrict
+
+should help if we ever directly access them in an inner loop
+---
+ src/nuc_eos_cxx/nuc_eos.hh   | 12 +++++++-----
+ src/nuc_eos_cxx/readtable.cc | 10 +++++-----
+ 2 files changed, 12 insertions(+), 10 deletions(-)
+
+diff --git a/src/nuc_eos_cxx/nuc_eos.hh b/src/nuc_eos_cxx/nuc_eos.hh
+index 8c54761..576290f 100644
+--- a/src/nuc_eos_cxx/nuc_eos.hh
++++ b/src/nuc_eos_cxx/nuc_eos.hh
+@@ -1,6 +1,8 @@
+ #ifndef NUC_EOS_HH
+ #define NUC_EOS_HH
+ 
++#include "cctk.h"
++
+ #define HAVEGR 1
+ #define MAX(x, y) (((x) > (y)) ? (x) : (y))
+ #define MIN(x, y) (((x) < (y)) ? (x) : (y))
+@@ -20,16 +22,16 @@ namespace nuc_eos {
+   extern int ntemp;
+   extern int nye;
+ 
+-  extern double *alltables;
+-  extern double *epstable;
+-  extern double *logrho; 
+-  extern double *logtemp;
++  extern double * restrict alltables;
++  extern double * restrict epstable;
++  extern double * restrict logrho;
++  extern double * restrict logtemp;
+   extern double temp0, temp1;
+   extern double dlintemp,dlintempi;
+   extern double drholintempi;
+   extern double dlintempyei;
+   extern double drholintempyei;
+-  extern double *yes;
++  extern double * restrict yes;
+   extern double energy_shift;
+   extern double dtemp, dtempi;
+   extern double drho, drhoi;
+diff --git a/src/nuc_eos_cxx/readtable.cc b/src/nuc_eos_cxx/readtable.cc
+index 880584d..84ab4fa 100644
+--- a/src/nuc_eos_cxx/readtable.cc
++++ b/src/nuc_eos_cxx/readtable.cc
+@@ -36,16 +36,16 @@ namespace nuc_eos {
+   int ntemp;
+   int nye;
+ 
+-  double *alltables;
+-  double *epstable;
+-  double *logrho; 
+-  double *logtemp;
++  double * restrict alltables;
++  double * restrict epstable;
++  double * restrict logrho;
++  double * restrict logtemp;
+   double temp0, temp1;
+   double dlintemp, dlintempi;
+   double drholintempi;
+   double dlintempyei;
+   double drholintempyei;
+-  double *yes;
++  double * restrict yes;
+   double energy_shift;
+   double dtemp, dtempi;
+   double drho, drhoi;
+-- 
+1.8.5.3
+

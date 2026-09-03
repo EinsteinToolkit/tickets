@@ -1,0 +1,20 @@
+Index: interface_parser.pl
+===================================================================
+--- interface_parser.pl	(revision 5013)
++++ interface_parser.pl	(working copy)
+@@ -754,6 +754,15 @@
+ 
+       }
+ 
++      if($funcname eq $provided_by) {
++        my $message = "The providing function $provided_by in thorn $thorn " .
++                      "must have a different name than the provided function " .
++                      "$funcname.";
++        my $hint = "Rename the providing function eg. be prefixing with ".
++                   "'${thorn}_'.";
++        &CST_error(0, $message, $hint, __LINE__, __FILE__);
++      }
++
+       $interface_data_ref->{"\U$thorn PROVIDES FUNCTION\E"} .= "$funcname ";
+       $interface_data_ref->{"\U$thorn PROVIDES FUNCTION\E $funcname WITH"} .= "$provided_by ";
+       $interface_data_ref->{"\U$thorn PROVIDES FUNCTION\E $funcname LANG"} .= "$provided_by_language ";

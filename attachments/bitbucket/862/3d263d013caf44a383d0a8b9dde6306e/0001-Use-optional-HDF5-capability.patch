@@ -1,0 +1,55 @@
+From 87878268b77b2ca9278266136b09c381a1d7844b Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Mon, 7 May 2012 13:32:43 +0200
+Subject: [PATCH] Use optional HDF5 capability
+
+The previous method no longer works
+---
+ configuration.ccl         |    4 ++++
+ src/patch/patch_system.cc |    6 +++---
+ 2 files changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/configuration.ccl b/configuration.ccl
+index ef770a1..b0986dc 100644
+--- a/configuration.ccl
++++ b/configuration.ccl
+@@ -1 +1,5 @@
+ REQUIRES THORNS: SpaceMask
++
++OPTIONAL HDF5
++{
++}
+diff --git a/src/patch/patch_system.cc b/src/patch/patch_system.cc
+index 8059453..3e6296b 100644
+--- a/src/patch/patch_system.cc
++++ b/src/patch/patch_system.cc
+@@ -80,7 +80,7 @@
+ #include "../jtutil/linear_map.hh"
+ using jtutil::error_exit;
+ 
+-#ifdef CCTK_HDF5
++#ifdef HAVE_CAPABILITY_HDF5
+ // Some macros to fix compatibility issues as long as 1.8.0 is in beta
+ // phase
+ #  define H5_USE_16_API 1
+@@ -2539,7 +2539,7 @@ fclose(input_fp);
+ 
+ //******************************************************************************
+ 
+-#ifdef CCTK_HDF5
++#ifdef HAVE_CAPABILITY_HDF5
+ 
+ static void WriteAttribute (const hid_t dataset, const char* name, char value);
+ static void WriteAttribute (const hid_t dataset, const char* name, const char* values);
+@@ -2616,7 +2616,7 @@ if (want_ghost_zones && output_xyz_flag && !radius_is_ghosted_flag)
+ 		   unknown_gfn,
+ 		   unknown_radius_gfn);				/*NOTREACHED*/
+ 
+-#ifdef CCTK_HDF5
++#ifdef HAVE_CAPABILITY_HDF5
+   
+   using std::ostringstream;
+   using std::string;
+-- 
+1.7.5.4
+

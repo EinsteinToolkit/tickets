@@ -1,0 +1,774 @@
+Index: lib/sim.py
+===================================================================
+--- lib/sim.py	(revision 1291)
++++ lib/sim.py	(working copy)
+@@ -126,8 +126,13 @@
+     if simenv.udb != None:
+         info("defs.local: %s" % simenv.udb)
+         
++        # TODO: Cleaning up all simulations here can lead to fatal
++        # errors if a problem with a particular restart is detected.
++        # This makes Simfactory then completely ususable. Therefore
++        # (and for several other reasons discussed on the mailing
++        # list), cleaning up simulations here is disabled.
+         #normalize restarts.
+-        restartlib.CleanupRestarts()
++        #restartlib.CleanupRestarts()
+     
+     if simenv.OptionsManager.HasOption("remote"):
+         remoteMachine = simenv.OptionsManager.GetOption("remote")
+Index: lib/simrestart.py
+===================================================================
+--- lib/simrestart.py	(revision 1291)
++++ lib/simrestart.py	(working copy)
+@@ -135,6 +135,7 @@
+         
+         return 1
+             
++    # TODO: this function name is wrong, it prepares recovery
+     def PrepareCheckpointing(self, max_restart_id):
+     
+         # make sure it's an int.
+@@ -192,25 +193,23 @@
+         self.SimulationLog.Write("Current working directory for simulation is: %s" % cwork_dir)
+         
+         if not(os.path.exists(cwork_dir)):
++            # TODO: state in the message what this directory is needed
++            # for
+             self.SimulationLog.Write("%s does not exist, creating" % cwork_dir)
+             os.makedirs(cwork_dir)
+         
+         chkpoint_files = restartlib.GetCheckpointFiles(restore_dir)
+-        
+         if len(chkpoint_files) == 0:
++            return False
++        # TODO: find checkpoint files from the last iteration, and
++        # link only those
+             
+-            # look in the working directory for the checkpoint files as well.
+-            if work_dir != None:
+-                chkpoint_files = restartlib.GetCheckpointFiles(work_dir)
+-            
+-                if len(chkpoint_files) == 0:
+-                    return False
+-            
++        # TODO: there are too many log messages about checkpoint files
+         for ff in chkpoint_files:
+             self.SimulationLog.Write("checkpoint file: %s" % ff)
+ 
+         for ff in chkpoint_files:
+-        
++            # TODO: skip this check
+             if not(os.path.exists(ff)):
+                 continue
+ 
+@@ -223,6 +222,8 @@
+                 
+                 if simenv.VERBOSE:
+                     self.SimulationLog.Write("linking %s to %s" % (ff, dfile))
++                # TODO: tying linking the file first; this would be
++                # faster
+                 try:
+                     if not os.access(os.path.dirname(dfile), os.F_OK):
+                         os.makedirs(os.path.dirname(dfile))
+@@ -230,8 +231,16 @@
+                 except:
+                     shutil.copyfile(ff, dfile)
+             except OSError, e:
++                # TODO: message should mention copying as well
+                 warning("Could not link checkpoint file %s to %s, %s" % (ff, dfile, e))
++                # TODO: this disables recovery, not checkpointing
++                # TODO: this doesn't delete any of the checkpoint
++                # files that it linked or copied... it should abort
++                # instead
++                # TODO: silently disabling recovery is a bad idea; it
++                # should abort instead
+                 warning("Disabling checkpointing")
++                error("It does not make sense to continue without 'checkpointing'")
+                 return False
+ 
+         return True
+@@ -252,6 +261,23 @@
+             self.create(simulationName, parfile)
+             self.load(simulationName)
+ 
++        # Try to clean up
++        active_id = restartlib.GetActiveRestartId(self)
++        if active_id >= 0:
++            info("Restart %d is active" % active_id)
++            job_id = restartlib.GetActiveJobId(simulationName)
++            if job_id<0:
++                fatal("job id is negative")
++            job_status = restartlib.GetJobStatus(job_id)
++            if job_status == 'E':
++                fatal("Could not determine restart status")
++            if job_status == 'U':
++                info("Cleaning up restart %d before submitting" % active_id)
++                restart = SimRestart()
++                restart.load(simulationName, active_id)
++                restart.finish()
++                restart.done()
++
+         (rids, max_restart_id, my_restart_id) = self.GetRestartId()
+         
+         self.RestartIDs = rids
+@@ -359,6 +385,11 @@
+         assert self.Initialized
+         assert self.RestartID > -1
+         
++        # TODO: ensure the simulation is not active
++        active_id = restartlib.GetActiveRestartId(self)
++        if active_id != -1:
++            fatal("Internal error: Cannot submit simulation %s because it is already active" % self.SimulationName)
++        
+         curdir = os.getcwd()
+         
+         # set our current working directory to the restart dir in case the 
+@@ -435,9 +466,24 @@
+         DefineDatabase.Set("SCRATCHDIR", scratchdir)
+                
+     def submit(self, submitScript, chainedJobId=None, chainedRestartId=None):
+-        
++
+         assert(self.Initialized)
+         
++        # TODO: this never checks whether the simulation is already
++        # active! only inactive simulations can have restarts
++        # submitted.
++
++        active_id = restartlib.GetActiveRestartId(self)
++        if active_id >= 0:
++            info("Simulation is active: presubmitting")
++        else:
++            info("Simulation is inactive: submitting")
++
++        # TODO: Below, use the same job id as here, since the job may
++        # finish in the mean time. Also handle the case where we
++        # presubmit for a job that has just finished -- in this case,
++        # it should become a regular submit.
++
+         UseChaining = False
+     
+         DefineDatabase = simsubs.DefineDatabase()
+@@ -523,6 +569,10 @@
+             # find out if we should use automatic job chaining.
+             if chainedJobId == None:
+                 UseChaining = True
++                # TODO: i don't understand the job chaining logic. a
++                # restart should be presubmitted (instead of
++                # submitted) if there is a restart currently running.
++                # yet there is no check for this.
+         
+         new_properties['WALLTIME'] = walltt.Walltime
+         new_properties['WALLTIME_HH'] = walltt.walltime_hh
+@@ -583,6 +633,7 @@
+             rr['chainedjobid'] = str(chainedJobId)
+         
+         # cast this as dict() to silence a pychecker warning.
++        # TODO: really?
+         for key in dict(rr).keys():
+             self.Properties.AddProperty(key, rr[key])
+         
+@@ -621,6 +672,8 @@
+         job_id = self.extractJobId(output)
+         
+         self.SimulationLog.Write("After searching raw output, it was determined that the job_id is: %s" % job_id)
++        # TODO: why does the message say "if this is -1"? we should
++        # check ourselves instead if it is -1, and abort if so.
+         self.SimulationLog.Write("If this is -1, that means the regex did NOT match anything. No job_id means no control.")
+         
+         self.Properties.AddProperty('jobid', job_id)
+@@ -646,7 +699,13 @@
+             
+             # we already submitted the first chain
+             
++            # TODO: this doesn't set the correct wall time limit for
++            # the last presubmitted restart
++
+             while numChains > 0:
++                # TODO: this logic looks fishy. since we already
++                # submitted a restart, previousRestart should never be
++                # None.
+                 if restart != None:
+                     previousRestart = restart
+                     
+@@ -813,9 +872,6 @@
+ 
+         assert(self.Initialized)
+         
+-        if self.Properties.HasProperty('finished') and self.Properties.finished == "yes":
+-            fatal("cannot rerun a restart that has been finished.")
+-        
+         # if we are following a previous restart, attempt to clean that previous restart up
+         # and make this new restart active.
+         if simenv.OptionsManager.HasOption("from-restart-id"):
+@@ -828,48 +884,13 @@
+         
+             self.makeActive()
+         
++        active_dir = "%s-active" % self.RestartDir
++        if not os.path.exists(active_dir):
++            fatal("cannot rerun a restart that is inactive.")
++        
+         self.run()
+         
+ 
+@@ -885,8 +906,13 @@
+         if self.Properties.HasProperty("from-restart-id"):
+             recover_id = self.Properties.GetProperty("from-restart-id")
+         
++        # TODO: this is about recovering, not about checkpointing.
++        # read the code below with this in mind.
+         checkpointing = self.PrepareCheckpointing(recover_id)
+             
++        # TODO: what does this property do? it doesn't make its way
++        # into the parameter file, so it is presumably unused.
++        # actually, it is never used anywhere except here.
+         if checkpointing:
+             self.Properties.AddProperty("checkpointing", "yes")
+             self.SimulationLog.Write("Checkpointing from max restart id of %s" % self.MaxRestartID)
+@@ -898,13 +924,12 @@
+         parname = simlib.FileBaseName(self.Properties.parfile)
+         my_workdir = simlib.BuildPath(self.RestartDir, parname)
+         
++        # TODO: don't look for the directory first, create it right away
+         if not(os.path.exists(my_workdir)):
+             try:
+                 os.mkdir(my_workdir)
+@@ -1067,7 +1092,7 @@
+         
+         propertyFile = simlib.BuildPath(self.InternalDir, "properties.ini")
+         
+-        self.Properties = simproperties.SimProperties(baseProperties={"finished": "no"})
++        self.Properties = simproperties.SimProperties(baseProperties={})
+         self.Properties.init(propertyFile)
+         
+         self.Properties.AddProperty('machine', machine)
+@@ -1321,13 +1346,19 @@
+         
+     def finish(self, allowForce=False):
+ 
++        # TODO: this function "cleans up", it does not "finish".
++        # terminology is important here, people get easily confused.
++        # the messages need to reflect this.
+         self.SimulationLog.Write("For simulation %s, Finishing restart %s" % (self.SimulationName, self.LongRestartID))
+ 
+         # mark the simulation.
++        # TODO: what does this mean?
+         self.mark()
+         
+-        if self.Properties.HasProperty("finished") and self.Properties.finished == "yes":
+-            self.SimulationLog.Write("simulation %s, with restart %s, has already been finished" % (self.SimulationName, self.RestartID))
++        active_dir = "%s-active" % self.RestartDir
++
++        if not os.path.exists(active_dir):
++            info("Simulation %s, restart %s has already been cleaned up -- doing nothing" % (self.SimulationName, self.RestartID))
+             return
+         
+         if self.Properties.machine != simenv.LocalMachine:
+@@ -1383,14 +1414,11 @@
+             self.stop()
+ 
+         # step 2. remove active flag
+-        active_dir = "%s-active" % self.RestartDir
+-
+-        if os.path.exists(active_dir):
+-            try:
+-                os.unlink(active_dir)
+-            except:
+-                self.SimulationLog.Write("Unable to remove active_dir %s" % active_dir)
+-                fatal("cannot clean up simulation %s, restart id %s, unable to remove -active symlink %s" % (self.SimulationName, self.RestartID, active_dir))
++        try:
++            os.unlink(active_dir)
++        except:
++            self.SimulationLog.Write("Unable to remove active_dir %s" % active_dir)
++            fatal("cannot clean up simulation %s, restart id %s, unable to remove -active symlink %s" % (self.SimulationName, self.RestartID, active_dir))
+                 
+         # step 2. make terminate file not world writable, and fix other permissions
+         if os.path.exists(self.RestartDir):
+@@ -1447,9 +1475,6 @@
+             pass
+             
+         
+-        self.Properties.AddProperty("finished", "yes")
+-        self.Properties.Save()
+-        
+         # step 6. Hard-link (Formaline) tarballs between different restarts
+         
+         # TODO: Why is this deactivated? Maybe it doesn't work
+Index: lib/restartlib.py
+===================================================================
+--- lib/restartlib.py	(revision 1291)
++++ lib/restartlib.py	(working copy)
+@@ -141,6 +141,9 @@
+     
+     return matches.group(1)
+     
++# TODO: this is a high-level function; it should live in simrestart,
++# not in restart lib. (In general, restartlib should probably not call
++# simrestart.)
+ def CleanupRestarts():
+ 
+     #dprint("CleanupRestarts...");
+@@ -161,6 +164,7 @@
+         # get rate stamp.
+         current_time = time.time()
+         
++        # TODO: this logic need to be moved into simrestart.finish
+         # make sure the simulation is at least 1 minute old.
+         sim_create_time = restart.GetMarkTime("simulation")
+         
+@@ -253,30 +257,31 @@
+ 
+ def CheckActive(simulationName):
+     
++    # TODO: why do we load the restart?
+     restart = simrestart.SimRestart()
+     restart.load(simulationName)
+-    
+     active_id = GetActiveRestartId(restart)
+-    
+     restart.done()
++    return active_id >= 0
+ 
+-    if active_id == -1:
+-        return False
+-    
+-    restart = simrestart.SimRestart()
+-    restart.load(simulationName, active_id)
+-    
+-    job_id = restart.GetJobId()
+-    status = False
+-    
+-    if job_id > 0:
+-        job_status = GetJobStatus(job_id)
+-        if job_status != 'U':
+-            status = True
+-    
+-    restart.done()
+-    
+-    return status
++    # This was wrong; a restart in the U state is still active
++    #if active_id == -1:
++    #    return False
++    #
++    #restart = simrestart.SimRestart()
++    #restart.load(simulationName, active_id)
++    #
++    #job_id = restart.GetJobId()
++    #status = False
++    #
++    #if job_id > 0:
++    #    job_status = GetJobStatus(job_id)
++    #    if job_status != 'U':
++    #        status = True
++    #
++    #restart.done()
++    #
++    #return status
+ 
+ def GetActiveJobId(simulationName):
+     
+@@ -286,7 +291,7 @@
+     active_id = GetActiveRestartId(restart)
+ 
+     if active_id == -1:
+-        return False
++        return None
+     
+     restart.load(simulationName, active_id)
+     job_id = restart.GetJobId()
+@@ -296,6 +301,8 @@
+     return job_id
+ 
+ def GetJobStatus(job_id):
++    # TODO: there needs to be documentation stating what the possible
++    # return values are
+     
+     DefineDatabase = simsubs.DefineDatabase()
+     
+@@ -320,45 +327,46 @@
+     running_pattern = DefineDatabase.SubAll(running_pattern)
+     
+     #capture output.
++    # TODO: detect errors when executing the command
+     output = simlib.ExecuteCommand(status_command, output=True)
+     
+     lines = output.split("\n")
+ 
+     #first, lets see if the job is still in the queue, regardless of whether or not we can determine the job status
+     
+-    InQueue = False
++    # TODO: counting lines doesn't help detecting errors
++    InQueue = lines.count(job_id) > 0
+     
+-    if lines.count(job_id) > 0:
+-        InQueue = True
+-    
+     # U == unknown?
+     status = 'U'
+     
+-    matched = list()
++    matched = []
+     
+     for line in lines:
+         matches = re.search(status_pattern, line)
+         if matches != None:
+             # queued_pattern
+-            mm = re.search(queued_pattern, line)
+-            if mm != None:
++            if re.search(queued_pattern, line):
+                 status = 'Q'
+                 matched.append(queued_pattern)
+                 
+             # running_pattern
+-            mm = re.search(running_pattern, line)
+-            if mm != None:
++            if re.search(running_pattern, line):
+                 status = 'R'
+                 matched.append(running_pattern)
+             
++            # holding_pattern
+             if holding_pattern != None:
+-                # holding_pattern
+-                mm = re.search(holding_pattern, line)
+-                if mm != None:
++                if re.search(holding_pattern, line):
+                     status = 'H'
+                     matched.append(holding_pattern)
+ 
++    # TODO: matches is set in the last loop iteration only; this if
++    # statement is bogus
+     if matches > 1:
++        # TODO: output a better error message; the list of patterns
++        # alone is not useful because patterns are difficult to read;
++        # better would be also what state the patterns are for
+         fatal("multiple status patterns matched: %s" % matched)
+ 
+     if InQueue and status == 'U':
+@@ -367,64 +375,49 @@
+     return status
+     
+ def GetRestartIds(restart):
++    outputpat = re.compile("output-([0-9]+)")
+     
+-    simulationdir = restart.SimulationDir
+-    
+-    expression = "^output-([0-9]+)$"
+-    rr = re.compile(expression)
+-    
+-    ids = list()
+-    
+-    for ff in os.listdir(simulationdir):
+-        matches = rr.match(ff)
+-        
+-        if matches != None:
++    ids = []
++    for ff in os.listdir(restart.SimulationDir):
++        matches = outputpat.match(ff)
++        if matches:
+             iid = matches.group(1)
+             ids.append(int(iid))
+     
+     ids.sort()
+-    
+     return ids
+ 
+-def GetActiveRestartId(restart):
++def GetActiveRestartId(restart, warnOnly=False):
++    activepat = re.compile("output-([0-9]+)-active")
+     
+-    expression = "^output-([0-9]+)-active$"
+-    rr = re.compile(expression)
+-    
+-    ids = list()
+-    
++    ids = []
+     for ff in os.listdir(restart.SimulationDir):
+-        matches = rr.match(ff)
+-        
+-        if matches != None:
++        matches = activepat.match(ff)
++        if matches:
+             iid = matches.group(1)
+             ids.append(int(iid))
+-
+-    if len(ids) > 1:
+-        fatal("more than one active restart id for simulation %s found, %s" % (restart.SimulationName, ids))
+     
+     if len(ids) == 0:
+         return -1
+-        
++
++    if len(ids) > 1:
++        if warnOnly:
++            warning("more than one active restart id for simulation %s found, %s" % (restart.SimulationName, ids))
++            return -2
++        else:
++            fatal("more than one active restart id for simulation %s found, %s" % (restart.SimulationName, ids))
++    
+     return ids[0]
+     
+ def GetCheckpointFiles(workdir):
+-    
+-    files = list()
+-    
+-    if not(os.path.exists(workdir)):
+-        return files
+-        
++    files = []
+     raw_output = simlib.ExecuteCommand("find %s -name *chkpt.it_*" % workdir, output=True)
+     
+     raw_files = raw_output.split("\n")
+-    
+     for ff in raw_files:
+         ff = ff.strip()
+-        
+         if len(ff) > 0:
+-            if os.path.exists(ff):
+-                files.append(ff)
++            files.append(ff)
+ 
+     return files
+         
+Index: lib/sim-manage.py
+===================================================================
+--- lib/sim-manage.py	(revision 1291)
++++ lib/sim-manage.py	(working copy)
+@@ -68,25 +68,22 @@
+         restart = simrestart.SimRestart()
+         ret = restart.load(simulationName)
+ 
+-        rids = restartlib.GetRestartIds(restart)
++        if simenv.OptionsManager.HasOption('restart-id'):
++            rid = simenv.OptionsManager.GetOption('restart-id')
++        else:
++            rid = restartlib.GetActiveRestartId(restart)
++        if rid<0:
++            info("Simulation is not active; doing nothing")
++            return
++        
++        ret = restart.load(simulationName, rid)
++        if ret == -1:
++            fatal("unable to load simulation %s for cleanup" % simulationName)
++                
++        info("Cleaning up simulation %s, restart id %s" % (simulationName, rid))
++        restart.finish()
+         restart.done()
+-        
+-        if simenv.OptionsManager.HasOption('restart-id'):
+-            rids = [simenv.OptionsManager.GetOption('restart-id')]
+ 
+-        for rid in rids:
+-            restart = simrestart.SimRestart()
+-            ret = restart.load(simulationName, rid)
+-
+-            if ret == -1:
+-                fatal("unable to load simulation %s for cleanup" % simulationName)
+-                    
+-            info("Cleaning up simulation %s, restart id %s" % (simulationName, rid))
+-
+-            if ret > 0:
+-                restart.finish()
+-                restart.done()
+-
+ def command_interactive():
+     restart = simrestart.SimRestart()
+     restart.interactive()
+@@ -125,9 +122,14 @@
+     else:
+         simenv.OptionsManager.args.insert(0, simulationName)
+         
++    # TODO: don't do this; there userSubmit which checks whether a
++    # simulation needs to be created, handle this in the same manner
++    # to clean this up
+     command_create()
+     
+     #reinsert our simulationname since command_create popped it off.
++    # TODO: do this differently; manage the simulation name handling
++    # differently
+     simenv.OptionsManager.args.insert(0, simulationName)
+     
+     command_submit()
+@@ -198,7 +200,7 @@
+             
+         simulationName = simenv.OptionsManager.args.pop(0)
+         display("Simulation name: %s" % simulationName)
+-    
++
+     restart = simrestart.SimRestart()
+     restart.userSubmit(simulationName)
+     restart.done()
+Index: lib/simlib.py
+===================================================================
+--- lib/simlib.py	(revision 1291)
++++ lib/simlib.py	(working copy)
+Index: lib/sim-info.py
+===================================================================
+--- lib/sim-info.py	(revision 1291)
++++ lib/sim-info.py	(working copy)
+@@ -67,120 +67,85 @@
+         
+     
+ def list_simulations():
+-    
+-    
+-    
+     simlib.RequireMachine()
+-
+-    if len(simenv.OptionsManager.args) == 0:
+-        simulations = simlib.GetSimulations()
+-    else:
++    
++    if len(simenv.OptionsManager.args) != 0:
+         simulations = simenv.OptionsManager.args
+-        
+-    simulations.sort()
++    else:
++        simulations = simlib.GetSimulations()
+     
+     if len(simulations) == 0:
+         display("There are no simulations")
+         return
++        
++    simulations.sort()
+     
+     display("Simulations:")
+     for sim in simulations:
+-        active = True
+-        
+         restart = simrestart.SimRestart()
+         restart.load(sim)
+         
+         restartIds = restartlib.GetRestartIds(restart)
+-        activeId = restartlib.GetActiveRestartId(restart)
+-        
+-        if len(restartIds) == 0:
+-            display("   %-21s   [INACTIVE]" % sim)
+-            restart.done()
++        activeId = restartlib.GetActiveRestartId(restart, warnOnly=True)
++        if activeId == -2:
++            display("   %-21s   [ERROR, restart %04d]" % (sim, int(activeId)))
+             continue
+-        
+-        if activeId == -1:
++
++        active = activeId >= 0
++        if not active and len(restartIds) > 0:
++            # Use the last restart if there is no active restart
+             activeId = restartIds[len(restartIds)-1]
+-            active = False
+-            
+-        restart = simrestart.SimRestart()
+-        ret = restart.load(sim, activeId)
+         
+-        if ret < 0:
+-            display("   %-21s   [INACTIVE]" % sim)
+-            continue
++        if activeId >= 0:
++            restart = simrestart.SimRestart()
++            ret = restart.load(sim, activeId)
++            if ret < 0:
++                # Something is wrong with the active restart
++                display("   %-21s   [ERROR, restart %04d]" % (sim, int(activeId)))
++                continue
++        job_id = -1
++        if activeId >= 0:
++            job_id = restart.GetJobId()
+         
+-        # TODO: This does not distinguish between active and inactive
+-        # simulations. Also, only active simulations have a current
+-        # restart.
+-
+         # TODO: The number of presubmitted restarts should also be
+         # output.
+ 
+-        job_id = restart.GetJobId()
+-        
+         if active:
++            state_map = dict()
++            state_map['H'] = 'ACTIVE (PRESUBMITTED)'
++            state_map['Q'] = 'ACTIVE (QUEUED)'
++            state_map['R'] = 'ACTIVE (RUNNING)'
++            state_map['U'] = 'ACTIVE (FINISHED)'
++            state_map['E'] = 'ERROR'
+             job_status = restartlib.GetJobStatus(job_id)
++            state = state_map[job_status]
++            if not state:
++                error("Illegal job status '%s'" % job_status)
+         else:
+-            # this job status is never displayed with the letter I
+-            # it is used internally only for the purpose of mapping
+-            # to the word inactive.
+-            job_status = 'I'
++            state = 'INACTIVE'
+             
+-        state_map = dict()
+-        state_map['H'] = 'ACTIVE'
+-        state_map['R'] = 'ACTIVE'
+-        state_map['Q'] = 'QUEUED'
+-        state_map['U'] = 'FINISHED'
+-        state_map['E'] = 'UNKNOWN'
+-        state_map['I'] = 'INACTIVE'
+-        
+-        # TODO: A simulation can never be in status "H" (HELD), since
+-        # this indicates a presubmitted restart (and is not a legal
+-        # simulation state).
+-        
+-        state = 'FINISHED'
+-
+-        if job_status in state_map.keys():
+-            state = state_map[job_status]
+-        # TODO: What if we can't analyse the job status? This should
+-        # be an error.
+-            
+         if not simenv.OptionsManager.GetOption('long'):
+-            display("   %-21s   [%-9s restart id \"%04d\", job id \"%s\"]" % (sim, "%s," % state, int(activeId), job_id))
++            display("   %-21s   [%-9s, restart %04d, job id %s]" % (sim, state, int(activeId), job_id))
+         else:
+             display("   %-21s= %s" % (sim, state))
+-            
+-            fd = os.popen("du -sk %s | cut -f1" % restart.SimulationDir)
+-            size_in_k = int(fd.read().strip())
+-            fd.close()
+-            
+-            size_in_bytes = size_in_k * 1024
+-            size_in_gb = size_in_bytes / 1.0e+9
+ 
+             # Active Restart Id
+-            display("        %-16s= \"%04d\"" % ("restart id", int(activeId)))
+-            #str = libutil.BuildWithSpace("restart id", 16)
+-            #libutil.PrintManyLeadingSpace("%s= \"%04d\"" % (str, int(activeId)), 4)
++            display("        %-16s= %04d" % ("restart id", int(activeId)))
+ 
+             # Job
+-            display("        %-16s= \"%s\"" % ("job id", job_id))
+-            #str = libutil.BuildWithSpace("job id", 16)
+-            #libutil.PrintManyLeadingSpace("%s= \"%s\"" % (str, job_id), 4)
++            display("        %-16s= %s" % ("job id", job_id))
+             
+-            # Disk Usage
+-            display("        %-16s= \"%04d\"" % ("Disk usage", size_in_gb))
+-            #str = libutil.BuildWithSpace("Disk usage", 16)
+-            #libutil.PrintManyLeadingSpace("%s= %02f Gbytes" % (str, size_in_gb), 4)
+-
+-            # current iteration (if running)
++            # Disk usage
++            fd = os.popen("du -sk %s | cut -f1" % restart.SimulationDir)
++            size_in_k = int(fd.read().strip())
++            fd.close()
++            display("        %-16s= %.1f GByte" % ("Disk usage", size_in_k * 1024 / 1.0e+9))
+             
+-            if state == 'RUNNING':
+-                pass
+-            
+             # Properties
+-            PrintManyLeadingSpace(restart.Properties.toString(), 8)
++            #PrintManyLeadingSpace(restart.Properties.toString(), 8)
+         
+-        restart.done()
++        if restart:
++            restart.done()
+ 
+     
+ def list_machines():

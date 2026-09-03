@@ -1,0 +1,45 @@
++ set -e
++ cd /root/simulations/schwarzschildADM/output-0000-active
++ echo Checking:
++ pwd
++ hostname
++ date
++ echo Environment:
++ export GMON_OUT_PREFIX=gmon.out
++ GMON_OUT_PREFIX=gmon.out
++ export OMP_NUM_THREADS=1
++ OMP_NUM_THREADS=1
++ env
++ echo Starting:
+++ date +%s
++ export CACTUS_STARTTIME=1462916720
++ CACTUS_STARTTIME=1462916720
++ mpirun -np 1 /root/simulations/schwarzschildADM/SIMFACTORY/exe/cactus_sim -L 3 /root/simulations/schwarzschildADM/output-0000/schwarzschildADM.par
+WARNING level 0 from host CAMPC process 0
+  while executing schedule bin (none), routine (no thorn)::(no routine)
+  in thorn Cactus, file /home/campc/Cactus/src/main/SetParams.c:93:
+  -> CCTKi_SetParameter: Error at line 8 in parameter file /root/simulations/schwarzschildADM/output-0000/schwarzschildADM.par while activating thorns
+--------------------------------------------------------------------------
+MPI_ABORT was invoked on rank 0 in communicator MPI_COMM_WORLD 
+with errorcode 0.
+
+NOTE: invoking MPI_ABORT causes Open MPI to kill all MPI processes.
+You may or may not see output from other processes, depending on
+exactly when Open MPI kills them.
+--------------------------------------------------------------------------
+--------------------------------------------------------------------------
+mpirun has exited due to process rank 0 with PID 4188 on
+node CAMPC exiting improperly. There are two reasons this could occur:
+
+1. this process did not call "init" before exiting, but others in
+the job did. This can cause a job to hang indefinitely while it waits
+for all processes to call "init". By rule, if one process calls "init",
+then ALL processes must call "init" prior to termination.
+
+2. this process called "init", but exited without calling "finalize".
+By rule, all processes that call "init" MUST call "finalize" prior to
+exiting or it will be considered an "abnormal termination"
+
+This may have caused other processes in the application to be
+terminated by signals sent by mpirun (as reported here).
+--------------------------------------------------------------------------

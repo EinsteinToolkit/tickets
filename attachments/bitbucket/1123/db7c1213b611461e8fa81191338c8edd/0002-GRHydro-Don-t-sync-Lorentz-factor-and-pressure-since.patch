@@ -1,0 +1,72 @@
+From 6494ec75cfc9acd7a4d7a5fddcb3df897e146229 Mon Sep 17 00:00:00 2001
+From: Christian Reisswig <reisswig@scriwalker.(none)>
+Date: Fri, 12 Oct 2012 12:23:17 -0700
+Subject: [PATCH 2/3] GRHydro: Don't sync Lorentz factor and pressure since
+ they are always computed in Con2Prim and are not needed
+ for initial guesses.
+
+---
+ schedule.ccl               |    4 ++--
+ src/GRHydro_Boundaries.F90 |   20 ++++++++++++--------
+ 2 files changed, 14 insertions(+), 10 deletions(-)
+
+diff --git a/schedule.ccl b/schedule.ccl
+index f9687ac..6ea8ee5 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -1142,8 +1142,8 @@ else
+       {
+ 	 LANG: Fortran
+ 	 OPTIONS: LEVEL
+-         SYNC: HydroBase::w_lorentz
+-         SYNC: HydroBase::press
++#         SYNC: HydroBase::w_lorentz   # don't need that since computed in Con2Prim which runs in postregrid!
++#         SYNC: HydroBase::press       # don't need that since computed in Con2Prim which runs in postregrid!
+ #         SYNC: HydroBase::vel
+ #         SYNC: HydroBase::Bvec
+          SYNC: hydrobase::entropy
+diff --git a/src/GRHydro_Boundaries.F90 b/src/GRHydro_Boundaries.F90
+index c04994c..d32dd76 100644
+--- a/src/GRHydro_Boundaries.F90
++++ b/src/GRHydro_Boundaries.F90
+@@ -513,12 +513,14 @@ subroutine GRHydro_SelectPrimitiveBoundaries(CCTK_ARGUMENTS)
+ 
+   if (CCTK_EQUALS(bound,"flat")) then
+     
+-    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-          "HydroBase::w_lorentz", "Flat")
++    ! Lorentz factor is not needed since it is computed in Con2Prim which runs after any sync!
++    !ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++    !      "HydroBase::w_lorentz", "Flat")
+     ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+           "HydroBase::rho", "Flat")
+-    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-          "HydroBase::press", "Flat")
++    ! Pressure is not needed since it is computed in Con2Prim which runs after any sync!
++    !ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++    !      "HydroBase::press", "Flat")
+     ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+           "HydroBase::eps", "Flat")
+     if (general_coordinates .ne. 0) then
+@@ -559,12 +561,14 @@ subroutine GRHydro_SelectPrimitiveBoundaries(CCTK_ARGUMENTS)
+   endif
+ 
+   if (CCTK_EQUALS(bound,"none")) then      
+-    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-          "HydroBase::w_lorentz", "None")
++    ! Lorentz factor is not needed since it is computed in Con2Prim which runs after any sync!
++    !ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++    !      "HydroBase::w_lorentz", "None")
+     ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+           "HydroBase::rho", "None")
+-    ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+-          "HydroBase::press", "None")
++    ! Pressure is not needed since it is computed in Con2Prim which runs after any sync!
++    !ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
++    !      "HydroBase::press", "None")
+     ierr = ierr + Boundary_SelectGroupForBC(cctkGH, faces, GRHydro_stencil, -ione, &
+           "HydroBase::eps", "None")
+     if (general_coordinates .ne. 0) then
+-- 
+1.7.10.4
+

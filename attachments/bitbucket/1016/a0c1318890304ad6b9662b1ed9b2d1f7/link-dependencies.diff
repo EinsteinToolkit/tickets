@@ -1,0 +1,70 @@
+Index: CST
+===================================================================
+--- CST	(revision 4856)
++++ CST	(working copy)
+@@ -591,12 +591,26 @@
+     {
+       $thorn_ancestor{"\U$thorn\E"} .= $interface->{"IMPLEMENTATION \U$ancestor_imp\E THORNS"}. ' ';
+     }
++    $thorn_requires{"\U$thorn\E"} = '';
++    foreach $capability (split(' ', $cfg->{"\U$thorn REQUIRES\E"}))
++    {
++        foreach $thorn2 (sort keys %thorns)
++        {
++            foreach $capability2 (split(' ', $cfg->{"\U$thorn2 PROVIDES\E"}))
++            {
++                if ("\U$capability\E" eq "\U$capability2\E")
++                {
++                    $thorn_requires{"\U$thorn\E"} .= " $thorn2";
++                }
++            }
++        }
++    }
+ 
+-    my @uses_thorns = split (' ', $cfg->{"\U$thorn\E USES THORNS"} . ' ' . $thorn_ancestor{"\U$thorn\E"});
++    my @uses_thorns = split (' ', $cfg->{"\U$thorn\E USES THORNS"} . ' ' . $cfg->{"\U$thorn\E REQUIRES THORNS"} . ' ' . $thorn_requires{"\U$thorn\E"} . ' ' . $thorn_ancestor{"\U$thorn\E"});
+     my $uses_thorns = '';
+     foreach (@uses_thorns)
+     {
+-      # ignore if a thorn wants to use only itself
++      # ignore if a thorn wants to use itself
+       # otherwise we'll get a cyclic list later in the topological sort
+       $uses_thorns .= "$thorn $_\n" if ($thorn ne $_);
+     }
+Index: CreateConfigurationBindings.pl
+===================================================================
+--- CreateConfigurationBindings.pl	(revision 4856)
++++ CreateConfigurationBindings.pl	(working copy)
+@@ -134,18 +134,18 @@
+               &WriteFile("Capabilities/cctki_\U$providedcap\E.h",\$incs);
+               &WriteFile("Capabilities/make.\U$providedcap\E.deps",\$deps);
+               
+-              # ES 2011-11-25: I don't understand these lines, so I'm
+-              # leaving them alone
++              # Create a list of thorns that provide a capability with
++              # a library (or library search paths)
+               if ($cfg->{"\U$thorn $providedcap\E LIBRARY"})
+               {
+                   $linker_thorns{"$thorn"} = $thorn;
+-                  $linker_cfg{"\U$thorn\E USES"} = $cfg->{"\U$thorn\E USES THORNS"};
++                  #$linker_cfg{"\U$thorn\E USES"} = $cfg->{"\U$thorn\E USES THORNS"};
+               }
+               
+               if ($cfg->{"\U$thorn $providedcap\E LIBRARY_DIRECTORY"})
+               {
+                   $linker_thorns{"$thorn"} = $thorn;
+-                  $linker_cfg{"\U$thorn\E USES"} = $cfg->{"\U$thorn\E USES THORNS"};
++                  #$linker_cfg{"\U$thorn\E USES"} = $cfg->{"\U$thorn\E USES THORNS"};
+               }
+           }
+       }
+@@ -197,7 +197,8 @@
+   $linkerdirs = 'LIBDIRS +=';
+   $linkerlibs = 'LIBS +=';
+ 
+-  $linker_list = &TopoSort(\%linker_thorns, \%linker_cfg);
++  #$linker_list = &TopoSort(\%linker_thorns, \%linker_cfg);
++  $linker_list = &TopoSort(\%linker_thorns, \%linker_cfg, $cfg);
+   foreach $thorn (split (' ', $linker_list))
+   {
+     foreach $providedcap (split (' ', $cfg->{"\U$thorn\E PROVIDES"}))

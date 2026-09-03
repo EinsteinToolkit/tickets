@@ -1,0 +1,55 @@
+From 417b0f8ce9a69864fb4bb8255010eb437d0fe114 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Mon, 13 Sep 2010 13:49:09 +0200
+Subject: [PATCH 01/11] Enable remaining Psis and add curvIr
+
+---
+ m/WeylScal4.m |   11 +++++++----
+ 1 files changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/m/WeylScal4.m b/m/WeylScal4.m
+index f6f6bbb..8f6e1de 100644
+--- a/m/WeylScal4.m
++++ b/m/WeylScal4.m
+@@ -43,7 +43,7 @@ Map[DefineTensor,
+   R, gamma,g, gInv, k, ltet, n, rm, im, rmbar, imbar, tn, va, vb, vc,
+   wa, wb, wc, ea, eb, ec,
+   Ro, Rojo, R4p, Psi0r, Psi0i, Psi1r, Psi1i, Psi2r, Psi2i, Psi3r,
+-  Psi3i, Psi4r,Psi4i
++  Psi3i, Psi4r,Psi4i, curvIr
+ }];
+ 
+ (* Psi0,2,4 behave as (pseudo)scalars *)
+@@ -77,7 +77,7 @@ gDet = Det[MatrixOfComponents[g[la,lb]]];
+ 
+ (* Cactus group definitions *)
+ 
+-scalars = { (*Psi0r, Psi0i, Psi1r, Psi1i, Psi2r, Psi2i, Psi3r, Psi3i, *) Psi4r,Psi4i};
++scalars = {Psi0r, Psi0i, Psi1r, Psi1i, Psi2r, Psi2i, Psi3r, Psi3i, Psi4r,Psi4i, curvIr};
+ 
+ scalarGroups = Map[CreateGroupFromTensor, scalars];
+ 
+@@ -219,7 +219,7 @@ PsisCalc[fdOrder_, PD_] :=
+ 
+ 	Psi4i -> R4p[la,lb,lc,ld] n[ua] n[uc] ( - rm[ub] im[ud] - im[ub] rm[ud] )
+ 		 + 2 Ro[la,lb,lc] n[ub] nn ( - rm[ua] im[uc] - im[ua] rm[uc] )
+-		 + Rojo[la,lb] nn nn ( - rm[ua] im[ub] - im[ua] rm[ub] )  (*,
++		 + Rojo[la,lb] nn nn ( - rm[ua] im[ub] - im[ua] rm[ub] )  ,
+ 
+ 
+ 	Psi3r -> R4p[la,lb,lc,ld] ltet[ua] n[ub] rm[uc] n[ud]
+@@ -260,7 +260,10 @@ PsisCalc[fdOrder_, PD_] :=
+ 
+ 	Psi0i -> R4p[la,lb,lc,ld] ltet[ua] ltet[uc] (rm[ub] im[ud] + im[ub] rm[ud])
+ 		 + 2 Ro[la,lb,lc] nn ltet[ub] (rm[ua] im[uc] + im[ua] rm[uc])
+-		 + Rojo[la,lb] nn nn (rm[ua] im[ub] + im[ua] rm[ub]) *)
++		 + Rojo[la,lb] nn nn (rm[ua] im[ub] + im[ua] rm[ub]),
++
++        curvIr -> ComplexExpand[Re[3 (Psi2r+I Psi2i)^2 - 4 (Psi1r+I Psi1i) (Psi3r + I Psi3i) + (Psi4r + I Psi4i) (Psi0r + I Psi0i)]]
++
+   }
+ };
+ 
+-- 
+1.7.7.4
+

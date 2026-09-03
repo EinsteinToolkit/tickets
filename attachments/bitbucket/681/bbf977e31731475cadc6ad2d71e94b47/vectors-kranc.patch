@@ -1,0 +1,38 @@
+Subject: Update Kranc-specific code
+From: Erik Schnetter <eschnetter@perimeterinstitute.ca>
+Date: 2011-11-26
+
+
+Index: src/vectors.h
+===================================================================
+--- src/vectors.h	(revision 35)
++++ src/vectors.h	(working copy)
+@@ -297,12 +320,26 @@
+ #  define KRANC_DIFF_FUNCTIONS
+ #endif
+ 
++#undef Sign
++#define Sign(x) -999999999      // poison
++
+ #undef ToReal
+ #define ToReal(x) (vec_set1((CCTK_REAL)(x)))
+ 
+-#undef Sign
+-#define Sign(x) -999999999      // poison
++// We can't redefine E unconditionally, because this symbol is used
++// elsewhere with a different meaning
++#ifdef E
++#  undef E
++#  define E (ToReal(M_E))
++#endif
+ 
++#undef Pi
++#define Pi (ToReal(M_PI))
+ 
++#undef KRANC_GFOFFSET3D
++#define KRANC_GFOFFSET3D(var,i,j,k)                                     \
++  vec_loadu_maybe3((i),(j),(k),                                         \
++                   *(CCTK_REAL const*)&                                 \
++                   ((char const*)(var))[cdi*(i)+cdj*(j)+cdk*(k)])
+ 
+ #endif  // #ifndef VECTORS_H

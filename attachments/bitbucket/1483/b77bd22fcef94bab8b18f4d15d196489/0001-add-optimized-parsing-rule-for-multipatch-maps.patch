@@ -1,0 +1,66 @@
+From 0988453d5dfaea0d1127ed212715e17f4578200b Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Wed, 14 Aug 2013 13:05:00 -0700
+Subject: [PATCH 1/2] add optimized parsing rule for multipatch maps
+
+---
+ trunk/avtCarpetHDF5FileFormat.C | 29 ++++++++++++++++++++---------
+ 1 file changed, 20 insertions(+), 9 deletions(-)
+
+diff --git a/trunk/avtCarpetHDF5FileFormat.C b/trunk/avtCarpetHDF5FileFormat.C
+index 2d14b68..6b843d1 100644
+--- a/trunk/avtCarpetHDF5FileFormat.C
++++ b/trunk/avtCarpetHDF5FileFormat.C
+@@ -1094,15 +1094,33 @@ static herr_t H5iter(hid_t group_id, const char *member_name, void *operator_dat
+             
+       int cycle = 0;
+       int rl = 0;
++      int map = 0;
+       int tl, c; // dummy targets for scanf to get conversion number right
++      const int len = strlen(member_name); // used to check that scanf consumed the full string
++      int used_len;
+       char varname[1000];
+       // if metadata can be parsed from dataset name then we are about 6x faster
+       // then using attributes
+-      if(sscanf(member_name, "%s it=%d tl=%d rl=%d c=%d", varname, &cycle, &tl, &rl, &c) == 5) {
++      if(sscanf(member_name, "%s it=%d tl=%d rl=%d c=%d%n", varname, &cycle, &tl, &rl, &c, &used_len) == 5 &&
++         len == used_len) {
++         map = 0; // single map run
++      } else if(sscanf(member_name, "%s it=%d tl=%d m=%d rl=%d c=%d%n", varname, &cycle, &tl, &map, &rl, &c, &used_len) == 6 &&
++                len == used_len) {
+           /* no-op */
+-      } else if(sscanf(member_name, "%s it=%d tl=%d c=%d", varname, &cycle, &tl, &c) == 4) {
++      } else if(sscanf(member_name, "%s it=%d tl=%d c=%d%n", varname, &cycle, &tl, &c, &used_len) == 4 &&
++          len == used_len) {
++          rl = 0; // unigrid run
++         map = 0; // single map run
++      } else if(sscanf(member_name, "%s it=%d tl=%d m=%d c=%d%n", varname, &cycle, &tl, &map, &c, &used_len) == 5 &&
++         len == used_len) {
+           rl = 0; // unigrid run
+       } else {
++         static bool have_warned = false;
++         if(!have_warned) {
++           have_warned = true;
++           cout << "Could not parse name '" << member_name << "' which can slow down things considerably\n";
++         }
++
+          attrib = H5Aopen(dataset, "timestep", H5P_DEFAULT);
+          H5Aread(attrib, H5T_NATIVE_INT, &cycle);
+          H5Aclose(attrib);
+@@ -1184,13 +1202,6 @@ static herr_t H5iter(hid_t group_id, const char *member_name, void *operator_dat
+       // factor set to one for now....will get set once timestep_t is constructed
+       int factor = 1;
+       
+-      // get map-attribute from dataset-name
+-      int map = 0;
+-      if (strstr(member_name, "m="))
+-      {
+-         map = atoi(strstr(member_name, "m=")+2);
+-      }
+-      
+       // find out scalar type of variable
+       hid_t dtype = H5Dget_type(dataset);
+       H5T_class_t type_class = H5Tget_class(dtype);
+-- 
+1.8.4.2
+

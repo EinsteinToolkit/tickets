@@ -1,0 +1,94 @@
+From b7f58a5dfc7e1dc9575401a34f031881a3a5ff80 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Sat, 9 Mar 2013 23:11:11 -0800
+Subject: [PATCH 08/11] GRHydro: explicitly cast from CCTK_REAL to int to
+ avoid warning
+
+---
+ src/GRHydro_PPM.F90  |   14 +++++++-------
+ src/GRHydro_PPMM.F90 |    2 +-
+ 2 files changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/src/GRHydro_PPM.F90 b/src/GRHydro_PPM.F90
+index 892d453..b53ded9 100644
+--- a/src/GRHydro_PPM.F90
++++ b/src/GRHydro_PPM.F90
+@@ -494,7 +494,7 @@ trivial_rp = .true.
+          end do
+       else  !!$ Really implement C&W, page 197; which requires stencil 4.
+          do i = 4, nx - 3
+-            s=sign(one, -dpress(i))
++            s=int(sign(one, -dpress(i)))
+             flatten = max(tilde_flatten(i), tilde_flatten(i+s))  
+             if (abs(1.d0 - flatten) > 0.d0) then
+                trivial_rp(i-1) = .false.
+@@ -829,7 +829,7 @@ trivial_rp = .true.
+          end do
+       else  !!$ Really implement C&W, page 197; which requires stencil 4.
+          do i = 4, nx - 3
+-            s=sign(one, -dpress(i))
++            s=int(sign(one, -dpress(i)))
+             flatten = max(tilde_flatten(i), tilde_flatten(i+s))  
+             if (abs(1.d0 - flatten) > 0.d0) then
+                trivial_rp(i-1) = .false.
+@@ -1196,7 +1196,7 @@ subroutine SimplePPM_temperature_1d(&
+          end do
+       else  !!$ Really implement C&W, page 197; which requires stencil 4.
+          do i = 4, nx - 3
+-            s=sign(one, -dpress(i))
++            s=int(sign(one, -dpress(i)))
+             flatten = max(tilde_flatten(i), tilde_flatten(i+s))  
+             tempplus(i) = flatten * tempplus(i) + (1.d0 - flatten) * temperature(i)
+             tempminus(i) = flatten * tempminus(i) + (1.d0 - flatten) * temperature(i)
+@@ -1459,7 +1459,7 @@ subroutine SimplePPM_temperature_1d(&
+          end do
+       else  !!$ Really implement C&W, page 197; which requires stencil 4.
+          do i = 4, nx - 3
+-            s=sign(one, -dpress(i))
++            s=int(sign(one, -dpress(i)))
+             flatten = max(tilde_flatten(i), tilde_flatten(i+s))  
+             tempplus(i) = flatten * tempplus(i) + (1.d0 - flatten) * temperature(i)
+             tempminus(i) = flatten * tempminus(i) + (1.d0 - flatten) * temperature(i)
+@@ -1679,7 +1679,7 @@ subroutine SimplePPM_tracer_1d(nx,dx,rho,velx,vely,velz, &
+   else  !!$ Really implement C&W, page 197; which requires stencil 4.
+      do itracer=1,number_of_tracers
+         do i = 4, nx - 3
+-           s=sign(one, -dpress(i))
++           s=int(sign(one, -dpress(i)))
+            flatten = max(tilde_flatten(i), tilde_flatten(i+s))  
+            tracerplus(i,itracer) = flatten * tracerplus(i,itracer) + &
+                 (1.d0 - flatten) * tracer(i,itracer)
+@@ -1910,7 +1910,7 @@ subroutine SimplePPM_ye_1d(nx,dx,rho,velx,vely,velz, &
+          end do
+       else  !!$ Really implement C&W, page 197; which requires stencil 4.
+          do i = 4, nx - 3
+-            s=sign(one, -dpress(i))
++            s=int(sign(one, -dpress(i)))
+             flatten = max(tilde_flatten(i), tilde_flatten(i+s))  
+             Y_e_plus(i) = flatten * Y_e_plus(i) + &
+                   (1.d0 - flatten) * Y_e(i)
+@@ -2040,7 +2040,7 @@ subroutine SimplePPM_ye_1d(nx,dx,rho,velx,vely,velz, &
+          end do
+       else  !!$ Really implement C&W, page 197; which requires stencil 4.
+          do i = 4, nx - 3
+-            s=sign(one, -dpress(i))
++            s=int(sign(one, -dpress(i)))
+             flatten = max(tilde_flatten(i), tilde_flatten(i+s))  
+             Y_e_plus(i) = flatten * Y_e_plus(i) + &
+                   (1.d0 - flatten) * Y_e(i)
+diff --git a/src/GRHydro_PPMM.F90 b/src/GRHydro_PPMM.F90
+index 8005137..63a8e2f 100644
+--- a/src/GRHydro_PPMM.F90
++++ b/src/GRHydro_PPMM.F90
+@@ -411,7 +411,7 @@ trivial_rp = .true.
+     end do
+   else  !!$ Really implement C&W, page 197; which requires stencil 4.
+     do i = 4, nx - 3
+-      s=sign(1.d0, -dpress(i))
++      s=int(sign(1.d0, -dpress(i)))
+       flatten = max(tilde_flatten(i), tilde_flatten(i+s))  
+       if (abs(1.d0 - flatten) > 0.d0) then
+         trivial_rp(i-1) = .false.
+-- 
+1.7.10.4
+

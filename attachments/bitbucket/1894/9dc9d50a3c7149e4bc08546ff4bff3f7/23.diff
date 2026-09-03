@@ -1,0 +1,36 @@
+Makediff for koppel in /home/faculty/koppel/r/gbs/Chemora/arrangements/EinsteinInitialData/TwoPunctures/src
+Index: FuncAndJacobian.c
+===================================================================
+--- FuncAndJacobian.c	(revision 145)
++++ FuncAndJacobian.c	(working copy)
+@@ -755,6 +755,10 @@ interpol (CCTK_REAL a, CCTK_REAL b, CCTK
+     + 0.5 * b * b * v.d22[0] + b * c * v.d23[0] + 0.5 * c * c * v.d33[0];
+ }
+ 
++
++static CCTK_REAL
++clamp(CCTK_REAL val){ return val < -1 ? -1 : val > 1 ? 1 : val; }
++
+ /* --------------------------------------------------------------------------*/
+ /* Calculates the value of v at an arbitrary position (x,y,z)*/
+ CCTK_REAL
+@@ -784,8 +788,8 @@ PunctTaylorExpandAtArbitPosition (int iv
+   if (x < 0)
+     R = Pi - R;
+ 
+-  A = 2 * tanh (0.5 * X) - 1;
+-  B = tan (0.5 * R - Piq);
++  A = clamp( 2 * tanh (0.5 * X) - 1 );
++  B = clamp( tan (0.5 * R - Piq) );
+   al = Pi - acos (A);
+   be = Pi - acos (B);
+ 
+@@ -935,7 +939,7 @@ void SpecCoef(int n1, int n2, int n3, in
+   // VASILIS: Here v is a pointer to the values of the variable v at the collocation points and cf_v a pointer to the spectral coefficients that this routine calculates
+ 
+ 	int i, j, k, N, n, l, m;
+-	double *p, ***values3, ***values4;
++	CCTK_REAL *p, ***values3, ***values4;
+ 	
+ 	N=maximum3(n1,n2,n3);
+ 	p=dvector(0,N);

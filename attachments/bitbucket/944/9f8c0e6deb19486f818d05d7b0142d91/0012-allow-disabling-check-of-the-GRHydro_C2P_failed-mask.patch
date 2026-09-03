@@ -1,0 +1,28 @@
+From d43472ca975d8d74305447470562ee621d7e9b36 Mon Sep 17 00:00:00 2001
+From: Christian Ott <cott@bethe.tapir.caltech.edu>
+Date: Fri, 25 May 2012 10:14:43 -0700
+Subject: [PATCH 09/13] * allow disabling check of the GRHydro_C2P_failed mask
+ on coarse   reflevels via GRHydro_c2p_warn_from_level
+ parameter.
+
+---
+ src/GRHydro_Con2Prim.F90 |    3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/GRHydro_Con2Prim.F90 b/src/GRHydro_Con2Prim.F90
+index 6519d2f..f61eea7 100644
+--- a/src/GRHydro_Con2Prim.F90
++++ b/src/GRHydro_Con2Prim.F90
+@@ -1984,6 +1984,9 @@ subroutine check_GRHydro_C2P_failed(CCTK_ARGUMENTS)
+   ny = cctk_lsh(2)
+   nz = cctk_lsh(3)
+ 
++  ! do not check if told not to
++  if(GRHydro_reflevel .lt. GRHydro_c2p_warn_from_reflevel) return
++
+   !$OMP PARALLEL DO PRIVATE(i,j,k)
+   do k = 1, nz 
+     do j = 1, ny 
+-- 
+1.7.10
+

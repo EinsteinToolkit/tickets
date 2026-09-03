@@ -1,0 +1,47 @@
+Index: doc/documentation.tex
+===================================================================
+--- doc/documentation.tex	(revision 177)
++++ doc/documentation.tex	(working copy)
+@@ -704,6 +704,21 @@
+   {\bf q}^{n+1} & = & {\bf q}^{(4)}.
+ \end{eqnarray}
+ 
++The Adams-Bashforth methods multi-step methods achieve higher convergence
++order by employing data from past times rather than evaluating the right-hand
++side on multiple sub-steps the way Runge-Kutta methods do. The implementation
++in MoL is based on the description
++in~\cite{CactusBase_MoL_WikipediaLinear_multistep_method2012}. The
++Adams-Bashforth methods of order 1 to 5 implemented in the code are
++\begin{eqnarray}
++    (1\text{\textsuperscript{st} order}) \quad \mathbf{q}^{n+1} &=& \mathbf{q}^n + hf( \mathbf{q}^n), \\
++    (2\text{\textsuperscript{nd} order}) \quad \mathbf{q}^{n+2} &=& \mathbf{q}^{n+1} + \Delta t\left( \tfrac32 \mathbf{L}( \mathbf{q}^{n+1}) - \tfrac12 \mathbf{L}( \mathbf{q}^n)\right),  \\
++    (3\text{\textsuperscript{rd} order}) \quad \mathbf{q}^{n+3} &=& \mathbf{q}^{n+2} + \Delta t\left( \tfrac{23}{12} \mathbf{L}( \mathbf{q}^{n+2}) - \tfrac43 \mathbf{L}( \mathbf{q}^{n+1}) + \tfrac{5}{12}\mathbf{L}( \mathbf{q}^n)\right), \\
++    (4\text{\textsuperscript{th} order}) \quad \mathbf{q}^{n+4} &=& \mathbf{q}^{n+3} + \Delta t\left( \tfrac{55}{24} \mathbf{L}( \mathbf{q}^{n+3}) - \tfrac{59}{24} \mathbf{L}( \mathbf{q}^{n+2}) + \tfrac{37}{24} \mathbf{L}( \mathbf{q}^{n+1}) - \tfrac38 \mathbf{L}( \mathbf{q}^n) \right), \\
++    (5\text{\textsuperscript{th} order}) \quad \mathbf{q}^{n+5} &=& \mathbf{q}^{n+4} + \Delta t\bigl( \tfrac{1901}{720} \mathbf{L}( \mathbf{q}^{n+4}) - \tfrac{1387}{360} \mathbf{L}( \mathbf{q}^{n+3}) \nonumber\\
++    &&{}+ \tfrac{109}{30} \mathbf{L}( \mathbf{q}^{n+2}) - \tfrac{637}{360} \mathbf{L}( \mathbf{q}^{n+1}) + \tfrac{251}{720} \mathbf{L}( \mathbf{q}^n) \bigr).
++\end{eqnarray}
++
+ \section{Functions provided by MoL}
+ \label{CactusBase_MoL_sec:molfns}
+ 
+@@ -1493,6 +1508,20 @@
+ \newblock Ultrarelativistic fluid dynamics.
+ \newblock {\em Class. Quantum Grav.}, {\bf 17}:\penalty0 733--759, 2000.
+ 
++\bibitem{CactusBase_MoL_WikipediaLinear_multistep_method2012}
++Wikipedia
++\newblock {L}inear multistep method.
++\url{https://en.wikipedia.org/w/index.php?title=Linear_multistep_method&oldid=519360530}
++\newblock This page cites \cite{CactusBase_MoL_Hairer93, CactusBase_MoL_Butcher03}.
++\bibitem{CactusBase_MoL_Hairer93}
++Hairer, Ernst; Nørsett, Syvert Paul; Wanner, Gerhard
++\newblock Solving ordinary differential equations I: Nonstiff problems (2nd ed.)
++\newblock Berlin: Springer Verlag, 1993. ISBN 978-3-540-56670-0
++\bibitem{CactusBase_MoL_Butcher03}
++Butcher, John C.
++\newblock Numerical Methods for Ordinary Differential Equations
++\newblock John Wiley, 2003. ISBN 978-0-471-96758-3
++
+ \end{thebibliography}
+ 
+ % Do not delete next line

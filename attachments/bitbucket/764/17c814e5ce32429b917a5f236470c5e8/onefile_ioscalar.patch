@@ -1,0 +1,409 @@
+# HG changeset patch
+# User Roland Haas <rhaas@caltech.edu>
+# Date 1330821640 28800
+# Node ID 5dafe2f030e11f8322e4183e2010fd53b3095d29
+# Parent  ce1d11de19ed9f83349b3663d07b57518d9260b9
+CarpetIOScalar: add option all_reduction_in_one file to collect all reduction
+results in a single file (with filename *.scalars.asc)
+
+diff -r ce1d11de19ed -r 5dafe2f030e1 Carpet/CarpetIOScalar/param.ccl
+--- a/Carpet/CarpetIOScalar/param.ccl	Sat Feb 25 11:48:36 2012 -0500
++++ b/Carpet/CarpetIOScalar/param.ccl	Sat Mar 03 16:40:40 2012 -0800
+@@ -24,6 +24,10 @@
+ {
+ } "no"
+ 
++BOOLEAN all_reductions_in_one_file "Write all requested reductions in one file instead of per reduction"
++{
++} "no"
++
+ 
+ 
+ CCTK_STRING outScalar_dir "Name of scalar output directory, overrides out_dir" STEERABLE = ALWAYS
+diff -r ce1d11de19ed -r 5dafe2f030e1 Carpet/CarpetIOScalar/src/ioscalar.cc
+--- a/Carpet/CarpetIOScalar/src/ioscalar.cc	Sat Feb 25 11:48:36 2012 -0500
++++ b/Carpet/CarpetIOScalar/src/ioscalar.cc	Sat Mar 03 16:40:40 2012 -0800
+@@ -70,6 +70,7 @@
+ 
+   // Definition of static members
+   vector<bool> do_truncate;
++  vector<bool> write_header;
+   vector<int> last_output;
+ 
+   /* CarpetScalar GH extension structure */
+@@ -78,6 +79,10 @@
+     /* list of variables to output */
+     char *out_vars;
+ 
++    /* reductions to apply */
++    char *out_reductions;
++    char **var_reductions;
++
+     /* stop on I/O parameter parsing errors ? */
+     int stop_on_parse_errors;
+ 
+@@ -132,12 +137,15 @@
+     // Truncate all files if this is not a restart
+     const int numvars = CCTK_NumVars ();
+     do_truncate.resize (numvars, true);
++    write_header.resize (numvars, true);
+ 
+     // No iterations have yet been output
+     last_output.resize (numvars, -1);
+ 
+     IOparameters.requests = (ioRequest **) calloc (numvars, sizeof(ioRequest*));
+     IOparameters.out_vars = strdup ("");
++    IOparameters.out_reductions = strdup ("");
++    IOparameters.var_reductions = (char **) calloc (numvars, sizeof(char*));
+ 
+     // initial I/O parameter check
+     IOparameters.stop_on_parse_errors = strict_io_parameter_check;
+@@ -274,43 +282,65 @@
+     // Output in global mode
+     BEGIN_GLOBAL_MODE(cctkGH) {
+ 
++      // single fstreams object used for all output files.
++      // This violates resource-allocation-is-initialization but is required
++      // when outputting all reductions into a single file (in which case there
++      // is only a single stream)
++      fstream file;
++      CCTK_REAL io_files = 0;
++      CCTK_REAL io_bytes_begin = 0, io_bytes_end = 0;
++      if (all_reductions_in_one_file) {
++        BeginTimingIO (cctkGH);
++      }
++
+       for (list<info>::const_iterator ireduction = reductions.begin();
+            ireduction != reductions.end();
+            ++ireduction)
+       {
+         string const reduction = ireduction->reduction;
+ 
+-        fstream file;
+-        BeginTimingIO (cctkGH);
+-        CCTK_REAL io_files = 0;
+-        CCTK_REAL io_bytes_begin = 0, io_bytes_end = 0;
++        if (not all_reductions_in_one_file) {
++          BeginTimingIO (cctkGH);
++          io_files = 0;
++          io_bytes_begin = 0;
++          io_bytes_end = 0;
++        }
+         if (CCTK_MyProc(cctkGH)==0) {
+ 
+-          // Invent a file name
+-          ostringstream filenamebuf;
+-          filenamebuf << myoutdir << "/" << alias << "." << reduction
+-                      << ".asc";
+-          // we need a persistent temporary here
+-          string filenamestr = filenamebuf.str();
+-          const char* const filename = filenamestr.c_str();
++          if (not all_reductions_in_one_file || not file.is_open()) {
++            // Invent a file name
++            ostringstream filenamebuf;
++            filenamebuf << myoutdir << "/" << alias;
++            if (not all_reductions_in_one_file)
++              filenamebuf << "." << reduction;
++            else
++              filenamebuf << ".scalars";
++            filenamebuf << ".asc";
++            // we need a persistent temporary here
++            string filenamestr = filenamebuf.str();
++            const char* const filename = filenamestr.c_str();
+ 
+-          if (do_truncate.at(n) and IO_TruncateOutputFiles (cctkGH)) {
+-            file.open (filename, ios::out | ios::trunc);
+-          } else {
+-            file.open (filename, ios::out | ios::app);
++            if (do_truncate.at(n) and IO_TruncateOutputFiles (cctkGH)) {
++              file.open (filename, ios::out | ios::trunc);
++            } else {
++              file.open (filename, ios::out | ios::app);
++            }
++            if (not file.good()) {
++              CCTK_VWarn (0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                          "Could not open output file \"%s\" for variable \"%s\"",
++                          filename, varname);
++            }
++            assert (file.is_open());
++            
++            // Don't truncate again
++            do_truncate.at(n) = false;
++
++            io_files += 1;
+           }
+-          if (not file.good()) {
+-            CCTK_VWarn (0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                        "Could not open output file \"%s\" for variable \"%s\"",
+-                        filename, varname);
+-          }
+-          assert (file.is_open());
+-
+-          io_files += 1;
+           io_bytes_begin = file.tellg();
+ 
+           // If this is the first time, then write a nice header
+-          if (do_truncate.at(n)) {
++          if (write_header.at(n)) {
+             bool want_labels = false;
+             bool want_date = false;
+             bool want_parfilename = false;
+@@ -376,17 +406,32 @@
+               file << "# " << varname << " (" << alias << ")" << eol;
+               file << "# 1:iteration 2:time 3:data" << eol;
+               int col = 3;
+-              if (one_file_per_group) {
++              if (one_file_per_group or all_reductions_in_one_file) {
+                 file << "# data columns:";
+-                int const firstvar = CCTK_FirstVarIndexI(group);
+-                int const numvars = CCTK_NumVarsInGroupI(group);
++                int const firstvar
++                  = one_file_per_group ? CCTK_FirstVarIndexI(group) : n;
++                int const numvars
++                  = one_file_per_group ? CCTK_NumVarsInGroupI(group) : 1;
+                 for (int n=firstvar; n<firstvar+numvars; ++n) {
+-                  file << " " << col << ":" << CCTK_VarName(n);
+-                  col += CarpetSimpleMPIDatatypeLength (vartype);
++                  if (all_reductions_in_one_file) {
++                    for (list<info>::const_iterator jreduction = reductions.begin();
++                         jreduction != reductions.end();
++                         ++jreduction)
++                    {
++                      file << " " << col << ":" << CCTK_VarName(n) << "(" << jreduction->reduction << ")";
++                      col += CarpetSimpleMPIDatatypeLength (vartype);
++                    }
++                  } else {
++                    file << " " << col << ":" << CCTK_VarName(n);
++                    col += CarpetSimpleMPIDatatypeLength (vartype);
++                  }
+                 }
+                 file << eol;
+               }
+             }
++
++            // Don't write header again (unless the reductions change)
++            write_header.at(n) = false;
+           }
+ 
+           file << setprecision(15);
+@@ -395,7 +440,9 @@
+         } // if on the root processor
+         
+         if (CCTK_MyProc(cctkGH)==0) {
+-          file << cctk_iteration << " " << cctk_time;
++          if (not all_reductions_in_one_file or ireduction == reductions.begin()) {
++            file << cctk_iteration << " " << cctk_time;
++          }
+         }
+         
+         int const handle = ireduction->handle;
+@@ -441,6 +488,25 @@
+           
+         } // for n
+         
++        if (not all_reductions_in_one_file) {
++          if (CCTK_MyProc(cctkGH)==0) {
++            file << eol;
++            assert (file.good());
++
++            io_bytes_end = file.tellg();
++            file.close();
++            assert (file.good());
++          }
++
++          assert (not file.is_open());
++
++          CCTK_REAL const io_bytes = io_bytes_end - io_bytes_begin;
++          EndTimingIO (cctkGH, io_files, io_bytes, false);
++        }
++
++      } // for reductions
++
++      if (all_reductions_in_one_file) {
+         if (CCTK_MyProc(cctkGH)==0) {
+           file << eol;
+           assert (file.good());
+@@ -454,14 +520,12 @@
+ 
+         CCTK_REAL const io_bytes = io_bytes_end - io_bytes_begin;
+         EndTimingIO (cctkGH, io_files, io_bytes, false);
++      }
+ 
+-      } // for reductions
++      assert (not file.is_open());
+ 
+     } END_GLOBAL_MODE;
+ 
+-    // Don't truncate again
+-    do_truncate.at(n) = false;
+-
+     } END_LEVEL_MODE;
+ 
+     return 0;
+@@ -674,6 +738,8 @@
+   {
+     DECLARE_CCTK_PARAMETERS;
+ 
++    const int numvars = CCTK_NumVars ();
++
+     // re-parse the 'IOScalar::outScalar_vars' parameter if it has changed
+     if (strcmp (outScalar_vars, IOparameters.out_vars)) {
+ #ifdef IOUTIL_PARSER_HAS_OUT_DT
+@@ -711,6 +777,37 @@
+       // save the last setting of 'IOScalar::outScalar_vars' parameter
+       free (IOparameters.out_vars);
+       IOparameters.out_vars = strdup (outScalar_vars);
++
++      for (int vi=0; vi<numvars; ++vi) {
++        if (not IOparameters.requests[vi]) continue;
++
++        // if the setting differ copy the setting (NULL or string) into IOparameters
++        if ((IOparameters.requests[vi]->reductions and not IOparameters.var_reductions[vi]) or 
++            (not IOparameters.requests[vi]->reductions and IOparameters.var_reductions[vi]) or
++            (IOparameters.requests[vi]->reductions and IOparameters.var_reductions[vi] and 
++             strcmp (IOparameters.requests[vi]->reductions, IOparameters.var_reductions[vi]))) {
++          if (not IOparameters.var_reductions[vi]) {
++            free (IOparameters.var_reductions[vi]);
++          }
++          IOparameters.var_reductions[vi] = IOparameters.requests[vi]->reductions ?
++                                            strdup(IOparameters.requests[vi]->reductions) :
++                                            NULL;
++          // only all_reductions_in_one_file actually mentions the reduction in the header
++          // TODO: re-write header in one_file_per_group mode if variables change
++          write_header[vi] = do_truncate[vi] or all_reductions_in_one_file;
++        }
++      }
++    }
++
++    if (strcmp (outScalar_reductions, IOparameters.out_reductions)) {
++      // save the last seeting of 'IOScalar::outScalar_reductions' parameter
++      free (IOparameters.out_reductions);
++      IOparameters.out_reductions = strdup (outScalar_reductions);
++      // bit of an overkill. We ask for new headers for all variables, even though the ones using per-variable reductions will not have differing headers
++      for (int vi=0; vi<numvars; ++vi) {
++        // only all_reductions_in_one_file actually mentions the reduction in the header
++        write_header[vi] = do_truncate[vi] or all_reductions_in_one_file;
++      }
+     }
+   }
+ 
+diff -r ce1d11de19ed -r 5dafe2f030e1 Carpet/CarpetIOScalar/test/coords.par
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords.par	Sat Mar 03 16:40:40 2012 -0800
+@@ -0,0 +1,50 @@
++ActiveThorns = "
++   AEILocalInterp
++   Carpet
++   CarpetInterp
++   CarpetIOScalar
++   CarpetLib
++   CarpetReduce
++   CartGrid3D
++   CoordBase
++   InterpToArray
++   IOUtil
++   LoopControl
++   SymBase
++"
++
++IO::out_dir = $parfile
++
++Carpet::global_nx = 7
++Carpet::global_ny = 8
++Carpet::global_nz = 9
++
++InterpToArray::nscalars          = 1
++InterpToArray::scalar_vars[0]    = "grid::r"
++InterpToArray::narrays1d         = 1
++InterpToArray::array1d_vars[0]   = "grid::r"
++InterpToArray::array1d_npoints_i = 8
++InterpToArray::narrays2d         = 1
++InterpToArray::array2d_vars[0]   = "grid::r"
++InterpToArray::array2d_npoints_i = 7
++InterpToArray::array2d_npoints_j = 6
++InterpToArray::narrays3d         = 1
++InterpToArray::array3d_vars[0]   = "grid::r"
++InterpToArray::array3d_npoints_i = 5
++InterpToArray::array3d_npoints_j = 4
++InterpToArray::array3d_npoints_k = 3
++
++Cactus::cctk_itlast = 0
++
++IO::out_every = 1
++IOScalar::all_reductions_in_one_file = yes
++
++IOScalar::outScalar_reductions = "average iaverage norm_inf inorm1 inorm2 maximum minimum norm1 norm2" 
++
++IOScalar::outScalar_vars = "
++   InterpToArray::scalars
++   InterpToArray::arrays1d
++   InterpToArray::arrays2d
++   InterpToArray::arrays3d
++   grid::r
++"
+diff -r ce1d11de19ed -r 5dafe2f030e1 Carpet/CarpetIOScalar/test/coords/arrays1d[0].scalars.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays1d[0].scalars.asc	Sat Mar 03 16:40:40 2012 -0800
+@@ -0,0 +1,8 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on Mar 03 2012 at 16:38:13-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays1d[0] (arrays1d[0])
++# 1:iteration 2:time 3:data
++# data columns: 3:arrays1d[0](average) 4:arrays1d[0](iaverage) 5:arrays1d[0](norm_inf) 6:arrays1d[0](inorm1) 7:arrays1d[0](inorm2) 8:arrays1d[0](maximum) 9:arrays1d[0](minimum) 10:arrays1d[0](norm1) 11:arrays1d[0](norm2)
++0 0 0.0535714285714286 0.0535714285714286 0.0535714285714286 0.0535714285714286 0.0535714285714286 0.0535714285714286 0.0535714285714286 0.0535714285714286 0.0535714285714286
+diff -r ce1d11de19ed -r 5dafe2f030e1 Carpet/CarpetIOScalar/test/coords/arrays2d[0].scalars.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays2d[0].scalars.asc	Sat Mar 03 16:40:40 2012 -0800
+@@ -0,0 +1,8 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on Mar 03 2012 at 16:38:13-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays2d[0] (arrays2d[0])
++# 1:iteration 2:time 3:data
++# data columns: 3:arrays2d[0](average) 4:arrays2d[0](iaverage) 5:arrays2d[0](norm_inf) 6:arrays2d[0](inorm1) 7:arrays2d[0](inorm2) 8:arrays2d[0](maximum) 9:arrays2d[0](minimum) 10:arrays2d[0](norm1) 11:arrays2d[0](norm2)
++0 0 0.0535714285714286 0.0535714285714286 0.0535714285714286 0.0535714285714286 0.0535714285714286 0.0535714285714286 0.0535714285714286 0.0535714285714286 0.0535714285714286
+diff -r ce1d11de19ed -r 5dafe2f030e1 Carpet/CarpetIOScalar/test/coords/arrays3d[0].scalars.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays3d[0].scalars.asc	Sat Mar 03 16:40:40 2012 -0800
+@@ -0,0 +1,8 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on Mar 03 2012 at 16:38:13-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays3d[0] (arrays3d[0])
++# 1:iteration 2:time 3:data
++# data columns: 3:arrays3d[0](average) 4:arrays3d[0](iaverage) 5:arrays3d[0](norm_inf) 6:arrays3d[0](inorm1) 7:arrays3d[0](inorm2) 8:arrays3d[0](maximum) 9:arrays3d[0](minimum) 10:arrays3d[0](norm1) 11:arrays3d[0](norm2)
++0 0 0.0535714285714285 0.0535714285714285 0.0535714285714286 0.0535714285714285 0.0535714285714286 0.0535714285714286 0.0535714285714286 0.0535714285714285 0.0535714285714286
+diff -r ce1d11de19ed -r 5dafe2f030e1 Carpet/CarpetIOScalar/test/coords/r.scalars.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/r.scalars.asc	Sat Mar 03 16:40:40 2012 -0800
+@@ -0,0 +1,8 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on Mar 03 2012 at 16:38:13-0800
++# parameter filename: "coords.par"
++#
++# GRID::r (r)
++# 1:iteration 2:time 3:data
++# data columns: 3:r(average) 4:r(iaverage) 5:r(norm_inf) 6:r(inorm1) 7:r(inorm2) 8:r(maximum) 9:r(minimum) 10:r(norm1) 11:r(norm2)
++0 0 0.488709669281446 0.488709669281446 0.866025403784439 0.488709669281446 0.510524393972035 0.866025403784439 0.0714285714285714 0.488709669281446 0.510524393972035
+diff -r ce1d11de19ed -r 5dafe2f030e1 Carpet/CarpetIOScalar/test/coords/scalars[0].scalars.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/scalars[0].scalars.asc	Sat Mar 03 16:40:40 2012 -0800
+@@ -0,0 +1,8 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on horizon.tapir.caltech.edu by rhaas on Mar 03 2012 at 16:38:13-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::scalars[0] (scalars[0])
++# 1:iteration 2:time 3:data
++# data columns: 3:scalars[0](average) 4:scalars[0](iaverage) 5:scalars[0](norm_inf) 6:scalars[0](inorm1) 7:scalars[0](inorm2) 8:scalars[0](maximum) 9:scalars[0](minimum) 10:scalars[0](norm1) 11:scalars[0](norm2)
++0 0 0.0535714285714286 0.0535714285714286 0.0535714285714286 0.0535714285714286 0.0535714285714286 0.0535714285714286 0.0535714285714286 0.0535714285714286 0.0535714285714286
+diff -r ce1d11de19ed -r 5dafe2f030e1 Carpet/CarpetIOScalar/test/test.ccl
+--- a/Carpet/CarpetIOScalar/test/test.ccl	Sat Feb 25 11:48:36 2012 -0500
++++ b/Carpet/CarpetIOScalar/test/test.ccl	Sat Mar 03 16:40:40 2012 -0800
+@@ -1,1 +1,1 @@
+-EXTENSIONS xg
++EXTENSIONS asc

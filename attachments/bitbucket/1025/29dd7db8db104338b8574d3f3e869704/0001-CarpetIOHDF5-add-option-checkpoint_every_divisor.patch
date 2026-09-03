@@ -1,0 +1,56 @@
+From be42d68b9b5e2ed293ed49056b2067353608329f Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Sat, 5 May 2012 15:12:59 -0700
+Subject: [PATCH 01/11] CarpetIOHDF5: add option checkpoint_every_divisor
+
+to checkpoint when cctk_iteration % checkpoint_every_divisor == 0 rather
+than at whenever checkpoint_every iterations have passed since the last
+checkpoint
+---
+ Carpet/CarpetIOHDF5/param.ccl           |    6 ++++++
+ Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc |    6 +++++-
+ 2 files changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/Carpet/CarpetIOHDF5/param.ccl b/Carpet/CarpetIOHDF5/param.ccl
+index 83e8f89..75a7745 100644
+--- a/Carpet/CarpetIOHDF5/param.ccl
++++ b/Carpet/CarpetIOHDF5/param.ccl
+@@ -437,6 +437,12 @@ BOOLEAN checkpoint_next "Checkpoint at next iteration ?" STEERABLE = ALWAYS
+ {
+ } "no"
+ 
++INT checkpoint_every_divisor "Checkpoint if (iteration % out_every) == 0" STEERABLE = ALWAYS
++{
++   1:* :: "Every so many iterations"
++  -1:0 :: "Disable periodic checkpointing"
++} -1
++
+ BOOLEAN use_reflevels_from_checkpoint "Use 'CarpetRegrid::refinement_levels' from the checkpoint file rather than from the parameter file ?" STEERABLE = RECOVER
+ {
+ } "no"
+diff --git a/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc b/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
+index c3053c3..909764b 100644
+--- a/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
++++ b/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
+@@ -168,13 +168,17 @@ void CarpetIOHDF5_EvolutionCheckpoint (CCTK_ARGUMENTS)
+   bool const checkpoint_by_iteration =
+     checkpoint_every > 0 and
+     iteration >= last_checkpoint_iteration + checkpoint_every;
++  bool const checkpoint_by_iteration_divisor =
++    checkpoint_every_divisor > 0 and
++    iteration % checkpoint_every_divisor == 0;
+   bool const checkpoint_by_walltime =
+     checkpoint_every_walltime_hours > 0 and
+     walltime >= last_checkpoint_walltime + checkpoint_every_walltime_hours;
+   
+   int do_checkpoint =
+     checkpoint and
+-    (checkpoint_by_iteration or checkpoint_by_walltime or checkpoint_next);
++    (checkpoint_by_iteration or checkpoint_by_iteration_divisor or
++     checkpoint_by_walltime or checkpoint_next);
+   if (checkpoint_every_walltime_hours > 0) {
+     // broadcast the decision since comparing wall times may differ on
+     // different processors
+-- 
+1.7.10.4
+

@@ -1,0 +1,405 @@
+Index: src/make.code.defn
+===================================================================
+--- src/make.code.defn	(revision 250)
++++ src/make.code.defn	(working copy)
+@@ -3,7 +3,7 @@
+ 
+ # Source files in this directory
+ 
+-MISC_SRC = Startup.c Expression.c
++MISC_SRC = Startup.c Expression.c Map.cc
+ 
+ SERVER_SRC = Server.c Sockets.c http.c
+ 
+Index: src/Authorisation.c
+===================================================================
+--- src/Authorisation.c	(revision 250)
++++ src/Authorisation.c	(working copy)
+@@ -22,7 +22,7 @@
+ #include <crypt.h>
+ #endif
+ 
+-#include "util_Hash.h"
++#include "httpd_Map.h"
+ #include "util_String.h"
+ 
+ #include "httpRequest.h"
+@@ -49,7 +49,7 @@
+  ********************* Local Routine Prototypes *********************
+  ********************************************************************/
+ 
+-static int AddUser(uHash *database, 
++static int AddUser(uMap database, 
+                    const char *name,
+                    const char *password,
+                    const char *encryption_scheme);
+@@ -66,7 +66,7 @@
+  *********************     Local Data   *****************************
+  ********************************************************************/
+ 
+-static uHash *AuthDatabase = NULL;
++static uMap AuthDatabase = NULL;
+ 
+ #define INITIAL_SIZE 32
+ #define DECODED_SIZE 100
+@@ -95,26 +95,26 @@
+                      const char *encryption_scheme)
+ {
+   int retcode = -1;
+-  uHash *this_database = NULL;
++  uMap this_database = NULL;
+ 
+   /* Create the master database if necessary */
+   if(!AuthDatabase)
+   {
+-    AuthDatabase = Util_HashCreate(INITIAL_SIZE);
++    AuthDatabase = Httpd_MapCreate();
+   }
+ 
+   if(AuthDatabase)
+   {
+     /* Does this database exist ? */
+-    this_database = (uHash *)Util_HashData(AuthDatabase, strlen(database), database, 0);
++    this_database = (uMap)Httpd_MapData(AuthDatabase, strlen(database), database);
+ 
+     if(!this_database)
+     {
+-      this_database = Util_HashCreate(INITIAL_SIZE);
++      this_database = Httpd_MapCreate();
+ 
+       if(this_database)
+       {
+-        Util_HashStore(AuthDatabase, strlen(database), database, 0, (void *)this_database);
++        Httpd_MapStore(AuthDatabase, strlen(database), database, (void *)this_database);
+       }
+       else
+       {
+@@ -254,7 +254,7 @@
+    @endhistory 
+ 
+ @@*/
+-static int AddUser(uHash *database, 
++static int AddUser(uMap database, 
+                    const char *name,
+                    const char *password,
+                    const char *encryption_scheme)
+@@ -262,8 +262,8 @@
+   int retcode = -1;
+ 
+   /* Does this user already exist ? */
+-  struct httpUserData * this_user = (struct httpUserData *)Util_HashData(
+-                                              database, strlen(name), name, 0);
++  struct httpUserData * this_user = (struct httpUserData *)Httpd_MapData(
++                                              database, strlen(name), name);
+ 
+   if(!this_user)
+   {
+@@ -276,7 +276,7 @@
+       this_user->password          = Util_Strdup(password);
+       this_user->encryption_scheme = Util_Strdup(encryption_scheme);
+ 
+-      retcode = Util_HashStore(database, strlen(name), name, 0, (void *)this_user);
++      retcode = Httpd_MapStore(database, strlen(name), name, (void *)this_user);
+     }
+   }
+   else
+@@ -317,13 +317,13 @@
+   if(AuthDatabase)
+   {
+     /* Does this database exist ? */
+-    uHash *this_database = (uHash *)Util_HashData(AuthDatabase,
+-                                              strlen(database), database, 0);
++    uMap this_database = (uMap)Httpd_MapData(AuthDatabase,
++                                              strlen(database), database);
+ 
+     if(this_database)
+     {
+-      struct httpUserData *data = (struct httpUserData *) Util_HashData(
+-                                         this_database, strlen(user), user, 0);
++      struct httpUserData *data = (struct httpUserData *) Httpd_MapData(
++                                         this_database, strlen(user), user);
+ 
+       if(data)
+       {
+Index: src/Server.c
+===================================================================
+--- src/Server.c	(revision 250)
++++ src/Server.c	(working copy)
+@@ -15,7 +15,7 @@
+ 
+ #include "cctk_Parameters.h"
+ 
+-#include "util_Hash.h"
++#include "httpd_Map.h"
+ #include "util_String.h"
+ 
+ #include "httpd.h"
+@@ -61,7 +61,7 @@
+  *********************     Local Data   *****************************
+  ********************************************************************/
+ 
+-static uHash *pages = NULL;
++static uMap pages = NULL;
+ 
+ static const char *notfound_page =
+ "<html>\n<head>\n<title>Error 404: Not Found</title>\n</head>\n"
+@@ -164,10 +164,10 @@
+   /* Create the hash table if it's not already been created */
+   if(! pages)
+   {
+-    pages = Util_HashCreate(INITIAL_SIZE);
++    pages = Httpd_MapCreate();
+   }
+ 
+-  if(Util_HashData(pages, strlen(path), path, 0))
++  if(Httpd_MapData(pages, strlen(path), path))
+   {
+     CCTK_VWarn(1, __LINE__,__FILE__,CCTK_THORNSTRING,
+                "Page exists already:\n\"%s\"", path);
+@@ -178,7 +178,7 @@
+ 
+     if(pagedata)
+     {
+-      retval = Util_HashStore(pages, strlen(path), path, 0, (void *)pagedata);
++      retval = Httpd_MapStore(pages, strlen(path), path, (void *)pagedata);
+     }
+     else
+     {
+@@ -355,9 +355,9 @@
+       SetToCString( temp, path);
+       ConcatCString( temp,"index.html");
+ 
+-      pagedata = Util_HashData(pages, Length(temp), GetBuffer(temp), 0);
++      pagedata = Httpd_MapData(pages, Length(temp), GetBuffer(temp));
+     }
+-    else if((pagedata = Util_HashData(pages, strlen(path), path, 0)))
++    else if((pagedata = Httpd_MapData(pages, strlen(path), path)))
+     {
+       /* Or exact path */
+     }
+@@ -369,7 +369,7 @@
+       SetToCString( temp, path);
+       ConcatCString( temp,"/index.html");
+ 
+-      pagedata = Util_HashData(pages, Length(temp), GetBuffer(temp), 0);
++      pagedata = Httpd_MapData(pages, Length(temp), GetBuffer(temp));
+ 
+     }
+     *residual = NULL;
+@@ -385,7 +385,7 @@
+ #ifdef HTTP_DEBUG
+           printf("Looking for '%s' less '%s' \n", path, position);
+ #endif
+-          if((pagedata = Util_HashData(pages, position-path, path, 0)))
++          if((pagedata = Httpd_MapData(pages, position-path, path)))
+           {
+             *residual = position+1;
+             break;
+Index: src/http.c
+===================================================================
+--- src/http.c	(revision 250)
++++ src/http.c	(working copy)
+@@ -32,7 +32,7 @@
+ #include "util_String.h"
+ 
+ #include "httpd.h"
+-#include "util_Hash.h"
++#include "httpd_Map.h"
+ #include "SString_Namespace.h"
+ 
+ static const char *rcsid = "$Header$";
+@@ -78,12 +78,12 @@
+   void *connection;
+ 
+   /* The request header lines */
+-  uHash *headers;
++  uMap headers;
+ 
+   /* Stuff for arguments */
+ 
+   /* First a hash table to look the data up quickly */
+-  uHash *arguments;
++  uMap arguments;
+ 
+   /* Now a linked list to allow walking. */
+   httpArg *firstarg;
+@@ -327,7 +327,7 @@
+ {
+   if(request->arguments)
+   {
+-    const httpArg *value = (httpArg *)Util_HashData(request->arguments, strlen(arg), arg, 0);
++    const httpArg *value = (httpArg *)Httpd_MapData(request->arguments, strlen(arg), arg);
+ 
+     if(value)
+     {
+@@ -386,7 +386,7 @@
+ 
+   if(request->headers)
+   {
+-    header_line = Util_HashData(request->headers, strlen(header), header, 0);
++    header_line = Httpd_MapData(request->headers, strlen(header), header);
+ 
+     if(header_line)
+     {
+@@ -637,13 +637,13 @@
+     if(!request->headers)
+     {
+       /* Need to create the hash table */
+-      request->headers = Util_HashCreate(INITIAL_SIZE);
++      request->headers = Httpd_MapCreate();
+     }
+ 
+     if(request->headers)
+     {
+       /* Does the line already exist ? */
+-      header_line = (struct httpHeader *)Util_HashData(request->headers, keylength, line, 0);
++      header_line = (struct httpHeader *)Httpd_MapData(request->headers, keylength, line);
+ 
+       if(header_line)
+       {
+@@ -672,7 +672,7 @@
+           {
+             strcpy(header_line->line, value);
+ 
+-            Util_HashStore(request->headers, keylength, line, 0, (void *)header_line);
++            Httpd_MapStore(request->headers, keylength, line, (void *)header_line);
+           }
+         }
+       }
+@@ -708,7 +708,7 @@
+     *position = 0;
+ 
+     /* Create the hash table */
+-    request->arguments = Util_HashCreate(INITIAL_SIZE);
++    request->arguments = Httpd_MapCreate();
+ 
+     /* Parse the argument list */
+     position++;
+@@ -743,7 +743,7 @@
+           argument->arg   = Util_Strdup(token);
+           argument->value = Util_Strdup(value);
+ 
+-          if((stored = (httpArg *)Util_HashData(request->arguments, strlen(token), token, 0)))
++          if((stored = (httpArg *)Httpd_MapData(request->arguments, strlen(token), token)))
+           {
+             /* Argument already exists */
+ 
+@@ -759,7 +759,7 @@
+           }
+           else
+           {
+-            Util_HashStore(request->arguments, strlen(token), token, 0, (void *)argument);
++            Httpd_MapStore(request->arguments, strlen(token), token, (void *)argument);
+             request->n_arguments++;
+           }
+           /* Append to global list. */
+@@ -857,12 +857,12 @@
+ {
+   if(request->arguments)
+   {
+-    Util_HashDestroy(request->arguments, (void (*)(void *))DestroyArgument);
++    Httpd_MapDestroy(request->arguments, (void (*)(void *))DestroyArgument);
+   }
+ 
+   if(request->headers)
+   {
+-    Util_HashDestroy(request->headers, (void (*)(void *))DestroyHeader);
++    Httpd_MapDestroy(request->headers, (void (*)(void *))DestroyHeader);
+   }
+ 
+   return 0;
+Index: src/Map.cc
+===================================================================
+--- src/Map.cc	(revision 0)
++++ src/Map.cc	(revision 0)
+@@ -0,0 +1,49 @@
++#include <map>
++#include <string>
++
++#include "httpd_Map.h"
++
++typedef std::map<std::string,void *> iMap;
++
++extern "C" {
++
++uMap Httpd_MapCreate(void)
++{
++  return new iMap;
++}
++
++void * Httpd_MapData(uMap map, size_t keylen, const char * key)
++{
++  iMap& imap(*static_cast<iMap*>(map));
++  const std::string ikey(key, keylen);
++  iMap::iterator it(imap.find(ikey));
++
++  if(it != imap.end())
++    return it->second;
++  else
++    return NULL;
++}
++
++int Httpd_MapStore(uMap map, size_t keylen, const char * key, void * data)
++{
++  iMap& imap(*static_cast<iMap*>(map));
++  const std::string ikey(key, keylen);
++  iMap::iterator it(imap.find(ikey));
++
++  if(it != imap.end())
++    it->second = data;
++  else
++    imap[ikey] = data;
++
++  return 0;
++}
++
++void Httpd_MapDestroy(uMap map, void (*destroy)(void *))
++{
++  iMap& imap(*static_cast<iMap*>(map));
++  for(iMap::iterator it = imap.begin() ; it != imap.end() ; ++it)
++    destroy(it->second);
++  delete &imap;
++}
++
++}
+
+Property changes on: src/Map.cc
+___________________________________________________________________
+Added: svn:mime-type
+   + text/x-c++src
+
+Index: src/httpd_Map.h
+===================================================================
+--- src/httpd_Map.h	(revision 0)
++++ src/httpd_Map.h	(revision 0)
+@@ -0,0 +1,24 @@
++#ifndef HTTPD_MAP_H_
++#define HTTPD_MAP_H_ 1
++
++#include <stddef.h>
++
++#if __cplusplus
++extern "C" {
++#define VOID
++#else
++#define VOID void
++#endif
++
++typedef void * uMap;
++
++uMap Httpd_MapCreate(VOID);
++void * Httpd_MapData(uMap map, size_t keylen, const char * key);
++int Httpd_MapStore(uMap map, size_t keylen, const char * key, void * data);
++void Httpd_MapDestroy(uMap map, void (*destroy)(void *));
++
++#if __cplusplus
++}
++#endif
++
++#endif
+
+Property changes on: src/httpd_Map.h
+___________________________________________________________________
+Added: svn:mime-type
+   + text/x-chdr
+

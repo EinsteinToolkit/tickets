@@ -1,0 +1,59 @@
+From 7f339df65786c81754da24f5409f442119cf8924 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Wed, 6 Mar 2013 21:10:30 -0800
+Subject: [PATCH 04/12] GRHydro_Init_Data: remove rho_guess from
+ find_bondi_solution
+
+was used to call the newton solver twice with the very same arguments.
+Not sure what the idea was.
+---
+ src/GRHydro_BondiM.c |   13 +------------
+ 1 file changed, 1 insertion(+), 12 deletions(-)
+
+diff --git a/src/GRHydro_BondiM.c b/src/GRHydro_BondiM.c
+index 9dc4224..0b2e6f7 100644
+--- a/src/GRHydro_BondiM.c
++++ b/src/GRHydro_BondiM.c
+@@ -647,7 +647,7 @@ static int find_bondi_solution( CCTK_REAL r, CCTK_REAL *rho, CCTK_REAL *u, CCTK_
+   const int  ntries = 10000;
+   int  itry;
+ 
+-  CCTK_REAL rhotmp, rho_guess;
++  CCTK_REAL rhotmp;
+   CCTK_REAL dr,ur;
+ 
+   
+@@ -662,17 +662,12 @@ static int find_bondi_solution( CCTK_REAL r, CCTK_REAL *rho, CCTK_REAL *u, CCTK_
+     }
+     else { 
+       //  rhotmp = (sqrt(Qdot) - 1.) * (gamma_eos - 1.) / ( gamma_eos * K );
+-      //  rho_guess = pow( rhotmp , (1./(gamma_eos - 1.)) );
+       if(r < rs) {  ur = pow(r,-0.5)     ;  }
+       else       {  ur = 0.5*pow(r,-1.5) ;  }
+       *rho = Mdot / (4.*M_PI * r * r * ur); 
+     }
+   } 
+ 
+-  // safe guess value for multiple tries
+-  rho_guess = *rho;
+-  
+-
+   // set global variables needed by residual function:
+   r_sol = r ; 
+ 
+@@ -681,12 +676,6 @@ static int find_bondi_solution( CCTK_REAL r, CCTK_REAL *rho, CCTK_REAL *u, CCTK_
+   retval = gnr_bondi( rho, NEWT_DIM_B, bondi_resid);     
+ 
+ 
+-  // first try guess if failure 
+-  if( retval ) { 
+-    *rho = rho_guess;
+-    retval = gnr_bondi( rho, NEWT_DIM_B, bondi_resid);     
+-  }
+-
+   // If we were unsure about the guess and solver fails, then creep from known solution to desired point:
+   if( retval ) { 
+ 
+-- 
+1.7.10.4
+

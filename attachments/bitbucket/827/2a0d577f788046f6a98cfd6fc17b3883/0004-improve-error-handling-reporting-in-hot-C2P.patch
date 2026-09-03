@@ -1,0 +1,234 @@
+From 4006e7279b1f567a35e6297c66242f2d7a285e3f Mon Sep 17 00:00:00 2001
+From: Christian Ott <cott@bethe.tapir.caltech.edu>
+Date: Thu, 1 Mar 2012 08:04:16 -0800
+Subject: [PATCH 04/11] * improve error handling/reporting in hot C2P * set up
+ directory for performance workshop
+
+---
+ src/GRHydro_Con2Prim.F90 |  165 ++++++++++++++++++++++++----------------------
+ 1 files changed, 86 insertions(+), 79 deletions(-)
+
+diff --git a/src/GRHydro_Con2Prim.F90 b/src/GRHydro_Con2Prim.F90
+index e7aaa9a..7c24f13 100644
+--- a/src/GRHydro_Con2Prim.F90
++++ b/src/GRHydro_Con2Prim.F90
+@@ -194,7 +194,7 @@ subroutine Conservative2Primitive(CCTK_ARGUMENTS)
+                  z(i,j,k),r(i,j,k),epsnegative,GRHydro_rho_min,pmin, epsmin, & 
+                  GRHydro_reflevel, GRHydro_C2P_failed(i,j,k))
+          else
+-            call Con2Prim_pt_hot(i,j,k,GRHydro_eos_handle, dens(i,j,k),scon(i,j,k,1),&
++            call Con2Prim_pt_hot(cctk_iteration,i,j,k,GRHydro_eos_handle, dens(i,j,k),scon(i,j,k,1),&
+                  scon(i,j,k,2),scon(i,j,k,3),tau(i,j,k),Y_e_con(i,j,k),rho(i,j,k),vup(i,j,k,1),&
+                  vup(i,j,k,2),vup(i,j,k,3),eps(i,j,k),temperature(i,j,k),y_e(i,j,k),&
+                  press(i,j,k),w_lorentz(i,j,k), &
+@@ -207,7 +207,7 @@ subroutine Conservative2Primitive(CCTK_ARGUMENTS)
+                ! accuracy requirement; if it fails again, we abort
+                GRHydro_C2P_failed(i,j,k) = 0
+                local_perc_ptol = GRHydro_perc_ptol*100.0d0
+-               call Con2Prim_pt_hot(i,j,k,GRHydro_eos_handle, dens(i,j,k),scon(i,j,k,1),&
++               call Con2Prim_pt_hot(cctk_iteration,i,j,k,GRHydro_eos_handle, dens(i,j,k),scon(i,j,k,1),&
+                     scon(i,j,k,2),scon(i,j,k,3),tau(i,j,k),Y_e_con(i,j,k),rho(i,j,k),&
+                     vup(i,j,k,1),vup(i,j,k,2), vup(i,j,k,3),eps(i,j,k),&
+                     temperature(i,j,k),y_e(i,j,k),press(i,j,k),w_lorentz(i,j,k), &
+@@ -563,7 +563,8 @@ subroutine Con2Prim_pt(handle, dens, sx, sy, sz, tau, rho, velx, vely, &
+ 
+ end subroutine Con2Prim_pt
+ 
+-subroutine Con2Prim_pt_hot(ii,jj,kk,handle, dens, sx, sy, sz, tau, ye_con, rho, velx, vely, &
++subroutine Con2Prim_pt_hot(cctk_iteration, ii,jj,kk,handle, dens, &
++     sx, sy, sz, tau, ye_con, rho, velx, vely, &
+      velz, epsilon, temp, ye, press, w_lorentz, uxx, uxy, uxz, uyy, &
+      uyz, uzz, det, x, y, z, r, epsnegative, GRHydro_rho_min, pmin, epsmin, &
+      GRHydro_reflevel, GRHydro_C2P_failed, local_perc_ptol)
+@@ -577,7 +578,7 @@ subroutine Con2Prim_pt_hot(ii,jj,kk,handle, dens, sx, sy, sz, tau, ye_con, rho,
+        y, z, r, GRHydro_rho_min
+   CCTK_REAL temp, ye
+   CCTK_REAL s2, c0, c1, c2, c3, c4, f, df, ftol, v2, w, vlowx, vlowy, vlowz
+-  CCTK_INT ii,jj,kk,count, i, handle, GRHydro_reflevel
++  CCTK_INT cctk_iteration, ii,jj,kk,count, i, handle, GRHydro_reflevel
+   CCTK_REAL GRHydro_C2P_failed
+   CCTK_REAL udens, usx, usy, usz, utau, pold, pnew, epsold, epsnew, w2, &
+        w2mhalf, temp1, drhobydpress, depsbydpress, dpressbydeps, dpressbydrho, pmin, epsmin
+@@ -649,32 +650,34 @@ subroutine Con2Prim_pt_hot(ii,jj,kk,handle, dens, sx, sy, sz, tau, ye_con, rho,
+            enddo
+            write(warnline,"(A30,i5)") "Iterations of heat injection: ",nf
+            call CCTK_WARN(failinfomode,warnline)
+-           write(warnline,"(3i5,1P10E15.6)") ii,jj,kk,x,y,z
++           write(warnline,"(5i5,1P10E15.6)") cctk_iteration,GRHydro_Reflevel,ii,jj,kk,x,y,z
+            call CCTK_WARN(failinfomode,warnline)
+-           if(nf.gt.nfudgemax.and.GRHydro_c2p_reset_eps_tau_hot_eos.ne.1) then
+-              call CCTK_WARN(failinfomode,"EOS error in c2p 1: injected heat too many times")
+-              write(warnline,"(3i5,1P10E15.6)") ii,jj,kk,x,y,z
+-              call CCTK_WARN(failinfomode,warnline)
+-              write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
+-              call CCTK_WARN(failinfomode,warnline)
+-              write(warnline,"(A7,i8)") "code: ",keyerr(1)
+-              call CCTK_WARN(failinfomode,warnline)
+-              write(warnline,"(A10,i5)") "reflevel: ", GRHydro_reflevel
+-              call CCTK_WARN(failinfomode,warnline)
+-              call CCTK_WARN(failwarnmode,"Aborting!!!")
+-           else
+-              call CCTK_WARN(failinfomode,"EOS error in c2p 1: LAST RESORT -- reset eps and tau based on old temp")
+-              write(warnline,"(3i5,1P10E15.6)") ii,jj,kk,x,y,z
+-              call CCTK_WARN(failinfomode,warnline)
+-              write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
+-              call CCTK_WARN(failinfomode,warnline)
+-              keytemp = 1
+-              call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-                   rho,epsilon,temp,ye,xpress,keyerr,anyerr)
+-              tau = ( (rho + rho*epsilon) + xpress ) * w_lorentz**2 - xpress - rho*w_lorentz
+-              write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
+-              call CCTK_WARN(failinfomode,warnline)
+-              keytemp = 0
++           if(nf.gt.nfudgemax) then
++              if(GRHydro_c2p_reset_eps_tau_hot_eos.ne.1) then
++                 call CCTK_WARN(failinfomode,"EOS error in c2p 0: injected heat too many times")
++                 write(warnline,"(5i5,1P10E15.6)") cctk_iteration,GRHydro_reflevel,ii,jj,kk,x,y,z
++                 call CCTK_WARN(failinfomode,warnline)
++                 write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
++                 call CCTK_WARN(failinfomode,warnline)
++                 write(warnline,"(A7,i8)") "code: ",keyerr(1)
++                 call CCTK_WARN(failinfomode,warnline)
++                 write(warnline,"(A10,i5)") "reflevel, iteration: ", GRHydro_reflevel, cctk_iteration
++                 call CCTK_WARN(failinfomode,warnline)
++                 call CCTK_WARN(failwarnmode,"Aborting!!!")
++              else
++                 call CCTK_WARN(failinfomode,"EOS error in c2p 0: LAST RESORT -- reset eps and tau based on old temp")
++                 write(warnline,"(5i5,1P10E15.6)") cctk_iteration,GRHydro_reflevel,ii,jj,kk,x,y,z
++                 call CCTK_WARN(failinfomode,warnline)
++                 write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
++                 call CCTK_WARN(failinfomode,warnline)
++                 keytemp = 1
++                 call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
++                      rho,epsilon,temp,ye,xpress,keyerr,anyerr)
++                 tau = ( (rho + rho*epsilon) + xpress ) * w_lorentz**2 - xpress - rho*w_lorentz
++                 write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
++                 call CCTK_WARN(failinfomode,warnline)
++                 keytemp = 0
++              endif
+            endif
+         else
+            call CCTK_WARN(failinfomode,"EOS error in c2p 0")
+@@ -740,32 +743,34 @@ subroutine Con2Prim_pt_hot(ii,jj,kk,handle, dens, sx, sy, sz, tau, ye_con, rho,
+            enddo
+            write(warnline,"(A30,i5)") "Iterations of heat injection: ",nf
+            call CCTK_WARN(failinfomode,warnline)
+-           write(warnline,"(3i5,1P10E15.6)") ii,jj,kk,x,y,z
++           write(warnline,"(5i5,1P10E15.6)") cctk_iteration,GRHydro_Reflevel,ii,jj,kk,x,y,z
+            call CCTK_WARN(failinfomode,warnline)
+-           if(nf.gt.nfudgemax.and.GRHydro_c2p_reset_eps_tau_hot_eos.ne.1) then
+-              call CCTK_WARN(failinfomode,"EOS error in c2p 1: injected heat too many times")
+-              write(warnline,"(3i5,1P10E15.6)") ii,jj,kk,x,y,z
+-              call CCTK_WARN(failinfomode,warnline)
+-              write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
+-              call CCTK_WARN(failinfomode,warnline)
+-              write(warnline,"(A7,i8)") "code: ",keyerr(1)
+-              call CCTK_WARN(failinfomode,warnline)
+-              write(warnline,"(A10,i5)") "reflevel: ", GRHydro_reflevel
+-              call CCTK_WARN(failinfomode,warnline)
+-              call CCTK_WARN(failwarnmode,"Aborting!!!")
+-           else
+-              call CCTK_WARN(failinfomode,"EOS error in c2p 1: LAST RESORT -- reset eps and tau based on old temp")
+-              write(warnline,"(3i5,1P10E15.6)") ii,jj,kk,x,y,z
+-              call CCTK_WARN(failinfomode,warnline)
+-              write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
+-              call CCTK_WARN(failinfomode,warnline)
+-              keytemp = 1
+-              call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-                   rho,epsilon,temp,ye,xpress,keyerr,anyerr)
+-              tau = ( (rho + rho*epsilon) + xpress ) * w_lorentz**2 - xpress - rho*w_lorentz
+-              write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
+-              call CCTK_WARN(failinfomode,warnline)
+-              keytemp = 0
++           if(nf.gt.nfudgemax) then
++              if(GRHydro_c2p_reset_eps_tau_hot_eos.ne.1) then
++                 call CCTK_WARN(failinfomode,"EOS error in c2p 1: injected heat too many times")
++                 write(warnline,"(5i5,1P10E15.6)") cctk_iteration,GRHydro_reflevel,ii,jj,kk,x,y,z
++                 call CCTK_WARN(failinfomode,warnline)
++                 write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
++                 call CCTK_WARN(failinfomode,warnline)
++                 write(warnline,"(A7,i8)") "code: ",keyerr(1)
++                 call CCTK_WARN(failinfomode,warnline)
++                 write(warnline,"(A10,i5)") "reflevel, iteration: ", GRHydro_reflevel, cctk_iteration
++                 call CCTK_WARN(failinfomode,warnline)
++                 call CCTK_WARN(failwarnmode,"Aborting!!!")
++              else
++                 call CCTK_WARN(failinfomode,"EOS error in c2p 1: LAST RESORT -- reset eps and tau based on old temp")
++                 write(warnline,"(5i5,1P10E15.6)") cctk_iteration,GRHydro_reflevel,ii,jj,kk,x,y,z
++                 call CCTK_WARN(failinfomode,warnline)
++                 write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
++                 call CCTK_WARN(failinfomode,warnline)
++                 keytemp = 1
++                 call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
++                      rho,epsilon,temp,ye,xpress,keyerr,anyerr)
++                 tau = ( (rho + rho*epsilon) + xpress ) * w_lorentz**2 - xpress - rho*w_lorentz
++                 write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
++                 call CCTK_WARN(failinfomode,warnline)
++                 keytemp = 0
++              endif
+            endif
+         else
+            call CCTK_WARN(failinfomode,"EOS error in c2p 1")
+@@ -849,32 +854,34 @@ subroutine Con2Prim_pt_hot(ii,jj,kk,handle, dens, sx, sy, sz, tau, ye_con, rho,
+              enddo
+              write(warnline,"(A30,i5)") "Iterations of heat injection: ",nf
+              call CCTK_WARN(failinfomode,warnline)
+-             write(warnline,"(3i5,1P10E15.6)") ii,jj,kk,x,y,z
++             write(warnline,"(5i5,1P10E15.6)") cctk_iteration,GRHydro_Reflevel,ii,jj,kk,x,y,z
+              call CCTK_WARN(failinfomode,warnline)
+-             if(nf.gt.nfudgemax.and.GRHydro_c2p_reset_eps_tau_hot_eos.ne.1) then
+-                call CCTK_WARN(failinfomode,"EOS error in c2p 1: injected heat too many times")
+-                write(warnline,"(3i5,1P10E15.6)") ii,jj,kk,x,y,z
+-                call CCTK_WARN(failinfomode,warnline)
+-                write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
+-                call CCTK_WARN(failinfomode,warnline)
+-                write(warnline,"(A7,i8)") "code: ",keyerr(1)
+-                call CCTK_WARN(failinfomode,warnline)
+-                write(warnline,"(A10,i5)") "reflevel: ", GRHydro_reflevel
+-                call CCTK_WARN(failinfomode,warnline)
+-                call CCTK_WARN(failwarnmode,"Aborting!!!")
+-             else
+-                call CCTK_WARN(failinfomode,"EOS error in c2p 1: LAST RESORT -- reset eps and tau based on old temp")
+-                write(warnline,"(3i5,1P10E15.6)") ii,jj,kk,x,y,z
+-                call CCTK_WARN(failinfomode,warnline)
+-                write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
+-                call CCTK_WARN(failinfomode,warnline)
+-                keytemp = 1
+-                call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-                     rho,epsilon,temp,ye,xpress,keyerr,anyerr)
+-                tau = ( (rho + rho*epsilon) + xpress ) * w_lorentz**2 - xpress - rho*w_lorentz
+-                write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
+-                call CCTK_WARN(failinfomode,warnline)
+-                keytemp = 0
++             if(nf.gt.nfudgemax) then
++                if(GRHydro_c2p_reset_eps_tau_hot_eos.ne.1) then
++                   call CCTK_WARN(failinfomode,"EOS error in c2p 2: injected heat too many times")
++                   write(warnline,"(5i5,1P10E15.6)") cctk_iteration,GRHydro_reflevel,ii,jj,kk,x,y,z
++                   call CCTK_WARN(failinfomode,warnline)
++                   write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
++                   call CCTK_WARN(failinfomode,warnline)
++                   write(warnline,"(A7,i8)") "code: ",keyerr(1)
++                   call CCTK_WARN(failinfomode,warnline)
++                   write(warnline,"(A10,i5)") "reflevel, iteration: ", GRHydro_reflevel, cctk_iteration
++                   call CCTK_WARN(failinfomode,warnline)
++                   call CCTK_WARN(failwarnmode,"Aborting!!!")
++                else
++                   call CCTK_WARN(failinfomode,"EOS error in c2p 2: LAST RESORT -- reset eps and tau based on old temp")
++                   write(warnline,"(5i5,1P10E15.6)") cctk_iteration,GRHydro_reflevel,ii,jj,kk,x,y,z
++                   call CCTK_WARN(failinfomode,warnline)
++                   write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
++                   call CCTK_WARN(failinfomode,warnline)
++                   keytemp = 1
++                   call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
++                        rho,epsilon,temp,ye,xpress,keyerr,anyerr)
++                   tau = ( (rho + rho*epsilon) + xpress ) * w_lorentz**2 - xpress - rho*w_lorentz
++                   write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
++                   call CCTK_WARN(failinfomode,warnline)
++                   keytemp = 0
++                endif
+              endif
+           else
+              call CCTK_WARN(failinfomode,"EOS error in c2p 2")
+-- 
+1.7.8
+

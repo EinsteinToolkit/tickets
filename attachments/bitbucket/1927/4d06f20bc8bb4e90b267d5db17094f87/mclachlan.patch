@@ -1,0 +1,28 @@
+diff --git a/ML_BSSN_Helper/schedule.ccl b/ML_BSSN_Helper/schedule.ccl
+index 228b60e..a61e8e9 100644
+--- a/ML_BSSN_Helper/schedule.ccl
++++ b/ML_BSSN_Helper/schedule.ccl
+@@ -93,6 +93,9 @@ if (CCTK_EQUALS (evolution_method, "ML_BSSN")) {
+       #SYNC: ML_Gamma
+       #SYNC: ML_dtlapse
+       #SYNC: ML_dtshift
++      WRITES: ML_BSSN::ML_Gamma(EVERYWHERE)
++      WRITES: ML_BSSN::ML_dtlapse(EVERYWHERE)
++      WRITES: ML_BSSN::ML_dtshift(EVERYWHERE)
+     } "Extrapolate Gammas and time derivatives of lapse and shift"
+   }
+   
+diff --git a/ML_BSSN_Host_Helper/schedule.ccl b/ML_BSSN_Host_Helper/schedule.ccl
+index 315caa1..b36701a 100644
+--- a/ML_BSSN_Host_Helper/schedule.ccl
++++ b/ML_BSSN_Host_Helper/schedule.ccl
+@@ -93,6 +93,9 @@ if (CCTK_EQUALS (evolution_method, "ML_BSSN_Host")) {
+       #SYNC: ML_Gamma
+       #SYNC: ML_dtlapse
+       #SYNC: ML_dtshift
++      WRITES: ML_BSSN_Host::ML_Gamma(EVERYWHERE)
++      WRITES: ML_BSSN_Host::ML_dtlapse(EVERYWHERE)
++      WRITES: ML_BSSN_Host::ML_dtshift(EVERYWHERE)
+     } "Extrapolate Gammas and time derivatives of lapse and shift"
+   }
+   

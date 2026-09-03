@@ -1,0 +1,27 @@
+From 13aed5701065bdd9ecb1935fe761cfc4efb61b99 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Mon, 17 Sep 2012 23:07:48 -0700
+Subject: [PATCH 2/2] Carpet: fix mg level count typo during intialization
+
+this caused the initial time levels to always have t=0 associated with
+them
+---
+ Carpet/Carpet/src/Initialise.cc |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Carpet/Carpet/src/Initialise.cc b/Carpet/Carpet/src/Initialise.cc
+index ec007a8..a0c84d5 100644
+--- a/Carpet/Carpet/src/Initialise.cc
++++ b/Carpet/Carpet/src/Initialise.cc
+@@ -74,7 +74,7 @@ namespace Carpet {
+     do_late_meta_mode = true;
+     global_time = cctk_initial_time;
+     delta_time = 1.0;
+-    for (int ml = 0; ml < mglevel; ++ ml) {
++    for (int ml = 0; ml < mglevels; ++ ml) {
+       // assert (leveltimes.AT(ml).size() == 1);
+       // leveltimes.AT(ml).AT(0) = global_time;
+       for (int rl = 0; rl < reflevels; ++ rl) {
+-- 
+1.7.10.4
+

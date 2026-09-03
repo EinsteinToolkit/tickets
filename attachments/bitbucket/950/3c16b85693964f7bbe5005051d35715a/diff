@@ -1,0 +1,125 @@
+Index: ReflectionSymmetry/src/apply.c                                          
+===================================================================            
+--- ReflectionSymmetry/src/apply.c      (revision 50)                          
++++ ReflectionSymmetry/src/apply.c      (working copy)                         
+@@ -493,16 +493,16 @@                                                          
+             break;                                                            
+           case WEYLSCALARS_REAL: {                                            
+             static int const weylparities[10][3] =                            
+-              {{+1,+1,+1},                                                    
+-               {-1,-1,-1},                                                    
+-               {+1,+1,+1},                                                    
+-               {-1,-1,-1},                                                    
+-               {+1,+1,+1},                                                    
+-               {-1,-1,-1},                                                    
+-               {+1,+1,+1},                                                    
+-               {-1,-1,-1},                                                    
+-               {+1,+1,+1},                                                    
+-               {-1,-1,-1}};                                                   
++              {{+1,+1,+1},  /* rpsi0 */                                       
++               {-1,-1,-1},  /* ipsi0 */                                       
++               {+1,+1,-1},  /* rpsi1 */                                       
++               {-1,-1,+1},  /* ipsi1 */                                       
++               {+1,+1,+1},  /* rpsi2 */                                       
++               {-1,-1,-1},  /* ipsi2 */                                       
++               {+1,+1,-1},  /* rpsi3 */                                       
++               {-1,-1,+1},  /* ipsi3 */                                       
++               {+1,+1,+1},  /* rpsi4 */                                       
++               {-1,-1,-1}}; /* ipsi4 */                                       
+             parity *= weylparities[tcomponent][dir];                          
+             break;                                                            
+           }                                                                   
+Index: ReflectionSymmetry/src/interpolate.c                                    
+===================================================================            
+--- ReflectionSymmetry/src/interpolate.c        (revision 50)                  
++++ ReflectionSymmetry/src/interpolate.c        (working copy)                 
+@@ -394,16 +394,16 @@                                                          
+         break;                                                                
+       case WEYLSCALARS_REAL: {                                                
+         static int const weylparities[10][3] =                                
+-          {{+1,+1,+1},                                                        
+-           {-1,-1,-1},                                                        
+-           {+1,+1,+1},                                                        
+-           {-1,-1,-1},                                                        
+-           {+1,+1,+1},                                                        
+-           {-1,-1,-1},                                                        
+-           {+1,+1,+1},                                                        
+-           {-1,-1,-1},                                                        
+-           {+1,+1,+1},                                                        
+-           {-1,-1,-1}};                                                       
++          {{+1,+1,+1},  /* rpsi0 */                                           
++           {-1,-1,-1},  /* ipsi0 */                                           
++           {+1,+1,-1},  /* rpsi1 */                                           
++           {-1,-1,+1},  /* ipsi1 */                                           
++           {+1,+1,+1},  /* rpsi2 */                                           
++           {-1,-1,-1},  /* ipsi2 */                                           
++           {+1,+1,-1},  /* rpsi3 */                                           
++           {-1,-1,+1},  /* ipsi3 */                                           
++           {+1,+1,+1},  /* rpsi4 */                                           
++           {-1,-1,-1}}; /* ipsi4 */                                           
+         for (dir=0; dir<3; ++dir) {                                           
+           parities[dir] = weylparities[tcomponent][dir];                      
+         }                                                                     
+Index: RotatingSymmetry180/src/interpolate.c                                   
+===================================================================            
+--- RotatingSymmetry180/src/interpolate.c       (revision 75)                  
++++ RotatingSymmetry180/src/interpolate.c       (working copy)                 
+@@ -396,16 +396,16 @@                                                          
+         assert (numvars == 10);                                               
+         {                                                                     
+           static int const weylparities[10][3] =                              
+-            {{+1,+1,+1},                                                      
+-             {-1,-1,-1},                                                      
+-             {+1,+1,+1},                                                      
+-             {-1,-1,-1},                                                      
+-             {+1,+1,+1},                                                      
+-             {-1,-1,-1},                                                      
+-             {+1,+1,+1},                                                      
+-             {-1,-1,-1},                                                      
+-             {+1,+1,+1},                                                      
+-             {-1,-1,-1}};                                                     
++            {{+1,+1,+1},  /* rpsi0 */                                         
++             {-1,-1,-1},  /* ipsi0 */                                         
++             {+1,+1,-1},  /* rpsi1 */                                         
++             {-1,-1,+1},  /* ipsi1 */                                         
++             {+1,+1,+1},  /* rpsi2 */                                         
++             {-1,-1,-1},  /* ipsi2 */                                         
++             {+1,+1,-1},  /* rpsi3 */                                         
++             {-1,-1,+1},  /* ipsi3 */                                         
++             {+1,+1,+1},  /* rpsi4 */                                         
++             {-1,-1,-1}}; /* ipsi4 */                                         
+           for (d=0; d<3; ++d) {                                               
+             parities[d] = weylparities[index][d];                             
+           }                                                                   
+Index: RotatingSymmetry180/src/rotatingsymmetry180.c                           
+===================================================================            
+--- RotatingSymmetry180/src/rotatingsymmetry180.c       (revision 75)          
++++ RotatingSymmetry180/src/rotatingsymmetry180.c       (working copy)         
+@@ -236,16 +236,16 @@                                                          
+       assert (numvars == 10);                                                 
+       {                                                                       
+         static int const weylparities[10][3] =                                
+-          {{+1,+1,+1},                                                        
+-           {-1,-1,-1},                                                        
+-           {+1,+1,+1},                                                        
+-           {-1,-1,-1},                                                        
+-           {+1,+1,+1},                                                        
+-           {-1,-1,-1},
+-           {+1,+1,+1},
+-           {-1,-1,-1},
+-           {+1,+1,+1},
+-           {-1,-1,-1}};
++          {{+1,+1,+1},  /* rpsi0 */
++           {-1,-1,-1},  /* ipsi0 */
++           {+1,+1,-1},  /* rpsi1 */
++           {-1,-1,+1},  /* ipsi1 */
++           {+1,+1,+1},  /* rpsi2 */
++           {-1,-1,-1},  /* ipsi2 */
++           {+1,+1,-1},  /* rpsi3 */
++           {-1,-1,+1},  /* ipsi3 */
++           {+1,+1,+1},  /* rpsi4 */
++           {-1,-1,-1}}; /* ipsi4 */
+         for (d=0; d<3; ++d) {
+           paritiess[var][d] = weylparities[index][d];
+         }
+

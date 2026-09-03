@@ -1,0 +1,120 @@
+Index: interface.ccl
+===================================================================
+--- interface.ccl	(revision 18)
++++ interface.ccl	(working copy)
+@@ -16,6 +16,10 @@
+   pt_loc_t_p pt_loc_x_p pt_loc_y_p pt_loc_z_p
+ } "Previous location of punctures"
+ 
++CCTK_REAL pt_vel[10] TYPE=scalar
++{
++  pt_vel_t pt_vel_x pt_vel_y pt_vel_z
++} "Velocity of punctures"
+ 
+ 
+ CCTK_INT FUNCTION                                      \
+Index: src/puncture_tracker.c
+===================================================================
+--- src/puncture_tracker.c	(revision 18)
++++ src/puncture_tracker.c	(working copy)
+@@ -30,12 +30,20 @@
+       pt_loc_x[n] = initial_x[n];
+       pt_loc_y[n] = initial_y[n];
+       pt_loc_z[n] = initial_z[n];
++      pt_vel_t[n] = cctk_time;
++      pt_vel_x[n] = 0.0;
++      pt_vel_y[n] = 0.0;
++      pt_vel_z[n] = 0.0;
+     } else {
+       // Initialise to some sensible but unimportant values
+       pt_loc_t[n] = 0.0;
+       pt_loc_x[n] = 0.0;
+       pt_loc_y[n] = 0.0;
+       pt_loc_z[n] = 0.0;
++      pt_vel_t[n] = 0.0;
++      pt_vel_x[n] = 0.0;
++      pt_vel_y[n] = 0.0;
++      pt_vel_z[n] = 0.0;
+     }
+     pt_loc_t_p[n] = 0.0;
+     pt_loc_x_p[n] = 0.0;
+@@ -88,6 +96,7 @@
+       pt_loc_z_p[n] = pt_loc_z[n];
+       
+       pt_loc_t[n] = cctk_time;
++      pt_vel_t[n] = cctk_time;
+     }
+   }
+   
+@@ -234,6 +243,9 @@
+           pt_loc_x[n] = pt_loc_x_p[n] + dt * (- pt_betax[n]);
+           pt_loc_y[n] = pt_loc_y_p[n] + dt * (- pt_betay[n]);
+           pt_loc_z[n] = pt_loc_z_p[n] + dt * (- pt_betaz[n]);
++          pt_vel_x[n] = - pt_betax[n];
++          pt_vel_y[n] = - pt_betay[n];
++          pt_vel_z[n] = - pt_betaz[n];
+         }
+       }
+       
+@@ -241,22 +253,28 @@
+     
+     // Broadcast result
+     
+-    CCTK_REAL loc_local[3*max_num_tracked];
++    CCTK_REAL loc_local[6*max_num_tracked]; /* 3 components for location, 3 components for velocity */
+     if (CCTK_MyProc(cctkGH) == 0) {
+       for (int n = 0; n < max_num_tracked; ++ n) {
+         loc_local[                  n] = pt_loc_x[n];
+         loc_local[  max_num_tracked+n] = pt_loc_y[n];
+         loc_local[2*max_num_tracked+n] = pt_loc_z[n];
++        loc_local[3*max_num_tracked+n] = pt_vel_x[n];
++        loc_local[4*max_num_tracked+n] = pt_vel_y[n];
++        loc_local[5*max_num_tracked+n] = pt_vel_z[n];
+       }
+     } else {
+       for (int n = 0; n < max_num_tracked; ++ n) {
+         loc_local[                  n] = 0.0;
+         loc_local[  max_num_tracked+n] = 0.0;
+         loc_local[2*max_num_tracked+n] = 0.0;
++        loc_local[3*max_num_tracked+n] = 0.0;
++        loc_local[4*max_num_tracked+n] = 0.0;
++        loc_local[5*max_num_tracked+n] = 0.0;
+       }
+     }
+     
+-    CCTK_REAL loc_global[3*max_num_tracked];
++    CCTK_REAL loc_global[6*max_num_tracked]; /* 3 components for location, 3 components for velocity */
+     
+     int const handle_sum = CCTK_ReductionHandle ("sum");
+     if (handle_sum < 0) {
+@@ -266,7 +284,7 @@
+     
+     int const ierr2 = CCTK_ReduceLocArrayToArray1D
+       (cctkGH, -1, handle_sum,
+-       loc_local, loc_global, 3*max_num_tracked, CCTK_VARIABLE_REAL);
++       loc_local, loc_global, 6*max_num_tracked, CCTK_VARIABLE_REAL);
+     if (ierr2 < 0) {
+       CCTK_WARN (CCTK_WARN_ALERT, "Reduction error");
+       goto label_free_param_table;
+@@ -276,6 +294,9 @@
+       pt_loc_x[n] = loc_global[                  n];
+       pt_loc_y[n] = loc_global[  max_num_tracked+n];
+       pt_loc_z[n] = loc_global[2*max_num_tracked+n];
++      pt_vel_x[n] = loc_global[3*max_num_tracked+n];
++      pt_vel_y[n] = loc_global[4*max_num_tracked+n];
++      pt_vel_z[n] = loc_global[5*max_num_tracked+n];
+     }
+     
+   }
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 18)
++++ schedule.ccl	(working copy)
+@@ -1,6 +1,6 @@
+ # Schedule definitions for thorn PunctureTracker
+ 
+-STORAGE: pt_loc pt_loc_p
++STORAGE: pt_loc pt_loc_p pt_vel
+ 
+ SCHEDULE PunctureTracker_Init AT initial
+ {

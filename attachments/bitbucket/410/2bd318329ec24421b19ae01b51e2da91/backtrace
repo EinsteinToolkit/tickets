@@ -1,0 +1,148 @@
+i115-405% gdb cactus_cigr 15566
+GNU gdb Red Hat Linux (6.3.0.0-1.153.el4_6.2rh)
+Copyright 2004 Free Software Foundation, Inc.
+GDB is free software, covered by the GNU General Public License, and you are
+welcome to change it and/or distribute copies of it under certain conditions.
+Type "show copying" to see the conditions.
+There is absolutely no warranty for GDB.  Type "show warranty" for details.
+This GDB was configured as "x86_64-redhat-linux-gnu"...cactus_cigr: No such file or directory.
+
+Attaching to process 15566
+Reading symbols from ~/einstein_dev_chandra/Cactus/exe/cactus_cigr...done.
+Using host libthread_db library "/lib64/tls/libthread_db.so.1".
+Reading symbols from /opt/ofed/lib64/libibverbs.so.1...done.
+Loaded symbols for /opt/ofed/lib64/libibverbs.so.1
+Reading symbols from /opt/ofed/lib64/libibumad.so.1...done.
+Loaded symbols for /opt/ofed/lib64/libibumad.so.1
+Reading symbols from /lib64/tls/libpthread.so.0...done.
+[Thread debugging using libthread_db enabled]
+[New Thread 48007889570400 (LWP 15566)]
+[New Thread 1106659680 (LWP 15604)]
+[New Thread 1102461280 (LWP 15600)]
+[New Thread 1098262880 (LWP 15596)]
+[New Thread 1083697504 (LWP 15593)]
+[New Thread 1087736160 (LWP 15589)]
+Loaded symbols for /lib64/tls/libpthread.so.0
+Reading symbols from /lib64/tls/librt.so.1...done.
+Loaded symbols for /lib64/tls/librt.so.1
+Reading symbols from /usr/lib64/libz.so.1...done.
+Loaded symbols for /usr/lib64/libz.so.1
+Reading symbols from /usr/lib64/libjpeg.so.62...done.
+Loaded symbols for /usr/lib64/libjpeg.so.62
+Reading symbols from /lib64/tls/libm.so.6...done.
+Loaded symbols for /lib64/tls/libm.so.6
+Reading symbols from /usr/lib64/libblas.so.3...done.
+Loaded symbols for /usr/lib64/libblas.so.3
+Reading symbols from /lib64/libcrypt.so.1...done.
+Loaded symbols for /lib64/libcrypt.so.1
+Reading symbols from /share/apps/intel/11.1/lib/intel64/libifcore.so.5...done.
+Loaded symbols for /opt/apps/intel/11.1/lib/intel64/libifcore.so.5
+Reading symbols from /share/apps/intel/11.1/lib/intel64/libiomp5.so...done.
+Loaded symbols for /opt/apps/intel/11.1/lib/intel64/libiomp5.so
+Reading symbols from /usr/lib64/libstdc++.so.6...done.
+Loaded symbols for /usr/lib64/libstdc++.so.6
+Reading symbols from /lib64/libgcc_s.so.1...done.
+Loaded symbols for /lib64/libgcc_s.so.1
+Reading symbols from /lib64/libdl.so.2...done.
+Loaded symbols for /lib64/libdl.so.2
+Reading symbols from /lib64/tls/libc.so.6...done.
+Loaded symbols for /lib64/tls/libc.so.6
+Reading symbols from /lib64/ld-linux-x86-64.so.2...done.
+Loaded symbols for /lib64/ld-linux-x86-64.so.2
+Reading symbols from /usr/lib64/libg2c.so.0...done.
+Loaded symbols for /usr/lib64/libg2c.so.0
+Reading symbols from /share/apps/intel/11.1/lib/intel64/libimf.so...done.
+Loaded symbols for /opt/apps/intel/11.1/lib/intel64/libimf.so
+Reading symbols from /share/apps/intel/11.1/lib/intel64/libintlc.so.5...done.
+Loaded symbols for /opt/apps/intel/11.1/lib/intel64/libintlc.so.5
+Reading symbols from /lib64/libnss_files.so.2...done.
+Loaded symbols for /lib64/libnss_files.so.2
+Reading symbols from /opt/ofed/lib64/libmlx4-rdmav2.so...done.
+Loaded symbols for /opt/ofed/lib64/libmlx4-rdmav2.so
+Reading symbols from /opt/ofed/lib64/libmthca-rdmav2.so...done.
+Loaded symbols for /opt/ofed/lib64/libmthca-rdmav2.so
+0x00002ba9b4c023e0 in __kmp_wait_sleep () from /opt/apps/intel/11.1/lib/intel64/libiomp5.so
+(gdb) continue
+Continuing.
+
+Program received signal SIGSEGV, Segmentation fault.
+[Switching to Thread 48007889570400 (LWP 15566)]
+0x0000000001035b9d in CarpetIOHDF5::IOHDF5<2>::WriteHDF5 (cctkGH=0x4d3ae20, file=@0x6, gfdatas=Cannot access memory at address 0x0
+)
+    at ~/einstein_dev_chandra/Cactus/arrangements/Carpet/CarpetIOHDF5/src/OutputSlice.cc:1260
+1260                if (slice_requests[vi + n]->check_exist) {
+(gdb) bt
+#0  0x0000000001035b9d in CarpetIOHDF5::IOHDF5<2>::WriteHDF5 (cctkGH=0x4d3ae20, file=@0x6, gfdatas=Cannot access memory at address 0x0
+)
+    at ~/einstein_dev_chandra/Cactus/arrangements/Carpet/CarpetIOHDF5/src/OutputSlice.cc:1260
+#1  0x0000000001034530 in CarpetIOHDF5::IOHDF5<2>::OutputDirection (cctkGH=0x4d3ae20, vindex=6,
+    alias=Cannot access memory at address 0x0
+)
+    at ~/einstein_dev_chandra/Cactus/arrangements/Carpet/CarpetIOHDF5/src/OutputSlice.cc:567
+#2  0x0000000001032f43 in CarpetIOHDF5::IOHDF5<2>::OutputVarAs (cctkGH=0x4d3ae20,
+    varname=0x6 <Address 0x6 out of bounds>, alias=0x0)
+    at ~/einstein_dev_chandra/Cactus/arrangements/Carpet/CarpetIOHDF5/src/OutputSlice.cc:444
+#3  0x00000000010321e5 in CarpetIOHDF5::IOHDF5<2>::OutputGH (cctkGH=0x4d3ae20)
+    at ~/einstein_dev_chandra/Cactus/arrangements/Carpet/CarpetIOHDF5/src/OutputSlice.cc:203
+#4  0x0000000001098060 in Carpet::OutputGH (cctkGH=0x4d3ae20)
+    at ~/einstein_dev_chandra/Cactus/arrangements/Carpet/Carpet/src/OutputGH.cc:55
+#5  0x000000000108ea96 in Carpet::CallAnalysis (cctkGH=0x4d3ae20)
+    at ~/einstein_dev_chandra/Cactus/arrangements/Carpet/Carpet/src/Initialise.cc:530
+#6  0x00000000010940d4 in Carpet::Initialise (fc=0x4d3ae20)
+    at ~/einstein_dev_chandra/Cactus/arrangements/Carpet/Carpet/src/Initialise.cc:118
+#7  0x0000000000416249 in main (argc=2, argv=0x7fff0838e6b8)
+    at ~/einstein_dev_chandra/Cactus/src/main/flesh.cc:80
+(gdb) f 0x0000000001032f43
+#0  0x0000000000000000 in ?? ()
+(gdb) f 2
+#2  0x0000000001032f43 in CarpetIOHDF5::IOHDF5<2>::OutputVarAs (cctkGH=0x4d3ae20,
+    varname=0x6 <Address 0x6 out of bounds>, alias=0x0)
+    at ~/einstein_dev_chandra/Cactus/arrangements/Carpet/CarpetIOHDF5/src/OutputSlice.cc:444
+444                 OutputDirection (cctkGH, vindex, alias, basefilename, dirs,
+(gdb) list 444
+439             // Skip output if the dimensions are not ascending
+440             if (ascending) {
+441
+442               // Skip output if not requested
+443               if (DirectionIsRequested(dirs)) {
+444                 OutputDirection (cctkGH, vindex, alias, basefilename, dirs,
+445                                  is_new_file, truncate_file);
+446               }
+447
+448             } // if ascending
+(gdb) list OutputDirection
+475                                             const string alias,
+476                                             const string basefilename,
+477                                             const vect<int,outdim>& dirs,
+478                                             const bool is_new_file,
+479                                             const bool truncate_file)
+480       {
+481         DECLARE_CCTK_PARAMETERS;
+482
+483         // Get information
+484         const int group = CCTK_GroupIndexFromVarI (vindex);
+(gdb) list
+485         assert (group >= 0);
+486         const int vindex0 = CCTK_FirstVarIndexI (group);
+487         assert (vindex0 >= 0 and vindex >= vindex0);
+488         const int var = vindex - vindex0;
+489         cGroup groupdata;
+490         {
+491           int const ierr = CCTK_GroupData (group, & groupdata);
+492           assert (not ierr);
+493         }
+494
+(gdb) continue
+Continuing.
+
+Program received signal SIGSEGV, Segmentation fault.
+0x0000000001035b9d in CarpetIOHDF5::IOHDF5<2>::WriteHDF5 (cctkGH=0x4d3ae20, file=@0x6, gfdatas=Cannot access memory at address 0x0
+)
+    at ~/einstein_dev_chandra/Cactus/arrangements/Carpet/CarpetIOHDF5/src/OutputSlice.cc:1260
+1260                if (slice_requests[vi + n]->check_exist) {
+(gdb) quit
+The program is running.  Quit anyway (and detach it)? (y or n) y
+Detaching from program: ~/einstein_dev_chandra/Cactus/exe/cactus_cigr, process 15566
+i115-405% Connection to i115-405 closed by remote host.
+Connection to i115-405 closed.
+login3%      

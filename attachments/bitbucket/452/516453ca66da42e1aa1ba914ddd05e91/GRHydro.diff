@@ -1,0 +1,905 @@
+Index: src/GRHydro_ReconstructPolyM.F90
+===================================================================
+--- src/GRHydro_ReconstructPolyM.F90	(revision 250)
++++ src/GRHydro_ReconstructPolyM.F90	(working copy)
+@@ -203,7 +203,7 @@
+ 
+ 
+ 
+-    !$OMP PARALLEL DO PRIVATE(i, j)
++    !$OMP PARALLEL DO PRIVATE(i, j, k)
+     do k = 1, nz
+       do j = 1, ny
+         do i = 1, nx
+@@ -232,7 +232,7 @@
+   else if (CCTK_EQUALS(recon_method,"ppm")) then
+ 
+     if (flux_direction == 1) then
+-      !$OMP PARALLEL DO PRIVATE(i, j)
++      !$OMP PARALLEL DO PRIVATE(i, j, k)
+       do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+         do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+           call SimplePPM_1dM(GRHydro_eos_handle,1,nx,CCTK_DELTA_SPACE(1),&
+@@ -260,7 +260,7 @@
+       end do
+       !$OMP END PARALLEL DO
+       if(evolve_tracer.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+                call SimplePPM_tracer_1d(nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
+@@ -272,7 +272,7 @@
+          !$OMP END PARALLEL DO
+       end if
+       if(evolve_Y_e.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+                call SimplePPM_tracer_1d(nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
+@@ -285,7 +285,7 @@
+       end if
+ 
+     else if (flux_direction == 2) then
+-      !$OMP PARALLEL DO PRIVATE(i, j)
++      !$OMP PARALLEL DO PRIVATE(i, j, k)
+       do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+         do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+           call SimplePPM_1dM(GRHydro_eos_handle,1,ny,CCTK_DELTA_SPACE(2),&
+@@ -313,7 +313,7 @@
+       end do
+       !$OMP END PARALLEL DO
+       if(evolve_tracer.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+               call SimplePPM_tracer_1d(ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
+@@ -325,7 +325,7 @@
+          !$OMP END PARALLEL DO
+       end if
+       if(evolve_Y_e.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+                call SimplePPM_tracer_1d(ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
+@@ -338,7 +338,7 @@
+       end if
+ 
+     else if (flux_direction == 3) then
+-      !$OMP PARALLEL DO PRIVATE(i, j)
++      !$OMP PARALLEL DO PRIVATE(i, j, k)
+       do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+         do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+           call SimplePPM_1dM(GRHydro_eos_handle,1,nz,CCTK_DELTA_SPACE(3),&
+@@ -366,7 +366,7 @@
+       end do
+       !$OMP END PARALLEL DO
+       if(evolve_tracer.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+ 
+@@ -379,7 +379,7 @@
+          !$OMP END PARALLEL DO
+       end if
+       if(evolve_Y_e.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+                call SimplePPM_tracer_1d(nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
+@@ -414,7 +414,7 @@
+      endif
+ 
+      if (flux_direction == 1) then
+-        !$OMP PARALLEL DO PRIVATE(i, j)
++        !$OMP PARALLEL DO PRIVATE(i, j, k)
+         do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil + 1
+            do j = GRHydro_stencil, cctk_lsh(2) - GRHydro_stencil + 1
+               if (CCTK_EQUALS(recon_vars,"primitive")) then
+@@ -476,7 +476,7 @@
+         end do
+         !$OMP END PARALLEL DO
+      else if (flux_direction == 2) then
+-        !$OMP PARALLEL DO PRIVATE(i, j)
++        !$OMP PARALLEL DO PRIVATE(i, j, k)
+         do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil + 1
+            do j = GRHydro_stencil, cctk_lsh(1) - GRHydro_stencil + 1
+               if (CCTK_EQUALS(recon_vars,"primitive")) then
+@@ -537,7 +537,7 @@
+         end do
+         !$OMP END PARALLEL DO
+      else if (flux_direction == 3) then
+-        !$OMP PARALLEL DO PRIVATE(i, j)
++        !$OMP PARALLEL DO PRIVATE(i, j, k)
+         do k = GRHydro_stencil, cctk_lsh(2) - GRHydro_stencil + 1
+            do j = GRHydro_stencil, cctk_lsh(1) - GRHydro_stencil + 1
+               if (CCTK_EQUALS(recon_vars,"primitive")) then
+Index: src/GRHydro_UpdateMask.F90
+===================================================================
+--- src/GRHydro_UpdateMask.F90	(revision 250)
++++ src/GRHydro_UpdateMask.F90	(working copy)
+@@ -42,7 +42,7 @@
+   frac = CCTK_DELTA_TIME
+ 
+   if(evolve_temper.ne.1) then
+-     !$OMP PARALLEL DO PRIVATE(j,i)
++     !$OMP PARALLEL DO PRIVATE(k,j,i)
+      do k = 1, cctk_lsh(3)
+         do j = 1, cctk_lsh(2)
+            do i = 1, cctk_lsh(1)
+@@ -64,7 +64,7 @@
+      !$OMP END PARALLEL DO
+   else
+      ! allow negative total energy
+-     !$OMP PARALLEL DO PRIVATE(j,i)
++     !$OMP PARALLEL DO PRIVATE(k,j,i)
+      do k = 1, cctk_lsh(3)
+         do j = 1, cctk_lsh(2)
+            do i = 1, cctk_lsh(1)
+Index: src/GRHydro_CalcUpdate.F90
+===================================================================
+--- src/GRHydro_CalcUpdate.F90	(revision 250)
++++ src/GRHydro_CalcUpdate.F90	(working copy)
+@@ -55,7 +55,7 @@
+ 
+     if (use_weighted_fluxes == 0) then
+ 
+-      !$OMP PARALLEL DO PRIVATE(i,j,itracer,alp_l,alp_r,Bvec_l,Bvec_r)
++      !$OMP PARALLEL DO PRIVATE(i,j,k,itracer,alp_l,alp_r,Bvec_l,Bvec_r)
+       do k = GRHydro_stencil + 1, cctk_lsh(3) - GRHydro_stencil
+         do j = GRHydro_stencil + 1, cctk_lsh(2) - GRHydro_stencil
+           do i = GRHydro_stencil + 1, cctk_lsh(1) - GRHydro_stencil
+Index: src/GRHydro_Reconstruct.F90
+===================================================================
+--- src/GRHydro_Reconstruct.F90	(revision 250)
++++ src/GRHydro_Reconstruct.F90	(working copy)
+@@ -249,7 +249,7 @@
+             psidc, psidcplus, psidcminus, trivial_rp, hydro_excision_mask)
+     endif
+ 
+-    !$OMP PARALLEL DO PRIVATE(i, j)
++    !$OMP PARALLEL DO PRIVATE(i, j, k)
+     do k = 1, nz
+       do j = 1, ny
+         do i = 1, nx
+@@ -280,7 +280,7 @@
+     if (flux_direction == 1) then
+        if(evolve_mhd.ne.0) then
+           if(clean_divergence.ne.0) then
+-            !$OMP PARALLEL DO PRIVATE(i, j)
++            !$OMP PARALLEL DO PRIVATE(i, j, k)
+             do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+               do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+                  call SimplePPM_1dM(GRHydro_eos_handle,0,nx,CCTK_DELTA_SPACE(1),&
+@@ -308,7 +308,7 @@
+             end do
+             !$OMP END PARALLEL DO
+           else  !clean_divergence
+-            !$OMP PARALLEL DO PRIVATE(i, j)
++            !$OMP PARALLEL DO PRIVATE(i, j, k)
+             do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+               do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+                  call SimplePPM_1dM(GRHydro_eos_handle,0,nx,CCTK_DELTA_SPACE(1),&
+@@ -337,7 +337,7 @@
+             !$OMP END PARALLEL DO
+           endif  !clean_divergence
+        else  !evolve_mhd
+-         !$OMP PARALLEL DO PRIVATE(i, j)
++         !$OMP PARALLEL DO PRIVATE(i, j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+            do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+            call SimplePPM_1d(GRHydro_eos_handle,0,nx,CCTK_DELTA_SPACE(1),&
+@@ -364,7 +364,7 @@
+          !$OMP END PARALLEL DO
+        endif  !evolve_mhd
+       if(evolve_tracer.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+                call SimplePPM_tracer_1d(nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
+@@ -376,7 +376,7 @@
+          !$OMP END PARALLEL DO
+       end if
+       if(evolve_Y_e.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+                call SimplePPM_ye_1d(nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
+@@ -391,7 +391,7 @@
+     else if (flux_direction == 2) then
+       if(evolve_mhd.ne.0) then
+         if(clean_divergence.ne.0) then
+-          !$OMP PARALLEL DO PRIVATE(i, j)
++          !$OMP PARALLEL DO PRIVATE(i, j, k)
+           do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+               call SimplePPM_1dM(GRHydro_eos_handle,0,ny,CCTK_DELTA_SPACE(2),&
+@@ -419,7 +419,7 @@
+           end do
+           !$OMP END PARALLEL DO
+         else  !clean_divergence
+-          !$OMP PARALLEL DO PRIVATE(i, j)
++          !$OMP PARALLEL DO PRIVATE(i, j, k)
+           do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+               call SimplePPM_1dM(GRHydro_eos_handle,0,ny,CCTK_DELTA_SPACE(2),&
+@@ -448,7 +448,7 @@
+           !$OMP END PARALLEL DO
+         endif  !clean_divergence
+       else  !evolve_mhd
+-        !$OMP PARALLEL DO PRIVATE(i, j)
++        !$OMP PARALLEL DO PRIVATE(i, j, k)
+         do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+           do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+             call SimplePPM_1d(GRHydro_eos_handle,0,ny,CCTK_DELTA_SPACE(2),&
+@@ -475,7 +475,7 @@
+         !$OMP END PARALLEL DO
+       endif  !evolve_mhd
+       if(evolve_tracer.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+               call SimplePPM_tracer_1d(ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
+@@ -487,7 +487,7 @@
+          !$OMP END PARALLEL DO
+       end if
+       if(evolve_Y_e.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+                call SimplePPM_ye_1d(ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
+@@ -502,7 +502,7 @@
+     else if (flux_direction == 3) then
+       if(evolve_mhd.ne.0) then
+         if(clean_divergence.ne.0) then
+-          !$OMP PARALLEL DO PRIVATE(i, j)
++          !$OMP PARALLEL DO PRIVATE(i, j, k)
+           do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+               call SimplePPM_1dM(GRHydro_eos_handle,0,nz,CCTK_DELTA_SPACE(3),&
+@@ -530,7 +530,7 @@
+           end do
+           !$OMP END PARALLEL DO
+         else  !clean_divergence
+-          !$OMP PARALLEL DO PRIVATE(i, j)
++          !$OMP PARALLEL DO PRIVATE(i, j, k)
+           do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+               call SimplePPM_1dM(GRHydro_eos_handle,0,nz,CCTK_DELTA_SPACE(3),&
+@@ -559,7 +559,7 @@
+           !$OMP END PARALLEL DO
+         endif  !clean_divergence
+       else  !evolve_mhd
+-        !$OMP PARALLEL DO PRIVATE(i, j)
++        !$OMP PARALLEL DO PRIVATE(i, j, k)
+         do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+           do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+             call SimplePPM_1d(GRHydro_eos_handle,0,nz,CCTK_DELTA_SPACE(3),&
+@@ -586,7 +586,7 @@
+         !$OMP END PARALLEL DO
+       endif  !evolve_mhd
+       if(evolve_tracer.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+ 
+@@ -599,7 +599,7 @@
+          !$OMP END PARALLEL DO
+       end if
+       if(evolve_Y_e.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+                call SimplePPM_ye_1d(nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
+@@ -633,7 +633,7 @@
+      endif
+ 
+     if (flux_direction == 1) then
+-      !$OMP PARALLEL DO PRIVATE(i, j)
++      !$OMP PARALLEL DO PRIVATE(i, j, k)
+       do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil + 1
+         do j = GRHydro_stencil, cctk_lsh(2) - GRHydro_stencil + 1
+           if (CCTK_EQUALS(recon_vars,"primitive")) then
+@@ -713,7 +713,7 @@
+       end do
+       !$OMP END PARALLEL DO
+     else if (flux_direction == 2) then
+-      !$OMP PARALLEL DO PRIVATE(i, j)
++      !$OMP PARALLEL DO PRIVATE(i, j, k)
+       do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil + 1
+         do j = GRHydro_stencil, cctk_lsh(1) - GRHydro_stencil + 1
+           if (CCTK_EQUALS(recon_vars,"primitive")) then
+@@ -793,7 +793,7 @@
+       end do
+       !$OMP END PARALLEL DO
+     else if (flux_direction == 3) then
+-      !$OMP PARALLEL DO PRIVATE(i, j)
++      !$OMP PARALLEL DO PRIVATE(i, j, k)
+       do k = GRHydro_stencil, cctk_lsh(2) - GRHydro_stencil + 1
+         do j = GRHydro_stencil, cctk_lsh(1) - GRHydro_stencil + 1
+           if (CCTK_EQUALS(recon_vars,"primitive")) then
+Index: src/GRHydro_TmunuM.F90
+===================================================================
+--- src/GRHydro_TmunuM.F90	(revision 250)
++++ src/GRHydro_TmunuM.F90	(working copy)
+@@ -83,7 +83,7 @@
+    CCTK_INT :: i,j,k
+ 
+ 
+-   !$OMP PARALLEL DO PRIVATE(i,j,velxlow, velylow, velzlow,&
++   !$OMP PARALLEL DO PRIVATE(i,j,k,velxlow, velylow, velzlow,&
+    !$OMP Bvecxlow,Bvecylow,Bveczlow, bdotv,dum,b2,bxlow,bylow,bzlow,&
+    !$OMP betaxlow, betaylow, betazlow, beta2, bdotbeta,vdotbeta,utlow, btlow,&
+    !$OMP rhohstarw2,pstar)
+Index: src/GRHydro_ReconstructM.F90
+===================================================================
+--- src/GRHydro_ReconstructM.F90	(revision 250)
++++ src/GRHydro_ReconstructM.F90	(working copy)
+@@ -205,7 +205,7 @@
+ 
+ 
+ 
+-    !$OMP PARALLEL DO PRIVATE(i, j)
++    !$OMP PARALLEL DO PRIVATE(i, j, k)
+     do k = 1, nz
+       do j = 1, ny
+         do i = 1, nx
+@@ -234,7 +234,7 @@
+   else if (CCTK_EQUALS(recon_method,"ppm")) then
+ 
+     if (flux_direction == 1) then
+-      !$OMP PARALLEL DO PRIVATE(i, j)
++      !$OMP PARALLEL DO PRIVATE(i, j, k)
+       do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+         do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+           call SimplePPM_1dM(GRHydro_eos_handle,0,nx,CCTK_DELTA_SPACE(1),&
+@@ -262,7 +262,7 @@
+       end do
+       !$OMP END PARALLEL DO
+       if(evolve_tracer.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+                call SimplePPM_tracer_1d(nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
+@@ -274,7 +274,7 @@
+          !$OMP END PARALLEL DO
+       end if
+       if(evolve_Y_e.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+                call SimplePPM_tracer_1d(nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
+@@ -288,7 +288,7 @@
+ 
+ 
+     else if (flux_direction == 2) then
+-      !$OMP PARALLEL DO PRIVATE(i, j)
++      !$OMP PARALLEL DO PRIVATE(i, j, k)
+       do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+         do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+           call SimplePPM_1dM(GRHydro_eos_handle,0,ny,CCTK_DELTA_SPACE(2),&
+@@ -316,7 +316,7 @@
+       end do
+       !$OMP END PARALLEL DO
+       if(evolve_tracer.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+               call SimplePPM_tracer_1d(ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
+@@ -328,7 +328,7 @@
+          !$OMP END PARALLEL DO
+       end if
+       if(evolve_Y_e.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+                call SimplePPM_tracer_1d(ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
+@@ -341,7 +341,7 @@
+       end if
+ 
+     else if (flux_direction == 3) then
+-      !$OMP PARALLEL DO PRIVATE(i, j)
++      !$OMP PARALLEL DO PRIVATE(i, j, k)
+       do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+         do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+           call SimplePPM_1dM(GRHydro_eos_handle,0,nz,CCTK_DELTA_SPACE(3),&
+@@ -369,7 +369,7 @@
+       end do
+       !$OMP END PARALLEL DO
+       if(evolve_tracer.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+ 
+@@ -382,7 +382,7 @@
+          !$OMP END PARALLEL DO
+       end if
+       if(evolve_Y_e.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+                call SimplePPM_tracer_1d(nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
+@@ -417,7 +417,7 @@
+ 
+ 
+     if (flux_direction == 1) then
+-      !$OMP PARALLEL DO PRIVATE(i, j)
++      !$OMP PARALLEL DO PRIVATE(i, j, k)
+       do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil + 1
+         do j = GRHydro_stencil, cctk_lsh(2) - GRHydro_stencil + 1
+           if (CCTK_EQUALS(recon_vars,"primitive")) then
+@@ -486,7 +486,7 @@
+       end do
+       !$OMP END PARALLEL DO
+     else if (flux_direction == 2) then
+-      !$OMP PARALLEL DO PRIVATE(i, j)
++      !$OMP PARALLEL DO PRIVATE(i, j, k)
+       do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil + 1
+         do j = GRHydro_stencil, cctk_lsh(1) - GRHydro_stencil + 1
+           if (CCTK_EQUALS(recon_vars,"primitive")) then
+@@ -553,7 +553,7 @@
+       end do
+       !$OMP END PARALLEL DO
+     else if (flux_direction == 3) then
+-      !$OMP PARALLEL DO PRIVATE(i, j)
++      !$OMP PARALLEL DO PRIVATE(i, j, k)
+       do k = GRHydro_stencil, cctk_lsh(2) - GRHydro_stencil + 1
+         do j = GRHydro_stencil, cctk_lsh(1) - GRHydro_stencil + 1
+           if (CCTK_EQUALS(recon_vars,"primitive")) then
+Index: src/GRHydro_Prim2Con.F90
+===================================================================
+--- src/GRHydro_Prim2Con.F90	(revision 250)
++++ src/GRHydro_Prim2Con.F90	(working copy)
+@@ -49,7 +49,7 @@
+   CCTK_REAL :: xtemp(1)
+ 
+   if(evolve_temper.ne.1) then
+-     !$OMP PARALLEL DO PRIVATE(i, j, avg_detl, avg_detr,&
++     !$OMP PARALLEL DO PRIVATE(i, j, k, avg_detl, avg_detr,&
+      !$OMP                      gxxl,gxyl,gxzl,gyyl,gyzl,gzzl, &
+      !$OMP                      gxxr,gxyr,gxzr,gyyr,gyzr,gzzr)
+      do k = GRHydro_stencil,cctk_lsh(3)-GRHydro_stencil+1
+@@ -348,7 +348,7 @@
+   character(len=512) :: warnline
+ 
+   if(evolve_temper.ne.1) then
+-     !$OMP PARALLEL DO PRIVATE(i, j, det)
++     !$OMP PARALLEL DO PRIVATE(i, j, k, det)
+      do k = 1,cctk_lsh(3)
+         do j = 1,cctk_lsh(2)
+            do i = 1,cctk_lsh(1)
+@@ -367,7 +367,7 @@
+      end do
+      !$OMP END PARALLEL DO
+   else
+-     !$OMP PARALLEL DO PRIVATE(i, j, det)
++     !$OMP PARALLEL DO PRIVATE(i, j, k, det)
+      do k = 1,cctk_lsh(3)
+         do j = 1,cctk_lsh(2)
+            do i = 1,cctk_lsh(1)
+@@ -390,7 +390,7 @@
+   endif
+ 
+   if(evolve_Y_e.ne.0) then
+-     !$OMP PARALLEL DO PRIVATE(i, j)
++     !$OMP PARALLEL DO PRIVATE(i, j, k)
+      do k = 1,cctk_lsh(3)
+         do j = 1,cctk_lsh(2)
+            do i = 1,cctk_lsh(1)
+@@ -432,7 +432,7 @@
+   CCTK_REAL :: gxxl,gxyl,gxzl,gyyl,gyzl,gzzl,avg_detl,&
+        gxxr,gxyr,gxzr,gyyr,gyzr,gzzr,avg_detr
+   
+-  !$OMP PARALLEL DO PRIVATE(i, j, gxxl,gxyl,gxzl,gyyl,gyzl,gzzl,avg_detl,&
++  !$OMP PARALLEL DO PRIVATE(i, j, k, gxxl,gxyl,gxzl,gyyl,gyzl,gzzl,avg_detl,&
+   !$OMP gxxr,gxyr,gxzr,gyyr,gyzr,gzzr,avg_detr)
+   do k = GRHydro_stencil,cctk_lsh(3)-GRHydro_stencil+1
+     do j = GRHydro_stencil,cctk_lsh(2)-GRHydro_stencil+1
+@@ -581,7 +581,7 @@
+   CCTK_INT :: i, j, k
+   CCTK_REAL :: det
+   
+-  !$OMP PARALLEL DO PRIVATE(i, j, det)
++  !$OMP PARALLEL DO PRIVATE(i, j, k, det)
+      do k = 1,cctk_lsh(3)
+         do j = 1,cctk_lsh(2)
+            do i = 1,cctk_lsh(1)
+@@ -601,7 +601,7 @@
+   !$OMP END PARALLEL DO
+ 
+   if(evolve_Y_e.ne.0) then
+-     !$OMP PARALLEL DO PRIVATE(i, j)
++     !$OMP PARALLEL DO PRIVATE(i, j, k)
+      do k = 1,cctk_lsh(3)
+         do j = 1,cctk_lsh(2)
+            do i = 1,cctk_lsh(1)
+Index: src/GRHydro_Con2PrimM.F90
+===================================================================
+--- src/GRHydro_Con2PrimM.F90	(revision 250)
++++ src/GRHydro_Con2PrimM.F90	(working copy)
+@@ -92,7 +92,7 @@
+   local_gam = local_gam+1.d0
+   
+ 
+-  !$OMP PARALLEL DO PRIVATE(i,j,itracer,&
++  !$OMP PARALLEL DO PRIVATE(i,j,k,itracer,&
+   !$OMP uxx, uxy, uxz, uyy, uyz, uzz, det, epsnegative, &
+   !$OMP b2,xrho,xeps,xpress,xtemp,local_K,local_pgam,sc,keyerr,anyerr)
+   do k = 1, nz 
+@@ -564,7 +564,7 @@
+ !!$    do j = GRHydro_stencil + 1, ny - GRHydro_stencil
+ !!$      do i = GRHydro_stencil + 1, nx - GRHydro_stencil
+ 
+-  !$OMP PARALLEL DO PRIVATE(i,j,itracer,&
++  !$OMP PARALLEL DO PRIVATE(i,j,k,itracer,&
+   !$OMP uxx, uxy, uxz, uyy, uyz, uzz, det, epsnegative, &
+   !$OMP b2, xrho, xpress, local_K, local_pgam, sc)
+   do k = 1, nz
+Index: src/GRHydro_Marquina.F90
+===================================================================
+--- src/GRHydro_Marquina.F90	(revision 250)
++++ src/GRHydro_Marquina.F90	(working copy)
+@@ -72,7 +72,7 @@
+     
+     f_marquina = 0.d0
+         
+-    !$OMP PARALLEL DO PRIVATE(i,j,consp,consm_i,primp,primm_i,&
++    !$OMP PARALLEL DO PRIVATE(i,j,k,consp,consm_i,primp,primm_i,&
+     !$OMP marquinaflux,avg_beta,avg_alp,gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,&
+     !$OMP psi4h,f_marquina,uxxh,uxyh,uxzh,uyyh,uyzh,uzzh,usendh,&
+     !$OMP tmp_w_lorentzp, tmp_w_lorentzm_i,w_lorentzp,w_lorentzm_i,&
+@@ -371,7 +371,7 @@
+ 
+     if (evolve_tracer .ne. 0) then
+ 
+-      !$OMP PARALLEL DO PRIVATE(i,j)
++      !$OMP PARALLEL DO PRIVATE(i,j,k)
+       do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil
+         do j = GRHydro_stencil, cctk_lsh(2) - GRHydro_stencil
+           do i = GRHydro_stencil, cctk_lsh(1) - GRHydro_stencil
+@@ -399,7 +399,7 @@
+ 
+     if (evolve_Y_e .ne. 0) then
+ 
+-      !$OMP PARALLEL DO PRIVATE(i,j)
++      !$OMP PARALLEL DO PRIVATE(i,j,k)
+       do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil
+         do j = GRHydro_stencil, cctk_lsh(2) - GRHydro_stencil
+           do i = GRHydro_stencil, cctk_lsh(1) - GRHydro_stencil
+Index: src/GRHydro_TVDReconstruct.F90
+===================================================================
+--- src/GRHydro_TVDReconstruct.F90	(revision 250)
++++ src/GRHydro_TVDReconstruct.F90	(working copy)
+@@ -52,7 +52,7 @@
+ !!$ Initially all Riemann problems are NON-trivial
+ 
+   trivial_rp = .false.
+-    !$OMP PARALLEL DO PRIVATE(i,j,dupw,dloc,delta,ratio,hdelta)
++    !$OMP PARALLEL DO PRIVATE(i,j,k,dupw,dloc,delta,ratio,hdelta)
+     do k = GRHydro_stencil, nz-GRHydro_stencil+1
+       do j = GRHydro_stencil, ny-GRHydro_stencil+1
+         do i = GRHydro_stencil, nx-GRHydro_stencil+1
+Index: src/GRHydro_Source.F90
+===================================================================
+--- src/GRHydro_Source.F90	(revision 250)
++++ src/GRHydro_Source.F90	(working copy)
+@@ -112,7 +112,7 @@
+   force_spatial_second_order = .FALSE.
+   
+   if (spatial_order > 2) then
+-    !$OMP PARALLEL DO PRIVATE(i, j)
++    !$OMP PARALLEL DO PRIVATE(i, j, k)
+     do k = 1 + GRHydro_stencil, nz - GRHydro_stencil
+       do j = 1 + GRHydro_stencil, ny - GRHydro_stencil
+         do i = 1 + GRHydro_stencil, nx - GRHydro_stencil
+@@ -131,7 +131,7 @@
+     !$OMP END PARALLEL DO
+   end if
+   
+-  !$OMP PARALLEL DO PRIVATE(i, j, local_spatial_order,&
++  !$OMP PARALLEL DO PRIVATE(i, j, k, local_spatial_order,&
+   !$OMP localgxx,localgxy,localgxz,localgyy,localgyz,localgzz,&
+   !$OMP psi4pt,det,sqrtdet,rhoenthalpyW2,shiftx,shifty,shiftz,&
+   !$OMP dx_betax,dx_betay,dx_betaz,dy_betax,dy_betay,dy_betaz,&
+Index: src/GRHydro_HLLE.F90
+===================================================================
+--- src/GRHydro_HLLE.F90	(revision 250)
++++ src/GRHydro_HLLE.F90	(working copy)
+@@ -66,7 +66,7 @@
+     call CCTK_WARN(0, "Flux direction not x,y,z")
+   end if
+ 
+-  !$OMP PARALLEL DO PRIVATE(j,i,f1,lamminus,lamplus,consp,consm_i, &
++  !$OMP PARALLEL DO PRIVATE(k,j,i,f1,lamminus,lamplus,consp,consm_i, &
+   !$OMP                     fplus,fminus,qdiff,avg_beta,avg_alp,   &
+   !$OMP                     avg_det,gxxh,gxyh,gxzh,gyyh,gyzh,gzzh, &
+   !$OMP                     uxxh,uxyh,uxzh,uyyh,uyzh,uzzh,         &
+Index: src/GRHydro_Con2Prim.F90
+===================================================================
+--- src/GRHydro_Con2Prim.F90	(revision 250)
++++ src/GRHydro_Con2Prim.F90	(working copy)
+@@ -87,7 +87,7 @@
+   call EOS_Omni_EpsFromPress(GRHydro_polytrope_handle,keytemp,GRHydro_eos_rf_prec,n,&
+        GRHydro_rho_min,xeps,xtemp,xye,pmin,epsmin,keyerr,anyerr)
+ 
+-  !$OMP PARALLEL DO PRIVATE(i,j,itracer,&
++  !$OMP PARALLEL DO PRIVATE(i,j,k,itracer,&
+   !$OMP uxx, uxy, uxz, uyy, uyz, uzz, det, epsnegative, anyerr, keyerr, keytemp)
+   do k = 1, nz 
+     do j = 1, ny 
+@@ -1168,7 +1168,7 @@
+ !!$  do k = GRHydro_stencil + 1, nz - GRHydro_stencil
+ !!$    do j = GRHydro_stencil + 1, ny - GRHydro_stencil
+ !!$      do i = GRHydro_stencil + 1, nx - GRHydro_stencil
+-  !$OMP PARALLEL DO PRIVATE(i,j,itracer,&
++  !$OMP PARALLEL DO PRIVATE(i,j,k,itracer,&
+   !$OMP uxx, uxy, uxz, uyy, uyz, uzz, det)
+   do k = 1, nz
+     do j = 1, ny
+@@ -1778,7 +1778,7 @@
+   ny = cctk_lsh(2)
+   nz = cctk_lsh(3)
+ 
+-  !$OMP PARALLEL DO PRIVATE(i,j)
++  !$OMP PARALLEL DO PRIVATE(i,j,k)
+   do k = 1, nz 
+     do j = 1, ny 
+       do i = 1, nx
+Index: src/GRHydro_Prim2ConM.F90
+===================================================================
+--- src/GRHydro_Prim2ConM.F90	(revision 250)
++++ src/GRHydro_Prim2ConM.F90	(working copy)
+@@ -232,7 +232,7 @@
+   end do
+ 
+   if(evolve_Y_e.ne.0) then
+-     !$OMP PARALLEL DO PRIVATE(i, j)
++     !$OMP PARALLEL DO PRIVATE(i, j, k)
+      do k = GRHydro_stencil,cctk_lsh(3)-GRHydro_stencil+1
+         do j = GRHydro_stencil,cctk_lsh(2)-GRHydro_stencil+1
+            do i = GRHydro_stencil,cctk_lsh(1)-GRHydro_stencil+1
+@@ -275,7 +275,7 @@
+   CCTK_REAL :: gxxl,gxyl,gxzl,gyyl,gyzl,gzzl,avg_detl,&
+        gxxr,gxyr,gxzr,gyyr,gyzr,gzzr,avg_detr
+   
+-  !$OMP PARALLEL DO PRIVATE(i, j, gxxl,gxyl,gxzl,gyyl,gyzl,gzzl,avg_detl,&
++  !$OMP PARALLEL DO PRIVATE(i, j, k, gxxl,gxyl,gxzl,gyyl,gyzl,gzzl,avg_detl,&
+   !$OMP gxxr,gxyr,gxzr,gyyr,gyzr,gzzr,avg_detr)
+   do k = GRHydro_stencil,cctk_lsh(3)-GRHydro_stencil+1
+     do j = GRHydro_stencil,cctk_lsh(2)-GRHydro_stencil+1
+@@ -467,7 +467,7 @@
+   end do
+ 
+   if(evolve_Y_e.ne.0) then
+-     !$OMP PARALLEL DO PRIVATE(i, j)
++     !$OMP PARALLEL DO PRIVATE(i, j, k)
+      do k = GRHydro_stencil,cctk_lsh(3)-GRHydro_stencil+1
+         do j = GRHydro_stencil,cctk_lsh(2)-GRHydro_stencil+1
+            do i = GRHydro_stencil,cctk_lsh(1)-GRHydro_stencil+1
+Index: src/GRHydro_Tmunu.F90
+===================================================================
+--- src/GRHydro_Tmunu.F90	(revision 250)
++++ src/GRHydro_Tmunu.F90	(working copy)
+@@ -79,7 +79,7 @@
+    CCTK_INT i,j,k
+ 
+ 
+-   !$OMP PARALLEL DO PRIVATE(i,j,velxlow, velylow, velzlow,&
++   !$OMP PARALLEL DO PRIVATE(i,j,k,velxlow, velylow, velzlow,&
+    !$OMP betaxlow, betaylow, betazlow, beta2, utlow, uxlow, uylow, uzlow,&
+    !$OMP rhoenthalpy, ut,ux,uy,uz,bst,bsx,bsy,bsz,bs2)
+    do k = 1, cctk_lsh(3)
+Index: src/GRHydro_SourceM.F90
+===================================================================
+--- src/GRHydro_SourceM.F90	(revision 250)
++++ src/GRHydro_SourceM.F90	(working copy)
+@@ -137,7 +137,7 @@
+   force_spatial_second_order = .FALSE.
+   
+   if (spatial_order > 2) then
+-    !$OMP PARALLEL DO PRIVATE(i, j)
++    !$OMP PARALLEL DO PRIVATE(i, j, k)
+     do k = 1 + GRHydro_stencil, nz - GRHydro_stencil
+       do j = 1 + GRHydro_stencil, ny - GRHydro_stencil
+         do i = 1 + GRHydro_stencil, nx - GRHydro_stencil
+@@ -156,7 +156,7 @@
+     !$OMP END PARALLEL DO
+   end if
+   
+-  !$OMP PARALLEL DO PRIVATE(i, j, local_spatial_order,&
++  !$OMP PARALLEL DO PRIVATE(i, j, k, local_spatial_order,&
+   !$OMP localgxx,localgxy,localgxz,localgyy,localgyz,localgzz,&
+   !$OMP det,sqrtdet,shiftx,shifty,shiftz,&
+   !$OMP dx_betax,dx_betay,dx_betaz,dy_betax,dy_betay,dy_betaz,&
+Index: src/GRHydro_ReconstructPoly.F90
+===================================================================
+--- src/GRHydro_ReconstructPoly.F90	(revision 250)
++++ src/GRHydro_ReconstructPoly.F90	(working copy)
+@@ -239,7 +239,7 @@
+             psidc, psidcplus, psidcminus, trivial_rp, hydro_excision_mask)
+     endif
+ 
+-    !$OMP PARALLEL DO PRIVATE(i, j)
++    !$OMP PARALLEL DO PRIVATE(i, j, k)
+     do k = 1, nz
+       do j = 1, ny
+         do i = 1, nx
+@@ -270,7 +270,7 @@
+     if (flux_direction == 1) then
+       if(evolve_mhd.ne.0) then
+         if(clean_divergence.ne.0) then
+-          !$OMP PARALLEL DO PRIVATE(i, j)
++          !$OMP PARALLEL DO PRIVATE(i, j, k)
+           do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+               call SimplePPM_1dM(GRHydro_eos_handle,1,nx,CCTK_DELTA_SPACE(1),&
+@@ -298,7 +298,7 @@
+           end do
+           !$OMP END PARALLEL DO
+         else  !clean_divergence
+-          !$OMP PARALLEL DO PRIVATE(i, j)
++          !$OMP PARALLEL DO PRIVATE(i, j, k)
+           do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+               call SimplePPM_1dM(GRHydro_eos_handle,1,nx,CCTK_DELTA_SPACE(1),&
+@@ -327,7 +327,7 @@
+           !$OMP END PARALLEL DO
+         endif  !clean_divergence
+       else  !evolve_mhd
+-        !$OMP PARALLEL DO PRIVATE(i, j)
++        !$OMP PARALLEL DO PRIVATE(i, j, k)
+         do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+           do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+             call SimplePPM_1d(GRHydro_eos_handle,1,nx,CCTK_DELTA_SPACE(1),&
+@@ -354,7 +354,7 @@
+         !$OMP END PARALLEL DO
+       endif  !evolve_mhd
+       if(evolve_tracer.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+                call SimplePPM_tracer_1d(nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
+@@ -366,7 +366,7 @@
+          !$OMP END PARALLEL DO
+       end if
+       if(evolve_Y_e.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, ny - GRHydro_stencil + 1
+                call SimplePPM_tracer_1d(nx,CCTK_DELTA_SPACE(1),rho(:,j,k), &
+@@ -381,7 +381,7 @@
+     else if (flux_direction == 2) then
+       if(evolve_mhd.ne.0) then
+         if(clean_divergence.ne.0) then
+-          !$OMP PARALLEL DO PRIVATE(i, j)
++          !$OMP PARALLEL DO PRIVATE(i, j, k)
+           do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+               call SimplePPM_1dM(GRHydro_eos_handle,1,ny,CCTK_DELTA_SPACE(2),&
+@@ -409,7 +409,7 @@
+           end do
+           !$OMP END PARALLEL DO
+         else  !clean_divergence
+-          !$OMP PARALLEL DO PRIVATE(i, j)
++          !$OMP PARALLEL DO PRIVATE(i, j, k)
+           do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+               call SimplePPM_1dM(GRHydro_eos_handle,1,ny,CCTK_DELTA_SPACE(2),&
+@@ -438,7 +438,7 @@
+           !$OMP END PARALLEL DO
+         endif  !clean_divergence
+       else  !evolve_mhd
+-        !$OMP PARALLEL DO PRIVATE(i, j)
++        !$OMP PARALLEL DO PRIVATE(i, j, k)
+         do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+           do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+             call SimplePPM_1d(GRHydro_eos_handle,1,ny,CCTK_DELTA_SPACE(2),&
+@@ -465,7 +465,7 @@
+         !$OMP END PARALLEL DO
+       endif  !evolve_mhd
+       if(evolve_tracer.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+               call SimplePPM_tracer_1d(ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
+@@ -477,7 +477,7 @@
+          !$OMP END PARALLEL DO
+       end if
+       if(evolve_Y_e.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, nz - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+                call SimplePPM_tracer_1d(ny,CCTK_DELTA_SPACE(2),rho(j,:,k), &
+@@ -492,7 +492,7 @@
+     else if (flux_direction == 3) then
+       if(evolve_mhd.ne.0) then
+         if(clean_divergence.ne.0) then
+-          !$OMP PARALLEL DO PRIVATE(i, j)
++          !$OMP PARALLEL DO PRIVATE(i, j, k)
+           do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+               call SimplePPM_1dM(GRHydro_eos_handle,1,nz,CCTK_DELTA_SPACE(3),&
+@@ -520,7 +520,7 @@
+           end do
+           !$OMP END PARALLEL DO
+         else  !clean_divergence
+-          !$OMP PARALLEL DO PRIVATE(i, j)
++          !$OMP PARALLEL DO PRIVATE(i, j, k)
+           do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+               call SimplePPM_1dM(GRHydro_eos_handle,1,nz,CCTK_DELTA_SPACE(3),&
+@@ -549,7 +549,7 @@
+           !$OMP END PARALLEL DO
+         endif  !clean_divergence
+       else  !evolve_mhd
+-        !$OMP PARALLEL DO PRIVATE(i, j)
++        !$OMP PARALLEL DO PRIVATE(i, j, k)
+         do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+           do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+             call SimplePPM_1d(GRHydro_eos_handle,1,nz,CCTK_DELTA_SPACE(3),&
+@@ -576,7 +576,7 @@
+         !$OMP END PARALLEL DO
+       endif  !evolve_mhd
+       if(evolve_tracer.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+ 
+@@ -589,7 +589,7 @@
+          !$OMP END PARALLEL DO
+       end if
+       if(evolve_Y_e.ne.0) then
+-         !$OMP PARALLEL DO PRIVATE(j)
++         !$OMP PARALLEL DO PRIVATE(j, k)
+          do k = GRHydro_stencil, ny - GRHydro_stencil + 1
+             do j = GRHydro_stencil, nx - GRHydro_stencil + 1
+                call SimplePPM_tracer_1d(nz,CCTK_DELTA_SPACE(3),rho(j,k,:), &
+@@ -622,7 +622,7 @@
+      endif
+ 
+     if (flux_direction == 1) then
+-      !$OMP PARALLEL DO PRIVATE(i, j)
++      !$OMP PARALLEL DO PRIVATE(i, j, k)
+       do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil + 1
+         do j = GRHydro_stencil, cctk_lsh(2) - GRHydro_stencil + 1
+           if (CCTK_EQUALS(recon_vars,"primitive")) then
+@@ -696,7 +696,7 @@
+        end do
+         !$OMP END PARALLEL DO
+      else if (flux_direction == 2) then
+-        !$OMP PARALLEL DO PRIVATE(i, j)
++        !$OMP PARALLEL DO PRIVATE(i, j, k)
+         do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil + 1
+            do j = GRHydro_stencil, cctk_lsh(1) - GRHydro_stencil + 1
+               if (CCTK_EQUALS(recon_vars,"primitive")) then
+@@ -767,7 +767,7 @@
+         end do
+       !$OMP END PARALLEL DO
+     else if (flux_direction == 3) then
+-      !$OMP PARALLEL DO PRIVATE(i, j)
++      !$OMP PARALLEL DO PRIVATE(i, j, k)
+       do k = GRHydro_stencil, cctk_lsh(2) - GRHydro_stencil + 1
+         do j = GRHydro_stencil, cctk_lsh(1) - GRHydro_stencil + 1
+           if (CCTK_EQUALS(recon_vars,"primitive")) then

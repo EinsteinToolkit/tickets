@@ -1,0 +1,37 @@
+From 1cfe476396f4ed77a42599b6893db45add1c2f2b Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Wed, 6 Mar 2013 22:44:04 -0800
+Subject: [PATCH 06/12] GRHydro_Init_Data: damp hydro quantities to atmosphere
+ inside of rKS < 1 M
+
+---
+ src/GRHydro_BondiM.c |   13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/src/GRHydro_BondiM.c b/src/GRHydro_BondiM.c
+index 2fd4184..c59f612 100644
+--- a/src/GRHydro_BondiM.c
++++ b/src/GRHydro_BondiM.c
+@@ -1238,6 +1238,19 @@ static void GRHydro_BondiM_Internal(CCTK_ARGUMENTS, CCTK_REAL range_min, CCTK_RE
+       Bvecz(i) = bondi_bmag*SQR(M)*z[i]/sqrt(det)/CUBE(r[i]);
+     }
+ 
++    // damp everything down to atmosphere inside of 1M
++    if(rspher < M) {
++      const CCTK_REAL smooth = 0.5*(1+tanh(tan(M_PI*(rspher/M-0.5))));
++      rho[i] *= smooth;  
++      velx(i) *= smooth;
++      vely(i) *= smooth;
++      velz(i) *= smooth;
++      eps[i] *= smooth;
++      Bvecx(i) *= smooth;
++      Bvecy(i) *= smooth;
++      Bvecz(i) *= smooth;
++    }
++
+     Prim2ConGenM(*GRHydro_eos_handle,gxx[i],gxy[i],
+                  gxz[i],gyy[i],gyz[i],gzz[i],
+                  det, &dens[i],&sx(i),&sy(i),&sz(i),
+-- 
+1.7.10.4
+

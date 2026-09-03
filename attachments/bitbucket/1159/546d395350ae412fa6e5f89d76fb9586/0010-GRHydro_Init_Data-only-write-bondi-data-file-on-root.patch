@@ -1,0 +1,64 @@
+From 8e8c1b1c4bd2e66cccfa562dddd785d73fbd357f Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Mon, 15 Oct 2012 22:47:35 -0700
+Subject: [PATCH 10/13] GRHydro_Init_Data: only write bondi data file on root
+ process
+
+---
+ src/GRHydro_BondiM_new.F90 |   14 ++++++++------
+ src/GRHydro_Bondi_new.F90  |   14 ++++++++------
+ 2 files changed, 16 insertions(+), 12 deletions(-)
+
+diff --git a/src/GRHydro_BondiM_new.F90 b/src/GRHydro_BondiM_new.F90
+index 346bc19..d03a1c2 100644
+--- a/src/GRHydro_BondiM_new.F90
++++ b/src/GRHydro_BondiM_new.F90
+@@ -149,12 +149,14 @@ subroutine GRHydro_BondiM_Iso(CCTK_ARGUMENTS)
+      v_bondi(i)   = vtmp
+   enddo
+ 
+-  open (47,file="bondi.asc",form="formatted")
+-  do i=1,N_points   
+-    write(47,'(i5,4f22.14)')i,r_bondi(i),rho_bondi(i),&
+-                             u_bondi(i),v_bondi(i)
+-  end do
+-  close(47)
++  if (CCTK_MyProc(cctkGH) == 0) then 
++    open (47,file="bondi.asc",form="formatted")
++    do i=1,N_points   
++      write(47,'(i5,4f22.14)')i,r_bondi(i),rho_bondi(i),&
++                               u_bondi(i),v_bondi(i)
++    end do
++    close(47)
++  end if
+ 
+ !!$  write(debug_message,'(a,4f22.14)') "i=1:",r_bondi(1),rho_bondi(1),&
+ !!$                                            u_bondi(1),v_bondi(1)
+diff --git a/src/GRHydro_Bondi_new.F90 b/src/GRHydro_Bondi_new.F90
+index b31ba7c..1fbdca6 100644
+--- a/src/GRHydro_Bondi_new.F90
++++ b/src/GRHydro_Bondi_new.F90
+@@ -142,12 +142,14 @@ subroutine GRHydro_Bondi_Iso(CCTK_ARGUMENTS)
+      v_bondi(i)   = vtmp
+   enddo
+ 
+-  open (47,file="bondi.asc",form="formatted")
+-  do i=1,N_points   
+-    write(47,'(i5,4f22.14)')i,r_bondi(i),rho_bondi(i),&
+-                             u_bondi(i),v_bondi(i)
+-  end do
+-  close(47)
++  if(CCTK_MyProc(cctkGH) .eq. 0) then
++     open (47,file="bondi.asc",form="formatted")
++     do i=1,N_points   
++       write(47,'(i5,4f22.14)')i,r_bondi(i),rho_bondi(i),&
++                                u_bondi(i),v_bondi(i)
++     end do
++     close(47)
++  end if
+ 
+ !!$  write(debug_message,'(a,4f22.14)') "i=1:",r_bondi(1),rho_bondi(1),&
+ !!$                                            u_bondi(1),v_bondi(1)
+-- 
+1.7.10.4
+

@@ -1,0 +1,86 @@
+From 1f2566149132d594fdad925a397c26cd2b547d79 Mon Sep 17 00:00:00 2001
+From: Christian Ott <cott@tapir.caltech.edu>
+Date: Sun, 10 Nov 2013 07:44:51 -0800
+Subject: [PATCH 05/18] * improved checking of keytemp
+
+---
+ src/EOS_Omni_MultiVarCalls.F90  |  4 ++--
+ src/EOS_Omni_SingleVarCalls.F90 | 16 ++++++++++++----
+ 2 files changed, 14 insertions(+), 6 deletions(-)
+
+diff --git a/src/EOS_Omni_MultiVarCalls.F90 b/src/EOS_Omni_MultiVarCalls.F90
+index a0042b7..84cfb71 100644
+--- a/src/EOS_Omni_MultiVarCalls.F90
++++ b/src/EOS_Omni_MultiVarCalls.F90
+@@ -223,8 +223,8 @@ subroutine EOS_Omni_EOS_dpderho_dpdrhoe(eoskey,keytemp,rf_precision,npoints,&
+            dpderho(i) = (hybrid_gamma_th - 1.0d0) * rho(i)
+         enddo
+     case (4)
+-       if(keytemp.eq.1) then
+-          call CCTK_WARN(0,"keytemp=1 not supported for dpdrhoe, dpderho")
++       if(keytemp.ne.0) then
++          call CCTK_WARN(0,"Keytemp other than 0 not supported for dpdrhoe, dpderho")
+        else
+           call nuc_eos_m_kt0_dpdrhoe_dpderho(npoints,&
+                rho,temp,ye,eps,dpdrhoe,dpderho,rf_precision,&
+diff --git a/src/EOS_Omni_SingleVarCalls.F90 b/src/EOS_Omni_SingleVarCalls.F90
+index 76be656..e812fc9 100644
+--- a/src/EOS_Omni_SingleVarCalls.F90
++++ b/src/EOS_Omni_SingleVarCalls.F90
+@@ -98,9 +98,11 @@ subroutine EOS_Omni_EOS_Press(eoskey,keytemp,rf_precision,npoints,&
+         if(keytemp.eq.1) then
+            call nuc_eos_m_kt1_press_eps(npoints,rho,temp,ye,&
+                 eps,press,keyerr,anyerr)
+-        else
++        else if(keytemp.eq.0) then
+            call nuc_eos_m_kt0_press(npoints,rho,temp,ye,eps,press,&
+                 rf_precision,keyerr,anyerr)
++        else
++           call CCTK_WARN(0,"This keytemp is not suppported!")
+         endif
+      case (5)
+         ! cold tabular EOS with gamma law
+@@ -523,10 +525,12 @@ subroutine EOS_Omni_EOS_DPressByDRho(eoskey,keytemp,rf_precision,npoints,&
+            call nuc_eos_m_kt1_short(npoints,rho,temp,ye,&
+                 eps,xprs,xent,xcs2,xdedt,xdpderho,dpdrhoe,xmunu,&
+                 keyerr,anyerr)
+-        else
++        else if(keytemp.eq.0) then
+            call nuc_eos_m_kt0_short(npoints,rho,temp,ye,&
+                 eps,xent,xcs2,xdedt,xdpderho,dpdrhoe,xmunu,rf_precision,&
+                 keyerr,anyerr)
++        else
++           call CCTK_WARN(0,"This keytemp is not supported!")
+         endif
+         
+      case (5)
+@@ -649,10 +653,12 @@ subroutine EOS_Omni_EOS_DPressByDEps(eoskey,keytemp,rf_precision,npoints,&
+            call nuc_eos_m_kt1_short(npoints,rho,temp,ye,&
+                 eps,xprs,xent,xcs2,xdedt,dpdepsrho,xdpdrhoe,xmunu,&
+                 keyerr,anyerr)
+-        else
++        else if(keytemp.eq.0) then
+            call nuc_eos_m_kt0_short(npoints,rho,temp,ye,&
+                 eps,xent,xcs2,xdedt,dpdepsrho,xdpdrhoe,xmunu,rf_precision,&
+                 keyerr,anyerr)
++        else 
++           call CCTK_WARN(0,"This keytemp is not supported!")
+         endif
+      case (5)
+         ! with the cold eos we have to assume P = P(rho), so
+@@ -788,9 +794,11 @@ subroutine EOS_Omni_EOS_cs2(eoskey,keytemp,rf_precision,npoints,&
+         if(keytemp.eq.1) then
+            call nuc_eos_m_kt1_press_eps_cs2(npoints,rho,temp,ye,&
+                 eps,xprs,cs2,keyerr,anyerr)
+-        else
++        else if(keytemp.eq.0) then
+            call nuc_eos_m_kt0_press_cs2(npoints,rho,temp,ye,&
+                 eps,xprs,cs2,rf_precision,keyerr,anyerr)
++        else
++           call CCTK_WARN(0,"This keytemp is not supported!")
+         endif
+      case (5)
+         ! with the cold eos we have to assume P = P(rho), so
+-- 
+1.8.5.3
+

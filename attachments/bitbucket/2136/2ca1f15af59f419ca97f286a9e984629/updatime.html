@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<script src="https://code.jquery.com/jquery.min.js"></script>
+<style>
+.label-success {
+    fill: #00ff00;
+}
+.label-danger {
+    fill: #ff0000;
+}
+</style>
+<script lang="text/javascript">
+$(document).ready(function() {
+	var config = {
+		uptimerobot: {
+			api_keys: [
+				"m779922920-a9511a746fa49054968a15f3",
+			],
+			logs: 1
+		},
+	};
+
+	var status_text = {
+		'operational': 'operational',
+		'investigating': 'investigating',
+		'major outage': 'outage',
+		'degraded performance': 'degraded',
+	};
+
+	var monitors = config.uptimerobot.api_keys;
+	for( var i in monitors ){
+		var api_key = monitors[i];
+		$.post('https://api.uptimerobot.com/v2/getMonitors', {
+			"api_key": api_key,
+			"format": "json",
+			"logs": config.uptimerobot.logs,
+		}, function(response) {
+			status( response );
+		}, 'json');
+	}
+
+	function status(data) {
+		data.monitors = data.monitors.map(function(check) {
+			check.class = check.status === 2 ? 'label-success' : 'label-danger';
+			return check;
+		});
+
+		data.monitors.forEach(function(item) {
+			var name = item.friendly_name;
+			var clas = item.class;
+                        var status = item.status;
+			$('#services').append(name + ": <svg width='2em' height='2em'> <circle cx='1em' cy='1em' r='1em' class='"+clas+"'/> </svg>");
+		});
+};
+});
+</script>
+</head>
+<body>
+<div class="list-group" id="services"></div>
+</body>
+</html>

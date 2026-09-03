@@ -1,0 +1,43 @@
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 77)
++++ param.ccl	(working copy)
+@@ -30,7 +30,7 @@
+ 
+ 
+ 
+-BOOLEAN poison_boundaries "Fill the symmetry boundary with a poison value before the symmetry is applied, and check afterwards whether it has been overwritten" STEERABLE=always
++BOOLEAN poison_boundaries "Fill the symmetry boundary with a poison value before the symmetry is applied" STEERABLE=always
+ {
+ } "no"
+ 
+@@ -38,3 +38,7 @@
+ {
+   0:255 :: "Must fit into a byte.  Use 0 for zero, 255 for nan, and e.g. 113 for a large value."
+ } 254
++
++BOOLEAN check_boundaries "Check the boundaries for poison" STEERABLE=always
++{
++} "no"
+Index: src/rotatingsymmetry180.c
+===================================================================
+--- src/rotatingsymmetry180.c	(revision 77)
++++ src/rotatingsymmetry180.c	(working copy)
+@@ -544,7 +544,7 @@
+       CCTK_WARN (CCTK_WARN_ABORT, "internal error");
+     }
+     
+-    if (poison_boundaries) {
++    if (check_boundaries) {
+       /* check destination grid points for poison */
+       if (cctkGH->cctk_bbox[2*dir]) {
+         
+@@ -616,7 +616,7 @@
+           assert (0);
+         } /* switch grouptype */
+       } /* if bbox */
+-    } /* if poison_boundaries */
++    } /* if check_boundaries */
+     
+     /* take parity into account */
+     if (cctkGH->cctk_bbox[2*dir]) {

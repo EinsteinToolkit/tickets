@@ -1,0 +1,330 @@
+diff --git a/etc/defs.ini b/etc/defs.ini
+index 7728774..3fe2808 100644
+--- a/etc/defs.ini
++++ b/etc/defs.ini
+@@ -3,38 +3,4 @@
+ # any <<EOT...EOT entries are converted internally to lists, since all
+ # these options do actually represent lists of files
+ 
+-# Official Cactus, SimFactory, and GetComponents entries
+-sync-sources   = <<EOT
+-CONTRIBUTORS
+-COPYRIGHT
+-Makefile
+-arrangements
+-bin
+-lib
+-manifest
+-repos
+-simfactory
+-src
+-utils
+-EOT
+-
+-# Official Cactus, SimFactory, and GetComponents entries
+-sync-parfiles  = <<EOT
+-examples
+-par
+-EOT
+-
+-sync-excludes  = <<EOT
+-_darcs
+-CVS
+-doxygen
+-.#*
+-.DS_Store
+-.git
+-.hg
+-.svn
+-*~
+-EOT
+-# *.pyc
+-
+ default-configuration-name = sim
+diff --git a/etc/defs.local.ini.complex b/etc/defs.local.ini.complex
+index 201082d..fd27719 100644
+--- a/etc/defs.local.ini.complex
++++ b/etc/defs.local.ini.complex
+@@ -1,20 +1,5 @@
+ # -*-conf-*-
+ 
+-# redefining sync-sources, sync-parfiles, and sync-excludes in this
+-# file does not overwrite them, but rather appends these additional
+-# files to the already defined entries provided by defs.ini
+-
+-sync-sources   = <<EOT
+-.gitignore
+-cactus.config
+-EOT
+-
+-#sync-parfiles  = <<EOT
+-#EOT
+-
+-#sync-excludes  = <<EOT
+-#EOT
+-
+ # Defaults for all machines
+ [default]
+ user            = YOUR_LOGIN 
+diff --git a/etc/filter.cactus.rules b/etc/filter.cactus.rules
+new file mode 100644
+index 0000000..c1eae26
+--- /dev/null
++++ b/etc/filter.cactus.rules
+@@ -0,0 +1,20 @@
++# This file contains a list of top level Cactus directories to 
++# synchronize if no specific paths are given.
++# Any other rsync rules should not be put here. They should be
++# put in the file etc/filter.rules instead.
++
++# Official Cactus, SimFactory, and GetComponents entries
+++ /CONTRIBUTORS
+++ /COPYRIGHT
+++ /Makefile
+++ /arrangements
+++ /bin
+++ /examples
+++ /lib
+++ /manifest
+++ /par
+++ /repos
+++ /simfactory
+++ /src
+++ /utils
++- /*
+diff --git a/etc/filter.rules b/etc/filter.rules
+new file mode 100644
+index 0000000..beecdb0
+--- /dev/null
++++ b/etc/filter.rules
+@@ -0,0 +1,17 @@
++# This file contains the list of files to include/exclude.  See "man
++# rsync" for details.  The first matching pattern is used, whether it
++# is an include or an exclude.  If no pattern matches, the file is
++# included.
++
++# User specified filters
++: .rsync.rules
++
++# Files to exclude
++-C
++-p _darcs
++-p .hg
++- doxygen
++- .DS_Store
++
++# Compiled simfactory python files
++-p *.pyc
+diff --git a/etc/options/sim-sync.ini b/etc/options/sim-sync.ini
+index b06451b..e69de29 100644
+--- a/etc/options/sim-sync.ini
++++ b/etc/options/sim-sync.ini
+@@ -1,17 +0,0 @@
+-[sync-sourcetree]
+-long = --sync-sourcetree
+-#short
+-desc = Synchronise the source tree
+-negatable = yes
+-arg = no
+-default = True
+-#argformat
+-
+-[sync-parfiles]
+-long = --sync-parfiles
+-#short 
+-desc = Synchronise the parameter files
+-negatable = yes
+-arg = no
+-default = True
+-#argformat
+diff --git a/lib/sim-sync.py b/lib/sim-sync.py
+index 0145d05..3f2eff1 100755
+--- a/lib/sim-sync.py
++++ b/lib/sim-sync.py
+@@ -7,7 +7,6 @@
+ 
+ import sys, os
+ 
+-optionGroups = ['sim-sync']
+ Purpose = "sync cactus sourcetree to a remote machine"
+ 
+ ############################################
+@@ -49,7 +48,7 @@ def GetSubbedInfo(machineEntry, keys):
+     
+     return data
+ 
+-def CompileCommand(machineName, rsyncInfo):
++def CompileCommand(machineName, rsyncInfo, paths):
+   
+     
+     global localMachineName
+@@ -59,10 +58,6 @@ def CompileCommand(machineName, rsyncInfo):
+     
+     DefineDatabase = simsubs.DefineDatabase()
+ 
+-    # mode of operation
+-    sync_parfiles = simenv.OptionsManager.GetOption('sync-parfiles')
+-    sync_sourcetree = simenv.OptionsManager.GetOption('sync-sourcetree')
+-
+     (rsynccmd, rsyncopts) = rsyncInfo
+     
+     if machineName == localMachineName:
+@@ -78,11 +73,8 @@ def CompileCommand(machineName, rsyncInfo):
+         machineEntry = simenv.ConfigurationDatabase.GetMachine(ioMachine)
+         machineName = ioMachine
+     
+-    mreq_keys = ['user', 'sourcebasedir', 'hostname', 'rsynccmd', 'rsyncopts', 'sshcmd', 'sshopts']
+-
+-    sourcebasedir = machineEntry.sourcebasedir
+-    
+     # make sure we have all the info we need.
++    mreq_keys = ['user', 'sourcebasedir', 'hostname', 'rsynccmd', 'rsyncopts', 'sshcmd', 'sshopts']
+     simlib.VerifyKeys(machineEntry, mreq_keys)
+ 
+     DefineDatabase.Set('USER', machineEntry.user)
+@@ -116,41 +108,29 @@ def CompileCommand(machineName, rsyncInfo):
+     sshcmd = simlib.GetSSHCommand(trampoline, sshcmd)
+     sshcmd = DefineDatabase.SubAll(sshcmd)
+     
++    # If there is more than one explicit path given only accept top-level directories
+     rsyncfiles = []
++    if len(paths) == 0:
++      rsyncfiles = ["."]
++    elif len(paths) == 1:
++      rsyncfiles = paths
++      [head, tail] = os.path.split(rsyncfiles[0])
++      local_suffix = os.path.join(local_suffix, head)
++    else:
++      for file in paths:
++        [head, tail] = os.path.split(file)
++        if head != "":
++          fatal("Only top level paths may be specified when syncing multiple paths but '%s' given." % file)
++        elif not os.path.exists(tail):
++          fatal("Specified sync path '%s' can not be read." % tail)
++        else:
++          rsyncfiles.append(tail)
+ 
+     rsyncoptions = ['--archive', '--hard-links', '--sparse', '--verbose', '--progress', '--partial',
+-                    '--stats', '--compress', '--delete', '--delete-excluded']
+-        
+-    # sync source tree
+-    if sync_sourcetree:
+-        sources = simenv.ConfigurationDatabase.GetConfigOption('sync-sources')
+-        #dprint("sync-sources is: %s " % sources)
+-        if type(sources) == list:
+-            for r in sources:
+-                rp = simlib.BuildPath(local_sourcedir, r)
+-                #display("checking if %s exists" % rp)
+-                if os.path.exists(rp):
+-                    rsyncfiles.append(r)
+-    
+-    # sync par files
+-    if sync_parfiles:
+-        sources = simenv.ConfigurationDatabase.GetConfigOption('sync-parfiles')
+-        #dprint("sync-parfiles is: %s " % sources)
+-        if type(sources) == list:
+-            for r in sources:
+-                rp = simlib.BuildPath(local_sourcedir, r)
+-                #display("checking if %s exists" % rp)
+-                if os.path.exists(rp):
+-                    rsyncfiles.append(r)
+-
+-    # build excludes
+-    sources = simenv.ConfigurationDatabase.GetConfigOption('sync-excludes')
+-    if type(sources) == list:
+-        for r in sources:
+-            r = r.strip()
+-
+-            if len(r) > 0:
+-                rsyncoptions.append("--exclude '%s'" % r)
++                    '--delete', '--stats', '--compress', '--filter \'merge simfactory/etc/filter.rules\'']
++
++    if rsyncfiles == ["."]:
++        rsyncoptions.append('--filter \'merge simfactory/etc/filter.cactus.rules\'')
+ 
+     fullpath = "%s@%s:%s%s%s" % (machineEntry.user, machineEntry.hostname, sourcebasedir, os.sep, local_suffix)
+     
+@@ -180,36 +160,26 @@ def main():
+     global local_sourcebasedir
+     global localMachineName
+     global localMachineEntry
+-    
+-    machineList = simenv.OptionsManager.args
+-    
+-    if len(machineList) == 0:
+-        fatal("Error: no machines specified")
+ 
+-    if simenv.OptionsManager.args[0] == 'sync':
++    if len(simenv.OptionsManager.args) > 0 and simenv.OptionsManager.args[0] == 'sync':
+         simenv.OptionsManager.args.pop(0)
+-        
+-    info("using machines: %s\n" % machineList)
++
++    if len(simenv.OptionsManager.args) == 0:
++        fatal("Error: no machine specified")
++
++    machine = simenv.OptionsManager.args.pop(0)
++
++    paths = simenv.OptionsManager.args
++
++    info("using machine: %s\n" % machine)
+     info("current working directory: %s\n" % os.getcwd())
+-    
++    info("synchronising paths: %s\n" % paths)
++
+     if simenv.CACTUS_PATH == None:
+         fatal("cannot proceed with an unknown CACTUS_PATH")
+         
+     cactusDir = simenv.CACTUS_PATH
+     display("Cactus Directory: %s" % cactusDir)
+-
+-    # mode of operation
+-    sync_parfiles = simenv.OptionsManager.GetOption('sync-parfiles')
+-    sync_sourcetree = simenv.OptionsManager.GetOption('sync-sourcetree')
+-    
+-    if not(sync_parfiles or sync_sourcetree):
+-        fatal("neither sync-parfiles or sync-sourcetree was specified. should never happen")
+-    
+-    info("Enabled Options:")
+-    info("sync-parfiles: %s" % sync_parfiles)
+-    info("sync-sourcetree: %s" % sync_sourcetree)
+-    
+-    print
+     
+     # get our local_sourcebasedir
+     
+@@ -225,15 +195,10 @@ def main():
+     # returns list (rsynccmd, rsyncopts)
+     rsyncInfo = GetRsyncInfo(localMachineEntry)
+     
+-    errors = 0
+-    for m in machineList:
+-        cmd = CompileCommand(m, rsyncInfo)
+-        ret = simlib.ExecuteCommand(cmd)
+-        if ret != 0:
+-            errors = errors + 1
+-            display("\nError while syncing to %s." % m)
++    cmd = CompileCommand(machine, rsyncInfo, paths)
++    ret = simlib.ExecuteCommand(cmd)
+ 
+-        if errors == 0:
+-            display("\nSync complete.")
+-        else:
+-            display("\nErrors occurred during synchronisation.")
++    if ret == 0:
++        display("\nSync complete.")
++    else:
++        display("\nErrors occurred during synchronisation.")
+diff --git a/lib/sim.py b/lib/sim.py
+index e672b7f..ec10a29 100755
+--- a/lib/sim.py
++++ b/lib/sim.py
+@@ -17,7 +17,7 @@ Usage = "usage: sim [args] command"
+ 
+ # import all option groups.
+ 
+-optionGroups = ['sim-sync', 'sim-build', 'sim-manage', 'sim-info', 'sim-util']
++optionGroups = ['sim-build', 'sim-manage', 'sim-info', 'sim-util']
+ 
+ 
+ ############################################

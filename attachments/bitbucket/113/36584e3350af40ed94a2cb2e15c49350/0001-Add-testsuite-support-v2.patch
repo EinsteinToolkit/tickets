@@ -1,0 +1,340 @@
+From e2ec81d3296b2ef0bc4beac9b5b44804272f8076 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Sun, 3 Jul 2011 16:27:31 +0200
+Subject: [PATCH] Add testsuite support
+
+---
+ bin/RunTestSuite           |   16 +++++
+ etc/options/sim-manage.ini |   15 +++++
+ lib/sim-manage.py          |   15 +++--
+ lib/simrestart.py          |  135 ++++++++++++++++++++++++++++++++++---------
+ 4 files changed, 147 insertions(+), 34 deletions(-)
+ create mode 100644 bin/RunTestSuite
+
+diff --git a/bin/RunTestSuite b/bin/RunTestSuite
+new file mode 100644
+index 0000000..7b6ea0c
+--- /dev/null
++++ b/bin/RunTestSuite
+@@ -0,0 +1,16 @@
++#!/bin/bash
++
++# Run the test suite.  This script is called from SimRestart.run()
++# with the run script as the only argument.
++
++command="$1"
++
++# This is a hack because the run scripts assume they are in the
++# restart directory, but tests are run from individual directories
++# under TEST
++export CCTK_TESTSUITE_RUN_COMMAND="if [ ! -r output-0000-active ]; then ln -s . output-0000-active; fi; mkdir -p SIMFACTORY && TESTSUITE_PARFILE=\$parfile $command"
++
++# This is the number of MPI processes to run on
++export CCTK_TESTSUITE_RUN_PROCESSORS=@NUM_PROCS@
++
++make @CONFIGURATION@-testsuite PROMPT=no
+diff --git a/etc/options/sim-manage.ini b/etc/options/sim-manage.ini
+index 4afe0e4..a57e66a 100644
+--- a/etc/options/sim-manage.ini
++++ b/etc/options/sim-manage.ini
+@@ -53,6 +53,21 @@ argformat = <totalview/ddt>
+ argtype = string
+ default = totalview
+ 
++[testsuite]
++long = --testsuite
++desc = Run Cactus testsuite
++negatable = yes
++arg = no
++
++[select-tests]
++long = --select-tests
++desc = Select which tests to run
++negatable = no
++arg = yes
++argtype = string
++default = "all"
++argformat = "all|<test>.par|<arrangement>|<arrangement>/<thorn>"
++
+ [restart-id]
+ long = --restart-id
+ #short
+diff --git a/lib/sim-manage.py b/lib/sim-manage.py
+index bcd46b6..cf37d12 100755
+--- a/lib/sim-manage.py
++++ b/lib/sim-manage.py
+@@ -101,13 +101,18 @@ def command_create():
+         simulationName = simenv.OptionsManager.args.pop(0)
+         display("Simulation name: %s" % simulationName)
+ 
+-    parfile = simlib.GetParFile()
++    if not simenv.OptionsManager.HasOption('testsuite'):
++        parfile = simlib.GetParFile()
+     
+-    if parfile == None:
+-        fatal("no parameter file specified")
+-    
+-    display("Parameter file: %s" % parfile)
++        if parfile == None:
++            fatal("no parameter file specified")
+     
++        display("Parameter file: %s" % parfile)
++    else:
++        parfile = "" # Properties system writes 'None' as an empty
++                     # string to file, so we have to use something
++                     # else
++
+     restart = simrestart.SimRestart()
+     restart.create(simulationName, parfile)
+     restart.done()
+diff --git a/lib/simrestart.py b/lib/simrestart.py
+index 4b6bb46..2c37568 100644
+--- a/lib/simrestart.py
++++ b/lib/simrestart.py
+@@ -254,12 +254,15 @@ class SimRestart:
+         ret = self.load(simulationName)
+         
+         if ret < 0:
+-            parfile = simlib.GetParFile()
++            if not simenv.OptionsManager.HasOption('testsuite'):
++                parfile = simlib.GetParFile()
+ 
+-            if parfile == None:
+-                fatal("could not create simulation %s, no parameter file specified" % simulationName)
++                if parfile == None:
++                    fatal("could not create simulation %s, no parameter file specified" % simulationName)
+             
+-            display("Parameter file: %s" % parfile)
++                display("Parameter file: %s" % parfile)
++            else:
++                parfile = ""
+ 
+             self.create(simulationName, parfile)
+             self.load(simulationName)
+@@ -473,6 +476,37 @@ class SimRestart:
+                     pass
+         
+         DefineDatabase.Set("SCRATCHDIR", scratchdir)
++
++    def copyTestsuiteData(self):
++        """Copy testsuite data into restart directory"""
++        if self.Properties.testsuite == "True":
++            display("Copying testsuite data")
++            testsuitedir = self.RestartDir
++            testexe=os.path.join(testsuitedir,"exe")
++            os.mkdir(testexe)
++            os.link(self.Properties.executable, os.path.join(testexe,simlib.BaseName(self.Properties.executable)))
++
++            test = self.Properties.select_tests
++            if test == "all":
++                include = "--include='/arrangements/*/*/test/**'"
++            elif test.endswith(".par"):
++                include = "--include='/arrangements/*/*/test/%s' --include='/arrangements/*/*/test/%s' --include='/arrangements/*/*/test/%s/**'" % (test,test.rstrip(".par"),test.rstrip(".par"))
++            elif test.count("/") > 1:
++                fatal("Test specification '%s' should be no, all, <test>.par, <arrangement> or <arrangement>/<thorn>")
++            elif test.count("/") == 0:
++                # Arrangement
++                include = "--include='/arrangements/%s/*/test/**'" % (test)
++                if not os.path.exists(os.path.join(self.Properties.sourcedir,"arrangements/%s"%test)):
++                    fatal("Arrangement %s not found"%test)
++            else:
++                # Arrangement/Thorn
++                include = "--include='/arrangements/%s/test/**'" % (test)
++                if not os.path.exists(os.path.join(self.Properties.sourcedir,"arrangements/%s"%test)):
++                    fatal("Thorn %s not found"%test)
++            # Would like to have checks here that the argument names
++            # something which is actually present in the thorn list
++
++            os.system("rsync -avL --include='/arrangements' --include='/arrangements/*' --include='/arrangements/*/*' --include='/arrangements/*/*/test' --include='/arrangements/*/*/test/test.ccl'  --include=/Makefile --include=/lib --include='/lib/**' --include='/configs' --include='/configs/*' --include='/configs/*/ThornList' --include='/configs/*/config-data' --include='/configs/*/config-data/cctk_Extradefs.h' %s --exclude='*' %s/ %s/" %(include,self.Properties.sourcedir,testsuitedir))
+                
+     def submit(self, submitScript, chainedJobId=None, chainedRestartId=None):
+         """Low-level job submission function."""
+@@ -601,6 +635,7 @@ class SimRestart:
+         new_properties['SIMFACTORY'] = simenv.EXECUTABLE
+         new_properties['SUBMITSCRIPT'] = newsspath
+         new_properties['SCRIPTFILE'] = newsspath
++        new_properties['CONFIGURATION'] = self.Properties.configuration
+         
+         if chainedRestartId == None:
+             new_properties['FROM_RESTART_COMMAND'] = ""
+@@ -669,6 +704,8 @@ class SimRestart:
+         
+         self.makeScratchdir(DefineDatabase)
+         
++        self.copyTestsuiteData()
++
+         submitCommand = DefineDatabase.SubAll(machineEntry.submit)
+         
+         if chainedJobId != None:
+@@ -884,6 +921,8 @@ class SimRestart:
+         self.SimulationLog.Write(self.Properties.toString())
+         
+         self.makeActive()
++
++        self.copyTestsuiteData()
+         
+         self.run(debug)
+     
+@@ -926,6 +965,8 @@ class SimRestart:
+         
+         if self.Properties.HasProperty("from-restart-id"):
+             recover_id = self.Properties.GetProperty("from-restart-id")
++
++        testsuite = self.Properties.testsuite == "True"
+         
+         # TODO: this is about recovering, not about checkpointing.
+         # read the code below with this in mind.
+@@ -942,22 +983,24 @@ class SimRestart:
+ 
+         scratchdir = simlib.GetMachineOption('scratchdir')
+         
+-        parname = simlib.FileBaseName(self.Properties.parfile)
+-        my_workdir = simlib.BuildPath(self.RestartDir, parname)
+-        
+-        # TODO: don't look for the directory first, create it right away
+-        if not(os.path.exists(my_workdir)):
+-            try:
+-                os.mkdir(my_workdir)
+-            except OSError, e:
+-                fatal("could not make working directory path \"%s\", %s" % (my_workdir, e))
++        if self.Properties.parfile != "":
++            parname = simlib.FileBaseName(self.Properties.parfile)
++            my_workdir = simlib.BuildPath(self.RestartDir, parname)
++
++            # TODO: don't look for the directory first, create it right away
++            if not(os.path.exists(my_workdir)):
++                try:
++                    os.mkdir(my_workdir)
++                except OSError, e:
++                    fatal("could not make working directory path \"%s\", %s" % (my_workdir, e))
+         
+         os.environ['CACTUS_STARTTIME'] = str(int(time.time()))
+             
+         # do parfile substitution
+         parfile = self.Properties.parfile
+-        pf = simlib.BaseName(parfile)
+-        newparpath = simlib.BuildPath(self.RestartDir, pf)
++        if parfile != "":
++            pf = simlib.BaseName(parfile)
++            newparpath = simlib.BuildPath(self.RestartDir, pf)
+ 
+         new_properties = dict()
+         new_properties['SOURCEDIR'] = self.Properties.sourcedir
+@@ -965,11 +1008,16 @@ class SimRestart:
+         new_properties['SHORT_SIMULATION_NAME'] = self.Properties.pbsSimulationName
+         new_properties['SIMULATION_ID'] = self.Properties.simulationid
+         new_properties['RESTART_ID'] = self.RestartID
+-        new_properties['RUNDIR'] = self.RestartDir
+         new_properties['SCRIPTFILE'] = self.Properties.submitscript
+         new_properties['SUBMITSCRIPT'] = self.Properties.submitscript
++        new_properties['CONFIGURATION'] = self.Properties.configuration
+         new_properties['EXECUTABLE'] = self.Properties.executable
+-        new_properties['PARFILE'] = newparpath
++        if testsuite:
++            new_properties['PARFILE'] = "${TESTSUITE_PARFILE}"
++            new_properties['RUNDIR'] = "output-0000"
++        else:
++            new_properties['RUNDIR'] = self.RestartDir
++            new_properties['PARFILE'] = newparpath
+         new_properties['HOSTNAME'] = self.Properties.hostname
+         new_properties['USER'] = self.Properties.user
+         new_properties['NODES'] = self.Properties.nodes
+@@ -1015,8 +1063,9 @@ class SimRestart:
+         for key in new_properties.keys():
+             DefineDatabase.Set(key, new_properties[key])
+         
+-        contents = DefineDatabase.SubAll(simlib.GetFileContents(parfile))
+-        simlib.WriteContents(newparpath, contents)
++        if parfile != "":
++            contents = DefineDatabase.SubAll(simlib.GetFileContents(parfile))
++            simlib.WriteContents(newparpath, contents)
+ 
+         self.Properties.Save()
+ 
+@@ -1036,8 +1085,24 @@ class SimRestart:
+         preparedRunScript = simlib.BuildPath(self.InternalDir, 'RunScript')
+         simlib.WriteContents(preparedRunScript, contents)
+         os.chmod(preparedRunScript, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+-        
+-        cmd = preparedRunScript
++
++        # Process testsuite script and store it in restart
++        if testsuite:
++            testsuitefile = os.path.join(self.Properties.sourcedir,"simfactory/bin/RunTestSuite")
++            contents = simlib.GetFileContents(testsuitefile)
++            contents = DefineDatabase.SubAll(contents)
++            testsuitepath = simlib.BuildPath(self.RestartDir, simlib.BaseName(testsuitefile))
++            simlib.WriteContents(testsuitepath, contents)
++            os.chmod(testsuitepath, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
++
++            self.Properties.AddProperty('testsuitescript', testsuitepath)
++        else:
++            self.Properties.AddProperty('testsuitescript', "None")
++
++        if testsuite:
++            cmd = "%s %s" %(self.Properties.GetProperty("testsuitescript"), preparedRunScript)
++        else:
++            cmd = preparedRunScript
+         
+         # change to RestartDir and then run the simulation.
+         # TODO -- we're not supposed to do this apparently. 
+@@ -1067,7 +1132,7 @@ class SimRestart:
+         self.SimulationName = simulationName
+         self.Parfile = parfile
+         
+-        if not(simlib.FileExists(self.Parfile)):
++        if self.Parfile != "" and not(simlib.FileExists(self.Parfile)):
+             fatal("Specified parfile %s does not exist or is not readable" % self.Parfile)
+         
+         configuration = restartlib.GetConfiguration()
+@@ -1102,6 +1167,7 @@ class SimRestart:
+         DefineDatabase.Set("USER", user)
+         DefineDatabase.Set("EMAIL", email)
+         DefineDatabase.Set("MACHINE", simenv.LocalMachine)
++        DefineDatabase.Set("CONFIGURATION", configuration)
+         
+         localsourcebasedir = simlib.GetLocalSourceBaseDir()
+         
+@@ -1125,6 +1191,14 @@ class SimRestart:
+         self.Properties.AddProperty('configuration', configuration)
+         self.Properties.AddProperty('configid', config_id)
+         self.Properties.AddProperty('buildid', build_id)
++        self.Properties.AddProperty('testsuite', simenv.OptionsManager.HasOption('testsuite'))
++        if simenv.OptionsManager.HasOption('testsuite'):
++            test = simenv.OptionsManager.GetOption('select-tests')
++            if test == None:
++                test = "all"
++            self.Properties.AddProperty('select_tests', test)
++        else:
++            print "No testsuite option found"
+         
+         self.Properties.Save()
+         
+@@ -1178,14 +1252,17 @@ class SimRestart:
+             self.Properties.AddProperty('runscript', "None")
+             
+         # parfile
+-        par = simlib.BaseName(parfile)
+-        contents = simlib.GetFileContents(parfile)
+-        contents = DefineDatabase.SubAll(contents)
+-        parpath = simlib.BuildPath(pardir, par)
+-        simlib.WriteContents(parpath, contents)
+-        display("Parameter file: \"%s\"" % parpath)
++        if parfile != "":
++            par = simlib.BaseName(parfile)
++            contents = simlib.GetFileContents(parfile)
++            contents = DefineDatabase.SubAll(contents)
++            parpath = simlib.BuildPath(pardir, par)
++            simlib.WriteContents(parpath, contents)
++            display("Parameter file: \"%s\"" % parpath)
+         
+-        self.Properties.AddProperty('parfile', parpath)
++            self.Properties.AddProperty('parfile', parpath)
++        else:
++            self.Properties.AddProperty('parfile', "")
+         
+         self.Properties.Save()
+         
+-- 
+1.7.5.4
+

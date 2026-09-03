@@ -1,0 +1,127 @@
+From c5babe306d13f57a978da2944f1294a83f8b18de Mon Sep 17 00:00:00 2001
+From: Tanja Bode <tanja.bode@physics.gatech.edu>
+Date: Wed, 21 Nov 2012 11:08:05 -0500
+Subject: [PATCH 7/8] GRHydro_InitData: Add basic vector potential support
+
+   Initial Avec constrained to poloidal at the moment.
+---
+ param.ccl                         |    5 +++++
+ schedule.ccl                      |    2 +-
+ src/GRHydro_PoloidalMagFieldM.F90 |   30 +++++++++++++++++++++++-------
+ 3 files changed, 29 insertions(+), 8 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index 276cbb5..51c4c9d 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -35,6 +35,11 @@ EXTENDS KEYWORD initial_Bvec
+   "magnetized Bondi" :: "radial magnetic field appropriate for Bondi test"
+ }
+ 
++EXTENDS KEYWORD initial_Avec
++{
++  "poloidalmagfield" :: "Poloidal Magnetic Field"
++}
++
+ EXTENDS KEYWORD initial_entropy
+ {
+   "magnetized Bondi" :: "Initial entropy for a radial magnetic field appropriate for Bondi test"
+diff --git a/schedule.ccl b/schedule.ccl
+index c12093a..76563c9 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -250,7 +250,7 @@ if (CCTK_EQUALS(initial_hydro, "magnetized_bondi_solution"))
+   } "setup GRHydro vars for the magnetized Bondi solution"
+ }
+ 
+-if (CCTK_EQUALS(initial_Bvec, "poloidalmagfield"))
++if (CCTK_EQUALS(initial_Bvec, "poloidalmagfield") || CCTK_EQUALS(initial_Avec, "poloidalmagfield"))
+ {
+ #  SCHEDULE GRHydro_PoloidalMagFieldM AT CCTK_INITIAL AFTER IN HydroBase_Initial AFTER rnsid_init AFTER TOV_Initial_Data after CCCC_StarMapper_InitialData
+   SCHEDULE GRHydro_PoloidalMagFieldM AT CCTK_POSTINITIAL 
+diff --git a/src/GRHydro_PoloidalMagFieldM.F90 b/src/GRHydro_PoloidalMagFieldM.F90
+index e4ac43f..b7db386 100644
+--- a/src/GRHydro_PoloidalMagFieldM.F90
++++ b/src/GRHydro_PoloidalMagFieldM.F90
+@@ -29,6 +29,9 @@ Keisuke Taniguchi - Phys. Rev. D 78, 024012 (2008)
+ #define Bconsx(i,j,k) Bcons(i,j,k,1)
+ #define Bconsy(i,j,k) Bcons(i,j,k,2)
+ #define Bconsz(i,j,k) Bcons(i,j,k,3)
++#define Avecx(i,j,k) Avec(i,j,k,1)
++#define Avecy(i,j,k) Avec(i,j,k,2)
++#define Avecz(i,j,k) Avec(i,j,k,3)
+ 
+  /*@@
+    @routine   GRHydro_PoloidalMagFieldM
+@@ -56,12 +59,12 @@ subroutine GRHydro_PoloidalMagFieldM(CCTK_ARGUMENTS)
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+   
+-  CCTK_INT :: i, j, k, nx, ny, nz
++  CCTK_INT :: i, j, k, nx, ny, nz, set_Avec
+   CCTK_REAL :: det
+   CCTK_REAL :: sdet
+   CCTK_REAL :: dx,dy,dz
+   CCTK_REAL :: rhofac, delPcut, maxP_Pcut
+-  CCTK_REAL :: Aphi, Ax, Ay, Az
++  CCTK_REAL :: AphiL, Ax, Ay, Az
+   CCTK_REAL :: rho_dx, rho_dy, rho_dz
+   CCTK_REAL :: press_dx, press_dy, press_dz
+   CCTK_REAL :: Aphi_dx, Aphi_dy, Aphi_dz
+@@ -75,8 +78,15 @@ subroutine GRHydro_PoloidalMagFieldM(CCTK_ARGUMENTS)
+   dy = CCTK_DELTA_SPACE(2)
+   dz = CCTK_DELTA_SPACE(3)
+ 
++  set_Avec = 0
++  if ( CCTK_EQUALS(Bvec_evolution_method,"GRHydro_Avec") ) then
++     set_Avec = 1
++  end if
++
+   write(*,*)'GRHydro_InitData: Setting up initial poloidal magnetic field'
+ 
++  
++
+   do i=2,nx-1
+    do j=2,ny-1
+     do k=2,nz-1
+@@ -84,9 +94,9 @@ subroutine GRHydro_PoloidalMagFieldM(CCTK_ARGUMENTS)
+      rhofac = 1.0d0-rho(i,j,k)/poloidal_rho_max
+      delPcut = press(i,j,k)-poloidal_P_cut
+      maxP_Pcut = max(delPcut,0.0d0)
+-     Aphi = poloidal_A_b*rhofac**poloidal_n_p*maxP_Pcut
+-     Ax = -y(i,j,k)*Aphi
+-     Ay =  x(i,j,k)*Aphi
++     AphiL = poloidal_A_b*rhofac**poloidal_n_p*maxP_Pcut
++     Ax = -y(i,j,k)*AphiL
++     Ay =  x(i,j,k)*AphiL
+      Az = 0.0
+  
+ !!     write(*,*)'Before accessing rho(i,k,k)'
+@@ -110,9 +120,9 @@ subroutine GRHydro_PoloidalMagFieldM(CCTK_ARGUMENTS)
+      Aphi_dz = poloidal_A_b*rhofac**(poloidal_n_p-1)*maxP_Pcut* &
+               ( rhofac*press_dz/delPcut - poloidal_n_p*rho_dz/poloidal_rho_max )
+ 
+-     Ax_dy = -Aphi - y(i,j,k)*Aphi_dy
++     Ax_dy = -AphiL - y(i,j,k)*Aphi_dy
+      Ax_dz = -y(i,j,k)*Aphi_dz
+-     Ay_dx = Aphi + x(i,j,k)*Aphi_dx
++     Ay_dx = AphiL + x(i,j,k)*Aphi_dx
+      Ay_dz = x(i,j,k)*Aphi_dz
+ 
+            
+@@ -123,6 +133,12 @@ subroutine GRHydro_PoloidalMagFieldM(CCTK_ARGUMENTS)
+      Bvecy(i,j,k) = - Ax_dz/sdet
+      Bvecz(i,j,k) = (Ax_dy-Ay_dx)/sdet
+ 
++     if ( set_Avec.gt.0 ) then
++        Avecx(i,j,k) = Ax
++        Avecy(i,j,k) = Ay
++        Avecz(i,j,k) = Az
++     end if
++
+      !Bvecx(i,j,k) = 0.0d0 
+      !Bvecy(i,j,k) = 0.0d0
+      !Bvecz(i,j,k) = 0.00000001/sdet
+-- 
+1.7.10.4
+

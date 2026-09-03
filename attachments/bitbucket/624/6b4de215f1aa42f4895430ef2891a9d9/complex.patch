@@ -1,0 +1,2332 @@
+Index: manifest/einsteintoolkit.th
+===================================================================
+--- manifest/einsteintoolkit.th	(revision 207)
++++ manifest/einsteintoolkit.th	(working copy)
+@@ -120,7 +123,7 @@
+ CactusNumerical/Dissipation
+ CactusNumerical/InterpToArray
+ CactusNumerical/LocalInterp
+-CactusNumerical/LocalReduce
++#CactusNumerical/LocalReduce
+ CactusNumerical/MoL
+ CactusNumerical/Noise
+ CactusNumerical/Norms
+Index: src/include/cctk_Complex.h
+===================================================================
+--- src/include/cctk_Complex.h	(revision 4953)
++++ src/include/cctk_Complex.h	(working copy)
+@@ -12,92 +12,32 @@
+ #define _CCTK_COMPLEX_H_
+ 
+ #ifdef __cplusplus
+-#  define EXTERN_C_BEGIN extern "C" {
+-#  define EXTERN_C_END   }
+-#else
+-#  define EXTERN_C_BEGIN
+-#  define EXTERN_C_END
++extern "C" {
+ #endif
+ 
+ 
+-#ifndef DEFINE_CCTK_COMPLEX_EXTERN_FUNCTIONS
+-#  define PREFIX static inline
+-#else
+-#  define PREFIX
+-#endif
+-
+-
+-#ifdef __cplusplus
+-  /* declare C++ overloaded operators */
+-#  include <complex>
+-#  include <ostream>
+-#  define DECLARE_CMPLX_CXX_OPERATORS(CCTK_Cmplx, cctk_real, cctk_complex) \
+-PREFIX cctk_complex operator+  (cctk_complex const & a);                \
+-PREFIX cctk_complex operator-  (cctk_complex const & a);                \
+-PREFIX cctk_complex conj       (cctk_complex const & a);                \
+-PREFIX cctk_real    abs        (cctk_complex const & a);                \
+-PREFIX cctk_real    arg        (cctk_complex const & a);                \
+-PREFIX cctk_real    norm       (cctk_complex const & a);                \
+-PREFIX cctk_complex operator+  (cctk_complex const & a, cctk_complex const & b); \
+-PREFIX cctk_complex operator+  (cctk_real    const & a, cctk_complex const & b); \
+-PREFIX cctk_complex operator+  (cctk_complex const & a, cctk_real    const & b); \
+-PREFIX cctk_complex operator-  (cctk_complex const & a, cctk_complex const & b); \
+-PREFIX cctk_complex operator-  (cctk_real    const & a, cctk_complex const & b); \
+-PREFIX cctk_complex operator-  (cctk_complex const & a, cctk_real    const & b); \
+-PREFIX cctk_complex operator*  (cctk_complex const & a, cctk_complex const & b); \
+-PREFIX cctk_complex operator*  (cctk_real    const & a, cctk_complex const & b); \
+-PREFIX cctk_complex operator*  (cctk_complex const & a, cctk_real    const & b); \
+-PREFIX cctk_complex operator/  (cctk_complex const & a, cctk_complex const & b); \
+-PREFIX cctk_complex operator/  (cctk_real    const & a, cctk_complex const & b); \
+-PREFIX cctk_complex operator/  (cctk_complex const & a, cctk_real    const & b); \
+-PREFIX cctk_complex operator+= (cctk_complex       & a, cctk_complex const & b); \
+-PREFIX cctk_complex operator+= (cctk_complex       & a, cctk_real    const & b); \
+-PREFIX cctk_complex operator-= (cctk_complex       & a, cctk_complex const & b); \
+-PREFIX cctk_complex operator-= (cctk_complex       & a, cctk_real    const & b); \
+-PREFIX cctk_complex operator*= (cctk_complex       & a, cctk_complex const & b); \
+-PREFIX cctk_complex operator*= (cctk_complex       & a, cctk_real    const & b); \
+-PREFIX cctk_complex operator/= (cctk_complex       & a, cctk_complex const & b); \
+-PREFIX cctk_complex operator/= (cctk_complex       & a, cctk_real    const & b); \
+-PREFIX cctk_complex pow        (cctk_complex const & a, int                  i); \
+-PREFIX cctk_complex pow        (cctk_complex const & a, cctk_real    const & r); \
+-PREFIX cctk_complex pow        (cctk_complex const & a, cctk_complex const & b); \
+-PREFIX cctk_complex sin        (cctk_complex const & a);                \
+-PREFIX cctk_complex cos        (cctk_complex const & a);                \
+-PREFIX cctk_complex exp        (cctk_complex const & a);                \
+-PREFIX cctk_complex log        (cctk_complex const & a);                \
+-PREFIX cctk_complex sqrt       (cctk_complex const & a);                \
+-PREFIX std::ostream & operator << (std::ostream & os, cctk_complex const & a);
+-#else
+-  /* declare no C++ overloaded operators */
+-#  define DECLARE_CMPLX_CXX_OPERATORS(CCTK_Cmplx, cctk_real, cctk_complex)
+-#endif
+-
+-
+ /* macro to declare a set of complex functions for a given precision */
+ #define DECLARE_CMPLX_FUNCTIONS(CCTK_Cmplx, cctk_real, cctk_complex)    \
+-EXTERN_C_BEGIN                                                          \
+-PREFIX cctk_complex CCTK_Cmplx        (cctk_real Re, cctk_real Im);     \
+-PREFIX cctk_real    CCTK_Cmplx##Real  (cctk_complex a);                 \
+-PREFIX cctk_real    CCTK_Cmplx##Imag  (cctk_complex a);                 \
+-PREFIX cctk_complex CCTK_Cmplx##Neg   (cctk_complex a);                 \
+-PREFIX cctk_complex CCTK_Cmplx##Conjg (cctk_complex a);                 \
+-PREFIX cctk_real    CCTK_Cmplx##Abs   (cctk_complex a);                 \
+-PREFIX cctk_real    CCTK_Cmplx##Arg   (cctk_complex a);                 \
+-PREFIX cctk_real    CCTK_Cmplx##Norm  (cctk_complex a);                 \
+-PREFIX cctk_complex CCTK_Cmplx##Add   (cctk_complex a, cctk_complex b); \
+-PREFIX cctk_complex CCTK_Cmplx##Sub   (cctk_complex a, cctk_complex b); \
+-PREFIX cctk_complex CCTK_Cmplx##Mul   (cctk_complex a, cctk_complex b); \
+-PREFIX cctk_complex CCTK_Cmplx##Div   (cctk_complex a, cctk_complex b); \
+-PREFIX cctk_complex CCTK_Cmplx##CPow  (cctk_complex a, cctk_complex b); \
+-PREFIX cctk_complex CCTK_Cmplx##Sin   (cctk_complex a);                 \
+-PREFIX cctk_complex CCTK_Cmplx##Cos   (cctk_complex a);                 \
+-PREFIX cctk_complex CCTK_Cmplx##Exp   (cctk_complex a);                 \
+-PREFIX cctk_complex CCTK_Cmplx##Log   (cctk_complex a);                 \
+-PREFIX cctk_complex CCTK_Cmplx##Sqrt  (cctk_complex a);                 \
+-PREFIX cctk_complex CCTK_Cmplx##Pow   (cctk_complex a, cctk_real b);    \
+-PREFIX cctk_complex CCTK_Cmplx##IPow  (cctk_complex a, int b);          \
+-EXTERN_C_END                                                            \
+-DECLARE_CMPLX_CXX_OPERATORS(CCTK_Cmplx, cctk_real, cctk_complex)
++cctk_complex CCTK_Cmplx        (cctk_real Re, cctk_real Im);            \
++cctk_real    CCTK_Cmplx##Real  (cctk_complex a);                        \
++cctk_real    CCTK_Cmplx##Imag  (cctk_complex a);                        \
++cctk_complex CCTK_Cmplx##Neg   (cctk_complex a);                        \
++cctk_complex CCTK_Cmplx##Conjg (cctk_complex a);                        \
++cctk_real    CCTK_Cmplx##Abs   (cctk_complex a);                        \
++cctk_real    CCTK_Cmplx##Arg   (cctk_complex a);                        \
++cctk_real    CCTK_Cmplx##Norm  (cctk_complex a);                        \
++cctk_complex CCTK_Cmplx##Add   (cctk_complex a, cctk_complex b);        \
++cctk_complex CCTK_Cmplx##Sub   (cctk_complex a, cctk_complex b);        \
++cctk_complex CCTK_Cmplx##Mul   (cctk_complex a, cctk_complex b);        \
++cctk_complex CCTK_Cmplx##Div   (cctk_complex a, cctk_complex b);        \
++cctk_complex CCTK_Cmplx##CPow  (cctk_complex a, cctk_complex b);        \
++cctk_complex CCTK_Cmplx##Sin   (cctk_complex a);                        \
++cctk_complex CCTK_Cmplx##Cos   (cctk_complex a);                        \
++cctk_complex CCTK_Cmplx##Exp   (cctk_complex a);                        \
++cctk_complex CCTK_Cmplx##Log   (cctk_complex a);                        \
++cctk_complex CCTK_Cmplx##Sqrt  (cctk_complex a);                        \
++cctk_complex CCTK_Cmplx##Pow   (cctk_complex a, cctk_real b);           \
++cctk_complex CCTK_Cmplx##IPow  (cctk_complex a, int b);
+ 
+ 
+ /* declare complex functions for all available precisions */
+@@ -113,9 +53,7 @@
+ DECLARE_CMPLX_FUNCTIONS (CCTK_Cmplx32, CCTK_REAL16, CCTK_COMPLEX32)
+ #endif
+ 
+-#undef PREFIX
+ 
+-
+ /* declare the default precision complex functions as #define'd macros */
+ #ifdef CCTK_REAL_PRECISION_4
+ #define CCTK_Cmplx      CCTK_Cmplx8
+@@ -182,10 +120,8 @@
+ #define CCTK_CmplxIPow  CCTK_Cmplx32IPow
+ #endif
+ 
+-#ifndef DEFINE_CCTK_COMPLEX_EXTERN_FUNCTIONS
+-#  define DEFINE_CCTK_COMPLEX_INLINE_FUNCTIONS
+-#  include "../main/Complex.c"
+-#  undef DEFINE_CCTK_COMPLEX_INLINE_FUNCTIONS
++#ifdef __cplusplus
++}
+ #endif
+ 
+ #endif /* _CCTK_COMPLEX_H_ */
+Index: src/include/cctk_Types.h
+===================================================================
+--- src/include/cctk_Types.h	(revision 4953)
++++ src/include/cctk_Types.h	(working copy)
+@@ -34,46 +34,38 @@
+ #define HAVE_CCTK_CHAR 1
+ #define HAVE_CCTK_STRING 1
+ 
+-/* Structures for complex types */
++/* Declarations for complex types */
+ 
+-#ifdef HAVE_CCTK_REAL16
+-#define HAVE_CCTK_COMPLEX32 1
+-typedef struct CCTK_COMPLEX32
+-{
+-  CCTK_REAL16 Re;
+-  CCTK_REAL16 Im;
+ #ifdef __cplusplus
+-  CCTK_REAL16 real() const { return Re; }
+-  CCTK_REAL16 imag() const { return Im; }
++#  include <complex>
+ #endif
+-} CCTK_COMPLEX32;
++
++#ifdef HAVE_CCTK_REAL16
++#  define HAVE_CCTK_COMPLEX32 1
++#  ifdef __cplusplus
++typedef std::complex<CCTK_REAL16> CCTK_COMPLEX32;
++#  else
++typedef long double _Complex CCTK_COMPLEX32;
++#  endif
+ #endif
+ 
+ #ifdef HAVE_CCTK_REAL8
+ #define HAVE_CCTK_COMPLEX16 1
+-typedef struct CCTK_COMPLEX16
+-{
+-  CCTK_REAL8 Re;
+-  CCTK_REAL8 Im;
+-#ifdef __cplusplus
+-  CCTK_REAL8 real() const { return Re; }
+-  CCTK_REAL8 imag() const { return Im; }
++#  ifdef __cplusplus
++typedef std::complex<CCTK_REAL8> CCTK_COMPLEX16;
++#  else
++typedef double _Complex CCTK_COMPLEX16;
++#  endif
+ #endif
+-} CCTK_COMPLEX16;
+-#endif
+ 
+ #ifdef HAVE_CCTK_REAL4
+-#define HAVE_CCTK_COMPLEX8 1
+-typedef struct CCTK_COMPLEX8
+-{
+-  CCTK_REAL4 Re;
+-  CCTK_REAL4 Im;
+-#ifdef __cplusplus
+-  CCTK_REAL4 real() const { return Re; }
+-  CCTK_REAL4 imag() const { return Im; }
++#  define HAVE_CCTK_COMPLEX8 1
++#  ifdef __cplusplus
++typedef std::complex<CCTK_REAL4> CCTK_COMPLEX8;
++#  else
++typedef float _Complex CCTK_COMPLEX8;
++#  endif
+ #endif
+-} CCTK_COMPLEX8;
+-#endif
+ 
+ /* Small positive integer type */
+ typedef unsigned char CCTK_BYTE;
+Index: src/main/Complex.c
+===================================================================
+--- src/main/Complex.c	(revision 4953)
++++ src/main/Complex.c	(working copy)
+@@ -8,6 +8,7 @@
+    @version   $Id$
+  @@*/
+ 
++#include <complex.h>
+ #include <math.h>
+ 
+ #include "cctk_Flesh.h"
+@@ -72,16 +73,10 @@
+                The complex number
+    @endreturndesc
+ @@*/
+-#define DEFINE_CCTK_CMPLX(CCTK_Cmplx, cctk_real, cctk_complex)                \
+-cctk_complex CCTK_Cmplx (cctk_real Re, cctk_real Im)                          \
+-{                                                                             \
+-  cctk_complex result;                                                        \
+-                                                                              \
+-                                                                              \
+-  result.Re = Re;                                                             \
+-  result.Im = Im;                                                             \
+-                                                                              \
+-  return (result);                                                            \
++#define DEFINE_CCTK_CMPLX(CCTK_Cmplx, cctk_real, cctk_complex, type)    \
++cctk_complex CCTK_Cmplx (cctk_real Re, cctk_real Im)                    \
++{                                                                       \
++  return Re + _Complex_I * Im;                                          \
+ }
+ 
+ 
+@@ -93,7 +88,7 @@
+                Returns the real part of a complex number.
+    @enddesc
+ 
+-   @var        complex_number
++   @var        x
+    @vdesc      The complex number
+    @vtype      CCTK_COMPLEX
+    @vio        in
+@@ -104,10 +99,10 @@
+                The real part
+    @endreturndesc
+ @@*/
+-#define DEFINE_CCTK_CMPLX_REAL(CCTK_Cmplx, cctk_real, cctk_complex)           \
+-cctk_real CCTK_Cmplx##Real (cctk_complex complex_number)                      \
+-{                                                                             \
+-  return (complex_number.Re);                                                 \
++#define DEFINE_CCTK_CMPLX_REAL(CCTK_Cmplx, cctk_real, cctk_complex, type) \
++cctk_real CCTK_Cmplx##Real (cctk_complex x)                             \
++{                                                                       \
++  return creal##type(x);                                                \
+ }
+ 
+ 
+@@ -119,7 +114,7 @@
+                Returns the imaginary part of a complex number.
+    @enddesc
+ 
+-   @var        complex_number
++   @var        x
+    @vdesc      The complex number
+    @vtype      CCTK_COMPLEX
+    @vio        in
+@@ -130,10 +125,10 @@
+                The imaginary part
+    @endreturndesc
+ @@*/
+-#define DEFINE_CCTK_CMPLX_IMAG(CCTK_Cmplx, cctk_real, cctk_complex)           \
+-cctk_real CCTK_Cmplx##Imag (cctk_complex complex_number)                      \
+-{                                                                             \
+-  return (complex_number.Im);                                                 \
++#define DEFINE_CCTK_CMPLX_IMAG(CCTK_Cmplx, cctk_real, cctk_complex, type) \
++cctk_real CCTK_Cmplx##Imag (cctk_complex x)                             \
++{                                                                       \
++  return cimag##type(x);                                                \
+ }
+ 
+ 
+@@ -145,7 +140,7 @@
+                Returns the negative of a complex number.
+    @enddesc
+  
+-   @var       in
++   @var       x
+    @vdesc     The complex number
+    @vtype     CCTK_COMPLEX
+    @vio       in
+@@ -156,15 +151,10 @@
+                The negative
+    @endreturndesc
+ @@*/
+-#define DEFINE_CCTK_CMPLX_NEG(CCTK_Cmplx, cctk_real, cctk_complex)            \
+-cctk_complex CCTK_Cmplx##Neg (cctk_complex complex_number)                    \
+-{                                                                             \
+-  cctk_complex result;                                                        \
+-                                                                              \
+-                                                                              \
+-  result.Re = -complex_number.Re;                                             \
+-  result.Im = -complex_number.Im;                                             \
+-  return (result);                                                            \
++#define DEFINE_CCTK_CMPLX_NEG(CCTK_Cmplx, cctk_real, cctk_complex, type) \
++cctk_complex CCTK_Cmplx##Neg (cctk_complex x)                           \
++{                                                                       \
++  return -x;                                                            \
+ }
+ 
+ 
+@@ -176,7 +166,7 @@
+                Returns the complex conjugate of a complex number.
+    @enddesc
+  
+-   @var       in
++   @var       x
+    @vdesc     The complex number
+    @vtype     CCTK_COMPLEX
+    @vio       in
+@@ -187,15 +177,10 @@
+                The complex conjugate
+    @endreturndesc
+ @@*/
+-#define DEFINE_CCTK_CMPLX_CONJG(CCTK_Cmplx, cctk_real, cctk_complex)          \
+-cctk_complex CCTK_Cmplx##Conjg (cctk_complex complex_number)                  \
+-{                                                                             \
+-  cctk_complex result;                                                        \
+-                                                                              \
+-                                                                              \
+-  result.Re =  complex_number.Re;                                             \
+-  result.Im = -complex_number.Im;                                             \
+-  return (result);                                                            \
++#define DEFINE_CCTK_CMPLX_CONJG(CCTK_Cmplx, cctk_real, cctk_complex, type) \
++cctk_complex CCTK_Cmplx##Conjg (cctk_complex x)                         \
++{                                                                       \
++  return conj##type(x);                                                 \
+ }
+ 
+ 
+@@ -207,7 +192,7 @@
+                Return the absolute value of a complex number.
+    @enddesc
+  
+-   @var        in
++   @var        x
+    @vdesc      The complex number
+    @vtype      CCTK_COMPLEX
+    @vio        in
+@@ -218,10 +203,10 @@
+                The absolute value of the complex number
+    @endreturndesc
+ @@*/
+-#define DEFINE_CCTK_CMPLX_ABS(CCTK_Cmplx, cctk_real, cctk_complex, type)      \
+-cctk_real CCTK_Cmplx##Abs (cctk_complex complex_number)                       \
+-{                                                                             \
+-  return ((cctk_real)hypot##type (complex_number.Re, complex_number.Im));     \
++#define DEFINE_CCTK_CMPLX_ABS(CCTK_Cmplx, cctk_real, cctk_complex, type) \
++cctk_real CCTK_Cmplx##Abs (cctk_complex x)                              \
++{                                                                       \
++  return cabs##type(x);                                                 \
+ }
+ 
+ 
+@@ -233,7 +218,7 @@
+                Return the absolute value squared of a complex number.
+    @enddesc
+  
+-   @var        in
++   @var        x
+    @vdesc      The complex number
+    @vtype      CCTK_COMPLEX
+    @vio        in
+@@ -244,10 +229,10 @@
+                The absolute value squared of the complex number
+    @endreturndesc
+ @@*/
+-#define DEFINE_CCTK_CMPLX_NORM(CCTK_Cmplx, cctk_real, cctk_complex, type)     \
+-cctk_real CCTK_Cmplx##Norm (cctk_complex complex_number)                      \
+-{                                                                             \
+-  return (pow##type (complex_number.Re, 2) + pow##type (complex_number.Im, 2));\
++#define DEFINE_CCTK_CMPLX_NORM(CCTK_Cmplx, cctk_real, cctk_complex, type) \
++cctk_real CCTK_Cmplx##Norm (cctk_complex x)                             \
++{                                                                       \
++  return creal##type(x)*creal##type(x) + cimag##type(x)*cimag##type(x); \
+ }
+ 
+ 
+@@ -259,7 +244,7 @@
+                Return the argument of a complex number.
+    @enddesc
+  
+-   @var        in
++   @var        x
+    @vdesc      The complex number
+    @vtype      CCTK_COMPLEX
+    @vio        in
+@@ -270,10 +255,10 @@
+                The argument of the complex number
+    @endreturndesc
+ @@*/
+-#define DEFINE_CCTK_CMPLX_ARG(CCTK_Cmplx, cctk_real, cctk_complex, type)      \
+-cctk_real CCTK_Cmplx##Arg (cctk_complex complex_number)                       \
+-{                                                                             \
+-  return (atan2##type (complex_number.Im, complex_number.Re));                \
++#define DEFINE_CCTK_CMPLX_ARG(CCTK_Cmplx, cctk_real, cctk_complex, type) \
++cctk_real CCTK_Cmplx##Arg (cctk_complex x)                              \
++{                                                                       \
++  return carg##type(x);                                                 \
+ }
+ 
+ 
+@@ -301,15 +286,10 @@
+                The sum of a and b
+    @endreturndesc
+ @@*/
+-#define DEFINE_CCTK_CMPLX_ADD(CCTK_Cmplx, cctk_real, cctk_complex)            \
+-cctk_complex CCTK_Cmplx##Add (cctk_complex a, cctk_complex b)                 \
+-{                                                                             \
+-  cctk_complex result;                                                        \
+-                                                                              \
+-                                                                              \
+-  result.Re = a.Re + b.Re;                                                    \
+-  result.Im = a.Im + b.Im;                                                    \
+-  return (result);                                                            \
++#define DEFINE_CCTK_CMPLX_ADD(CCTK_Cmplx, cctk_real, cctk_complex, type) \
++cctk_complex CCTK_Cmplx##Add (cctk_complex a, cctk_complex b)           \
++{                                                                       \
++  return a+b;                                                           \
+ }
+ 
+ 
+@@ -337,15 +317,10 @@
+                The difference
+    @endreturndesc
+ @@*/
+-#define DEFINE_CCTK_CMPLX_SUB(CCTK_Cmplx, cctk_real, cctk_complex)            \
+-cctk_complex CCTK_Cmplx##Sub (cctk_complex a, cctk_complex b)                 \
+-{                                                                             \
+-  cctk_complex result;                                                        \
+-                                                                              \
+-                                                                              \
+-  result.Re = a.Re - b.Re;                                                    \
+-  result.Im = a.Im - b.Im;                                                    \
+-  return (result);                                                            \
++#define DEFINE_CCTK_CMPLX_SUB(CCTK_Cmplx, cctk_real, cctk_complex, type) \
++cctk_complex CCTK_Cmplx##Sub (cctk_complex a, cctk_complex b)           \
++{                                                                       \
++  return a-b;                                                           \
+ }
+ 
+ 
+@@ -373,15 +348,10 @@
+                The product
+    @endreturndesc
+ @@*/
+-#define DEFINE_CCTK_CMPLX_MUL(CCTK_Cmplx, cctk_real, cctk_complex)            \
+-cctk_complex CCTK_Cmplx##Mul (cctk_complex a, cctk_complex b)                 \
+-{                                                                             \
+-  cctk_complex result;                                                        \
+-                                                                              \
+-                                                                              \
+-  result.Re = a.Re*b.Re - a.Im*b.Im;                                          \
+-  result.Im = a.Im*b.Re + a.Re*b.Im;                                          \
+-  return (result);                                                            \
++#define DEFINE_CCTK_CMPLX_MUL(CCTK_Cmplx, cctk_real, cctk_complex, type) \
++cctk_complex CCTK_Cmplx##Mul (cctk_complex a, cctk_complex b)           \
++{                                                                       \
++  return a*b;                                                           \
+ }
+ 
+ 
+@@ -391,10 +361,6 @@
+    @author     Gabrielle Allen
+    @desc
+                Divide two complex numbers.
+-               Make sure that the intermediate values do not overflow.
+-               See e.g. the C99 compliant implementation in libgcc
+-               (which ships with gcc).
+-               This implementation here does not handle nan and inf.
+    @enddesc
+  
+    @var        a
+@@ -413,24 +379,10 @@
+                The quotient
+    @endreturndesc
+ @@*/
+-#define DEFINE_CCTK_CMPLX_DIV(CCTK_Cmplx, cctk_real, cctk_complex, type)      \
+-cctk_complex CCTK_Cmplx##Div (cctk_complex a, cctk_complex b)                 \
+-{                                                                             \
+-  cctk_real afact, bfact, factor;                                             \
+-  cctk_complex result;                                                        \
+-                                                                              \
+-                                                                              \
+-  afact = (cctk_real)(fabs##type(a.Re) + fabs##type(a.Im));                   \
+-  a.Re /= afact;                                                              \
+-  a.Im /= afact;                                                              \
+-  bfact = (cctk_real)(fabs##type(b.Re) + fabs##type(b.Im));                   \
+-  b.Re /= bfact;                                                              \
+-  b.Im /= bfact;                                                              \
+-  factor = b.Re*b.Re + b.Im*b.Im;                                             \
+-  result.Re = afact / bfact * (a.Re*b.Re + a.Im*b.Im) / factor;               \
+-  result.Im = afact / bfact * (a.Im*b.Re - a.Re*b.Im) / factor;               \
+-                                                                              \
+-  return (result);                                                            \
++#define DEFINE_CCTK_CMPLX_DIV(CCTK_Cmplx, cctk_real, cctk_complex, type) \
++cctk_complex CCTK_Cmplx##Div (cctk_complex a, cctk_complex b)           \
++{                                                                       \
++  return a/b;                                                           \
+ }
+ 
+ 
+@@ -440,8 +392,6 @@
+    @author     Erik Schnetter
+    @desc
+                Raises a complex number to a given power
+-               This algorithm was taken from glibc 2.3.5,
+-               file sysdeps/generic/s_cpow.c.
+    @enddesc
+  
+    @var        a
+@@ -460,10 +410,10 @@
+                a to the power of b
+    @endreturndesc
+ @@*/
+-#define DEFINE_CCTK_CMPLX_CPOW(CCTK_Cmplx, cctk_real, cctk_complex)           \
+-cctk_complex CCTK_Cmplx##CPow (cctk_complex a, cctk_complex b)                \
+-{                                                                             \
+-  return CCTK_Cmplx##Exp (CCTK_Cmplx##Mul (b, CCTK_Cmplx##Log (a)));          \
++#define DEFINE_CCTK_CMPLX_CPOW(CCTK_Cmplx, cctk_real, cctk_complex, type) \
++cctk_complex CCTK_Cmplx##CPow (cctk_complex a, cctk_complex b)          \
++{                                                                       \
++  return cpow##type(a, b);                                              \
+ }
+ 
+ 
+@@ -475,7 +425,7 @@
+                Returns the sine of a complex number.
+    @enddesc
+  
+-   @var        complex_number
++   @var        x
+    @vdesc      The complex number
+    @vtype      CCTK_COMPLEX
+    @vio        in
+@@ -486,16 +436,10 @@
+                The sine
+    @endreturndesc
+ @@*/
+-#define DEFINE_CCTK_CMPLX_SIN(CCTK_Cmplx, cctk_real, cctk_complex, type)      \
+-cctk_complex CCTK_Cmplx##Sin (cctk_complex complex_number)                    \
+-{                                                                             \
+-  cctk_complex result;                                                        \
+-                                                                              \
+-                                                                              \
+-  result.Re = sin##type (complex_number.Re) * cosh##type (complex_number.Im); \
+-  result.Im = cos##type (complex_number.Re) * sinh##type (complex_number.Im); \
+-                                                                              \
+-  return (result);                                                            \
++#define DEFINE_CCTK_CMPLX_SIN(CCTK_Cmplx, cctk_real, cctk_complex, type) \
++cctk_complex CCTK_Cmplx##Sin (cctk_complex x)                           \
++{                                                                       \
++  return csin##type(x);                                                 \
+ }
+ 
+ 
+@@ -507,7 +451,7 @@
+                Returns the cosine of a complex number.
+    @enddesc
+  
+-   @var        complex_number
++   @var        x
+    @vdesc      The complex number
+    @vtype      CCTK_COMPLEX
+    @vio        in
+@@ -518,16 +462,10 @@
+                The cosine
+    @endreturndesc
+ @@*/
+-#define DEFINE_CCTK_CMPLX_COS(CCTK_Cmplx, cctk_real, cctk_complex, type)      \
+-cctk_complex CCTK_Cmplx##Cos (cctk_complex complex_number)                    \
+-{                                                                             \
+-  cctk_complex result;                                                        \
+-                                                                              \
+-                                                                              \
+-  result.Re = cos##type (complex_number.Re) * cosh##type (complex_number.Im); \
+-  result.Im = sin##type (complex_number.Re) * sinh##type (complex_number.Im); \
+-                                                                              \
+-  return (result);                                                            \
++#define DEFINE_CCTK_CMPLX_COS(CCTK_Cmplx, cctk_real, cctk_complex, type) \
++cctk_complex CCTK_Cmplx##Cos (cctk_complex x)                           \
++{                                                                       \
++  return ccos##type(x);                                                 \
+ }
+ 
+ 
+@@ -539,7 +477,7 @@
+                Returns the exponential of a complex number.
+    @enddesc
+  
+-   @var        complex_number
++   @var        x
+    @vdesc      The complex number
+    @vtype      CCTK_COMPLEX
+    @vio        in
+@@ -550,19 +488,10 @@
+                The exponential
+    @endreturndesc
+ @@*/
+-#define DEFINE_CCTK_CMPLX_EXP(CCTK_Cmplx, cctk_real, cctk_complex, type)      \
+-cctk_complex CCTK_Cmplx##Exp (cctk_complex complex_number)                    \
+-{                                                                             \
+-  cctk_real rho, theta;                                                       \
+-  cctk_complex result;                                                        \
+-                                                                              \
+-                                                                              \
+-  rho = (cctk_real)exp##type (complex_number.Re);                             \
+-  theta = complex_number.Im;                                                  \
+-  result.Re = rho * (cctk_real)cos##type (theta);                             \
+-  result.Im = rho * (cctk_real)sin##type (theta);                             \
+-                                                                              \
+-  return (result);                                                            \
++#define DEFINE_CCTK_CMPLX_EXP(CCTK_Cmplx, cctk_real, cctk_complex, type) \
++cctk_complex CCTK_Cmplx##Exp (cctk_complex x)                           \
++{                                                                       \
++  return cexp##type(x);                                                 \
+ }
+ 
+ 
+@@ -572,11 +501,9 @@
+    @author     Erik Schnetter
+    @desc
+                Returns the logarithm of a complex number.
+-               This algorithm was taken from glibc 2.3.5,
+-               file sysdeps/generic/s_clog.c.
+    @enddesc
+  
+-   @var        complex_number
++   @var        x
+    @vdesc      The complex number
+    @vtype      CCTK_COMPLEX
+    @vio        in
+@@ -587,16 +514,10 @@
+                The logarithm
+    @endreturndesc
+ @@*/
+-#define DEFINE_CCTK_CMPLX_LOG(CCTK_Cmplx, cctk_real, cctk_complex, type)      \
+-cctk_complex CCTK_Cmplx##Log (cctk_complex complex_number)                    \
+-{                                                                             \
+-  cctk_complex result;                                                        \
+-                                                                              \
+-                                                                              \
+-  result.Re = log##type (hypot##type (complex_number.Re, complex_number.Im)); \
+-  result.Im = atan2##type (complex_number.Im, complex_number.Re);             \
+-                                                                              \
+-  return (result);                                                            \
++#define DEFINE_CCTK_CMPLX_LOG(CCTK_Cmplx, cctk_real, cctk_complex, type) \
++cctk_complex CCTK_Cmplx##Log (cctk_complex x)                           \
++{                                                                       \
++  return clog##type(x);                                                 \
+ }
+ 
+ 
+@@ -606,15 +527,9 @@
+    @author     Thomas Radke
+    @desc
+                Returns the square root of a complex number.
+-               This algorithm was taken from glibc 2.3.5,
+-               file sysdeps/generic/s_csqrt.c.
+    @enddesc
+-   @history
+-               This code bears a resemblance to that in the GSL.  That
+-	       code contains references.
+-   @endhistory
+ 
+-   @var        complex_number
++   @var        x
+    @vdesc      The complex number
+    @vtype      CCTK_COMPLEX
+    @vio        in
+@@ -625,31 +540,10 @@
+                The square root
+    @endreturndesc
+ @@*/
+-#define DEFINE_CCTK_CMPLX_SQRT(CCTK_Cmplx, cctk_real, cctk_complex, type)     \
+-cctk_complex CCTK_Cmplx##Sqrt (cctk_complex complex_number)                   \
+-{                                                                             \
+-  cctk_real d, r, s;                                                          \
+-  cctk_complex result;                                                        \
+-                                                                              \
+-                                                                              \
+-  d = hypot##type (complex_number.Re, complex_number.Im);                     \
+-  /* Use the identity   2  Re res  Im res = Im x                              \
+-     to avoid cancellation error in  d +/- Re x.  */                          \
+-  if (complex_number.Re > 0)                                                  \
+-  {                                                                           \
+-    r = sqrt##type (0.5##type * d + 0.5##type * complex_number.Re);           \
+-    s = (0.5##type * complex_number.Im) / r;                                  \
+-  }                                                                           \
+-  else                                                                        \
+-  {                                                                           \
+-    s = sqrt##type (0.5##type * d - 0.5##type * complex_number.Re);           \
+-    r = fabs##type ((0.5##type * complex_number.Im) / s);                     \
+-  }                                                                           \
+-                                                                              \
+-  result.Re = r;                                                              \
+-  result.Im = copysign##type (s, complex_number.Im);                          \
+-                                                                              \
+-  return (result);                                                            \
++#define DEFINE_CCTK_CMPLX_SQRT(CCTK_Cmplx, cctk_real, cctk_complex, type) \
++cctk_complex CCTK_Cmplx##Sqrt (cctk_complex x)                          \
++{                                                                       \
++  return csqrt##type(x);                                                \
+ }
+ 
+ 
+@@ -659,11 +553,9 @@
+    @author     Yaakoub Y El Khamra
+    @desc
+                Raises a complex number to a given power
+-               This algorithm was taken from glibc 2.3.5,
+-               file sysdeps/generic/s_cpow.c.
+    @enddesc
+  
+-   @var        cx_number
++   @var        x
+    @vdesc      The complex number
+    @vtype      CCTK_COMPLEX
+    @vio        in
+@@ -679,18 +571,10 @@
+                The power of the complex number
+    @endreturndesc
+ @@*/
+-#define DEFINE_CCTK_CMPLX_POW(CCTK_Cmplx, cctk_real, cctk_complex)            \
+-cctk_complex CCTK_Cmplx##Pow (cctk_complex complex_number, cctk_real w)       \
+-{                                                                             \
+-  cctk_complex result;                                                        \
+-                                                                              \
+-                                                                              \
+-  result = CCTK_Cmplx##Log (complex_number);                                  \
+-  result.Re *= w;                                                             \
+-  result.Im *= w;                                                             \
+-  result = CCTK_Cmplx##Exp (result);                                          \
+-                                                                              \
+-  return (result);                                                            \
++#define DEFINE_CCTK_CMPLX_POW(CCTK_Cmplx, cctk_real, cctk_complex, type) \
++cctk_complex CCTK_Cmplx##Pow (cctk_complex x, cctk_real w)              \
++{                                                                       \
++  return cpow##type(x, w);                                              \
+ }
+ 
+ 
+@@ -700,11 +584,9 @@
+    @author     Erik Schnetter
+    @desc
+                Raises a complex number to a given power
+-               This algorithm was taken from glibc 2.3.5,
+-               file sysdeps/generic/s_cpow.c.
+    @enddesc
+  
+-   @var        cx_number
++   @var        x
+    @vdesc      The complex number
+    @vtype      CCTK_COMPLEX
+    @vio        in
+@@ -720,17 +602,16 @@
+                The power of the complex number
+    @endreturndesc
+ @@*/
+-#define DEFINE_CCTK_CMPLX_IPOW(CCTK_Cmplx, cctk_real, cctk_complex)     \
+-cctk_complex CCTK_Cmplx##IPow (cctk_complex complex_number, int w)      \
++#define DEFINE_CCTK_CMPLX_IPOW(CCTK_Cmplx, cctk_real, cctk_complex, type) \
++cctk_complex CCTK_Cmplx##IPow (cctk_complex x, int w)                   \
+ {                                                                       \
+   cctk_complex result;                                                  \
+                                                                         \
+                                                                         \
+-  result = CCTK_Cmplx (1, 0);                                           \
++  result = 1.0;                                                         \
+   if (w < 0)                                                            \
+   {                                                                     \
+-    result = CCTK_Cmplx##Div (result,                                   \
+-                              CCTK_Cmplx##IPow (complex_number, - w));  \
++    result /= CCTK_Cmplx##IPow (x, - w);                                \
+   }                                                                     \
+   else                                                                  \
+   {                                                                     \
+@@ -738,10 +619,10 @@
+     {                                                                   \
+       if (w % 2)                                                        \
+       {                                                                 \
+-        result = CCTK_Cmplx##Mul (result, complex_number);              \
++        result *= x;                                                    \
+       }                                                                 \
+       w /= 2;                                                           \
+-      complex_number = CCTK_Cmplx##Mul (complex_number, complex_number); \
++      x *= x;                                                           \
+     }                                                                   \
+   }                                                                     \
+                                                                         \
+@@ -750,88 +631,33 @@
+ 
+ 
+ 
+-#ifdef DEFINE_CCTK_COMPLEX_INLINE_FUNCTIONS
+-#  define PREFIX static inline
+-#else
+-#  define PREFIX
+-#endif
+-
+-
+-#ifdef __cplusplus
+-  /* define C++ overloaded operators */
+-#  define DEFINE_CMPLX_CXX_OPERATORS(CCTK_Cmplx, cctk_real, cctk_complex) \
+-PREFIX cctk_complex operator+  (cctk_complex const & a)                         { return a; } \
+-PREFIX cctk_complex operator-  (cctk_complex const & a)                         { return CCTK_Cmplx##Neg (a); } \
+-PREFIX cctk_complex conj       (cctk_complex const & a)                         { return CCTK_Cmplx##Conjg (a); } \
+-PREFIX cctk_real    abs        (cctk_complex const & a)                         { return CCTK_Cmplx##Abs (a); } \
+-PREFIX cctk_real    arg        (cctk_complex const & a)                         { return CCTK_Cmplx##Arg (a); } \
+-PREFIX cctk_real    norm       (cctk_complex const & a)                         { return CCTK_Cmplx##Norm (a); } \
+-PREFIX cctk_complex operator+  (cctk_complex const & a, cctk_complex const & b) { return CCTK_Cmplx##Add (a, b); } \
+-PREFIX cctk_complex operator+  (cctk_real    const & a, cctk_complex const & b) { return CCTK_Cmplx##Add (CCTK_Cmplx (a, 0), b); } \
+-PREFIX cctk_complex operator+  (cctk_complex const & a, cctk_real    const & b) { return CCTK_Cmplx##Add (a, CCTK_Cmplx (b, 0)); } \
+-PREFIX cctk_complex operator-  (cctk_complex const & a, cctk_complex const & b) { return CCTK_Cmplx##Sub (a, b); } \
+-PREFIX cctk_complex operator-  (cctk_real    const & a, cctk_complex const & b) { return CCTK_Cmplx##Sub (CCTK_Cmplx (a, 0), b); } \
+-PREFIX cctk_complex operator-  (cctk_complex const & a, cctk_real    const & b) { return CCTK_Cmplx##Sub (a, CCTK_Cmplx (b, 0)); } \
+-PREFIX cctk_complex operator*  (cctk_complex const & a, cctk_complex const & b) { return CCTK_Cmplx##Mul (a, b); } \
+-PREFIX cctk_complex operator*  (cctk_real    const & a, cctk_complex const & b) { return CCTK_Cmplx##Mul (CCTK_Cmplx (a, 0), b); } \
+-PREFIX cctk_complex operator*  (cctk_complex const & a, cctk_real    const & b) { return CCTK_Cmplx##Mul (a, CCTK_Cmplx (b, 0)); } \
+-PREFIX cctk_complex operator/  (cctk_complex const & a, cctk_complex const & b) { return CCTK_Cmplx##Div (a, b); } \
+-PREFIX cctk_complex operator/  (cctk_real    const & a, cctk_complex const & b) { return CCTK_Cmplx##Div (CCTK_Cmplx (a, 0), b); } \
+-PREFIX cctk_complex operator/  (cctk_complex const & a, cctk_real    const & b) { return CCTK_Cmplx##Div (a, CCTK_Cmplx (b, 0)); } \
+-PREFIX cctk_complex operator+= (cctk_complex       & a, cctk_complex const & b) { return a = CCTK_Cmplx##Add (a, b); } \
+-PREFIX cctk_complex operator+= (cctk_complex       & a, cctk_real    const & b) { return a = CCTK_Cmplx##Add (a, CCTK_Cmplx (b, 0)); } \
+-PREFIX cctk_complex operator-= (cctk_complex       & a, cctk_complex const & b) { return a = CCTK_Cmplx##Sub (a, b); } \
+-PREFIX cctk_complex operator-= (cctk_complex       & a, cctk_real    const & b) { return a = CCTK_Cmplx##Sub (a, CCTK_Cmplx (b, 0)); } \
+-PREFIX cctk_complex operator*= (cctk_complex       & a, cctk_complex const & b) { return a = CCTK_Cmplx##Mul (a, b); } \
+-PREFIX cctk_complex operator*= (cctk_complex       & a, cctk_real    const & b) { return a = CCTK_Cmplx##Mul (a, CCTK_Cmplx (b, 0)); } \
+-PREFIX cctk_complex operator/= (cctk_complex       & a, cctk_complex const & b) { return a = CCTK_Cmplx##Div (a, b); } \
+-PREFIX cctk_complex operator/= (cctk_complex       & a, cctk_real    const & b) { return a = CCTK_Cmplx##Div (a, CCTK_Cmplx (b, 0)); } \
+-PREFIX cctk_complex pow        (cctk_complex const & a, int                  i) { return CCTK_Cmplx##IPow (a, i); } \
+-PREFIX cctk_complex pow        (cctk_complex const & a, cctk_real    const & r) { return CCTK_Cmplx##Pow (a, r); } \
+-PREFIX cctk_complex pow        (cctk_complex const & a, cctk_complex const & b) { return CCTK_Cmplx##CPow (a, b); } \
+-PREFIX cctk_complex sin        (cctk_complex const & a)                         { return CCTK_Cmplx##Sin (a); } \
+-PREFIX cctk_complex cos        (cctk_complex const & a)                         { return CCTK_Cmplx##Cos (a); } \
+-PREFIX cctk_complex exp        (cctk_complex const & a)                         { return CCTK_Cmplx##Exp (a); } \
+-PREFIX cctk_complex log        (cctk_complex const & a)                         { return CCTK_Cmplx##Log (a); } \
+-PREFIX cctk_complex sqrt       (cctk_complex const & a)                         { return CCTK_Cmplx##Sqrt (a); } \
+-PREFIX std::ostream & operator << (std::ostream & os, cctk_complex const & a) { return os << CCTK_Cmplx##Real (a) << " " << CCTK_Cmplx##Imag (a); }
+-#else
+-  /* define no C++ overloaded operators */
+-#  define DEFINE_CMPLX_CXX_OPERATORS(CCTK_Cmplx, cctk_real, cctk_complex)
+-#endif
+-
+-
+ /* macro to define a set of complex functions for a given precision */
+-#define DEFINE_CMPLX_FUNCTIONS(CCTK_Cmplx, cctk_real, cctk_complex, type)     \
+-PREFIX DEFINE_CCTK_CMPLX       (CCTK_Cmplx, cctk_real, cctk_complex)    \
+-PREFIX DEFINE_CCTK_CMPLX_REAL  (CCTK_Cmplx, cctk_real, cctk_complex)    \
+-PREFIX DEFINE_CCTK_CMPLX_IMAG  (CCTK_Cmplx, cctk_real, cctk_complex)    \
+-PREFIX DEFINE_CCTK_CMPLX_NEG   (CCTK_Cmplx, cctk_real, cctk_complex)    \
+-PREFIX DEFINE_CCTK_CMPLX_CONJG (CCTK_Cmplx, cctk_real, cctk_complex)    \
+-PREFIX DEFINE_CCTK_CMPLX_ABS   (CCTK_Cmplx, cctk_real, cctk_complex, type)    \
+-PREFIX DEFINE_CCTK_CMPLX_NORM  (CCTK_Cmplx, cctk_real, cctk_complex, type)    \
+-PREFIX DEFINE_CCTK_CMPLX_ARG   (CCTK_Cmplx, cctk_real, cctk_complex, type)    \
+-PREFIX DEFINE_CCTK_CMPLX_ADD   (CCTK_Cmplx, cctk_real, cctk_complex)    \
+-PREFIX DEFINE_CCTK_CMPLX_SUB   (CCTK_Cmplx, cctk_real, cctk_complex)    \
+-PREFIX DEFINE_CCTK_CMPLX_MUL   (CCTK_Cmplx, cctk_real, cctk_complex)    \
+-PREFIX DEFINE_CCTK_CMPLX_DIV   (CCTK_Cmplx, cctk_real, cctk_complex, type)    \
+-PREFIX DEFINE_CCTK_CMPLX_CPOW  (CCTK_Cmplx, cctk_real, cctk_complex)    \
+-PREFIX DEFINE_CCTK_CMPLX_SIN   (CCTK_Cmplx, cctk_real, cctk_complex, type)    \
+-PREFIX DEFINE_CCTK_CMPLX_COS   (CCTK_Cmplx, cctk_real, cctk_complex, type)    \
+-PREFIX DEFINE_CCTK_CMPLX_EXP   (CCTK_Cmplx, cctk_real, cctk_complex, type)    \
+-PREFIX DEFINE_CCTK_CMPLX_LOG   (CCTK_Cmplx, cctk_real, cctk_complex, type)    \
+-PREFIX DEFINE_CCTK_CMPLX_SQRT  (CCTK_Cmplx, cctk_real, cctk_complex, type)    \
+-PREFIX DEFINE_CCTK_CMPLX_POW   (CCTK_Cmplx, cctk_real, cctk_complex)    \
+-PREFIX DEFINE_CCTK_CMPLX_IPOW  (CCTK_Cmplx, cctk_real, cctk_complex)    \
+-DEFINE_CMPLX_CXX_OPERATORS(CCTK_Cmplx, cctk_real, cctk_complex)
++#define DEFINE_CMPLX_FUNCTIONS(CCTK_Cmplx, cctk_real, cctk_complex, type) \
++DEFINE_CCTK_CMPLX       (CCTK_Cmplx, cctk_real, cctk_complex, type)     \
++DEFINE_CCTK_CMPLX_REAL  (CCTK_Cmplx, cctk_real, cctk_complex, type)     \
++DEFINE_CCTK_CMPLX_IMAG  (CCTK_Cmplx, cctk_real, cctk_complex, type)     \
++DEFINE_CCTK_CMPLX_NEG   (CCTK_Cmplx, cctk_real, cctk_complex, type)     \
++DEFINE_CCTK_CMPLX_CONJG (CCTK_Cmplx, cctk_real, cctk_complex, type)     \
++DEFINE_CCTK_CMPLX_ABS   (CCTK_Cmplx, cctk_real, cctk_complex, type)     \
++DEFINE_CCTK_CMPLX_NORM  (CCTK_Cmplx, cctk_real, cctk_complex, type)     \
++DEFINE_CCTK_CMPLX_ARG   (CCTK_Cmplx, cctk_real, cctk_complex, type)     \
++DEFINE_CCTK_CMPLX_ADD   (CCTK_Cmplx, cctk_real, cctk_complex, type)     \
++DEFINE_CCTK_CMPLX_SUB   (CCTK_Cmplx, cctk_real, cctk_complex, type)     \
++DEFINE_CCTK_CMPLX_MUL   (CCTK_Cmplx, cctk_real, cctk_complex, type)     \
++DEFINE_CCTK_CMPLX_DIV   (CCTK_Cmplx, cctk_real, cctk_complex, type)     \
++DEFINE_CCTK_CMPLX_CPOW  (CCTK_Cmplx, cctk_real, cctk_complex, type)     \
++DEFINE_CCTK_CMPLX_SIN   (CCTK_Cmplx, cctk_real, cctk_complex, type)     \
++DEFINE_CCTK_CMPLX_COS   (CCTK_Cmplx, cctk_real, cctk_complex, type)     \
++DEFINE_CCTK_CMPLX_EXP   (CCTK_Cmplx, cctk_real, cctk_complex, type)     \
++DEFINE_CCTK_CMPLX_LOG   (CCTK_Cmplx, cctk_real, cctk_complex, type)     \
++DEFINE_CCTK_CMPLX_SQRT  (CCTK_Cmplx, cctk_real, cctk_complex, type)     \
++DEFINE_CCTK_CMPLX_POW   (CCTK_Cmplx, cctk_real, cctk_complex, type)     \
++DEFINE_CCTK_CMPLX_IPOW  (CCTK_Cmplx, cctk_real, cctk_complex, type)
+ 
+ 
+ /* define complex functions for all available precisions */
+-/* NOTE: The code in this file will function correctly with C float
+- * and double types, but not with long double.
+-*/
+ #ifdef HAVE_CCTK_REAL4
+-  #define _REAL_TYPE   f
++  #define _REAL_TYPE f
+   DEFINE_CMPLX_FUNCTIONS (CCTK_Cmplx8, CCTK_REAL4, CCTK_COMPLEX8, _REAL_TYPE)
+   #undef _REAL_TYPE
+ #endif
+@@ -843,9 +669,7 @@
+ #endif
+ 
+ #ifdef HAVE_CCTK_REAL16
+-  #define _REAL_TYPE   l
++  #define _REAL_TYPE l
+   DEFINE_CMPLX_FUNCTIONS (CCTK_Cmplx32, CCTK_REAL16, CCTK_COMPLEX32, _REAL_TYPE)
+   #undef _REAL_TYPE
+ #endif
+-
+-#undef PREFIX
+Index: src/util/Table.c
+===================================================================
+--- src/util/Table.c	(revision 4953)
++++ src/util/Table.c	(working copy)
+@@ -94,6 +94,7 @@
+ #endif
+ 
+ #include "cctk_Types.h"
++#include "cctk_Complex.h"
+ #include "cctk_Constants.h"
+ #include "cctk_Groups.h"
+ #include "cctk_Flesh.h"
+@@ -5591,8 +5592,8 @@
+           for (i = 0 ; i < tep->N_elements ; ++i)
+           {
+             fprintf(stream, "\t(%g,%g)",
+-                     (double) value_ptr_complex[i].Re,
+-                     (double) value_ptr_complex[i].Im);
++                    (double) CCTK_CmplxReal(value_ptr_complex[i]),
++                    (double) CCTK_CmplxImag(value_ptr_complex[i]));
+           }
+             }
+           break;
+@@ -5729,8 +5730,8 @@
+             fprintf(stream, " ");
+           }
+           fprintf(stream, "(%#.17g,%#.17g)",
+-                  (double)value_ptr_complex[i].Re,
+-                  (double)value_ptr_complex[i].Im);
++                  (double)CCTK_CmplxReal(value_ptr_complex[i]),
++                  (double)CCTK_CmplxImag(value_ptr_complex[i]));
+         }
+         if (tep->N_elements != 1)
+         {
+Index: arrangements/CactusBase/Boundary/src/ScalarBoundary.c
+===================================================================
+--- arrangements/CactusBase/Boundary/src/ScalarBoundary.c	(revision 311)
++++ arrangements/CactusBase/Boundary/src/ScalarBoundary.c	(working copy)
+@@ -923,7 +923,7 @@
+                                                                               \
+                                                                               \
+         _index = INDEX_3D (lsh, ii, jj, kk);                                  \
+-          ((left_cctk_type *) GH->data[var][timelvl])[_index] NUMBER_PART =   \
++          ((left_cctk_type *) GH->data[var][timelvl])[_index] =               \
+           (right_cctk_type) scalar;                                           \
+         }                                                                     \
+       }                                                                       \
+@@ -1155,7 +1155,6 @@
+     {
+ /* FIXME: can't pass an empty preprocessor constant as a macro argument
+           on some systems (e.g. MacOS X), so we have to define it outside */
+-#define NUMBER_PART
+       case CCTK_VARIABLE_BYTE:
+         SCALAR_BOUNDARY (CCTK_BYTE, CCTK_BYTE); break;
+ 
+@@ -1201,12 +1200,6 @@
+ #endif
+ 
+       case CCTK_VARIABLE_COMPLEX:
+-#undef  NUMBER_PART
+-#define NUMBER_PART .Re
+-        SCALAR_BOUNDARY (CCTK_COMPLEX, CCTK_REAL);
+-        scalar = 0.0;
+-#undef  NUMBER_PART
+-#define NUMBER_PART .Im
+         SCALAR_BOUNDARY (CCTK_COMPLEX, CCTK_REAL); break;
+ 
+       default:
+Index: arrangements/CactusBase/CartGrid3D/src/Symmetry.c
+===================================================================
+--- arrangements/CactusBase/CartGrid3D/src/Symmetry.c	(revision 267)
++++ arrangements/CactusBase/CartGrid3D/src/Symmetry.c	(working copy)
+@@ -316,9 +316,9 @@
+     {                                                                         \
+       for (ii = 0; ii < gdata.nghostzones[dir/2]; ii++)                       \
+       {                                                                       \
+-        _var[INDEX_3D (ash, i, j, k)] NUMBER_PART                             \
++        _var[INDEX_3D (ash, i, j, k)]                                         \
+                     = (itype)(GFSym[vindex][dir]                              \
+-                      * _var[INDEX_3D (ash, iii, jjj, kkk)] NUMBER_PART);     \
++                      * _var[INDEX_3D (ash, iii, jjj, kkk)]);                 \
+       }                                                                       \
+     }                                                                         \
+   }                                                                           \
+@@ -332,9 +332,9 @@
+     {                                                                         \
+       for (ii = lsh[dir/2]-gdata.nghostzones[dir/2]; ii < lsh[dir/2]; ii++)   \
+       {                                                                       \
+-        _var[INDEX_3D (ash, i, j, k)] NUMBER_PART                             \
++        _var[INDEX_3D (ash, i, j, k)]                                         \
+                      = (itype)(GFSym[vindex][dir]                             \
+-                       * _var[INDEX_3D (ash, iii, jjj, kkk)] NUMBER_PART);    \
++                       * _var[INDEX_3D (ash, iii, jjj, kkk)]);                \
+       }                                                                       \
+     }                                                                         \
+   }                                                                           \
+@@ -443,8 +443,8 @@
+ }
+ 
+ /* Function to apply above macros. */
+-#define SYMMETRY_FUNCTION(cctk_type,integral_type,SUFFIX)                     \
+-  static void cctk_type ## _SymBC ## SUFFIX(const cGH *GH, const int vindex, const int *doSym, const int *offset, const int *lsh, const int *ash, const cGroup group_static_data, const cGroupDynamicData gdata, int **GFSym) { int i,j,k; SYMMETRY_BOUNDARY(cctk_type, integral_type); }
++#define SYMMETRY_FUNCTION(cctk_type,integral_type)                            \
++  static void cctk_type ## _SymBC(const cGH *GH, const int vindex, const int *doSym, const int *offset, const int *lsh, const int *ash, const cGroup group_static_data, const cGroupDynamicData gdata, int **GFSym) { int i,j,k; SYMMETRY_BOUNDARY(cctk_type, integral_type); }
+ 
+ /* Create functions to apply macros.
+  * This is much easier for the optiser to deal with.
+@@ -452,60 +452,43 @@
+  * directly in the switch statement in ApplySymmetry.
+  */
+ 
+-#define NUMBER_PART .Re
+-SYMMETRY_FUNCTION(CCTK_COMPLEX,CCTK_REAL,R)
++SYMMETRY_FUNCTION(CCTK_COMPLEX,CCTK_REAL)
+ #ifdef HAVE_CCTK_COMPLEX8
+-SYMMETRY_FUNCTION(CCTK_COMPLEX8,CCTK_REAL4,R)
++SYMMETRY_FUNCTION(CCTK_COMPLEX8,CCTK_REAL4)
+ #endif
+ #ifdef HAVE_CCTK_COMPLEX16
+-SYMMETRY_FUNCTION(CCTK_COMPLEX16,CCTK_REAL8,R)
++SYMMETRY_FUNCTION(CCTK_COMPLEX16,CCTK_REAL8)
+ #endif
+ #ifdef HAVE_CCTK_COMPLEX32
+-SYMMETRY_FUNCTION(CCTK_COMPLEX32,CCTK_REAL16,R)
++SYMMETRY_FUNCTION(CCTK_COMPLEX32,CCTK_REAL16)
+ #endif
+-#undef NUMBER_PART
+ 
+-#define NUMBER_PART .Im
+-SYMMETRY_FUNCTION(CCTK_COMPLEX,CCTK_REAL,I)
+-#ifdef HAVE_CCTK_COMPLEX8
+-SYMMETRY_FUNCTION(CCTK_COMPLEX8,CCTK_REAL4,I)
+-#endif
+-#ifdef HAVE_CCTK_COMPLEX16
+-SYMMETRY_FUNCTION(CCTK_COMPLEX16,CCTK_REAL8,I)
+-#endif
+-#ifdef HAVE_CCTK_COMPLEX32
+-SYMMETRY_FUNCTION(CCTK_COMPLEX32,CCTK_REAL16,I)
+-#endif
+-#undef NUMBER_PART
+-
+-#define NUMBER_PART 
+-SYMMETRY_FUNCTION(CCTK_BYTE,CCTK_BYTE,R)
+-SYMMETRY_FUNCTION(CCTK_INT,CCTK_INT,R)
++SYMMETRY_FUNCTION(CCTK_BYTE,CCTK_BYTE)
++SYMMETRY_FUNCTION(CCTK_INT,CCTK_INT)
+ #ifdef HAVE_CCTK_INT1
+-SYMMETRY_FUNCTION(CCTK_INT1,CCTK_INT1,R)
++SYMMETRY_FUNCTION(CCTK_INT1,CCTK_INT1)
+ #endif
+ #ifdef HAVE_CCTK_INT2
+-SYMMETRY_FUNCTION(CCTK_INT2,CCTK_INT2,R)
++SYMMETRY_FUNCTION(CCTK_INT2,CCTK_INT2)
+ #endif
+ #ifdef HAVE_CCTK_INT4
+-SYMMETRY_FUNCTION(CCTK_INT4,CCTK_INT4,R)
++SYMMETRY_FUNCTION(CCTK_INT4,CCTK_INT4)
+ #endif
+ #ifdef HAVE_CCTK_INT8
+-SYMMETRY_FUNCTION(CCTK_INT8,CCTK_INT8,R)
++SYMMETRY_FUNCTION(CCTK_INT8,CCTK_INT8)
+ #endif
+-SYMMETRY_FUNCTION(CCTK_REAL,CCTK_REAL,R)
++SYMMETRY_FUNCTION(CCTK_REAL,CCTK_REAL)
+ #ifdef HAVE_CCTK_REAL4
+-SYMMETRY_FUNCTION(CCTK_REAL4,CCTK_REAL4,R)
++SYMMETRY_FUNCTION(CCTK_REAL4,CCTK_REAL4)
+ #endif
+ #ifdef HAVE_CCTK_REAL8
+-SYMMETRY_FUNCTION(CCTK_REAL8,CCTK_REAL8,R)
++SYMMETRY_FUNCTION(CCTK_REAL8,CCTK_REAL8)
+ #endif
+ #ifdef HAVE_CCTK_REAL16
+-SYMMETRY_FUNCTION(CCTK_REAL16,CCTK_REAL16,R)
++SYMMETRY_FUNCTION(CCTK_REAL16,CCTK_REAL16)
+ #endif
+-#undef NUMBER_PART
+ 
+-#define CALL_SYMBC(cctk_type,SUFFIX) cctk_type ## _SymBC ## SUFFIX(GH, vindex, doSym, offset, lsh, ash, group_static_data, gdata, GFSym)
++#define CALL_SYMBC(cctk_type) cctk_type ## _SymBC(GH, vindex, doSym, offset, lsh, ash, group_static_data, gdata, GFSym)
+ 
+ /*@@
+    @routine    ApplySymmetry
+@@ -643,63 +626,59 @@
+     switch (group_static_data.vartype)
+     {
+       case CCTK_VARIABLE_BYTE:
+-        CALL_SYMBC(CCTK_BYTE,R); break;
++        CALL_SYMBC(CCTK_BYTE); break;
+ 
+       case CCTK_VARIABLE_INT:
+-        CALL_SYMBC(CCTK_INT,R); break;
++        CALL_SYMBC(CCTK_INT); break;
+ 
+       case CCTK_VARIABLE_REAL:
+-        CALL_SYMBC(CCTK_REAL,R); break;
++        CALL_SYMBC(CCTK_REAL); break;
+ 
+       case CCTK_VARIABLE_COMPLEX:
+-        CALL_SYMBC(CCTK_COMPLEX,R);
+-        CALL_SYMBC(CCTK_COMPLEX,I); break;
++        CALL_SYMBC(CCTK_COMPLEX); break;
+         
+ #ifdef HAVE_CCTK_INT1
+       case CCTK_VARIABLE_INT1:
+-        CALL_SYMBC(CCTK_INT1,R); break;
++        CALL_SYMBC(CCTK_INT1); break;
+ #endif
+ 
+ #ifdef HAVE_CCTK_INT2
+       case CCTK_VARIABLE_INT2:
+-        CALL_SYMBC(CCTK_INT2,R); break;
++        CALL_SYMBC(CCTK_INT2); break;
+ #endif
+ 
+ #ifdef HAVE_CCTK_INT4
+       case CCTK_VARIABLE_INT4:
+-        CALL_SYMBC(CCTK_INT4,R); break;
++        CALL_SYMBC(CCTK_INT4); break;
+ #endif
+ 
+ #ifdef HAVE_CCTK_INT8
+       case CCTK_VARIABLE_INT8:
+-        CALL_SYMBC(CCTK_INT8,R); break;
++        CALL_SYMBC(CCTK_INT8); break;
+ #endif
+ 
+ #ifdef HAVE_CCTK_REAL4
+       case CCTK_VARIABLE_REAL4:
+-        CALL_SYMBC(CCTK_REAL4,R); break;
++        CALL_SYMBC(CCTK_REAL4); break;
+ 
+       case CCTK_VARIABLE_COMPLEX8:
+-        CALL_SYMBC(CCTK_COMPLEX8,R);
+-        CALL_SYMBC(CCTK_COMPLEX8,I); break;
++        CALL_SYMBC(CCTK_COMPLEX8); break;
+ #endif
+ 
+ #ifdef HAVE_CCTK_REAL8
+       case CCTK_VARIABLE_REAL8:
+-        CALL_SYMBC(CCTK_REAL8,R); break;
++        CALL_SYMBC(CCTK_REAL8); break;
+ 
+       case CCTK_VARIABLE_COMPLEX16:
+-        CALL_SYMBC(CCTK_COMPLEX16,R);
+-        CALL_SYMBC(CCTK_COMPLEX16,I); break;
++        CALL_SYMBC(CCTK_COMPLEX16); break;
+ #endif
+ 
+ #ifdef HAVE_CCTK_REAL16
+       case CCTK_VARIABLE_REAL16:
+-        CALL_SYMBC(CCTK_REAL16,R); break;
++        CALL_SYMBC(CCTK_REAL16); break;
+ 
+       case CCTK_VARIABLE_COMPLEX32:
+-        CALL_SYMBC(CCTK_COMPLEX32,R);
+-        CALL_SYMBC(CCTK_COMPLEX32,I); break;
++        CALL_SYMBC(CCTK_COMPLEX32); break;
+ #endif
+ 
+       default:
+Index: arrangements/CactusNumerical/LocalInterp/src/Interpolate.c
+===================================================================
+--- arrangements/CactusNumerical/LocalInterp/src/Interpolate.c	(revision 215)
++++ arrangements/CactusNumerical/LocalInterp/src/Interpolate.c	(working copy)
+@@ -133,14 +133,12 @@
+  * different directions' interpolations so that only 3 scalar temporaries
+  * are needed.
+  */
+-#define INTERPOLATE(cctk_type, cctk_subtype, subpart, in_array, out_array,    \
++#define INTERPOLATE(cctk_type, in_array, out_array,                           \
+                     order, point, dims, n, coeff)                             \
+     {                                                                         \
+       int ii, jj, kk;                                                         \
+       const cctk_type *fi;                                                    \
+-      /* for some reason (probably loop unrolling & pipelining) the compiler  \
+-         produces faster code if arrays are used instead of scalars */        \
+-      cctk_subtype interp_result, fj[1], fk[1];                               \
++      cctk_type interp_result, fj, fk;                                        \
+                                                                               \
+                                                                               \
+       interp_result = 0;                                                      \
+@@ -148,43 +146,39 @@
+       /* NOTE-MAXDIM: support >3D arrays by adding more loops */              \
+       for (kk = 0; kk <= order; kk++)                                         \
+       {                                                                       \
+-        fk[0] = 0;                                                            \
++        fk = 0;                                                               \
+         for (jj = 0; jj <= order; jj++)                                       \
+         {                                                                     \
+           /* NOTE-MAXDIM: for >3D arrays adapt the index calculation here */  \
+           fi = (const cctk_type *) in_array +                                 \
+                point[0] + dims[0]*(point[1]+jj + dims[1]*(point[2]+kk));      \
+                                                                               \
+-          fj[0] = 0;                                                          \
++          fj = 0;                                                             \
+           for (ii = 0; ii <= order; ii++)                                     \
+           {                                                                   \
+-            fj[0] += fi[ii]subpart * coeff[0][ii];                            \
++            fj += fi[ii] * coeff[0][ii];                                      \
+           }                                                                   \
+           /* at this point we have just computed */                           \
+-          /* fj[0] = in_array[*][jj][kk] interpolated to x=offset[0] */       \
++          /* fj = in_array[*][jj][kk] interpolated to x=offset[0] */          \
+                                                                               \
+-          fk[0] += fj[0] * coeff[1][jj];                                      \
++          fk += fj * coeff[1][jj];                                            \
+         }                                                                     \
+         /* at this point we have just computed */                             \
+-        /* fk[0] = fj[0][*][kk] interpolated to y=offset[1] */                \
++        /* fk = fj[*][kk] interpolated to y=offset[1] */                      \
+         /*       = in_array[*][*][kk] interpolated to */                      \
+         /*                            x=offset[0], y=offset[1] */             \
+                                                                               \
+-        interp_result += fk[0] * coeff[2][kk];                                \
++        interp_result += fk * coeff[2][kk];                                   \
+       }                                                                       \
+       /* at this point we have just computed */                               \
+-      /* interp_result = fk[0][*] interpolated to z=offset[2] */              \
++      /* interp_result = fk[*] interpolated to z=offset[2] */                 \
+       /*               = in_array[*][*][*] interpolated to */                 \
+       /*                 x=offset[0], y=offset[1], z=offset[2] */             \
+                                                                               \
+       /* assign the result */                                                 \
+-      ((cctk_type *) out_array)[n]subpart = interp_result;                    \
++      ((cctk_type *) out_array)[n] = interp_result;                           \
+     }                                                      /* end of macro */
+ 
+-/* this is needed by some preprocessors to pass into INTERPOLATE
+-   as a dummy macro */
+-#define NOTHING
+-
+ /******************************************************************************/
+ 
+ /*@@
+@@ -606,56 +600,48 @@
+          we support all kinds of CCTK_REAL* and CCTK_COMPLEX* types here */
+       if (in_types[a] == CCTK_VARIABLE_REAL)
+       {
+-        INTERPOLATE (CCTK_REAL, CCTK_REAL, NOTHING, in_arrays[a],
++        INTERPOLATE (CCTK_REAL, in_arrays[a],
+                      out_arrays[a], order, point, max_dims, n, coeff);
+       }
+       else if (in_types[a] == CCTK_VARIABLE_COMPLEX)
+       {
+-        INTERPOLATE (CCTK_COMPLEX, CCTK_REAL, .Re, in_arrays[a],
++        INTERPOLATE (CCTK_COMPLEX, in_arrays[a],
+                      out_arrays[a], order, point, max_dims, n, coeff);
+-        INTERPOLATE (CCTK_COMPLEX, CCTK_REAL, .Im, in_arrays[a],
+-                     out_arrays[a], order, point, max_dims, n, coeff);
+       }
+ #ifdef CCTK_REAL4
+       else if (in_types[a] == CCTK_VARIABLE_REAL4)
+       {
+-        INTERPOLATE (CCTK_REAL4, CCTK_REAL4, NOTHING, in_arrays[a],
++        INTERPOLATE (CCTK_REAL4, in_arrays[a],
+                      out_arrays[a], order, point, max_dims, n, coeff);
+       }
+       else if (in_types[a] == CCTK_VARIABLE_COMPLEX8)
+       {
+-        INTERPOLATE (CCTK_COMPLEX8, CCTK_REAL4, .Re, in_arrays[a],
++        INTERPOLATE (CCTK_COMPLEX8, in_arrays[a],
+                      out_arrays[a], order, point, max_dims, n, coeff);
+-        INTERPOLATE (CCTK_COMPLEX8, CCTK_REAL4, .Im, in_arrays[a],
+-                     out_arrays[a], order, point, max_dims, n, coeff);
+       }
+ #endif
+ #ifdef CCTK_REAL8
+       else if (in_types[a] == CCTK_VARIABLE_REAL8)
+       {
+-        INTERPOLATE (CCTK_REAL8, CCTK_REAL8, NOTHING, in_arrays[a],
++        INTERPOLATE (CCTK_REAL8, in_arrays[a],
+                      out_arrays[a], order, point, max_dims, n, coeff);
+       }
+       else if (in_types[a] == CCTK_VARIABLE_COMPLEX16)
+       {
+-        INTERPOLATE (CCTK_COMPLEX16, CCTK_REAL8, .Re, in_arrays[a],
++        INTERPOLATE (CCTK_COMPLEX16, in_arrays[a],
+                      out_arrays[a], order, point, max_dims, n, coeff);
+-        INTERPOLATE (CCTK_COMPLEX16, CCTK_REAL8, .Im, in_arrays[a],
+-                     out_arrays[a], order, point, max_dims, n, coeff);
+       }
+ #endif
+ #ifdef CCTK_REAL16
+       else if (in_types[a] == CCTK_VARIABLE_REAL16)
+       {
+-        INTERPOLATE (CCTK_REAL16, CCTK_REAL16, NOTHING, in_arrays[a],
++        INTERPOLATE (CCTK_REAL16, in_arrays[a],
+                      out_arrays[a], order, point, max_dims, n, coeff);
+       }
+       else if (in_types[a] == CCTK_VARIABLE_COMPLEX32)
+       {
+-        INTERPOLATE (CCTK_COMPLEX32, CCTK_REAL16, .Re, in_arrays[a],
++        INTERPOLATE (CCTK_COMPLEX32, in_arrays[a],
+                      out_arrays[a], order, point, max_dims, n, coeff);
+-        INTERPOLATE (CCTK_COMPLEX32, CCTK_REAL16, .Im, in_arrays[a],
+-                     out_arrays[a], order, point, max_dims, n, coeff);
+       }
+ #endif
+       else
+Index: arrangements/CactusNumerical/ReflectionSymmetry/src/apply.c
+===================================================================
+--- arrangements/CactusNumerical/ReflectionSymmetry/src/apply.c	(revision 54)
++++ arrangements/CactusNumerical/ReflectionSymmetry/src/apply.c	(working copy)
+@@ -56,20 +56,14 @@
+           int const jj = jjoff + jdir * j;                              \
+           int const kk = kkoff + kdir * k;                              \
+           int const srcind = ii + ni * (jj + nj * kk);                  \
+-          REAL(dstvar[dstind] RE = parity * srcvar[srcind] RE;)         \
+-          IMAG(dstvar[dstind] IM = parity * srcvar[srcind] IM;)         \
++          dstvar[dstind] = parity * srcvar[srcind];                     \
+         }                                                               \
+       }                                                                 \
+     }                                                                   \
+ 
+-#define COPY_POST(VARTYPE)                      \
++#define COPY_POST(VARTYPE)                                              \
+   }
+ 
+-#define REAL(x) x
+-#define IMAG(x) /* nothing */
+-#define RE /* nothing */
+-#define IM ERROR ERROR ERROR
+-
+ #ifdef HAVE_CCTK_INT1
+ COPY_PRE(CCTK_INT1)
+ #pragma omp parallel for
+@@ -119,16 +113,6 @@
+ COPY_POST(CCTK_REAL16)
+ #endif
+ 
+-#undef REAL
+-#undef IMAG
+-#undef RE
+-#undef IM
+-
+-#define REAL(x) x
+-#define IMAG(x) x
+-#define RE .Re
+-#define IM .Im
+-
+ #ifdef HAVE_CCTK_COMPLEX8
+ COPY_PRE(CCTK_COMPLEX8)
+ #pragma omp parallel for
+@@ -150,11 +134,6 @@
+ COPY_POST(CCTK_COMPLEX32)
+ #endif
+ 
+-#undef REAL
+-#undef IMAG
+-#undef RE
+-#undef IM
+-
+ #undef COPY_PRE
+ #undef COPY_LOOP
+ #undef COPY_POST
+Index: arrangements/CactusPUGH/PUGHReduce/src/ReduceArraysGlobally.c
+===================================================================
+--- arrangements/CactusPUGH/PUGHReduce/src/ReduceArraysGlobally.c	(revision 104)
++++ arrangements/CactusPUGH/PUGHReduce/src/ReduceArraysGlobally.c	(working copy)
+@@ -180,18 +180,6 @@
+   CCTK_INT * input_array_dims;
+   CCTK_INT * input_array_gz;
+   
+-  /* temporary complex variables*/
+-  CCTK_COMPLEX cmplx_tmp;
+-  #ifdef HAVE_CCTK_COMPLEX8
+-  CCTK_COMPLEX8 cmplx_tmp8;
+-  #endif
+-  #ifdef HAVE_CCTK_COMPLEX16
+-  CCTK_COMPLEX16 cmplx_tmp16;
+-  #endif
+-  #ifdef HAVE_CCTK_COMPLEX32
+-  CCTK_COMPLEX32 cmplx_tmp32;
+-  #endif
+-  
+ #ifdef CCTK_MPI
+   int nprocs = 0, global_operation = 0;
+   const pGH *pughGH = NULL;
+@@ -831,25 +819,21 @@
+             break;
+             #endif
+             case CCTK_VARIABLE_COMPLEX:
+-              (*( (CCTK_COMPLEX *) output_values[i])).Re = (*( (CCTK_COMPLEX *) output_values[i])).Re / weight_sum; 
+-              (*( (CCTK_COMPLEX *) output_values[i])).Im = (*( (CCTK_COMPLEX *) output_values[i])).Im / weight_sum; 
++              *( (CCTK_COMPLEX *) output_values[i]) = *( (CCTK_COMPLEX *) output_values[i]) / weight_sum; 
+             break;
+             #ifdef HAVE_CCTK_COMPLEX8
+             case CCTK_VARIABLE_COMPLEX8:
+-              (*( (CCTK_COMPLEX8 *) output_values[i])).Re = (*( (CCTK_COMPLEX8 *) output_values[i])).Re / weight_sum; 
+-              (*( (CCTK_COMPLEX8 *) output_values[i])).Im = (*( (CCTK_COMPLEX8 *) output_values[i])).Im / weight_sum; 
++              *( (CCTK_COMPLEX8 *) output_values[i]) = *( (CCTK_COMPLEX8 *) output_values[i]) / weight_sum; 
+             break;
+             #endif
+             #ifdef HAVE_CCTK_COMPLEX16
+             case CCTK_VARIABLE_COMPLEX16:
+-            (*( (CCTK_COMPLEX16 *) output_values[i])).Re = (*( (CCTK_COMPLEX16 *) output_values[i])).Re / weight_sum; 
+-            (*( (CCTK_COMPLEX16 *) output_values[i])).Im = (*( (CCTK_COMPLEX16 *) output_values[i])).Im / weight_sum; 
++            *( (CCTK_COMPLEX16 *) output_values[i]) = *( (CCTK_COMPLEX16 *) output_values[i]) / weight_sum; 
+             break;
+             #endif
+             #ifdef HAVE_CCTK_COMPLEX32
+             case CCTK_VARIABLE_COMPLEX32:
+-              (*( (CCTK_COMPLEX32 *) output_values[i])).Re = (*( (CCTK_COMPLEX32 *) output_values[i])).Re / weight_sum; 
+-              (*( (CCTK_COMPLEX32 *) output_values[i])).Im = (*( (CCTK_COMPLEX32 *) output_values[i])).Im / weight_sum; 
++              *( (CCTK_COMPLEX32 *) output_values[i]) = *( (CCTK_COMPLEX32 *) output_values[i]) / weight_sum; 
+             break;
+             #endif
+           }
+@@ -913,25 +897,21 @@
+           break;
+           #endif
+           case CCTK_VARIABLE_COMPLEX:
+-            (*( (CCTK_COMPLEX *) output_values[i])).Re = (*( (CCTK_COMPLEX *) output_values[i])).Re / num_points; 
+-            (*( (CCTK_COMPLEX *) output_values[i])).Im = (*( (CCTK_COMPLEX *) output_values[i])).Im / num_points; 
++            *( (CCTK_COMPLEX *) output_values[i]) = *( (CCTK_COMPLEX *) output_values[i]) / num_points; 
+           break;
+           #ifdef HAVE_CCTK_COMPLEX8
+           case CCTK_VARIABLE_COMPLEX8:
+-            (*( (CCTK_COMPLEX8 *) output_values[i])).Re = (*( (CCTK_COMPLEX8 *) output_values[i])).Re / num_points; 
+-            (*( (CCTK_COMPLEX8 *) output_values[i])).Im = (*( (CCTK_COMPLEX8 *) output_values[i])).Im / num_points; 
++            *( (CCTK_COMPLEX8 *) output_values[i]) = *( (CCTK_COMPLEX8 *) output_values[i]) / num_points; 
+           break;
+           #endif
+           #ifdef HAVE_CCTK_COMPLEX16
+           case CCTK_VARIABLE_COMPLEX16:
+-          (*( (CCTK_COMPLEX16 *) output_values[i])).Re = (*( (CCTK_COMPLEX16 *) output_values[i])).Re / num_points; 
+-          (*( (CCTK_COMPLEX16 *) output_values[i])).Im = (*( (CCTK_COMPLEX16 *) output_values[i])).Im / num_points; 
++          *( (CCTK_COMPLEX16 *) output_values[i]) = *( (CCTK_COMPLEX16 *) output_values[i]) / num_points; 
+           break;
+           #endif
+           #ifdef HAVE_CCTK_COMPLEX32
+           case CCTK_VARIABLE_COMPLEX32:
+-            (*( (CCTK_COMPLEX32 *) output_values[i])).Re = (*( (CCTK_COMPLEX32 *) output_values[i])).Re / num_points; 
+-            (*( (CCTK_COMPLEX32 *) output_values[i])).Im = (*( (CCTK_COMPLEX32 *) output_values[i])).Im / num_points; 
++            *( (CCTK_COMPLEX32 *) output_values[i]) = *( (CCTK_COMPLEX32 *) output_values[i]) / num_points; 
+           break;
+           #endif
+         }
+@@ -950,7 +930,7 @@
+           *( (CCTK_BYTE *) output_values[i]) = sqrt(*( (CCTK_BYTE *) output_values[i])); 
+         break;
+         case CCTK_VARIABLE_INT:
+-          *( (CCTK_INT *) output_values[i]) = sqrt( *( (CCTK_INT *) output_values[i])); 
++          *( (CCTK_INT *) output_values[i]) = sqrt(*( (CCTK_INT *) output_values[i])); 
+         break;
+         #ifdef HAVE_CCTK_INT1
+         case CCTK_VARIABLE_INT1:
+@@ -991,37 +971,21 @@
+         break;
+         #endif
+         case CCTK_VARIABLE_COMPLEX:
+-          cmplx_tmp.Re = (*( (CCTK_COMPLEX *) output_values[i])).Re;
+-          cmplx_tmp.Im = (*( (CCTK_COMPLEX *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/2.0);
+-          (*( (CCTK_COMPLEX *) output_values[i])).Re = cmplx_tmp.Re;
+-          (*( (CCTK_COMPLEX *) output_values[i])).Im = cmplx_tmp.Im;
++          *( (CCTK_COMPLEX *) output_values[i]) = CCTK_CmplxSqrt(*( (CCTK_COMPLEX *) output_values[i])); 
+         break;
+         #ifdef HAVE_CCTK_COMPLEX8
+         case CCTK_VARIABLE_COMPLEX8:
+-          cmplx_tmp8.Re = (*( (CCTK_COMPLEX8 *) output_values[i])).Re;
+-          cmplx_tmp8.Im = (*( (CCTK_COMPLEX8 *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/2.0);
+-          (*( (CCTK_COMPLEX8 *) output_values[i])).Re = cmplx_tmp8.Re;
+-          (*( (CCTK_COMPLEX8 *) output_values[i])).Im = cmplx_tmp8.Im;
++          *( (CCTK_COMPLEX8 *) output_values[i]) = CCTK_Cmplx8Sqrt(*( (CCTK_COMPLEX8 *) output_values[i])); 
+         break;
+         #endif
+         #ifdef HAVE_CCTK_COMPLEX16
+         case CCTK_VARIABLE_COMPLEX16:
+-          cmplx_tmp16.Re = (*( (CCTK_COMPLEX16 *) output_values[i])).Re;
+-          cmplx_tmp16.Im = (*( (CCTK_COMPLEX16 *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/2.0);
+-          (*( (CCTK_COMPLEX16 *) output_values[i])).Re = cmplx_tmp16.Re;
+-          (*( (CCTK_COMPLEX16 *) output_values[i])).Im = cmplx_tmp16.Im;
++          *( (CCTK_COMPLEX16 *) output_values[i]) = CCTK_Cmplx16Sqrt(*( (CCTK_COMPLEX16 *) output_values[i])); 
+         break;
+         #endif
+         #ifdef HAVE_CCTK_COMPLEX32
+         case CCTK_VARIABLE_COMPLEX32:
+-          cmplx_tmp32.Re = (*( (CCTK_COMPLEX32 *) output_values[i])).Re;
+-          cmplx_tmp32.Im = (*( (CCTK_COMPLEX32 *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/2.0);
+-          (*( (CCTK_COMPLEX32 *) output_values[i])).Re = cmplx_tmp32.Re;
+-          (*( (CCTK_COMPLEX32 *) output_values[i])).Im = cmplx_tmp32.Im;
++          *( (CCTK_COMPLEX32 *) output_values[i]) = CCTK_Cmplx32Sqrt(*( (CCTK_COMPLEX32 *) output_values[i])); 
+         break;
+         #endif
+       }
+@@ -1079,38 +1043,23 @@
+           *( (CCTK_REAL16 *) output_values[i]) = pow(*( (CCTK_REAL16 *) output_values[i]), 1.0/3.0); 
+         break;
+         #endif
++          *( (CCTK_REAL16 *) output_values[i]) = pow(*( (CCTK_REAL16 *) output_values[i]), 1.0/3.0); 
+         case CCTK_VARIABLE_COMPLEX:
+-          cmplx_tmp.Re = (*( (CCTK_COMPLEX *) output_values[i])).Re;
+-          cmplx_tmp.Im = (*( (CCTK_COMPLEX *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/3.0);
+-          (*( (CCTK_COMPLEX *) output_values[i])).Re = cmplx_tmp.Re;
+-          (*( (CCTK_COMPLEX *) output_values[i])).Im = cmplx_tmp.Im;
++          *( (CCTK_COMPLEX *) output_values[i]) = CCTK_CmplxPow(*( (CCTK_COMPLEX *) output_values[i]), 1.0/3.0); 
+         break;
+         #ifdef HAVE_CCTK_COMPLEX8
+         case CCTK_VARIABLE_COMPLEX8:
+-          cmplx_tmp8.Re = (*( (CCTK_COMPLEX8 *) output_values[i])).Re;
+-          cmplx_tmp8.Im = (*( (CCTK_COMPLEX8 *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/3.0);
+-          (*( (CCTK_COMPLEX8 *) output_values[i])).Re = cmplx_tmp8.Re;
+-          (*( (CCTK_COMPLEX8 *) output_values[i])).Im = cmplx_tmp8.Im;
++          *( (CCTK_COMPLEX8 *) output_values[i]) = CCTK_Cmplx8Pow(*( (CCTK_COMPLEX8 *) output_values[i]), 1.0/3.0); 
+         break;
+         #endif
+         #ifdef HAVE_CCTK_COMPLEX16
+         case CCTK_VARIABLE_COMPLEX16:
+-          cmplx_tmp16.Re = (*( (CCTK_COMPLEX16 *) output_values[i])).Re;
+-          cmplx_tmp16.Im = (*( (CCTK_COMPLEX16 *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/3.0);
+-          (*( (CCTK_COMPLEX16 *) output_values[i])).Re = cmplx_tmp16.Re;
+-          (*( (CCTK_COMPLEX16 *) output_values[i])).Im = cmplx_tmp16.Im;
++          *( (CCTK_COMPLEX16 *) output_values[i]) = CCTK_Cmplx16Pow(*( (CCTK_COMPLEX16 *) output_values[i]), 1.0/3.0); 
+         break;
+         #endif
+         #ifdef HAVE_CCTK_COMPLEX32
+         case CCTK_VARIABLE_COMPLEX32:
+-          cmplx_tmp32.Re = (*( (CCTK_COMPLEX32 *) output_values[i])).Re;
+-          cmplx_tmp32.Im = (*( (CCTK_COMPLEX32 *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/3.0);
+-          (*( (CCTK_COMPLEX32 *) output_values[i])).Re = cmplx_tmp32.Re;
+-          (*( (CCTK_COMPLEX32 *) output_values[i])).Im = cmplx_tmp32.Im;
++          *( (CCTK_COMPLEX32 *) output_values[i]) = CCTK_Cmplx32Pow(*( (CCTK_COMPLEX32 *) output_values[i]), 1.0/3.0); 
+         break;
+         #endif
+       }
+@@ -1169,37 +1118,21 @@
+         break;
+         #endif
+         case CCTK_VARIABLE_COMPLEX:
+-          cmplx_tmp.Re = (*( (CCTK_COMPLEX *) output_values[i])).Re;
+-          cmplx_tmp.Im = (*( (CCTK_COMPLEX *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/4.0);
+-          (*( (CCTK_COMPLEX *) output_values[i])).Re = cmplx_tmp.Re;
+-          (*( (CCTK_COMPLEX *) output_values[i])).Im = cmplx_tmp.Im;
++          *( (CCTK_COMPLEX *) output_values[i]) = CCTK_CmplxPow(*( (CCTK_COMPLEX *) output_values[i]), 1.0/4.0);
+         break;
+         #ifdef HAVE_CCTK_COMPLEX8
+         case CCTK_VARIABLE_COMPLEX8:
+-          cmplx_tmp8.Re = (*( (CCTK_COMPLEX8 *) output_values[i])).Re;
+-          cmplx_tmp8.Im = (*( (CCTK_COMPLEX8 *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/4.0);
+-          (*( (CCTK_COMPLEX8 *) output_values[i])).Re = cmplx_tmp8.Re;
+-          (*( (CCTK_COMPLEX8 *) output_values[i])).Im = cmplx_tmp8.Im;
++          *( (CCTK_COMPLEX8 *) output_values[i]) = CCTK_Cmplx8Pow(*( (CCTK_COMPLEX8 *) output_values[i]), 1.0/4.0);
+         break;
+         #endif
+         #ifdef HAVE_CCTK_COMPLEX16
+         case CCTK_VARIABLE_COMPLEX16:
+-          cmplx_tmp16.Re = (*( (CCTK_COMPLEX16 *) output_values[i])).Re;
+-          cmplx_tmp16.Im = (*( (CCTK_COMPLEX16 *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/4.0);
+-          (*( (CCTK_COMPLEX16 *) output_values[i])).Re = cmplx_tmp16.Re;
+-          (*( (CCTK_COMPLEX16 *) output_values[i])).Im = cmplx_tmp16.Im;
++          *( (CCTK_COMPLEX16 *) output_values[i]) = CCTK_Cmplx16Pow(*( (CCTK_COMPLEX16 *) output_values[i]), 1.0/4.0);
+         break;
+         #endif
+         #ifdef HAVE_CCTK_COMPLEX32
+         case CCTK_VARIABLE_COMPLEX32:
+-          cmplx_tmp32.Re = (*( (CCTK_COMPLEX32 *) output_values[i])).Re;
+-          cmplx_tmp32.Im = (*( (CCTK_COMPLEX32 *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/4.0);
+-          (*( (CCTK_COMPLEX32 *) output_values[i])).Re = cmplx_tmp32.Re;
+-          (*( (CCTK_COMPLEX32 *) output_values[i])).Im = cmplx_tmp32.Im;
++          *( (CCTK_COMPLEX32 *) output_values[i]) = CCTK_Cmplx32Pow(*( (CCTK_COMPLEX32 *) output_values[i]), 1.0/4.0);
+         break;
+         #endif
+       }
+Index: arrangements/CactusPUGH/PUGHReduce/src/ReduceGA.c
+===================================================================
+--- arrangements/CactusPUGH/PUGHReduce/src/ReduceGA.c	(revision 104)
++++ arrangements/CactusPUGH/PUGHReduce/src/ReduceGA.c	(working copy)
+@@ -161,18 +161,6 @@
+   CCTK_INT * input_array_type_codes;
+   CCTK_INT * input_array_gz;
+   
+-  /* temporary complex variables*/
+-  CCTK_COMPLEX cmplx_tmp;
+-  #ifdef HAVE_CCTK_COMPLEX8
+-  CCTK_COMPLEX8 cmplx_tmp8;
+-  #endif
+-  #ifdef HAVE_CCTK_COMPLEX16
+-  CCTK_COMPLEX16 cmplx_tmp16;
+-  #endif
+-  #ifdef HAVE_CCTK_COMPLEX32
+-  CCTK_COMPLEX32 cmplx_tmp32;
+-  #endif
+-  
+ #ifdef CCTK_MPI
+   int nprocs = 0, global_operation = 0;
+   const pGH *pughGH = NULL;
+@@ -835,25 +823,21 @@
+             break;
+             #endif
+             case CCTK_VARIABLE_COMPLEX:
+-              (*( (CCTK_COMPLEX *) output_values[i])).Re = (*( (CCTK_COMPLEX *) output_values[i])).Re / weight_sum; 
+-              (*( (CCTK_COMPLEX *) output_values[i])).Im = (*( (CCTK_COMPLEX *) output_values[i])).Im / weight_sum; 
++              *( (CCTK_COMPLEX *) output_values[i]) = *( (CCTK_COMPLEX *) output_values[i]) / weight_sum; 
+             break;
+             #ifdef HAVE_CCTK_COMPLEX8
+             case CCTK_VARIABLE_COMPLEX8:
+-              (*( (CCTK_COMPLEX8 *) output_values[i])).Re = (*( (CCTK_COMPLEX8 *) output_values[i])).Re / weight_sum; 
+-              (*( (CCTK_COMPLEX8 *) output_values[i])).Im = (*( (CCTK_COMPLEX8 *) output_values[i])).Im / weight_sum; 
++              *( (CCTK_COMPLEX8 *) output_values[i]) = *( (CCTK_COMPLEX8 *) output_values[i]) / weight_sum; 
+             break;
+             #endif
+             #ifdef HAVE_CCTK_COMPLEX16
+             case CCTK_VARIABLE_COMPLEX16:
+-            (*( (CCTK_COMPLEX16 *) output_values[i])).Re = (*( (CCTK_COMPLEX16 *) output_values[i])).Re / weight_sum; 
+-            (*( (CCTK_COMPLEX16 *) output_values[i])).Im = (*( (CCTK_COMPLEX16 *) output_values[i])).Im / weight_sum; 
++            *( (CCTK_COMPLEX16 *) output_values[i]) = *( (CCTK_COMPLEX16 *) output_values[i]) / weight_sum; 
+             break;
+             #endif
+             #ifdef HAVE_CCTK_COMPLEX32
+             case CCTK_VARIABLE_COMPLEX32:
+-              (*( (CCTK_COMPLEX32 *) output_values[i])).Re = (*( (CCTK_COMPLEX32 *) output_values[i])).Re / weight_sum; 
+-              (*( (CCTK_COMPLEX32 *) output_values[i])).Im = (*( (CCTK_COMPLEX32 *) output_values[i])).Im / weight_sum; 
++              *( (CCTK_COMPLEX32 *) output_values[i]) = *( (CCTK_COMPLEX32 *) output_values[i]) / weight_sum; 
+             break;
+             #endif
+           }
+@@ -917,25 +901,21 @@
+           break;
+           #endif
+           case CCTK_VARIABLE_COMPLEX:
+-            (*( (CCTK_COMPLEX *) output_values[i])).Re = (*( (CCTK_COMPLEX *) output_values[i])).Re / num_points; 
+-            (*( (CCTK_COMPLEX *) output_values[i])).Im = (*( (CCTK_COMPLEX *) output_values[i])).Im / num_points; 
++            *( (CCTK_COMPLEX *) output_values[i]) = *( (CCTK_COMPLEX *) output_values[i]) / num_points; 
+           break;
+           #ifdef HAVE_CCTK_COMPLEX8
+           case CCTK_VARIABLE_COMPLEX8:
+-            (*( (CCTK_COMPLEX8 *) output_values[i])).Re = (*( (CCTK_COMPLEX8 *) output_values[i])).Re / num_points; 
+-            (*( (CCTK_COMPLEX8 *) output_values[i])).Im = (*( (CCTK_COMPLEX8 *) output_values[i])).Im / num_points; 
++            *( (CCTK_COMPLEX8 *) output_values[i]) = *( (CCTK_COMPLEX8 *) output_values[i]) / num_points; 
+           break;
+           #endif
+           #ifdef HAVE_CCTK_COMPLEX16
+           case CCTK_VARIABLE_COMPLEX16:
+-          (*( (CCTK_COMPLEX16 *) output_values[i])).Re = (*( (CCTK_COMPLEX16 *) output_values[i])).Re / num_points; 
+-          (*( (CCTK_COMPLEX16 *) output_values[i])).Im = (*( (CCTK_COMPLEX16 *) output_values[i])).Im / num_points; 
++          *( (CCTK_COMPLEX16 *) output_values[i]) = *( (CCTK_COMPLEX16 *) output_values[i]) / num_points; 
+           break;
+           #endif
+           #ifdef HAVE_CCTK_COMPLEX32
+           case CCTK_VARIABLE_COMPLEX32:
+-            (*( (CCTK_COMPLEX32 *) output_values[i])).Re = (*( (CCTK_COMPLEX32 *) output_values[i])).Re / num_points; 
+-            (*( (CCTK_COMPLEX32 *) output_values[i])).Im = (*( (CCTK_COMPLEX32 *) output_values[i])).Im / num_points; 
++            *( (CCTK_COMPLEX32 *) output_values[i]) = *( (CCTK_COMPLEX32 *) output_values[i]) / num_points; 
+           break;
+           #endif
+         }
+@@ -995,37 +975,21 @@
+         break;
+         #endif
+         case CCTK_VARIABLE_COMPLEX:
+-          cmplx_tmp.Re = (*( (CCTK_COMPLEX *) output_values[i])).Re;
+-          cmplx_tmp.Im = (*( (CCTK_COMPLEX *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/2.0);
+-          (*( (CCTK_COMPLEX *) output_values[i])).Re = cmplx_tmp.Re;
+-          (*( (CCTK_COMPLEX *) output_values[i])).Im = cmplx_tmp.Im;
++          *( (CCTK_COMPLEX *) output_values[i]) = CCTK_CmplxSqrt(*( (CCTK_COMPLEX *) output_values[i]));
+         break;
+         #ifdef HAVE_CCTK_COMPLEX8
+         case CCTK_VARIABLE_COMPLEX8:
+-          cmplx_tmp8.Re = (*( (CCTK_COMPLEX8 *) output_values[i])).Re;
+-          cmplx_tmp8.Im = (*( (CCTK_COMPLEX8 *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/2.0);
+-          (*( (CCTK_COMPLEX8 *) output_values[i])).Re = cmplx_tmp8.Re;
+-          (*( (CCTK_COMPLEX8 *) output_values[i])).Im = cmplx_tmp8.Im;
++          *( (CCTK_COMPLEX8 *) output_values[i]) = CCTK_Cmplx8Sqrt(*( (CCTK_COMPLEX8 *) output_values[i]));
+         break;
+         #endif
+         #ifdef HAVE_CCTK_COMPLEX16
+         case CCTK_VARIABLE_COMPLEX16:
+-          cmplx_tmp16.Re = (*( (CCTK_COMPLEX16 *) output_values[i])).Re;
+-          cmplx_tmp16.Im = (*( (CCTK_COMPLEX16 *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/2.0);
+-          (*( (CCTK_COMPLEX16 *) output_values[i])).Re = cmplx_tmp16.Re;
+-          (*( (CCTK_COMPLEX16 *) output_values[i])).Im = cmplx_tmp16.Im;
++          *( (CCTK_COMPLEX16 *) output_values[i]) = CCTK_Cmplx16Sqrt(*( (CCTK_COMPLEX16 *) output_values[i]));
+         break;
+         #endif
+         #ifdef HAVE_CCTK_COMPLEX32
+         case CCTK_VARIABLE_COMPLEX32:
+-          cmplx_tmp32.Re = (*( (CCTK_COMPLEX32 *) output_values[i])).Re;
+-          cmplx_tmp32.Im = (*( (CCTK_COMPLEX32 *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/2.0);
+-          (*( (CCTK_COMPLEX32 *) output_values[i])).Re = cmplx_tmp32.Re;
+-          (*( (CCTK_COMPLEX32 *) output_values[i])).Im = cmplx_tmp32.Im;
++          *( (CCTK_COMPLEX32 *) output_values[i]) = CCTK_Cmplx32Sqrt(*( (CCTK_COMPLEX32 *) output_values[i]));
+         break;
+         #endif
+       }
+@@ -1084,37 +1048,21 @@
+         break;
+         #endif
+         case CCTK_VARIABLE_COMPLEX:
+-          cmplx_tmp.Re = (*( (CCTK_COMPLEX *) output_values[i])).Re;
+-          cmplx_tmp.Im = (*( (CCTK_COMPLEX *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/3.0);
+-          (*( (CCTK_COMPLEX *) output_values[i])).Re = cmplx_tmp.Re;
+-          (*( (CCTK_COMPLEX *) output_values[i])).Im = cmplx_tmp.Im;
++          *( (CCTK_COMPLEX *) output_values[i]) = CCTK_CmplxPow(*( (CCTK_COMPLEX *) output_values[i]), 1.0/3.0);
+         break;
+         #ifdef HAVE_CCTK_COMPLEX8
+         case CCTK_VARIABLE_COMPLEX8:
+-          cmplx_tmp8.Re = (*( (CCTK_COMPLEX8 *) output_values[i])).Re;
+-          cmplx_tmp8.Im = (*( (CCTK_COMPLEX8 *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/3.0);
+-          (*( (CCTK_COMPLEX8 *) output_values[i])).Re = cmplx_tmp8.Re;
+-          (*( (CCTK_COMPLEX8 *) output_values[i])).Im = cmplx_tmp8.Im;
++          *( (CCTK_COMPLEX8 *) output_values[i]) = CCTK_Cmplx8Pow(*( (CCTK_COMPLEX8 *) output_values[i]), 1.0/3.0);
+         break;
+         #endif
+         #ifdef HAVE_CCTK_COMPLEX16
+         case CCTK_VARIABLE_COMPLEX16:
+-          cmplx_tmp16.Re = (*( (CCTK_COMPLEX16 *) output_values[i])).Re;
+-          cmplx_tmp16.Im = (*( (CCTK_COMPLEX16 *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/3.0);
+-          (*( (CCTK_COMPLEX16 *) output_values[i])).Re = cmplx_tmp16.Re;
+-          (*( (CCTK_COMPLEX16 *) output_values[i])).Im = cmplx_tmp16.Im;
++          *( (CCTK_COMPLEX16 *) output_values[i]) = CCTK_Cmplx16Pow(*( (CCTK_COMPLEX16 *) output_values[i]), 1.0/3.0);
+         break;
+         #endif
+         #ifdef HAVE_CCTK_COMPLEX32
+         case CCTK_VARIABLE_COMPLEX32:
+-          cmplx_tmp32.Re = (*( (CCTK_COMPLEX32 *) output_values[i])).Re;
+-          cmplx_tmp32.Im = (*( (CCTK_COMPLEX32 *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/3.0);
+-          (*( (CCTK_COMPLEX32 *) output_values[i])).Re = cmplx_tmp32.Re;
+-          (*( (CCTK_COMPLEX32 *) output_values[i])).Im = cmplx_tmp32.Im;
++          *( (CCTK_COMPLEX32 *) output_values[i]) = CCTK_Cmplx32Pow(*( (CCTK_COMPLEX32 *) output_values[i]), 1.0/3.0);
+         break;
+         #endif
+       }
+@@ -1173,37 +1121,21 @@
+         break;
+         #endif
+         case CCTK_VARIABLE_COMPLEX:
+-          cmplx_tmp.Re = (*( (CCTK_COMPLEX *) output_values[i])).Re;
+-          cmplx_tmp.Im = (*( (CCTK_COMPLEX *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/4.0);
+-          (*( (CCTK_COMPLEX *) output_values[i])).Re = cmplx_tmp.Re;
+-          (*( (CCTK_COMPLEX *) output_values[i])).Im = cmplx_tmp.Im;
++          *( (CCTK_COMPLEX *) output_values[i]) = CCTK_CmplxPow(*( (CCTK_COMPLEX *) output_values[i]), 1.0/4.0);
+         break;
+         #ifdef HAVE_CCTK_COMPLEX8
+         case CCTK_VARIABLE_COMPLEX8:
+-          cmplx_tmp8.Re = (*( (CCTK_COMPLEX8 *) output_values[i])).Re;
+-          cmplx_tmp8.Im = (*( (CCTK_COMPLEX8 *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/4.0);
+-          (*( (CCTK_COMPLEX8 *) output_values[i])).Re = cmplx_tmp8.Re;
+-          (*( (CCTK_COMPLEX8 *) output_values[i])).Im = cmplx_tmp8.Im;
++          *( (CCTK_COMPLEX8 *) output_values[i]) = CCTK_Cmplx8Pow(*( (CCTK_COMPLEX8 *) output_values[i]), 1.0/4.0);
+         break;
+         #endif
+         #ifdef HAVE_CCTK_COMPLEX16
+         case CCTK_VARIABLE_COMPLEX16:
+-          cmplx_tmp16.Re = (*( (CCTK_COMPLEX16 *) output_values[i])).Re;
+-          cmplx_tmp16.Im = (*( (CCTK_COMPLEX16 *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/4.0);
+-          (*( (CCTK_COMPLEX16 *) output_values[i])).Re = cmplx_tmp16.Re;
+-          (*( (CCTK_COMPLEX16 *) output_values[i])).Im = cmplx_tmp16.Im;
++          *( (CCTK_COMPLEX16 *) output_values[i]) = CCTK_Cmplx16Pow(*( (CCTK_COMPLEX16 *) output_values[i]), 1.0/4.0);
+         break;
+         #endif
+         #ifdef HAVE_CCTK_COMPLEX32
+         case CCTK_VARIABLE_COMPLEX32:
+-          cmplx_tmp32.Re = (*( (CCTK_COMPLEX32 *) output_values[i])).Re;
+-          cmplx_tmp32.Im = (*( (CCTK_COMPLEX32 *) output_values[i])).Im;
+-          cmplx_tmp = CCTK_CmplxPow(cmplx_tmp, 1.0/4.0);
+-          (*( (CCTK_COMPLEX32 *) output_values[i])).Re = cmplx_tmp32.Re;
+-          (*( (CCTK_COMPLEX32 *) output_values[i])).Im = cmplx_tmp32.Im;
++          *( (CCTK_COMPLEX32 *) output_values[i]) = CCTK_Cmplx32Pow(*( (CCTK_COMPLEX32 *) output_values[i]), 1.0/4.0);
+         break;
+         #endif
+       }
+Index: arrangements/CactusPUGH/PUGHReduce/src/ReductionNorm2.c
+===================================================================
+--- arrangements/CactusPUGH/PUGHReduce/src/ReductionNorm2.c	(revision 104)
++++ arrangements/CactusPUGH/PUGHReduce/src/ReductionNorm2.c	(working copy)
+@@ -315,8 +315,8 @@
+ 
+       case CCTK_VARIABLE_COMPLEX:
+ #undef  REDUCTION_OPERATION
+-#define REDUCTION_OPERATION(norm2, scalar)   norm2 += SQR ((scalar).Re) +     \
+-                                                      SQR ((scalar).Im)
++#define REDUCTION_OPERATION(norm2, scalar)                              \
++        norm2 += SQR (CCTK_CmplxReal(scalar)) + SQR (CCTK_CmplxImag(scalar))
+         ITERATE_ARRAY (CCTK_COMPLEX, num_dims, inarrays[i],
+                        from, to, iterator, points_per_dim,
+                        CCTK_REAL, outvals, num_outvals, total_outvals);
+Index: arrangements/CactusPUGH/PUGHReduce/src/ReductionNorm4.c
+===================================================================
+--- arrangements/CactusPUGH/PUGHReduce/src/ReductionNorm4.c	(revision 104)
++++ arrangements/CactusPUGH/PUGHReduce/src/ReductionNorm4.c	(working copy)
+@@ -313,8 +313,9 @@
+ 
+       case CCTK_VARIABLE_COMPLEX:
+ #undef  REDUCTION_OPERATION
+-#define REDUCTION_OPERATION(norm4, scalar) \
+-        norm4 += POWER2 (POWER2 ((scalar).Re) + POWER2 ((scalar).Im))
++#define REDUCTION_OPERATION(norm4, scalar)                      \
++        norm4 += POWER2 (POWER2 (CCTK_CmplxReal(scalar)) +      \
++                         POWER2 (CCTK_CmplxImag(scalar)))
+         ITERATE_ARRAY (CCTK_COMPLEX, num_dims, inarrays[i],
+                        from, to, iterator, points_per_dim,
+                        CCTK_REAL, outvals, num_outvals, total_outvals);
+Index: arrangements/CactusPUGH/PUGHSlab/src/DatatypeConversion.c
+===================================================================
+--- arrangements/CactusPUGH/PUGHSlab/src/DatatypeConversion.c	(revision 159)
++++ arrangements/CactusPUGH/PUGHSlab/src/DatatypeConversion.c	(working copy)
+@@ -23,7 +23,7 @@
+ 
+ /* macro to generate a predefined conversion function
+    along with its prototype */
+-#define CONVERSION_FUNCTION(source_type, dest_type, dest_elemtype, conversion)\
++#define CONVERSION_FUNCTION(source_type, dest_type, conversion)               \
+ static CCTK_INT Convert##source_type##to##dest_type (CCTK_INT nelems,         \
+                                                      CCTK_INT src_stride,     \
+                                                      CCTK_INT dst_stride,     \
+@@ -49,7 +49,7 @@
+   (void) (dst_type + 0);                                                      \
+   for (_i = 0; _i < nelems; _i++, _src += src_stride, _dst += dst_stride)     \
+   {                                                                           \
+-    conversion (*_src, *_dst, dest_elemtype);                                 \
++    conversion (*_src, *_dst, dest_type);                                     \
+   }                                                                           \
+                                                                               \
+   return (nelems);                                                            \
+@@ -63,49 +63,44 @@
+ 
+ /* predefined conversion functions for integers */
+ #if defined(CCTK_INT1) && defined(CCTK_INT2)
+-CONVERSION_FUNCTION (INT2, INT1, INT1, CONVERT)
++CONVERSION_FUNCTION (INT2, INT1, CONVERT)
+ #endif
+ #if defined(CCTK_INT1) && defined(CCTK_INT4)
+-CONVERSION_FUNCTION (INT4, INT1, INT1, CONVERT)
++CONVERSION_FUNCTION (INT4, INT1, CONVERT)
+ #endif
+ #if defined(CCTK_INT2) && defined(CCTK_INT4)
+-CONVERSION_FUNCTION (INT4, INT2, INT2, CONVERT)
++CONVERSION_FUNCTION (INT4, INT2, CONVERT)
+ #endif
+ #if defined(CCTK_INT1) && defined(CCTK_INT8)
+-CONVERSION_FUNCTION (INT8, INT1, INT1, CONVERT)
++CONVERSION_FUNCTION (INT8, INT1, CONVERT)
+ #endif
+ #if defined(CCTK_INT2) && defined(CCTK_INT8)
+-CONVERSION_FUNCTION (INT8, INT2, INT2, CONVERT)
++CONVERSION_FUNCTION (INT8, INT2, CONVERT)
+ #endif
+ #if defined(CCTK_INT4) && defined(CCTK_INT8)
+-CONVERSION_FUNCTION (INT8, INT4, INT4, CONVERT)
++CONVERSION_FUNCTION (INT8, INT4, CONVERT)
+ #endif
+ 
+ /* predefined conversion functions for reals */
+ #if defined(CCTK_REAL4) && defined(CCTK_REAL8)
+-CONVERSION_FUNCTION (REAL8, REAL4, REAL4, CONVERT)
++CONVERSION_FUNCTION (REAL8, REAL4, CONVERT)
+ #endif
+ #if defined(CCTK_REAL4) && defined(CCTK_REAL16)
+-CONVERSION_FUNCTION (REAL16, REAL4, REAL4, CONVERT)
++CONVERSION_FUNCTION (REAL16, REAL4, CONVERT)
+ #endif
+ #if defined(CCTK_REAL8) && defined(CCTK_REAL16)
+-CONVERSION_FUNCTION (REAL16, REAL8, REAL8, CONVERT)
++CONVERSION_FUNCTION (REAL16, REAL8, CONVERT)
+ #endif
+ 
+-/* the conversion of complex datatypes */
+-#undef  CONVERT
+-#define CONVERT(src, dst, dst_type)    (dst).Re = (CCTK_##dst_type) (src).Re; \
+-                                       (dst).Im = (CCTK_##dst_type) (src).Im
+-
+ /* predefined conversion functions for complex */
+ #if defined(CCTK_REAL4) && defined(CCTK_REAL8)
+-CONVERSION_FUNCTION (COMPLEX16, COMPLEX8, REAL4, CONVERT)
++CONVERSION_FUNCTION (COMPLEX16, COMPLEX8, CONVERT)
+ #endif
+ #if defined(CCTK_REAL4) && defined(CCTK_REAL16)
+-CONVERSION_FUNCTION (COMPLEX32, COMPLEX16, REAL8, CONVERT)
++CONVERSION_FUNCTION (COMPLEX32, COMPLEX16, CONVERT)
+ #endif
+ #if defined(CCTK_REAL8) && defined(CCTK_REAL16)
+-CONVERSION_FUNCTION (COMPLEX32, COMPLEX8, REAL4, CONVERT)
++CONVERSION_FUNCTION (COMPLEX32, COMPLEX8, CONVERT)
+ #endif
+ 
+ 
+Index: arrangements/CactusPUGHIO/IOHDF5Util/src/Startup.c
+===================================================================
+--- arrangements/CactusPUGHIO/IOHDF5Util/src/Startup.c	(revision 164)
++++ arrangements/CactusPUGHIO/IOHDF5Util/src/Startup.c	(working copy)
+@@ -194,32 +194,32 @@
+   HDF5_ERROR (myGH->HDF5_COMPLEX =
+               H5Tcreate (H5T_COMPOUND, sizeof (CCTK_COMPLEX)));
+   HDF5_ERROR (H5Tinsert (myGH->HDF5_COMPLEX, "real",
+-                         offsetof (CCTK_COMPLEX, Re), HDF5_REAL));
++                         0, HDF5_REAL));
+   HDF5_ERROR (H5Tinsert (myGH->HDF5_COMPLEX, "imag",
+-                         offsetof (CCTK_COMPLEX, Im), HDF5_REAL));
++                         sizeof (CCTK_REAL), HDF5_REAL));
+ #ifdef CCTK_REAL4
+   HDF5_ERROR (myGH->HDF5_COMPLEX8 =
+               H5Tcreate (H5T_COMPOUND, sizeof (CCTK_COMPLEX8)));
+   HDF5_ERROR (H5Tinsert (myGH->HDF5_COMPLEX8, "real",
+-                         offsetof (CCTK_COMPLEX8, Re), HDF5_REAL4));
++                         0, HDF5_REAL4));
+   HDF5_ERROR (H5Tinsert (myGH->HDF5_COMPLEX8, "imag",
+-                         offsetof (CCTK_COMPLEX8, Im), HDF5_REAL4));
++                         sizeof (CCTK_REAL4), HDF5_REAL4));
+ #endif
+ #ifdef CCTK_REAL8
+   HDF5_ERROR (myGH->HDF5_COMPLEX16 =
+               H5Tcreate (H5T_COMPOUND, sizeof (CCTK_COMPLEX16)));
+   HDF5_ERROR (H5Tinsert (myGH->HDF5_COMPLEX16, "real",
+-                         offsetof (CCTK_COMPLEX16, Re), HDF5_REAL8));
++                         0, HDF5_REAL8));
+   HDF5_ERROR (H5Tinsert (myGH->HDF5_COMPLEX16, "imag",
+-                         offsetof (CCTK_COMPLEX16, Im), HDF5_REAL8));
++                         sizeof (CCTK_REAL8), HDF5_REAL8));
+ #endif
+ #ifdef CCTK_REAL16
+   HDF5_ERROR (myGH->HDF5_COMPLEX32 =
+               H5Tcreate (H5T_COMPOUND, sizeof (CCTK_COMPLEX32)));
+   HDF5_ERROR (H5Tinsert (myGH->HDF5_COMPLEX32, "real",
+-                         offsetof (CCTK_COMPLEX32, Re), HDF5_REAL16));
++                         0, HDF5_REAL16));
+   HDF5_ERROR (H5Tinsert (myGH->HDF5_COMPLEX32, "imag",
+-                         offsetof (CCTK_COMPLEX32, Im), HDF5_REAL16));
++                         sizeof (CCTK_REAL16), HDF5_REAL16));
+ #endif
+ 
+   /* predefine a C string datatype */
+Index: arrangements/CactusTest/TestComplex/src/Complex.c
+===================================================================
+--- arrangements/CactusTest/TestComplex/src/Complex.c	(revision 68)
++++ arrangements/CactusTest/TestComplex/src/Complex.c	(working copy)
+@@ -15,11 +15,10 @@
+   
+   CCTK_COMPLEX num, tmp;
+   
+-  num.Re = real_value;
+-  num.Im = imaginary_value;
++  num = CCTK_Cmplx(real_value, imaginary_value);
+   
+   tmp = CCTK_CmplxPow(num, power_value);
+   
+-  *real_part      = tmp.Re;
+-  *imaginary_part = tmp.Im; 
++  *real_part      = CCTK_CmplxReal(tmp);
++  *imaginary_part = CCTK_CmplxImag(tmp); 
+ }
+Index: arrangements/CactusTest/TestTable/src/test_table.c
+===================================================================
+--- arrangements/CactusTest/TestTable/src/test_table.c	(revision 24)
++++ arrangements/CactusTest/TestTable/src/test_table.c	(working copy)
+@@ -257,7 +257,7 @@
+                               key_already_exists, case_insensitive,     \
+                               set_fn, get_fn)                           \
+     {                                                                   \
+-  static type z = { 42.25, 105.5 };                                     \
++  type z = CCTK_Cmplx(42.25, 105.5);                                    \
+                                                                         \
+   printf(                                                               \
+     "CHECK_SET_GET_COMPLEX(handle=%d, type=%s,\n"                       \
+@@ -270,17 +270,17 @@
+                                                                         \
+   assert( set_fn(handle, z, "COMPlex_Z") == key_already_exists );       \
+                                                                         \
+-  z.Re = 1.25;            z.Im = -2.78;                                 \
++  z = CCTK_Cmplx(1.25, -2.78);                                          \
+   assert( get_fn(handle, &z, "COMPlex_Z") == 1 );                       \
+-  assert( z.Re == 42.25 );                                              \
+-  assert( z.Im == 105.5 );                                              \
++  assert( CCTK_CmplxReal(z) == 42.25 );                                 \
++  assert( CCTK_CmplxImag(z) == 105.5 );                                 \
+                                                                         \
+   if (case_insensitive)                                                 \
+   {                                                                     \
+-    z.Re = 1.5;             z.Im = -2.83;                               \
++    z = CCTK_Cmplx(1.5, -2.83);                                         \
+     assert( get_fn(handle, &z, "COMPLEX_Z") == 1 );                     \
+-    assert( z.Re == 42.25 );                                            \
+-    assert( z.Im == 105.5 );                                            \
++    assert( CCTK_CmplxReal(z) == 42.25 );                               \
++    assert( CCTK_CmplxImag(z) == 105.5 );                               \
+   }                                                                     \
+   else                                                                  \
+   {                                                                     \
+@@ -414,19 +414,19 @@
+                                                                         \
+   assert( set_fn(handle, 4, zz, "zz") == key_already_exists );          \
+                                                                         \
+-  zz[0].Re = 10.25;       zz[0].Im = 11.75;                             \
+-  zz[1].Re = -2.5;        zz[1].Im = 3.5;                               \
+-  zz[2].Re = 14.0;        zz[2].Im = -8.5;                              \
+-  zz[3].Re = 0.25;        zz[3].Im = 8.875;                             \
+-  zz[4].Re = -0.25;       zz[4].Im = -0.75;                             \
++  zz[0] = CCTK_Cmplx(10.25, 11.75);                                     \
++  zz[1] = CCTK_Cmplx(-2.5, 3.5);                                        \
++  zz[2] = CCTK_Cmplx(14.0, -8.5);                                       \
++  zz[3] = CCTK_Cmplx(0.25, 8.875);                                      \
++  zz[4] = CCTK_Cmplx(-0.25, -0.75);                                     \
+                                                                         \
+   /* only get 3 of 4 stored values */                                   \
+   assert( get_fn(handle, 3, zz, "zz") == 4 );                           \
+-  assert( zz[0].Re == 3.5 );      assert( zz[0].Im == 1.25 );           \
+-  assert( zz[1].Re == 9.5 );      assert( zz[1].Im == 4.5 );            \
+-  assert( zz[2].Re == 0.5 );      assert( zz[2].Im == 8.0 );            \
+-  assert( zz[3].Re == 0.25 );     assert( zz[3].Im == 8.875 );          \
+-  assert( zz[4].Re == -0.25 );    assert( zz[4].Im == -0.75 );          \
++  assert( CCTK_CmplxReal(zz[0]) == 3.5 );      assert( CCTK_CmplxImag(zz[0]) == 1.25 );           \
++  assert( CCTK_CmplxReal(zz[1]) == 9.5 );      assert( CCTK_CmplxImag(zz[1]) == 4.5 );            \
++  assert( CCTK_CmplxReal(zz[2]) == 0.5 );      assert( CCTK_CmplxImag(zz[2]) == 8.0 );            \
++  assert( CCTK_CmplxReal(zz[3]) == 0.25 );     assert( CCTK_CmplxImag(zz[3]) == 8.875 );          \
++  assert( CCTK_CmplxReal(zz[4]) == -0.25 );    assert( CCTK_CmplxImag(zz[4]) == -0.75 );          \
+     }                                                           /* end macro */
+ 
+ /******************************************************************************/
+Index: arrangements/CactusUtils/Formaline/src/announce.cc
+===================================================================
+--- arrangements/CactusUtils/Formaline/src/announce.cc	(revision 228)
++++ arrangements/CactusUtils/Formaline/src/announce.cc	(working copy)
+@@ -766,14 +766,14 @@
+             keyrebuf << key << ".Re";
+             string const keyrestr = keyrebuf.str();
+             char const * const keyre = keyrestr.c_str();
+-            stores.store (keyre, val.Re);
++            stores.store (keyre, CCTK_CmplxReal(val));
+           }
+           {
+             ostringstream keyimbuf;
+             keyimbuf << key << ".Im";
+             string const keyimstr = keyimbuf.str();
+             char const * const keyim = keyimstr.c_str();
+-            stores.store (keyim, val.Im);
++            stores.store (keyim, CCTK_CmplxImag(val));
+           }
+         }
+         break;
+Index: arrangements/CactusUtils/TimerReport/src/Output.c
+===================================================================
+--- arrangements/CactusUtils/TimerReport/src/Output.c	(revision 51)
++++ arrangements/CactusUtils/TimerReport/src/Output.c	(working copy)
+@@ -14,6 +14,7 @@
+ #include <util_String.h>
+ 
+ #include <assert.h>
++#include <math.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+diff --git a/Carpet/CarpetIOBasic/src/iobasic.cc b/Carpet/CarpetIOBasic/src/iobasic.cc
+index 28abd64..f8366a8 100644
+--- a/./repos/carpet/Carpet/CarpetIOBasic/src/iobasic.cc
++++ b/./repos/carpet/Carpet/CarpetIOBasic/src/iobasic.cc
+@@ -482,14 +482,10 @@ namespace CarpetIOBasic {
+         
+           int const handle = ireduction->handle;
+         
+-          union {
+-#define TYPECASE(N,T) T var_##T;
+-#include "typecase.hh"
+-#undef TYPECASE
+-          } result;
++          char result[100];     // assuming no type is larger than this
+         
+           int const ierr
+-            = CCTK_Reduce (cctkGH, 0, handle, 1, vartype, &result, 1, n);
++            = CCTK_Reduce (cctkGH, 0, handle, 1, vartype, result, 1, n);
+           assert (not ierr);
+         
+           if (CCTK_MyProc(cctkGH) == 0) {
+@@ -500,7 +496,7 @@ namespace CarpetIOBasic {
+ #define TYPECASE(N,T)                                                   \
+               case N:                                                   \
+                 {                                                       \
+-                  T const val = result.var_##T;                         \
++                  T const& val = *(T const*)result;                     \
+                   if (not isint) {                                      \
+                     if (UseScientificNotation (val)) {                  \
+                       cout << scientific << setprecision(real_prec_sci); \
+diff --git a/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc b/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
+index 27ce292..d04b80b 100644
+--- a/./repos/carpet/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
++++ b/./repos/carpet/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
+@@ -445,32 +445,32 @@ static void* SetupGH (tFleshConfig* const fleshconfig,
+   HDF5_ERROR (myGH->HDF5_COMPLEX =
+               H5Tcreate (H5T_COMPOUND, sizeof (CCTK_COMPLEX)));
+   HDF5_ERROR (H5Tinsert (myGH->HDF5_COMPLEX, "real",
+-                         offsetof (CCTK_COMPLEX, Re), HDF5_REAL));
++                         0, HDF5_REAL));
+   HDF5_ERROR (H5Tinsert (myGH->HDF5_COMPLEX, "imag",
+-                         offsetof (CCTK_COMPLEX, Im), HDF5_REAL));
++                         sizeof (CCTK_REAL), HDF5_REAL));
+ #ifdef CCTK_REAL4
+   HDF5_ERROR (myGH->HDF5_COMPLEX8 =
+               H5Tcreate (H5T_COMPOUND, sizeof (CCTK_COMPLEX8)));
+   HDF5_ERROR (H5Tinsert (myGH->HDF5_COMPLEX8, "real",
+-                         offsetof (CCTK_COMPLEX8, Re), H5T_NATIVE_FLOAT));
++                         0, H5T_NATIVE_FLOAT));
+   HDF5_ERROR (H5Tinsert (myGH->HDF5_COMPLEX8, "imag",
+-                         offsetof (CCTK_COMPLEX8, Im), H5T_NATIVE_FLOAT));
++                         sizeof (CCTK_REAL4), H5T_NATIVE_FLOAT));
+ #endif
+ #ifdef CCTK_REAL8
+   HDF5_ERROR (myGH->HDF5_COMPLEX16 =
+               H5Tcreate (H5T_COMPOUND, sizeof (CCTK_COMPLEX16)));
+   HDF5_ERROR (H5Tinsert (myGH->HDF5_COMPLEX16, "real",
+-                         offsetof (CCTK_COMPLEX16, Re), H5T_NATIVE_DOUBLE));
++                         0, H5T_NATIVE_DOUBLE));
+   HDF5_ERROR (H5Tinsert (myGH->HDF5_COMPLEX16, "imag",
+-                         offsetof (CCTK_COMPLEX16, Im), H5T_NATIVE_DOUBLE));
++                         sizeof (CCTK_REAL8), H5T_NATIVE_DOUBLE));
+ #endif
+ #ifdef CCTK_REAL16
+   HDF5_ERROR (myGH->HDF5_COMPLEX32 =
+               H5Tcreate (H5T_COMPOUND, sizeof (CCTK_COMPLEX32)));
+   HDF5_ERROR (H5Tinsert (myGH->HDF5_COMPLEX32, "real",
+-                         offsetof (CCTK_COMPLEX32, Re), H5T_NATIVE_LDOUBLE));
++                         0, H5T_NATIVE_LDOUBLE));
+   HDF5_ERROR (H5Tinsert (myGH->HDF5_COMPLEX32, "imag",
+-                         offsetof (CCTK_COMPLEX32, Im), H5T_NATIVE_LDOUBLE));
++                         sizeof (CCTK_REAL16), H5T_NATIVE_LDOUBLE));
+ #endif
+ 
+   return (myGH);
+diff --git a/Carpet/CarpetIOScalar/src/ioscalar.cc b/Carpet/CarpetIOScalar/src/ioscalar.cc
+index 6dbb9ea..1cd0ee1 100644
+--- a/./repos/carpet/Carpet/CarpetIOScalar/src/ioscalar.cc
++++ b/./repos/carpet/Carpet/CarpetIOScalar/src/ioscalar.cc
+@@ -447,11 +447,7 @@ namespace CarpetIOScalar {
+         
+         int const handle = ireduction->handle;
+ 
+-        union {
+-#define TYPECASE(N,T) T var_##T;
+-#include "typecase.hh"
+-#undef TYPECASE
+-        } result;
++        char result[100];       // assuming no type is larger
+ 
+         int const firstvar
+           = one_file_per_group ? CCTK_FirstVarIndexI(group) : n;
+@@ -461,14 +457,14 @@ namespace CarpetIOScalar {
+         for (int n=firstvar; n<firstvar+numvars; ++n) {
+           
+           int const ierr
+-            = CCTK_Reduce (cctkGH, 0, handle, 1, vartype, &result, 1, n);
++            = CCTK_Reduce (cctkGH, 0, handle, 1, vartype, result, 1, n);
+           if (ierr) {
+             char * const fullname = CCTK_FullName (n);
+             CCTK_VWarn (1, __LINE__, __FILE__, CCTK_THORNSTRING,
+                         "Error during reduction for variable \"%s\"",
+                         fullname);
+             free (fullname);
+-            memset (&result, 0, sizeof result);
++            memset (result, 0, sizeof result);
+           }
+           
+           if (CCTK_MyProc(cctkGH)==0) {
+@@ -477,7 +473,7 @@ namespace CarpetIOScalar {
+             switch (specific_cactus_type(vartype)) {
+ #define TYPECASE(N,T)                           \
+               case N:                           \
+-                file << result.var_##T;         \
++                file << *(T const*)result;      \
+               break;
+ #include "typecase.hh"
+ #undef TYPECASE
+diff --git a/Carpet/CarpetLib/src/dist.cc b/Carpet/CarpetLib/src/dist.cc
+index 49b73a0..8546ca6 100644
+--- a/./repos/carpet/Carpet/CarpetLib/src/dist.cc
++++ b/./repos/carpet/Carpet/CarpetLib/src/dist.cc
+@@ -63,16 +63,16 @@ namespace dist {
+ #define CARPET_NO_COMPLEX
+ #include "typecase.hh"
+ #undef TYPECASE
+-#define TYPECASE(N,T)                                           \
+-    if (datatype == mpi_datatype<T>()) {                        \
+-      assert(not done);                                         \
+-      done = true;                                              \
+-      T *restrict const invec = (T*)invec_;                     \
+-      T *restrict const inoutvec = (T*)inoutvec_;               \
+-      for (int n=0; n<len; ++n) {                               \
+-        inoutvec[n].Re = max(inoutvec[n].Re, invec[n].Re);      \
+-        inoutvec[n].Im = max(inoutvec[n].Im, invec[n].Im);      \
+-      }                                                         \
++#define TYPECASE(N,T)                                                   \
++    if (datatype == mpi_datatype<T>()) {                                \
++      assert(not done);                                                 \
++      done = true;                                                      \
++      T *restrict const invec = (T*)invec_;                             \
++      T *restrict const inoutvec = (T*)inoutvec_;                       \
++      for (int n=0; n<len; ++n) {                                       \
++        inoutvec[n] = T(max(real(inoutvec[n]), real(invec[n])),         \
++                        max(imag(inoutvec[n]), imag(invec[n])));        \
++      }                                                                 \
+     }
+ #define CARPET_COMPLEX
+ #include "typecase.hh"
+@@ -101,16 +101,16 @@ namespace dist {
+ #define CARPET_NO_COMPLEX
+ #include "typecase.hh"
+ #undef TYPECASE
+-#define TYPECASE(N,T)                                           \
+-    if (datatype == mpi_datatype<T>()) {                        \
+-      assert(not done);                                         \
+-      done = true;                                              \
+-      T *restrict const invec = (T*)invec_;                     \
+-      T *restrict const inoutvec = (T*)inoutvec_;               \
+-      for (int n=0; n<len; ++n) {                               \
+-        inoutvec[n].Re = min(inoutvec[n].Re, invec[n].Re);      \
+-        inoutvec[n].Im = min(inoutvec[n].Im, invec[n].Im);      \
+-      }                                                         \
++#define TYPECASE(N,T)                                                   \
++    if (datatype == mpi_datatype<T>()) {                                \
++      assert(not done);                                                 \
++      done = true;                                                      \
++      T *restrict const invec = (T*)invec_;                             \
++      T *restrict const inoutvec = (T*)inoutvec_;                       \
++      for (int n=0; n<len; ++n) {                                       \
++        inoutvec[n] = T(min(real(inoutvec[n]), real(invec[n])),         \
++                        min(imag(inoutvec[n]), imag(invec[n])));        \
++      }                                                                 \
+     }
+ #define CARPET_COMPLEX
+ #include "typecase.hh"
+@@ -136,22 +136,6 @@ namespace dist {
+         inoutvec[n] *= invec[n];                        \
+       }                                                 \
+     }
+-#define CARPET_NO_COMPLEX
+-#include "typecase.hh"
+-#undef TYPECASE
+-#define TYPECASE(N,T)                                   \
+-    if (datatype == mpi_datatype<T>()) {                \
+-      assert(not done);                                 \
+-      done = true;                                      \
+-      T *restrict const invec = (T*)invec_;             \
+-      T *restrict const inoutvec = (T*)inoutvec_;       \
+-      for (int n=0; n<len; ++n) {                       \
+-        complex<T>& inout = *(complex<T>*)&inoutvec[n]; \
+-        complex<T>& in    = *(complex<T>*)&invec[n];    \
+-        inout *= in;                                    \
+-      }                                                 \
+-    }
+-#define CARPET_COMPLEX
+ #include "typecase.hh"
+ #undef TYPECASE
+     assert(done);
+@@ -175,21 +159,6 @@ namespace dist {
+         inoutvec[n] += invec[n];                        \
+       }                                                 \
+     }
+-#define CARPET_NO_COMPLEX
+-#include "typecase.hh"
+-#undef TYPECASE
+-#define TYPECASE(N,T)                                   \
+-    if (datatype == mpi_datatype<T>()) {                \
+-      assert(not done);                                 \
+-      done = true;                                      \
+-      T *restrict const invec = (T*)invec_;             \
+-      T *restrict const inoutvec = (T*)inoutvec_;       \
+-      for (int n=0; n<len; ++n) {                       \
+-        inoutvec[n].Re += invec[n].Re;                  \
+-        inoutvec[n].Im += invec[n].Im;                  \
+-      }                                                 \
+-    }
+-#define CARPET_COMPLEX
+ #include "typecase.hh"
+ #undef TYPECASE
+     assert(done);

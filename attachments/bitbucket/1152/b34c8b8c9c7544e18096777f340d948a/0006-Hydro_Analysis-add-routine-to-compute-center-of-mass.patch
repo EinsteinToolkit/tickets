@@ -1,0 +1,303 @@
+From e14eb25c236cccda9b361c3b587dd14efd20bd8f Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Mon, 27 Feb 2012 13:31:06 -0800
+Subject: [PATCH 1/9] Hydro_Analysis: add routine to compute center of mass in
+ core region only
+
+---
+ interface.ccl      |   8 +++
+ param.ccl          |  18 ++++++
+ schedule.ccl       |  43 ++++++++++++++
+ src/CoMCore.c      | 166 +++++++++++++++++++++++++++++++++++++++++++++++++++++
+ src/make.code.defn |   2 +-
+ 5 files changed, 236 insertions(+), 1 deletion(-)
+ create mode 100644 src/CoMCore.c
+
+diff --git a/interface.ccl b/interface.ccl
+index abf4d54..7d0baa8 100644
+--- a/interface.ccl
++++ b/interface.ccl
+@@ -17,3 +17,11 @@ CCTK_REAL Hydro_Analysis_rho_center_volume_weighted_gf[3] type = GF Timelevels =
+ CCTK_REAL Hydro_Analysis_rho_center_volume_weighted[3] type = SCALAR tags='checkpoint="no"' "coordinate location of the volume weightes center of mass"
+ 
+ CCTK_REAL Hydro_Analysis_rho_max_origin_distance  type = SCALAR tags='checkpoint="no"' "proper distance between the maximum of the density and the origin (along a straight coordinate line)"
++
++# core center of mass
++CCTK_REAL Hydro_Analysis_rho_core_sum type = SCALAR tags='checkpoint="no"' "value of the sum of rho in the core region"
++
++# rho*x,rho*y,rho*z,rho
++CCTK_REAL Hydro_Analysis_rho_core_center_volume_weighted_gf[4] type = GF Timelevels = 3 tags='checkpoint="no" tensortypealias="u"' "temporary GF to obtain the coordinate location of the volume weighted center of mass of the core region via a reduction"
++
++CCTK_REAL Hydro_Analysis_rho_core_center_volume_weighted[3] type = SCALAR tags='checkpoint="no"' "coordinate location of the volume weightes center of mass of the core region"
+diff --git a/param.ccl b/param.ccl
+index f375e09..eaf4475 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -56,3 +56,21 @@ STRING Hydro_Analysis_interpolator_coordinates "Coordinate system" STEERABLE=alw
+ {
+   ".*" :: "must be a registered coordinate system"
+ } "cart3d"
++
++BOOLEAN Hydro_Analysis_comp_vol_weighted_core_center_of_mass "compute center of mass in region r_core around densest point"
++{
++} "no"
++
++CCTK_REAL Hydro_Analysis_r_core "size of region around densest point in which to compute CoM"
++{
++  0:* :: "any positive radius. suggested is 1/2 of stellar radius"
++} 4.0
++
++CCTK_REAL Hydro_Analysis_rho_core_rel_min "only include points where rho>rho_rel_min*rho_max when computing CoM around densest point"
++{
++  0:* :: "any positive value. For best results should be such that the region selected is smaller than r_core. 1/10 of rho_max should be fine."
++} 0.01
++
++shares: HydroBase
++
++uses INT timelevels
+diff --git a/schedule.ccl b/schedule.ccl
+index 53c96d8..688e3f2 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -15,6 +15,11 @@ if (Hydro_Analysis_comp_rho_max_origin_distance)
+ {
+   STORAGE: Hydro_Analysis_rho_max_origin_distance
+ }
++if (Hydro_Analysis_comp_vol_weighted_core_center_of_mass)
++{
++  STORAGE: Hydro_Analysis_rho_core_sum
++  STORAGE: Hydro_Analysis_rho_core_center_volume_weighted
++}
+ 
+ schedule Hydro_Analysis_Init IN CCTK_BASEGRID
+ {
+@@ -56,3 +61,41 @@ if (Hydro_Analysis_comp_rho_max_origin_distance)
+     OPTIONS: global
+   } "Compute the proper distance between the maximum of the density and the origin (along a straight coordinate line)"
+ }
++
++if (Hydro_Analysis_comp_vol_weighted_core_center_of_mass)
++{
++  # we need to be AFTER Hydro_Analysis_LocationSearch since the core is
++  # centered around the densest point
++  # since Hydro_Analysis runs in POSTSTEP (why?) we can get away with global
++  # and do not need global-early to run before OutputGH happens
++  schedule GROUP Hydro_Analysis_CompVolWeightedCoreCenterOfMass IN Hydro_Analysis AFTER Hydro_Analysis_LocationSearch
++  {
++  } "Compute center of mass of core region"
++
++  # STORAGE does not work since it allocates in LEVEL mode and thus only
++  # changes the number of timelevels of the refinement level currently active
++  # when we entered the group
++  schedule Hydro_Analysis_CompVolWeightedCoreCenterOfMass_GetStorage IN Hydro_Analysis_CompVolWeightedCoreCenterOfMass BEFORE Hydro_Analysis_CompVolWeightedCoreCenterOfMass_PrepareReduction
++  {
++    LANG: C
++    OPTIONS: global
++  } "Get temporary storage for duration of reduction"
++
++  schedule Hydro_Analysis_CompVolWeightedCoreCenterOfMass_PrepareReduction IN Hydro_Analysis_CompVolWeightedCoreCenterOfMass
++  {
++    LANG: C
++    OPTIONS: global loop-local
++  } "Prepare core center of mass densities for reduction"
++
++  schedule Hydro_Analysis_CompVolWeightedCoreCenterOfMass_Reduction IN Hydro_Analysis_CompVolWeightedCoreCenterOfMass AFTER Hydro_Analysis_CompVolWeightedCoreCenterOfMass_PrepareReduction
++  {
++    LANG: C
++    OPTIONS: global
++  } "Compute the global core center of mass reduction results"
++
++  schedule Hydro_Analysis_CompVolWeightedCoreCenterOfMass_FreeStorage IN Hydro_Analysis_CompVolWeightedCoreCenterOfMass AFTER Hydro_Analysis_CompVolWeightedCoreCenterOfMass_Reduction
++  {
++    LANG: C
++    OPTIONS: global
++  } "Free temporary storage"
++}
+diff --git a/src/CoMCore.c b/src/CoMCore.c
+new file mode 100644
+index 0000000..26e571e
+--- /dev/null
++++ b/src/CoMCore.c
+@@ -0,0 +1,166 @@
++#include <stdio.h>
++#include <assert.h>
++#include <math.h>
++#include <string.h>
++
++#include "cctk.h"
++#include "cctk_Parameters.h"
++#include "cctk_Arguments.h"
++#include "cctk_Functions.h"
++#include "cctk_Loop.h"
++
++// math help macros
++#define SQR(x) ((x)*(x))
++
++// declare an array for the timelevels of a given variable
++// we substitute the current level if a previous level does not exist
++#define DECLARE_MY_VARIABLE(var) CCTK_REAL *my##var[3] = {var, var##_p ? var##_p : var, var##_p_p ? var##_p_p : var}
++
++// Storage state of the temp. grid when we entered the loop
++#define HYDRO_ANALYSIS_RHO_CORE_CENTER_VOLUME_WEIGHTED_GF CCTK_THORNSTRING"::Hydro_Analysis_rho_core_center_volume_weighted_gf"
++static int StorageOnEntry = -1;
++
++// get storage for the temp grid function
++void Hydro_Analysis_CompVolWeightedCoreCenterOfMass_GetStorage(CCTK_ARGUMENTS)
++{
++  DECLARE_CCTK_PARAMETERS;
++  DECLARE_CCTK_ARGUMENTS;
++
++  const int group = CCTK_GroupIndex(HYDRO_ANALYSIS_RHO_CORE_CENTER_VOLUME_WEIGHTED_GF);
++  assert(group >= 0);
++
++  assert(StorageOnEntry == -1 && "We only have one level of memory, don't call us recursively");
++  CCTK_GroupStorageIncrease(cctkGH, 1, &group, &timelevels, &StorageOnEntry);
++}
++
++// compute x^i*rho in a region r_core around the densest point
++void Hydro_Analysis_CompVolWeightedCoreCenterOfMass_PrepareReduction(CCTK_ARGUMENTS)
++{
++  DECLARE_CCTK_PARAMETERS;
++  DECLARE_CCTK_ARGUMENTS;
++
++  // this is a hack since the timelevels parameter really does not have to be
++  // the number of levels that are active. It likely is however.
++  DECLARE_MY_VARIABLE(rho);
++  DECLARE_MY_VARIABLE(Hydro_Analysis_rho_core_center_volume_weighted_gf);
++
++  // core is centered around densest point
++  // this is why we need to be scheduld after Hydro_Analysis_LocationSearch
++  const CCTK_REAL corex = Hydro_Analysis_rho_max_loc[0];
++  const CCTK_REAL corey = Hydro_Analysis_rho_max_loc[1];
++  const CCTK_REAL corez = Hydro_Analysis_rho_max_loc[2];
++  const CCTK_REAL corerhomin = Hydro_Analysis_rho_core_rel_min * (*Hydro_Analysis_rho_max);
++
++  // need to loop over all timelevels since we do not keep the grid functions around
++  // even if we did, we would have to be called in EVOL to get the step-ahead for Berger-Oliger right
++  const int num_tl = CCTK_ActiveTimeLevelsGN(cctkGH, HYDRO_ANALYSIS_RHO_CORE_CENTER_VOLUME_WEIGHTED_GF );
++  assert(num_tl <= 3);
++  for (int tl = 0 ; tl < num_tl ; tl++) {
++#pragma omp parallel
++    CCTK_LOOP3_ALL(CompVolWeightedCoreCenterOfMass_PrepareReduction, cctkGH, i,j,k) {
++      const int ind = CCTK_GFINDEX3D (cctkGH, i, j, k);
++      const int indx = CCTK_VECTGFINDEX3D (cctkGH, i, j, k, 0);
++      const int indy = CCTK_VECTGFINDEX3D (cctkGH, i, j, k, 1);
++      const int indz = CCTK_VECTGFINDEX3D (cctkGH, i, j, k, 2);
++      const int indr = CCTK_VECTGFINDEX3D (cctkGH, i, j, k, 3);
++
++      const double r2 = SQR(x[ind]-corex) + SQR(y[ind]-corey) + SQR(z[ind]-corez);
++      if (r2 < SQR(Hydro_Analysis_r_core) && myrho[tl][ind] >= corerhomin) {
++        myHydro_Analysis_rho_core_center_volume_weighted_gf[tl][indx] = myrho[tl][ind] * x[ind];
++        myHydro_Analysis_rho_core_center_volume_weighted_gf[tl][indy] = myrho[tl][ind] * y[ind];
++        myHydro_Analysis_rho_core_center_volume_weighted_gf[tl][indz] = myrho[tl][ind] * z[ind];
++        myHydro_Analysis_rho_core_center_volume_weighted_gf[tl][indr] = myrho[tl][ind];
++      } else {
++        myHydro_Analysis_rho_core_center_volume_weighted_gf[tl][indx] = 0.;
++        myHydro_Analysis_rho_core_center_volume_weighted_gf[tl][indy] = 0.;
++        myHydro_Analysis_rho_core_center_volume_weighted_gf[tl][indz] = 0.;
++        myHydro_Analysis_rho_core_center_volume_weighted_gf[tl][indr] = 0.;
++      }
++      
++    } CCTK_ENDLOOP3_ALL(CompVolWeightedCoreCenterOfMass_PrepareReduction);
++  }
++}
++
++// compute \sum rho*x^i over all processors and compute x_c^i = x^i / \sum rho
++void Hydro_Analysis_CompVolWeightedCoreCenterOfMass_Reduction (CCTK_ARGUMENTS)
++{
++  DECLARE_CCTK_PARAMETERS;
++  DECLARE_CCTK_ARGUMENTS;
++
++  const CCTK_INT handle_sum = CCTK_ReductionHandle("sum");
++  if (handle_sum < 0) {
++    CCTK_WARN(0, "Unable to get reduction handle 'sum'.");
++    return; /* NOTREACHED */
++  }
++
++  // total "mass"
++  {
++    *Hydro_Analysis_rho_core_sum = -1.0;
++    const int ierr = CCTK_Reduce(cctkGH, -1, handle_sum, 1, CCTK_VARIABLE_REAL,
++                                 Hydro_Analysis_rho_core_sum, 1, CCTK_VarIndex("Hydro_Analysis::hydro_analysis_rho_core_center_volume_weighted_gf[3]"));
++    if (ierr) {
++      CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                 "Error while reducing Hydro_Analysis::Hydro_Analysis_rho_core_center_volume_weighted_gf[3]: %d", ierr);
++      return; /* NOTREACHED */
++    }
++  }
++
++  // sometimes we might run out of star (though this should not happen in well
++  // behaved simulations)
++  static int warn_about_no_mass = 1;
++  if (*Hydro_Analysis_rho_core_sum == 0.) {
++    if(CCTK_MyProc(cctkGH) == 0 && warn_about_no_mass) {
++      CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++                 "No mass in core region. Not changing CoM.");
++      // only trigger warning once per run (or until we find and loose mass again)
++      warn_about_no_mass = 0;
++    }
++    return;
++  } else {
++    // start warning again
++    warn_about_no_mass = 1;
++  }
++
++  // center of mass
++  assert(*Hydro_Analysis_rho_core_sum > 0.);
++  for (int i = 0 ; i < 3 ; i++) {
++    char buf[] = HYDRO_ANALYSIS_RHO_CORE_CENTER_VOLUME_WEIGHTED_GF"[0]";
++    const char *fmt = HYDRO_ANALYSIS_RHO_CORE_CENTER_VOLUME_WEIGHTED_GF"[%1d]";
++    size_t len_written;
++
++    len_written = snprintf(buf, sizeof(buf), fmt, i);
++    if (len_written >= sizeof(buf)) {
++      CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                 "Error constructing reduction variable name. Buffer size %d too short for string of length %d.", 
++                 (int)sizeof(buf), (int)len_written);
++      return; /* NOTREACHED */
++    }
++
++    // rho*x^i
++    const int ierr = CCTK_Reduce(cctkGH, -1, handle_sum, 1, CCTK_VARIABLE_REAL,
++                                 &(Hydro_Analysis_rho_core_center_volume_weighted[i]), 1,
++                                 CCTK_VarIndex(buf));
++    if (ierr) {
++      CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING, 
++               "Error while reducing Hydro_Analysis_rho_core_center_volume_weighted_gf[%d]: %d",
++               i, ierr);
++      return; /* NOTREACHED */
++    }
++
++    Hydro_Analysis_rho_core_center_volume_weighted[i] /= *Hydro_Analysis_rho_core_sum;
++  }
++}
++
++// free storage allocated in GetStorage
++void Hydro_Analysis_CompVolWeightedCoreCenterOfMass_FreeStorage(CCTK_ARGUMENTS)
++{
++  DECLARE_CCTK_PARAMETERS;
++  DECLARE_CCTK_ARGUMENTS;
++
++  const int group = CCTK_GroupIndex(HYDRO_ANALYSIS_RHO_CORE_CENTER_VOLUME_WEIGHTED_GF);
++  assert(group >= 0);
++
++  assert(StorageOnEntry != -1 && "No storage state was saved.");
++  CCTK_GroupStorageDecrease(cctkGH, 1, &group, &StorageOnEntry, NULL);
++  StorageOnEntry = -1;
++}
+diff --git a/src/make.code.defn b/src/make.code.defn
+index 738b7a8..fd5380b 100644
+--- a/src/make.code.defn
++++ b/src/make.code.defn
+@@ -1,7 +1,7 @@
+ # Main make.code.defn file for thorn Hydro_Analysis
+ 
+ # Source files in this directory
+-SRCS = Hydro_Analysis.c GRHydro_Separation.F90
++SRCS = Hydro_Analysis.c GRHydro_Separation.F90 CoMCore.c
+ 
+ # Subdirectories containing source files
+ SUBDIRS = 
+-- 
+1.8.4.rc3
+

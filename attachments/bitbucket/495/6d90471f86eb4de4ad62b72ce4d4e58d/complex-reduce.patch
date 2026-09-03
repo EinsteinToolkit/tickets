@@ -1,0 +1,338 @@
+Subject: CarpetReduce: Support complex reduction operations
+From: Erik Schnetter <eschnetter@perimeterinstitute.ca>
+Date: 2011-10-17
+
+Provide explicit MPI reduction operators for all Cactus datatypes,
+including complex numbers.
+
+MPI does not provide datatypes for complex numbers for C or C++. The
+default MPI reduction operators therefore do not support reduction
+operations on complex numbers.
+
+
+diff -r c82c8535c3e7 Carpet/CarpetLib/src/dist.cc
+--- a/Carpet/CarpetLib/src/dist.cc	Fri Sep 30 08:32:21 2011 -0700
++++ b/Carpet/CarpetLib/src/dist.cc	Mon Oct 17 15:24:41 2011 -0400
+@@ -2,6 +2,7 @@
+ #include <cctk_Parameters.h>
+ 
+ #include <cassert>
++#include <complex>
+ #include <typeinfo>
+ 
+ #ifdef CCTK_MPI
+@@ -30,10 +31,159 @@
+   MPI_Datatype mpi_complex8  = MPI_DATATYPE_NULL;
+   MPI_Datatype mpi_complex16 = MPI_DATATYPE_NULL;
+   MPI_Datatype mpi_complex32 = MPI_DATATYPE_NULL;
++  MPI_Op mpi_max  = MPI_OP_NULL;
++  MPI_Op mpi_min  = MPI_OP_NULL;
++  MPI_Op mpi_prod = MPI_OP_NULL;
++  MPI_Op mpi_sum  = MPI_OP_NULL;
+   
+   int num_threads_ = -1;
+   int total_num_threads_ = -1;
+   
++  
++  
++  void op_max (void *restrict const invec_,
++               void *restrict const inoutvec_,
++               int *restrict const len_,
++               MPI_Datatype *const datatype_)
++  {
++    int const len = *len_;
++    MPI_Datatype const datatype = *datatype_;
++#define TYPECASE(N,T)                                   \
++    if (datatype == mpi_datatype<T>()) {                \
++      T *restrict const invec = (T*)invec_;             \
++      T *restrict const inoutvec = (T*)inoutvec_;       \
++      for (int n=0; n<len; ++n) {                       \
++        inoutvec[n] = max(inoutvec[n], invec[n]);       \
++      }                                                 \
++    } else
++#define CARPET_NO_COMPLEX
++#include "typecase.hh"
++#undef TYPECASE
++#define TYPECASE(N,T)                                           \
++    if (datatype == mpi_datatype<T>()) {                        \
++      T *restrict const invec = (T*)invec_;                     \
++      T *restrict const inoutvec = (T*)inoutvec_;               \
++      for (int n=0; n<len; ++n) {                               \
++        inoutvec[n].Re = max(inoutvec[n].Re, invec[n].Re);      \
++        inoutvec[n].Im = max(inoutvec[n].Im, invec[n].Im);      \
++      }                                                         \
++    } else
++#define CARPET_COMPLEX
++#include "typecase.hh"
++#undef TYPECASE
++    {
++      assert (0);
++    }
++  }
++  
++  void op_min (void *restrict const invec_,
++               void *restrict const inoutvec_,
++               int *restrict const len_,
++               MPI_Datatype *const datatype_)
++  {
++    int const len = *len_;
++    MPI_Datatype const datatype = *datatype_;
++#define TYPECASE(N,T)                                   \
++    if (datatype == mpi_datatype<T>()) {                \
++      T *restrict const invec = (T*)invec_;             \
++      T *restrict const inoutvec = (T*)inoutvec_;       \
++      for (int n=0; n<len; ++n) {                       \
++        inoutvec[n] = min(inoutvec[n], invec[n]);       \
++      }                                                 \
++    } else
++#define CARPET_NO_COMPLEX
++#include "typecase.hh"
++#undef TYPECASE
++#define TYPECASE(N,T)                                           \
++    if (datatype == mpi_datatype<T>()) {                        \
++      T *restrict const invec = (T*)invec_;                     \
++      T *restrict const inoutvec = (T*)inoutvec_;               \
++      for (int n=0; n<len; ++n) {                               \
++        inoutvec[n].Re = min(inoutvec[n].Re, invec[n].Re);      \
++        inoutvec[n].Im = min(inoutvec[n].Im, invec[n].Im);      \
++      }                                                         \
++    } else
++#define CARPET_COMPLEX
++#include "typecase.hh"
++#undef TYPECASE
++    {
++      assert (0);
++    }
++  }
++  
++  void op_prod (void *restrict const invec_,
++                void *restrict const inoutvec_,
++                int *restrict const len_,
++                MPI_Datatype *const datatype_)
++  {
++    int const len = *len_;
++    MPI_Datatype const datatype = *datatype_;
++#define TYPECASE(N,T)                                   \
++    if (datatype == mpi_datatype<T>()) {                \
++      T *restrict const invec = (T*)invec_;             \
++      T *restrict const inoutvec = (T*)inoutvec_;       \
++      for (int n=0; n<len; ++n) {                       \
++        inoutvec[n] *= invec[n];                        \
++      }                                                 \
++    } else
++#define CARPET_NO_COMPLEX
++#include "typecase.hh"
++#undef TYPECASE
++#define TYPECASE(N,T)                                   \
++    if (datatype == mpi_datatype<T>()) {                \
++      T *restrict const invec = (T*)invec_;             \
++      T *restrict const inoutvec = (T*)inoutvec_;       \
++      for (int n=0; n<len; ++n) {                       \
++        complex<T>& inout = *(complex<T>*)&inoutvec[n]; \
++        complex<T>& in    = *(complex<T>*)&invec[n];    \
++        inout *= in;                                    \
++      }                                                 \
++    } else
++#define CARPET_COMPLEX
++#include "typecase.hh"
++#undef TYPECASE
++    {
++      assert (0);
++    }
++  }
++  
++  void op_sum (void *restrict const invec_,
++               void *restrict const inoutvec_,
++               int *restrict const len_,
++               MPI_Datatype *const datatype_)
++  {
++    int const len = *len_;
++    MPI_Datatype const datatype = *datatype_;
++#define TYPECASE(N,T)                                   \
++    if (datatype == mpi_datatype<T>()) {                \
++      T *restrict const invec = (T*)invec_;             \
++      T *restrict const inoutvec = (T*)inoutvec_;       \
++      for (int n=0; n<len; ++n) {                       \
++        inoutvec[n] += invec[n];                        \
++      }                                                 \
++    } else
++#define CARPET_NO_COMPLEX
++#include "typecase.hh"
++#undef TYPECASE
++#define TYPECASE(N,T)                                   \
++    if (datatype == mpi_datatype<T>()) {                \
++      T *restrict const invec = (T*)invec_;             \
++      T *restrict const inoutvec = (T*)inoutvec_;       \
++      for (int n=0; n<len; ++n) {                       \
++        inoutvec[n].Re += invec[n].Re;                  \
++        inoutvec[n].Im += invec[n].Im;                  \
++      }                                                 \
++    } else
++#define CARPET_COMPLEX
++#include "typecase.hh"
++#undef TYPECASE
++    {
++      assert (0);
++    }
++  }
++  
++  
++  
+   void init (int& argc, char**& argv) {
+     MPI_Init (&argc, &argv);
+     pseudoinit (MPI_COMM_WORLD);
+@@ -42,6 +192,7 @@
+   void pseudoinit (MPI_Comm const c) {
+     comm_ = c;
+     
++    // Support complex datatypes with MPI
+ #ifdef HAVE_CCTK_REAL4
+     CCTK_REAL4 dummy4;
+     assert (mpi_datatype(dummy4) != MPI_DATATYPE_NULL);
+@@ -66,6 +217,12 @@
+       mpi_complex32 = MPI_DATATYPE_NULL;
+     }
+ #endif
++    MPI_Op_create (op_max, 1, &mpi_max);
++    MPI_Op_create (op_min, 1, &mpi_min);
++    MPI_Op_create (op_sum, 1, &mpi_prod);
++    MPI_Op_create (op_sum, 1, &mpi_sum);
++    
++    
+     
+     // Output startup time
+     CarpetLib::output_startup_time ();
+diff -r c82c8535c3e7 Carpet/CarpetLib/src/dist.hh
+--- a/Carpet/CarpetLib/src/dist.hh	Fri Sep 30 08:32:21 2011 -0700
++++ b/Carpet/CarpetLib/src/dist.hh	Mon Oct 17 15:24:41 2011 -0400
+@@ -30,6 +30,10 @@
+   extern MPI_Datatype mpi_complex8;
+   extern MPI_Datatype mpi_complex16;
+   extern MPI_Datatype mpi_complex32;
++  extern MPI_Op mpi_max;
++  extern MPI_Op mpi_min;
++  extern MPI_Op mpi_prod;
++  extern MPI_Op mpi_sum;
+   
+   extern int num_threads_;
+   extern int total_num_threads_;
+diff -r c82c8535c3e7 Carpet/CarpetReduce/src/reduce.cc
+--- a/Carpet/CarpetReduce/src/reduce.cc	Fri Sep 30 08:32:21 2011 -0700
++++ b/Carpet/CarpetReduce/src/reduce.cc	Mon Oct 17 15:24:41 2011 -0400
+@@ -432,7 +432,7 @@
+       static inline void combine (T& accum, T& cnt, const T& accum2, const T& cnt2) { accum += accum2; cnt += cnt2; }
+       static inline void finalise (T& accum, const T& cnt) { }
+     };
+-    MPI_Op mpi_op () const { return MPI_SUM; }
++    MPI_Op mpi_op () const { return dist::mpi_sum; }
+   };
+   
+   struct minimum : reduction {
+@@ -446,7 +446,7 @@
+       static inline void combine (T& accum, T& cnt, const T& accum2, const T& cnt2) { accum = CarpetReduce::mymin(accum,accum2); cnt += cnt2; }
+       static inline void finalise (T& accum, const T& cnt) { }
+     };
+-    MPI_Op mpi_op () const { return MPI_MIN; }
++    MPI_Op mpi_op () const { return dist::mpi_min; }
+   };
+   
+   struct maximum : reduction {
+@@ -460,7 +460,7 @@
+       static inline void combine (T& accum, T& cnt, const T& accum2, const T& cnt2) { accum = CarpetReduce::mymax(accum,accum2); cnt += cnt2; }
+       static inline void finalise (T& accum, const T& cnt) { }
+     };
+-    MPI_Op mpi_op () const { return MPI_MAX; }
++    MPI_Op mpi_op () const { return dist::mpi_max; }
+   };
+   
+   struct product : reduction {
+@@ -474,7 +474,7 @@
+       static inline void combine (T& accum, T& cnt, const T& accum2, const T& cnt2) { accum *= accum2; cnt += cnt2; }
+       static inline void finalise (T& accum, const T& cnt) { }
+     };
+-    MPI_Op mpi_op () const { return MPI_PROD; }
++    MPI_Op mpi_op () const { return dist::mpi_prod; }
+   };
+   
+   struct sum : reduction {
+@@ -488,7 +488,7 @@
+       static inline void combine (T& accum, T& cnt, const T& accum2, const T& cnt2) { accum += accum2; cnt += cnt2; }
+       static inline void finalise (T& accum, const T& cnt) { }
+     };
+-    MPI_Op mpi_op () const { return MPI_SUM; }
++    MPI_Op mpi_op () const { return dist::mpi_sum; }
+   };
+   
+   struct sum_abs : reduction {
+@@ -502,7 +502,7 @@
+       static inline void combine (T& accum, T& cnt, const T& accum2, const T& cnt2) { accum += accum2; cnt += cnt2; }
+       static inline void finalise (T& accum, const T& cnt) { }
+     };
+-    MPI_Op mpi_op () const { return MPI_SUM; }
++    MPI_Op mpi_op () const { return dist::mpi_sum; }
+   };
+   
+   struct sum_squared : reduction {
+@@ -516,7 +516,7 @@
+       static inline void combine (T& accum, T& cnt, const T& accum2, const T& cnt2) { accum += accum2; cnt += cnt2; }
+       static inline void finalise (T& accum, const T& cnt) { }
+     };
+-    MPI_Op mpi_op () const { return MPI_SUM; }
++    MPI_Op mpi_op () const { return dist::mpi_sum; }
+   };
+   
+   struct sum_abs_squared : reduction {
+@@ -530,7 +530,7 @@
+       static inline void combine (T& accum, T& cnt, const T& accum2, const T& cnt2) { accum += accum2; cnt += cnt2; }
+       static inline void finalise (T& accum, const T& cnt) { }
+     };
+-    MPI_Op mpi_op () const { return MPI_SUM; }
++    MPI_Op mpi_op () const { return dist::mpi_sum; }
+   };
+   
+   struct average : reduction {
+@@ -544,7 +544,7 @@
+       static inline void combine (T& accum, T& cnt, const T& accum2, const T& cnt2) { accum += accum2; cnt += cnt2; }
+       static inline void finalise (T& accum, const T& cnt) { accum /= cnt; }
+     };
+-    MPI_Op mpi_op () const { return MPI_SUM; }
++    MPI_Op mpi_op () const { return dist::mpi_sum; }
+   };
+   
+   struct norm1 : reduction {
+@@ -558,7 +558,7 @@
+       static inline void combine (T& accum, T& cnt, const T& accum2, const T& cnt2) { accum += accum2; cnt += cnt2; }
+       static inline void finalise (T& accum, const T& cnt) { accum /= cnt; }
+     };
+-    MPI_Op mpi_op () const { return MPI_SUM; }
++    MPI_Op mpi_op () const { return dist::mpi_sum; }
+   };
+   
+   struct norm2 : reduction {
+@@ -572,7 +572,7 @@
+       static inline void combine (T& accum, T& cnt, const T& accum2, const T& cnt2) { accum += accum2; cnt += cnt2; }
+       static inline void finalise (T& accum, const T& cnt) { accum = CarpetReduce::mysqrt(accum / cnt); }
+     };
+-    MPI_Op mpi_op () const { return MPI_SUM; }
++    MPI_Op mpi_op () const { return dist::mpi_sum; }
+   };
+   
+   struct norm_inf : reduction {
+@@ -586,7 +586,7 @@
+       static inline void combine (T& accum, T& cnt, const T& accum2, const T& cnt2) { accum = CarpetReduce::mymax(accum,accum2); cnt += cnt2; }
+       static inline void finalise (T& accum, const T& cnt) { }
+     };
+-    MPI_Op mpi_op () const { return MPI_MAX; }
++    MPI_Op mpi_op () const { return dist::mpi_max; }
+   };
+   
+   
+@@ -989,7 +989,7 @@
+              << "mpicount=" << mpicount << endl;
+       }
+       assert (sendbuf + bufsize == static_cast<const char*>(mycounts));
+-      assert (red->mpi_op() == MPI_SUM);
++      assert (red->mpi_op() == dist::mpi_sum);
+     }
+     
+     char* recvbuf = static_cast<char*>(outvals);

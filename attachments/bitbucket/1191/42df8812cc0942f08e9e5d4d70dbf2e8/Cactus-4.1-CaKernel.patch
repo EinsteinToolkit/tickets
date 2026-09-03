@@ -1,0 +1,20 @@
+Index: src/include/cctk_Math.h
+===================================================================
+--- src/include/cctk_Math.h	(revision 4924)
++++ src/include/cctk_Math.h	(working copy)
+@@ -146,6 +146,7 @@
+     return CCTK_SIGNBIT(x);                     \
+   }
+   
++#ifndef __CUDACC__
+ /* Define the functions in std::Cactus, so that the macro isnan (see
+    below) can be called as std::isnan. */
+ namespace std {
+@@ -185,6 +186,7 @@
+ #define isnormal   Cactus::good_isnormal
+ #define signbit    Cactus::good_signbit
+ 
++#endif /*__CUDACC__*/
+ #endif
+ 
+ 

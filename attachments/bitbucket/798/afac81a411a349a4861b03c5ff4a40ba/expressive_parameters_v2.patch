@@ -1,0 +1,709 @@
+Index: src/include/utili_Expression.h
+===================================================================
+--- src/include/utili_Expression.h	(revision 4796)
++++ src/include/utili_Expression.h	(working copy)
+@@ -31,6 +31,8 @@
+               OP_TIMES,
+               OP_POWER,
+               OP_NOT,
++              OP_NEGATE,
++              OP_PASS,
+               OP_ACOS,
+               OP_ASIN,
+               OP_ATAN,
+Index: src/main/Parameters.c
+===================================================================
+--- src/main/Parameters.c	(revision 4796)
++++ src/main/Parameters.c	(working copy)
+@@ -14,6 +14,8 @@
+ #include <stdlib.h>
+ #include <string.h>
+ #include <stdarg.h>
++#include <math.h>
++#include <assert.h>
+ 
+ #include "cctk_Flesh.h"
+ #include "cctk_ActiveThorns.h"
+@@ -183,6 +185,7 @@
+ static int ParameterSetInteger  (t_param *param, const char *value);
+ static int ParameterSetReal     (t_param *param, const char *value);
+ static int ParameterSetBoolean  (t_param *param, const char *value);
++static int SetVarEvaluator(int nvars, const char * const *vars, uExpressionValue *vals, void *data);
+ 
+ static void GetBaseName(const char *name, char **basename, int *array_index);
+ static char *ArrayParamName(const char *basename,int array_index);
+@@ -2185,11 +2188,48 @@
+   const t_range *range;
+   char *endptr;
+ 
+-  retval = -1;
++  retval = 0;
++
++  /* try parsing as number */
+   inval = strtol (value, &endptr, 0);
+ 
+-  if(!*endptr)
++  if(*endptr) /* if we could not parse as a number, try an expression */
+   {
++    int type = PARAMETER_INT;
++    int ierr;
++    uExpressionValue val;
++    uExpression *expr;
++
++    expr = Util_ExpressionParse(value);
++    assert(expr);
++    ierr = Util_ExpressionEvaluate(expr, &val, SetVarEvaluator, &type);
++    Util_ExpressionFree(expr);
++
++    if (ierr == 0)
++    {
++      assert(val.type == ival || val.type == rval);
++
++      if(val.type == ival)
++      {
++        inval =(int)val.value.ival;
++      }
++      else if(fabs(round(val.value.rval) - val.value.rval) < 1e-12) /* enforce integer result */
++      {
++        inval = (int)round(val.value.rval);
++      }
++      else
++      {
++        retval = -6;
++      }
++    }
++    else
++    {
++      retval = -6;
++    }
++  }
++
++  if (!retval)
++  {
+     for (range = param->props->range; range; range = range->next)
+     {
+       if (CCTK_IsThornActive (range->origin) ||
+@@ -2208,10 +2248,6 @@
+       }
+     }
+   }
+-  else
+-  {
+-    retval = -6;
+-  }
+ 
+   if (retval == -1)
+   {
+@@ -2235,12 +2271,12 @@
+ static int ParameterSetReal (t_param *param, const char *value)
+ {
+   int retval;
+-  unsigned int p;
+   const t_range *range;
+   double inval;
+   char *temp;
+   char *endptr;
+ 
++  retval = 0;
+ 
+   /*
+    * Canonicalize the string by converting all exponent letters
+@@ -2248,7 +2284,7 @@
+    * to do the actual conversion) only groks [eE].
+    */
+   temp = strdup (value);
+-  for (p = 0; p < strlen (temp); p++)
++  for (unsigned int p = 0; p < strlen (temp); p++)
+   {
+     if (temp[p] == 'E' || temp[p] == 'd' || temp[p] == 'D')
+     {
+@@ -2257,11 +2293,40 @@
+     }
+   }
+ 
+-  retval = -1;
++  /* try parsing as number */
+   inval = strtod (temp, &endptr);
++  free(temp);
+ 
+-  if(!*endptr)
++  if (*endptr) /* if we cannot parse as a number, try expression */
+   {
++    int type = PARAMETER_REAL;
++    int ierr;
++    uExpressionValue val;
++    uExpression *expr;
++
++    expr = Util_ExpressionParse(value);
++    assert(expr);
++    ierr = Util_ExpressionEvaluate(expr, &val, SetVarEvaluator, &type);
++    Util_ExpressionFree(expr);
++
++    if (ierr == 0)
++    {
++      assert(val.type == ival || val.type == rval);
++
++      if (val.type == ival)
++        inval =(int)val.value.ival;
++      else
++        inval = val.value.rval;
++    }
++    else
++    {
++      retval = -6;
++    }
++  }
++
++  if (!retval)
++  {
++    retval = -1;
+     for (range = param->props->range; range; range = range->next)
+     {
+       if (CCTK_IsThornActive (range->origin) ||
+@@ -2280,13 +2345,7 @@
+       }
+     }
+   }
+-  else
+-  {
+-    retval = -6;
+-  }
+ 
+-  free (temp);
+-
+   if (retval == -1)
+   {
+     CCTK_VWarn (2, __LINE__, __FILE__, "Cactus",
+@@ -2308,10 +2367,48 @@
+ 
+ static int ParameterSetBoolean (t_param *param, const char *value)
+ {
+-  int retval;
++  const int type = PARAMETER_BOOLEAN;
++  int retval, inval;
++  uExpressionValue val;
++  uExpression *expr;
+ 
++  /* first try parsing as yes/no/true/false */
++  retval = CCTK_SetBoolean (&inval, value);
+ 
+-  retval = CCTK_SetBoolean (param->data, value);
++  if(retval) /* if we cannot parse as a boolean, try expression */ 
++  {
++    expr = Util_ExpressionParse(value);
++    assert(expr);
++    int ierr = Util_ExpressionEvaluate(expr, &val, SetVarEvaluator, (void *)&type);
++    Util_ExpressionFree(expr);
++
++    if (!ierr)
++    {
++      assert(val.type == ival || val.type == rval);
++      if (val.type == ival)
++      {
++        inval =(int)val.value.ival;
++        retval = 0;
++      }
++      else if(fabs(round(val.value.rval) - val.value.rval) < 1e-12) /* enforce integer result */
++      {
++        inval = (int)round(val.value.rval);
++        retval = 0;
++      }
++      else
++      {
++        retval = -1;
++      }
++    }
++    else
++    {
++      retval = -1;
++    }
++  }
++
++  if (!retval)
++    *(CCTK_INT *)param->data = inval != 0;
++
+   if (retval == -1)
+   {
+     CCTK_VWarn (2, __LINE__, __FILE__, "Cactus",
+@@ -2493,6 +2590,173 @@
+ }
+ 
+  /*@@
++   @routine    SetVarEvaluator
++   @date       Wed Oct 26 16:25:49 PDT 2011
++   @author     Roland Haas
++   @desc
++   Routine called from the expression parser to evaluate
++   the vars in an parameter expression
++   @enddesc
++
++   @var     nvars
++   @vdesc   Number of variables to evaluate
++   @vtype   int
++   @vio     in
++   @vcomment
++
++   @endvar
++   @var     vars
++   @vdesc   an array of variable names
++   @vtype   const char * const *
++   @vio     in
++   @vcomment
++   Can be anything that GetParamter will recognize. Must be of type CCTK_INT,
++   CCTK_BOOLEAN or CCTK_REAL.
++   @endvar
++   @var     vals
++   @vdesc   Output array to hold values
++   @vtype   uExpressionValue *
++   @vio     out
++   @vcomment
++
++   @endvar
++   @var     data
++   @vdesc   Data passed from expression evaluator
++   @vtype   void *
++   @vio     in
++   @vcomment
++   Not used.
++   @endvar
++
++   @returntype int
++   @returndesc
++   0
++   @endreturndesc
++ @@*/
++static int SetVarEvaluator(int nvars, const char * const *vars, uExpressionValue *vals, void *data)
++{
++  const int restype = *(int *)data;
++  int retval = 0;
++
++  for (int i=0; i < nvars; i++)
++  {
++    int ierr;
++
++    if (strstr(vars[i], "::")) /* a variable [parameter] */
++    {
++      const void *paramval;
++      int type;
++      char *name, *thorn;
++
++      ierr = Util_SplitString(&thorn, &name, vars[i], "::");
++      if (!ierr)
++      {
++        paramval = CCTK_ParameterGet(name, thorn, &type);
++        if (paramval)
++        {
++          switch(type)
++          {
++            case PARAMETER_REAL:
++              vals[i].type = rval;
++              vals[i].value.rval = *(CCTK_REAL *)paramval;
++              ierr = 0;
++              break;
++            case PARAMETER_INT:
++              vals[i].type = ival;
++              vals[i].value.ival = *(CCTK_INT *)paramval;
++              ierr = 0;
++              break;
++            case PARAMETER_BOOLEAN:
++              vals[i].type = ival;
++              vals[i].value.ival = *(CCTK_INT *)paramval;
++              ierr = 0;
++              break;
++            default:
++              CCTK_VWarn (0, __LINE__, __FILE__, "Cactus",
++                          "SetVarEvaluator: cannot handle type %d for parameter '%s::%s'. Only REAL, INT and BOOLEAN are supported.",
++                          type, thorn, name);
++              ierr = -1;
++              break;
++          }
++        }
++        else
++        {
++          CCTK_VWarn (2, __LINE__, __FILE__, "Cactus",
++                      "SetVarEvaluator: could not find '%s::%s'",
++                      thorn, name);
++          ierr = -1;
++        }
++
++        free(thorn);
++        free(name);
++      }
++      else
++      {
++        CCTK_VWarn (2, __LINE__, __FILE__, "Cactus",
++                    "SetVarEvaluator: cannot split '%s' into thorn::parameter: %d",
++                    vars[i], ierr);
++        ierr = -1;
++      }
++    }
++    else /* a direct value */
++    {
++      char *endptr, *temp;
++      if(restype == PARAMETER_BOOLEAN && CCTK_SetBoolean(&vals[i].value.ival, vars[i]) == 0)
++      {
++          vals[i].type = ival;
++          ierr = 0;
++      }
++      else if (strpbrk(vars[i], "eDdD."))
++      {
++        /*
++         * Canonicalize the string by converting all exponent letters
++         * (we allow [eEdD]) to 'e', since strtod(3) (which we will use
++         * to do the actual conversion) only groks [eE].
++         */
++        temp = strdup (vars[i]);
++        for (unsigned int p = 0; p < strlen (temp); p++)
++        {
++          if (temp[p] == 'E' || temp[p] == 'd' || temp[p] == 'D')
++          {
++            temp[p] = 'e';
++            break;
++          }
++        }
++
++        vals[i].type = rval;
++        vals[i].value.rval = (CCTK_REAL)strtod (temp, &endptr);
++        if (!*endptr)
++          ierr = 0;
++        else
++          ierr = -1;
++      }
++      else
++      {
++          vals[i].type = ival;
++          vals[i].value.ival = (CCTK_INT)strtol (vars[i], &endptr, 0);
++          if (!*endptr)
++            ierr = 0;
++          else
++            ierr = -1;
++      }
++    }
++
++    if (ierr)
++    {
++      CCTK_VWarn (2, __LINE__, __FILE__, "Cactus",
++                  "SetVarEvaluator: Unable to set value - '%s' "
++                  "does not evaluate to a real or integer or boolean",
++                  vars[i]);
++      vals[i].type = rval;
++      vals[i].value.rval = (double)atof("nan");
++      retval = ierr;
++    }
++  }
++
++  return retval;
++}
++
++ /*@@
+    @routine    AddAccumulators
+    @date       Mon May 20 07:27:09 2002
+    @author     Tom Goodale
+Index: src/util/Expression.c
+===================================================================
+--- src/util/Expression.c	(revision 4796)
++++ src/util/Expression.c	(working copy)
+@@ -31,7 +31,10 @@
+ #ifdef strdup
+ #undef strdup
+ #endif
++#include "util_String.h"
+ #define strdup(a) Util_Strdup(a)
++#else
++#define CCTK_VWarn(lvl, line, file, thorn, fmt, ...)  printf("(%s) L%d at %s line %d: "fmt"\n", thorn, lvl, file, line, ## __VA_ARGS__)
+ #endif
+ 
+ /********************************************************************
+@@ -103,6 +106,10 @@
+   {">=", binary, 1,OP_GEQUALS},
+   {"&&", binary, 2,OP_AND},
+   {"||", binary, 2,OP_OR},
++  /* Sign change. */
++  {"_",  unary, 3,OP_NEGATE}, /* unary '-' */
++  {"@",  unary, 3,OP_PASS},   /* unary '+' */
++  /* Binary operators. */
+   {"+",  binary, 3,OP_PLUS},
+   {"-",  binary, 3,OP_MINUS},
+   {"/",  binary, 4,OP_DIV},
+@@ -191,7 +198,7 @@
+     temp = list;
+ 
+     /* Convert the list into a string in RPN order */
+-    if(!RPParse(&temp, buffer))
++    if(!RPParse(&temp, buffer) && temp == NULL)
+     {
+       /* Check if it is a valid expression */
+       if(!VerifyParsedExpression(buffer))
+@@ -308,7 +315,7 @@
+             case ival:
+               printf("%d " ,stack[stackpointer-2].value.ival); break;
+             case rval:
+-              printf("%f " ,stack[stackpointer-2].value.rval); break;
++              printf("%g " ,stack[stackpointer-2].value.rval); break;
+             default:
+               ;
+           }
+@@ -320,7 +327,7 @@
+           case ival:
+             printf("%d " ,stack[stackpointer-1].value.ival); break;
+           case rval:
+-            printf("%f " ,stack[stackpointer-1].value.rval); break;
++            printf("%g " ,stack[stackpointer-1].value.rval); break;
+           default:
+             ;
+         }
+@@ -352,7 +359,7 @@
+           case ival:
+             printf("%d\n" ,stack[stackpointer-1].value.ival); break;
+           case rval:
+-            printf("%f\n" ,stack[stackpointer-1].value.rval); break;
++            printf("%g\n" ,stack[stackpointer-1].value.rval); break;
+           default:
+             ;
+         }
+@@ -460,80 +467,114 @@
+   const char *tokenend;
+   const char *position;
+ 
++  /* class '@' below is "everything else", "e" can be either scientific
++   * notation or the literal character 'e' */
++  const char *classes[] = {"-+", "0123456789", ".", "eEdD", "*/^=&|<>!", "(", ")", " \t", "@"};
++  /* if we are in state s and read a charcter of class c we transition to state
++   * states[s][c] */
++  /* if this is -1 then this is a transition that does not happen in well
++   * formed input and we complain, then transition to state 0 */
++  int states[][sizeof(classes)/sizeof(classes[0])] = {
++      /* -   0   .   e   *   (   )  ' '  @ */
++/* 0*/ {10,  2,  3,  9, -1,  0, -1,  0,  9}, /* beginning of subexpression */
++/* 1*/ {-1,  2,  3,  9,  1,  0, -1,  1,  9}, /* after binary operator or '!' */
++/* 2*/ { 1,  2,  3,  4,  1, -1,  5,  5, -1}, /* after first digit of integer */
++/* 3*/ {-1,  7, -1,  4,  1, -1,  5,  5, -1}, /* after decimal point */
++/* 4*/ { 8,  8, -1, -1, -1, -1, -1, -1, -1}, /* after 'e' of exponent */
++/* 5*/ { 1, -1, -1, -1,  1, -1,  5,  5, -1}, /* after space after number */
++/* 6*/ { 1, -1, -1, -1,  1,  0,  5,  6, -1}, /* after space after name*/
++/* 7*/ {-1,  7, -1,  4,  1, -1,  5,  5, -1}, /* after first digit of fraction */
++/* 8*/ {-1,  9, -1, -1,  1, -1,  5,  5, -1}, /* after first digit of exponent */
++/* 9*/ { 1,  9, -1,  9,  1,  0,  5,  6,  9}, /* after first letter of name */
++/*10*/ {-1,  2,  3,  9, -1,  0, -1, 10,  9}, /* after unary operator */
++  };
++  /* we terminate a token whenever we transition out of a state we check here
++   * is this transition could be a termination of a token */
++  int end_of_token[][sizeof(classes)/sizeof(classes[0])] = {
++      /* -   0   .   e   *   (   )  ' '  @ */
++/* 0*/ { 1,  1,  1,  1, -1,  1, -1,  0,  1}, /* beginning of subexpression */
++/* 1*/ {-1,  1,  1,  1,  0,  1, -1,  0,  1}, /* after binary operator or '!' */
++/* 2*/ { 1,  0,  0,  0,  1,  1,  1,  1, -1}, /* after first digit of integer */
++/* 3*/ {-1,  0, -1,  0,  1, -1,  1,  1, -1}, /* after decimal point */
++/* 4*/ { 0,  0, -1, -1, -1, -1, -1, -1, -1}, /* after 'e' of exponent */
++/* 5*/ { 1, -1, -1, -1,  1, -1,  1,  0, -1}, /* after space after number */
++/* 6*/ { 1, -1, -1, -1,  1,  1,  1,  0, -1}, /* after space after name*/
++/* 7*/ {-1,  0, -1,  0,  1, -1,  1,  1, -1}, /* after first digit of fraction */
++/* 8*/ {-1,  0, -1, -1,  1, -1,  1,  1, -1}, /* after first digit of exponent */
++/* 9*/ { 1,  0, -1,  0,  1,  1,  1,  1,  0}, /* after first letter of name */
++/*10*/ {-1,  0,  0,  0, -1,  1, -1,  1,  0}, /* after unary operator */
++  };
++  int tokenstate, state, class, error;
++
+   start   = NULL;
+   current = NULL;
+ 
+   tokenstart = expression;
+-
++  state = 0;
+   while(*tokenstart)
+   {
++
+     /* Remove leading whitespace */ 
+     for(; *tokenstart == ' ' || *tokenstart == '\t'; tokenstart++);
+ 
+     tokenend = NULL;
++    tokenstate = -1;
+ 
+-    position = tokenstart;
++    /* classify first input character */
++    for(class = 0; class < (int)(sizeof(classes)/sizeof(classes[0]))-1; class++)
++    {
++      if(strchr(classes[class], *tokenstart))
++        break;
++    }
++    if(states[state][class] >= 0)
++      state = states[state][class];
++    else
++      state = 0;
++#ifdef TEST_EXPRESSION_PARSER
++    printf("Initial state: %d, token '%c', class '%c'\n", state, *tokenstart, classes[class][0]);
++#endif
+ 
+-    for(position=tokenstart; *position && *(position+1); position++)
++    error = 0;
++    for(position = tokenstart+1; *position && *tokenstart; position++)
+     {
+-      switch(*(position+1))
++      /* classify input character */
++      for(class = 0; class < (int)(sizeof(classes)/sizeof(classes[0]))-1; class++)
+       {
+-        case '+' :
+-        case '-' :
+-        case '/' :
+-        case '*' :
+-        case '^' :
+-        case '(' :
+-        case ')' :
+-        case '<' :
+-        case '>' :
+-          tokenend = position; break;
+-        case '=' :
+-          if(*position != '<' && *position != '>')
+-          {
+-            tokenend = position; 
+-          }
++        if(strchr(classes[class], *position))
+           break;
+-        case '&' :
+-          if(*position != '&')
+-          {
+-            tokenend = position;
+-          }
+-          break;
+-        case '|' :
+-          if(*position != '|')
+-          {
+-            tokenend = position;
+-          }
+-          break;
+-        default  :
+-          switch(*(position))
+-          {
+-            case '+' :
+-            case '-' :
+-            case '/' :
+-            case '*' :
+-            case '^' :
+-            case '(' :
+-            case ')' :
+-            case '=' :
+-            case '&' :
+-            case '|' :
+-              tokenend = position; break;
+-            case '<' :
+-            case '>' :
+-              if(*(position+1) && *(position+1) != '=')
+-              {
+-                tokenend = position;
+-              }
+-              break;
+-            default  :
+-              ;
+-          }
+       }
+ 
++      /* see if transition closes the previous token */
++      if(end_of_token[state][class])
++      {
++        tokenend = position-1;
++        tokenstate = state;
++      }
++
++#ifdef TEST_EXPRESSION_PARSER
++      printf("read '%c', current state: %d, class '%c', will transition to %d, token = '%.*s', will %sappend token\n",
++          *position, state, classes[class][0], states[state][class], (int)(position-tokenstart), tokenstart, end_of_token[state][class] ? "" : "not ");
++#endif
++
++      /* transition to new state or state 0 upon errors */
++      if(states[state][class] >= 0)
++      {
++        state = states[state][class];
++      }
++      else
++      {
++        state = 0;
++        error = 1;
++      }
++
+       if(tokenend)
+       {
++        if(error)
++        {
++          CCTK_VWarn (2, __LINE__, __FILE__, "Cactus",
++                      "Tokenise: Parser in error state. Faulty token '%.*s', next input '%c'.",
++                      (int)(position-tokenstart), tokenstart, *position);
++        }
+         break;
+       }
+     }
+@@ -549,6 +590,15 @@
+ 
+     if(new)
+     {
++      if(tokenstate == 10) /* after we have seen a "-+" at beginning of subexpression */
++      {
++        /* replace unary "+-" by different names */
++        if(!strcmp(new->token, "+"))
++          new->token[0] = '@';
++        else if(!strcmp(new->token, "-"))
++          new->token[0] = '_';
++      }
++
+       /* Insert on list */
+       if(current)
+       {
+@@ -1008,6 +1058,12 @@
+     case OP_NOT :                                      \
+       (retval) = !(val);                               \
+       break;                                           \
++    case OP_PASS :                                     \
++      (retval) = +(val);                               \
++      break;                                           \
++    case OP_NEGATE :                                   \
++      (retval) = -(val);                               \
++      break;                                           \
+     case OP_ACOS :                                     \
+       (retval) = acos(val);                            \
+       break;                                           \
+@@ -1063,8 +1119,8 @@
+ 
+   if(value->type==ival)
+   {
+-    retval->type=rval;
+-    EVALUATEUNARY(retval->value.rval,value->value.ival);
++    retval->type=ival;
++    EVALUATEUNARY(retval->value.ival,value->value.ival);
+   }
+   else /* if(val->type==rval) */
+   {
+@@ -1544,18 +1600,23 @@
+ int evaluator(int nvars, const char * const *vars, uExpressionValue *vals, void *data)
+ {
+   int i;
++  char *endp;
+ 
+   for(i = 0; i < nvars; i++)
+   {
+-    if(strchr(vars[i],'.'))
++    if(strchr(vars[i],'.') || strchr(vars[i],'e'))
+     {
+       vals[i].type = rval;
+-      vals[i].value.rval = strtod(vars[i], NULL);
++      vals[i].value.rval = strtod(vars[i], &endp);
++      if(*endp)
++        printf("Unrecognisable number format '%s' read as %g, unread '%s'\n", vars[i], vals[i].value.rval, endp);
+     }
+     else
+     {
+       vals[i].type = ival;
+-      vals[i].value.ival = strtol(vars[i], NULL,0);
++      vals[i].value.ival = strtol(vars[i], &endp,0);
++      if(*endp)
++        printf("Unrecognisable number format '%s' read as %d, unread '%s'\n", vars[i], vals[i].value.ival, endp);
+     }    
+   }
+ 
+@@ -1588,7 +1649,7 @@
+     }
+     else
+     {
+-      printf("Value is %f\n", value.value.rval); 
++      printf("Value is %g\n", value.value.rval); 
+     }
+     
+     Util_ExpressionFree(buffer);

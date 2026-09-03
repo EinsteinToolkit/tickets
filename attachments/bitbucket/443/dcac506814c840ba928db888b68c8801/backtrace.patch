@@ -1,0 +1,118 @@
+# HG changeset patch
+# User Ian Hinder <ian.hinder@aei.mpg.de>
+# Date 2011-06-01 11:08:16 +0200
+# Node ID e2e1c463fae9bfd2d7607f04b381373fc368f4da
+# Parent  2916ade131f15ef523bfe7f3679e743272e3fdf4
+Initialise.cc: Add backtrace output to file on fatal signals
+
+diff --git a/Carpet/Carpet/src/Initialise.cc b/Carpet/Carpet/src/Initialise.cc
+--- a/Carpet/Carpet/src/Initialise.cc
++++ b/Carpet/Carpet/src/Initialise.cc
+@@ -4,6 +4,11 @@
+ #include <map>
+ #include <string>
+ #include <sstream>
++#include <signal.h>
++#include <execinfo.h>
++#include <fstream>
++#include <dlfcn.h>
++#include <cxxabi.h>
+ 
+ #include <cctk.h>
+ #include <cctk_Parameters.h>
+@@ -39,6 +44,9 @@
+   static void Initialise3tl (cGH * cctkGH);
+   
+   static void print_internal_data ();
++  static void signal_handler(int signum);
++  static void write_backtrace_file(void);
++  static void generate_backtrace(ostream &stacktrace);
+   
+   static void ScheduleTraverse
+   (char const * where, char const * name, cGH * cctkGH);
+@@ -54,7 +62,10 @@
+     int const convlev = 0;
+     cGH * const cctkGH = CCTK_SetupGH (fc, convlev);
+     CCTKi_AddGH (fc, convlev, cctkGH);
+-    
++
++    signal(6, signal_handler);
++    signal(11, signal_handler);
++
+     do_global_mode = true;
+     do_early_global_mode = true;
+     do_late_global_mode = true;
+@@ -1175,6 +1186,73 @@
+   //////////////////////////////////////////////////////////////////////////////
+   //////////////////////////////////////////////////////////////////////////////
+   
++  /// Generate a stack backtrace and send it to the given output
++  /// stream
++  void generate_backtrace(ostream &stacktrace)
++  {
++    const int MAXSTACK = 100;
++    static void *addresses[MAXSTACK];
++
++    stacktrace << "Backtrace from rank " << dist::rank() << " pid " << getpid() << ":" << endl;
++
++    int n = backtrace(addresses, MAXSTACK);
++    if (n < 2) {
++      stacktrace << "Backtrace not available!\n";
++    } else {
++      stacktrace.flags(ios::hex);
++      char **names = backtrace_symbols( addresses, n );
++      for (int i = 2; i < n; i++) {
++        Dl_info info;
++        char *demangled = NULL;
++
++        // Attempt to demangle this if possible
++        // Get the nearest symbol to feed to demangler
++        if(dladdr(addresses[i], &info) != 0) {
++          int stat;
++          // __cxa_demangle is a naughty obscure backend and no
++          // self-respecting person would ever call it directly. ;-)
++          // However it is a convenient glibc way to demangle syms.
++          demangled = abi::__cxa_demangle(info.dli_sname,0,0,&stat);
++        }
++
++        if (demangled != NULL) {
++
++          // Chop off the garbage from the raw symbol
++          char *loc = strchr(names[i], '(');
++          if (loc != NULL) *loc = '\0';
++
++          stacktrace << i - 1 << ". " << demangled << "(" << names[i] << ")" << '\n';
++          free(demangled);
++        } else { // Just output the raw symbol
++          stacktrace << i - 1 << ". " << names[i] << '\n';
++        }
++      }
++      free(names);
++    }
++  }
++
++  /// Output a stack backtrace file backtrace.<rank>.txt
++  void write_backtrace_file(void)
++  {
++    ofstream myfile;
++    stringstream ss;
++
++    ss << "backtrace." << dist::rank() << ".txt";
++    string filename = ss.str();
++
++    cerr << "Writing backtrace to " << filename << endl;
++    myfile.open(filename.c_str());
++    generate_backtrace(myfile);
++    myfile.close();
++  }
++
++  void signal_handler(int signum)
++  {
++    cerr << "Rank " << dist::rank() << " with PID " << getpid() << " got signal" << signum << endl;
++    signal(signum, SIG_DFL); // Restore the default signal handler
++    write_backtrace_file();
++    kill(getpid(), signum); // Re-raise the signal to be caught by the default handler
++  }
+   
+   
+   void

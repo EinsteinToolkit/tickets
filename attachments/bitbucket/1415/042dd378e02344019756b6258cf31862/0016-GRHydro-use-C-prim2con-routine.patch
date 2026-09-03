@@ -1,0 +1,27 @@
+From beb19d2a179e4491c8fe287398d716bdbc4c130a Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Sun, 4 Aug 2013 00:06:49 -0700
+Subject: [PATCH 16/19] GRHydro: use C prim2con routine
+
+---
+ src/GRHydro_Reconstruct.F90 |    4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/GRHydro_Reconstruct.F90 b/src/GRHydro_Reconstruct.F90
+index 8139488..fd60c94 100644
+--- a/src/GRHydro_Reconstruct.F90
++++ b/src/GRHydro_Reconstruct.F90
+@@ -280,8 +280,8 @@ subroutine Reconstruction(CCTK_ARGUMENTS)
+      if(evolve_mhd.ne.0) then
+         call primitive2conservativeM(CCTK_PASS_FTOF)
+      else
+-        call primitive2conservative(CCTK_PASS_FTOF)
+-!        call Primitive2ConservativeCforF(cctkGH)
++!        call primitive2conservative(CCTK_PASS_FTOF)
++        call Primitive2ConservativeCforF(cctkGH)
+      endif
+   else if (CCTK_EQUALS(recon_vars,"conservative")) then
+      if(evolve_mhd.ne.0) then
+-- 
+1.7.10.4
+

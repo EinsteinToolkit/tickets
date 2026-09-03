@@ -1,0 +1,174 @@
+From 1312f507606922d015d0ad2aed8d875398ab496e Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Sat, 25 Feb 2012 02:17:53 -0800
+Subject: [PATCH 2/4] add option to use shared memory within a node to only
+ store a single copy of the EOS table in memory
+
+---
+ param.ccl               |    4 ++
+ src/nuc_eos/readtable.c |   95 +++++++++++++++++++++++++++++++++++++++++------
+ test/eos_omni.par       |    1 +
+ 3 files changed, 89 insertions(+), 11 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index fbe0648..0bb6cf7 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -89,6 +89,10 @@ INT reader_process "read table on this process and bcast data" STEERABLE=ALWAYS
+   0:* :: "read on process N"
+ } 0
+ 
++BOOLEAN share_table "use shared memory to share the EOS table on a each individual node" STEERABLE=ALWAYS
++{
++} "no"
++
+ shares: IO
+ 
+ USES STRING out_dir
+diff --git a/src/nuc_eos/readtable.c b/src/nuc_eos/readtable.c
+index c4b41b2..653fc9e 100644
+--- a/src/nuc_eos/readtable.c
++++ b/src/nuc_eos/readtable.c
+@@ -1,4 +1,7 @@
+ #include <stdlib.h>
++#include <string.h>
++#include <errno.h>
++#include <assert.h>
+ 
+ #define H5_USE_16_API 1
+ #include "hdf5.h"
+@@ -8,14 +11,25 @@
+ #include "cctk_Arguments.h"
+ #include "cctk_Functions.h"
+ 
++#ifdef HAVE_SHMGET
++#include <sys/types.h>
++#include <sys/ipc.h>
++#include <sys/shm.h>
++#include <unistd.h>
++#else
++#endif
++
+ // mini NoMPI
+ #ifdef HAVE_CAPABILITY_MPI
+ #include <mpi.h>
+-#define BCAST(buffer, size) MPI_Bcast(buffer, size, MPI_BYTE, my_reader_process, MPI_COMM_WORLD)
++#define BCAST(buffer, size) MPI_Bcast(buffer, doBcast ? size : 0, MPI_BYTE, my_reader_process, MPI_COMM_WORLD)
+ #else
+ #define BCAST(buffer, size) do { /* do nothing */ } while(0)
+ #endif
+ 
++// key used to distinguish ftok keys for the same file
++#define EOS_TABLE_PROJ_ID 42
++
+ // Interface of function for fortran module eostable
+ void CCTK_FNAME(setup_eosmodule)
+                 (CCTK_INT* , CCTK_INT* , CCTK_INT*, CCTK_REAL*,
+@@ -64,6 +78,7 @@ void EOS_OMNI_ReadTable(CCTK_ARGUMENTS)
+     my_reader_process = 0;
+   }
+   const int doIO = !read_table_on_single_process || CCTK_MyProc(cctkGH) == my_reader_process;
++  int doBcast = 1; // only do MPI Bcast on one process per node if using shared memory
+ 
+   hid_t file = -1;
+   if (doIO && !file_is_readable(nuceos_table_name))
+@@ -98,16 +113,74 @@ void EOS_OMNI_ReadTable(CCTK_ARGUMENTS)
+ 
+ 
+   // Allocate memory for tables
+-  CCTK_REAL *alltables, *logrho, *logtemp, *ye, energy_shift;
+-
+-  if (!(alltables = (CCTK_REAL*)malloc(nrho * ntemp * nye * 19 * sizeof(CCTK_REAL))))
+-    CCTK_WARN(CCTK_WARN_ABORT, "Cannot allocate memory for EOS table\n");
+-  if (!(logrho = (CCTK_REAL*)malloc(nrho * sizeof(CCTK_REAL))))
+-    CCTK_WARN(CCTK_WARN_ABORT, "Cannot allocate memory for EOS table\n");
+-  if (!(logtemp = (CCTK_REAL*)malloc(ntemp * sizeof(CCTK_REAL))))
+-    CCTK_WARN(CCTK_WARN_ABORT, "Cannot allocate memory for EOS table\n");
+-  if (!(ye = (CCTK_REAL*)malloc(nye * sizeof(CCTK_REAL))))
+-    CCTK_WARN(CCTK_WARN_ABORT, "Cannot allocate memory for EOS table\n");
++  CCTK_REAL *alltables = NULL, *logrho = NULL, *logtemp = NULL, *ye = NULL, energy_shift;
++
++#ifdef HAVE_SHMGET
++  if (share_table)
++  {
++      // attempt to allocate a shared memory segment large enough to hold all tables
++      CCTK_VInfo(CCTK_THORNSTRING, "Using shared memory for EOS table.");
++
++      const size_t size = nrho * ntemp * nye * 19 * sizeof(CCTK_REAL) +
++                          nrho * sizeof(CCTK_REAL) +
++                          ntemp * sizeof(CCTK_REAL) +
++                          nye * sizeof(CCTK_REAL);
++      const key_t key = ftok(nuceos_table_name, EOS_TABLE_PROJ_ID);
++      if (key != -1)
++      {
++        const int id = shmget(key, size, IPC_CREAT | 0700); // full rw permissions for user, none for anyone else
++        if (id != -1)
++        {
++          CCTK_REAL *ptr = shmat(id, NULL, 0);
++          if (ptr != (void *) -1)
++          {
++            struct shmid_ds shmid_ds;
++
++            // divy up into actual tables
++            alltables = ptr;
++            logrho = alltables +  nrho * ntemp * nye * 19;
++            logtemp = logrho + nrho;
++            ye = logtemp + ntemp;
++
++            // record who should do MPI Bcast
++            shmctl (id, IPC_STAT, &shmid_ds);
++            doBcast = shmid_ds.shm_cpid == getpid();
++          }
++          else
++          {
++           CCTK_VWarn(CCTK_WARN_ALERT, __LINE__, __FILE__, CCTK_THORNSTRING,
++                      "Could not map shared memory segment: %s", strerror(errno));
++          }
++        }
++        else
++        {
++          CCTK_VWarn(CCTK_WARN_ALERT, __LINE__, __FILE__, CCTK_THORNSTRING,
++                     "Could not get shared memory segment: %s", strerror(errno));
++        }
++      }
++      else
++      {
++       CCTK_VWarn(CCTK_WARN_ALERT, __LINE__, __FILE__, CCTK_THORNSTRING,
++                  "Could not create shared memory key: %s", strerror(errno));
++      }
++  }
++  if (alltables == NULL)
++#endif
++  {
++      // each process on a node gets a separate copy of the EOS table
++      if (share_table)
++        CCTK_VWarn(CCTK_WARN_COMPLAIN, __LINE__, __FILE__, CCTK_THORNSTRING,
++                   "shmget is not avaible. Falling back to non-shared method");
++
++      if (!(alltables = (CCTK_REAL*)malloc(nrho * ntemp * nye * 19 * sizeof(CCTK_REAL))))
++        CCTK_WARN(CCTK_WARN_ABORT, "Cannot allocate memory for EOS table\n");
++      if (!(logrho = (CCTK_REAL*)malloc(nrho * sizeof(CCTK_REAL))))
++        CCTK_WARN(CCTK_WARN_ABORT, "Cannot allocate memory for EOS table\n");
++      if (!(logtemp = (CCTK_REAL*)malloc(ntemp * sizeof(CCTK_REAL))))
++        CCTK_WARN(CCTK_WARN_ABORT, "Cannot allocate memory for EOS table\n");
++      if (!(ye = (CCTK_REAL*)malloc(nye * sizeof(CCTK_REAL))))
++        CCTK_WARN(CCTK_WARN_ABORT, "Cannot allocate memory for EOS table\n");
++  }
+ 
+   // Prepare HDF5 to read hyperslabs into alltables
+   hsize_t table_dims[2] = {19, nrho * ntemp * nye};
+diff --git a/test/eos_omni.par b/test/eos_omni.par
+index 2ae9cd4..c0fe537 100644
+--- a/test/eos_omni.par
++++ b/test/eos_omni.par
+@@ -7,6 +7,7 @@ EOS_Omni::dump_nuceos_table_name = "TEST_TABLEEOS_rho4_temp4_ye4_version1.0_2012
+ 
+ EOS_Omni::read_table_on_single_process = yes
+ EOS_Omni::reader_process = 1
++EOS_Omni::share_table = 1
+ 
+ IO::out_dir			= $parfile
+ 
+-- 
+1.7.10.4
+

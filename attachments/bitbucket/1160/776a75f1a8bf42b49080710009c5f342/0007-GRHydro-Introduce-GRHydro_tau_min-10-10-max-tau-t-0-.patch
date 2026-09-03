@@ -1,0 +1,103 @@
+From 1decf6fa85b61bbe935a8c1f13cc21c3b02c166c Mon Sep 17 00:00:00 2001
+From: Bruno Coutinho Mundim <bcmsma@astro.rit.edu>
+Date: Fri, 19 Oct 2012 01:17:51 -0500
+Subject: [PATCH 7/9] GRHydro: Introduce GRHydro_tau_min = 10^-10
+ max(tau(t=0)) to be used in tau rescaling in con2prim
+ failures.
+
+---
+ interface.ccl             |    1 +
+ param.ccl                 |    5 +++++
+ src/GRHydro_Minima.F90    |    2 ++
+ src/GRHydro_Prim2ConM.F90 |   20 +++++++++++++++++++-
+ 4 files changed, 27 insertions(+), 1 deletion(-)
+
+diff --git a/interface.ccl b/interface.ccl
+index 8a4c78a..bf6fbbb 100644
+--- a/interface.ccl
++++ b/interface.ccl
+@@ -359,6 +359,7 @@ int GRHydro_eos_scalars type = SCALAR
+ CCTK_REAL GRHydro_minima type = SCALAR
+ {
+   GRHydro_rho_min
++  GRHydro_tau_min
+ #  GRHydro_dens_min
+ } "Atmosphere values"
+ 
+diff --git a/param.ccl b/param.ccl
+index 736185d..a46a856 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -404,6 +404,11 @@ REAL GRHydro_rho_central "Central Density for Star"
+ 
+ ##Parameters for the atmosphere.
+ 
++REAL tau_rel_min "A minimum relative tau (taumin = maxtau(t=0) * tau_rel_min) below which tau is reschaled"
++{
++  0: :: ""
++} 1.e-10
++
+ REAL rho_abs_min "A minimum rho below which evolution is turned off (atmosphere). If negative, the relative minimum will be used instead."
+ {
+   -1.0: :: ""
+diff --git a/src/GRHydro_Minima.F90 b/src/GRHydro_Minima.F90
+index d3e2897..5f870cd 100644
+--- a/src/GRHydro_Minima.F90
++++ b/src/GRHydro_Minima.F90
+@@ -46,6 +46,8 @@ subroutine GRHydro_Rho_Minima_Setup(CCTK_ARGUMENTS)
+ 
+   if (initial_atmosphere_factor > 0.0) GRHydro_rho_min = GRHydro_rho_min * initial_atmosphere_factor
+ 
++  GRHydro_tau_min = tau_rel_min
++
+   return
+ 
+ end subroutine GRHydro_Rho_Minima_Setup
+diff --git a/src/GRHydro_Prim2ConM.F90 b/src/GRHydro_Prim2ConM.F90
+index 5d702b1..484cb3b 100644
+--- a/src/GRHydro_Prim2ConM.F90
++++ b/src/GRHydro_Prim2ConM.F90
+@@ -453,10 +453,13 @@ subroutine Primitive2ConservativeCellsM(CCTK_ARGUMENTS)
+   CCTK_REAL :: xtemp(1)
+   CCTK_INT :: i, j, k
+   CCTK_REAL :: det
++  CCTK_REAL :: maxtau0
++
++  maxtau0 = -1.0d60
+   
+   if(evolve_temper.ne.1) then
+ 
+-  !$OMP PARALLEL DO PRIVATE(k,j,i,det)
++  !$OMP PARALLEL DO PRIVATE(k,j,i,det), REDUCTION(MAX:maxtau0)
+   do k = GRHydro_stencil,cctk_lsh(3)-GRHydro_stencil+1
+     do j = GRHydro_stencil,cctk_lsh(2)-GRHydro_stencil+1
+       do i = GRHydro_stencil,cctk_lsh(1)-GRHydro_stencil+1
+@@ -473,10 +476,25 @@ subroutine Primitive2ConservativeCellsM(CCTK_ARGUMENTS)
+              eps(i,j,k),press(i,j,k),Bvecx(i,j,k), &
+              Bvecy(i,j,k), Bvecz(i,j,k), w_lorentz(i,j,k))
+ 
++        maxtau0 = max(maxtau0,tau(i,j,k))
++
+       end do
+     end do
+   end do
+   !$OMP END PARALLEL DO
++
++  ! TODO: to actually reduce GRHydro_tau_min over all Carpet components
++  ! we need to modify Carpet looping to allow this function to be called
++  ! on all AMR levels before calling any other function. The best would be
++  ! to set a special bin where functions would be called on all levels first
++  ! instead of calling all functions per level. The workaround for this problem
++  ! is to set GRHydro_tau_min to a user specified value as it was set in 
++  ! GRHydro_Minima.F90. Once this issue is solved, then uncomment the line
++  ! below and create two other routines to be run in global mode so that 
++  ! GRHydro_tau_min can be properly initialized and reduced.
++
++  !GRHydro_tau_min = GRHydro_tau_min * maxtau0 
++
+   else 
+   !$OMP PARALLEL DO PRIVATE(k,j,i,det)
+   do k = GRHydro_stencil,cctk_lsh(3)-GRHydro_stencil+1
+-- 
+1.7.10.4
+

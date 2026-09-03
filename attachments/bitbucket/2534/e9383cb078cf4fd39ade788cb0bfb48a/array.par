@@ -1,0 +1,80 @@
+#==============================================================================
+
+ActiveThorns = "SymBase time cartgrid3d ioutil iobasic nanchecker CoordBase Slab LocalReduce MoL Carpet CarpetInterp  CarpetLib CarpetReduce CarpetSlab CarpetRegrid2  "
+LoopControl::settle_after_iteration = 0 
+
+
+#------------------------------------------------------------------------------
+
+# Run parameters
+#------------------------------------------------------------------------------
+
+# Grid
+
+mol::ode_method                        = "RK4"
+mol::mol_intermediate_steps            = 4
+mol::mol_num_scratch_levels            = 1
+#mol::initial_data_is_crap = true
+
+
+
+CoordBase::domainsize       = "minmax"
+CoordBase::xmin             = -400
+CoordBase::ymin             = -400
+CoordBase::zmin             = -400
+CoordBase::xmax             = 400
+CoordBase::ymax             = 400
+CoordBase::zmax             = 400
+CoordBase::spacing          = "numcells"
+CoordBase::ncells_x         = 50
+CoordBase::ncells_y         = 50
+CoordBase::ncells_z         = 50
+CartGrid3D::type            = "coordbase"
+CartGrid3D::domain          = "full"
+CartGrid3D::avoid_originx   = no
+CartGrid3D::avoid_originy   = no
+CartGrid3D::avoid_originz   = no
+
+
+
+
+driver::ghost_size                        = 4
+
+#---------------------------------------------------------------------------
+
+cactus::cctk_itlast                     = 2
+
+
+time::dtfac                        = .25
+Carpet::domain_from_coordbase       = yes
+Carpet::prolongation_order_space   = 5
+Carpet::prolongation_order_time    = 2
+Carpet::max_refinement_levels      = 2
+Carpet::use_buffer_zones = yes
+Carpet::verbose           = no
+Carpet::schedule_barriers = no
+Carpet::veryverbose       = no
+
+CarpetLib::output_bboxes  = no
+CarpetLib::check_bboxes              = no
+CarpetLib::interleave_communications = yes
+CarpetLib::combine_sends             = yes
+
+Carpet::init_fill_timelevels = "yes"
+Carpet::enable_all_storage     = no
+Carpet::regrid_during_recovery = no
+
+
+CarpetRegrid2::regrid_every = 32
+
+CarpetRegrid2::num_centres = 1
+CarpetRegrid2::symmetry_rotating180 = no
+
+CarpetRegrid2::num_levels_1 = 2
+CarpetRegrid2::position_x_1 = 0
+CarpetRegrid2::position_y_1 = 0
+CarpetRegrid2::position_z_1 = 0
+CarpetRegrid2::radius_1[ 1] = 220
+
+
+ActiveThorns="EvolveArray"

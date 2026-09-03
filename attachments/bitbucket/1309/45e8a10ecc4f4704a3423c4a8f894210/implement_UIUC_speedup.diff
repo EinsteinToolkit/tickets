@@ -1,0 +1,269 @@
+Index: src/FuncAndJacobian.c
+===================================================================
+--- src/FuncAndJacobian.c	(revision 130)
++++ src/FuncAndJacobian.c	(working copy)
+@@ -841,4 +841,147 @@
+   return Ui;
+ }
+ 
++
++//////////////////////////////////////////////////////
++/// Fast Spectral Interpolation Routine Stuff
++//////////////////////////////////////////////////////
++
++
++/* Calculates the value of v at an arbitrary position (A,B,phi)* using the fast routine */
++CCTK_REAL 
++PunctEvalAtArbitPositionFast (CCTK_REAL *v, int ivar, CCTK_REAL A, CCTK_REAL B, CCTK_REAL phi, int nvar, int n1, int n2, int n3)
++{
++  int i, j, k, N;
++  CCTK_REAL *p, *values1, **values2, result;
++  // VASILIS: Nothing should be changed in this routine. This is used by PunctIntPolAtArbitPositionFast
++
++  N = maximum3 (n1, n2, n3);
++  
++  p = dvector (0, N);
++  values1 = dvector (0, N);
++  values2 = dmatrix (0, N, 0, N);
++
++  for (k = 0; k < n3; k++)
++  {
++    for (j = 0; j < n2; j++)
++    {
++      for (i = 0; i < n1; i++) p[i] = v[ivar + nvar * (i + n1 * (j + n2 * k))];
++      //      chebft_Zeros (p, n1, 0);
++      values2[j][k] = chebev (-1, 1, p, n1, A);
++    }
++  }
++
++  for (k = 0; k < n3; k++)
++  {
++    for (j = 0; j < n2; j++) p[j] = values2[j][k];
++    //    chebft_Zeros (p, n2, 0);
++    values1[k] = chebev (-1, 1, p, n2, B);
++  }
++
++  //  fourft (values1, n3, 0);
++  result = fourev (values1, n3, phi);
++  
++  free_dvector (p, 0, N);
++  free_dvector (values1, 0, N);
++  free_dmatrix (values2, 0, N, 0, N);
++
++  return result;
++  //  */
++  //  return 0.;
++}
++
++
++// --------------------------------------------------------------------------*/
++// Calculates the value of v at an arbitrary position (x,y,z) if the spectral coefficients are known //
+ /* --------------------------------------------------------------------------*/
++CCTK_REAL
++PunctIntPolAtArbitPositionFast (int ivar, int nvar, int n1,
++			    int n2, int n3, derivs v, CCTK_REAL x, CCTK_REAL y,
++			    CCTK_REAL z)
++{
++  DECLARE_CCTK_PARAMETERS;
++  CCTK_REAL xs, ys, zs, rs2, phi, X, R, A, B, aux1, aux2, result, Ui;
++  // VASILIS: Here the struct derivs v refers to the spectral coeffiecients of variable v not the variable v itself
++
++  xs = x / par_b;
++  ys = y / par_b;
++  zs = z / par_b;
++  rs2 = ys * ys + zs * zs;
++  phi = atan2 (z, y);
++  if (phi < 0)
++    phi += 2 * Pi;
++
++  aux1 = 0.5 * (xs * xs + rs2 - 1);
++  aux2 = sqrt (aux1 * aux1 + rs2);
++  X = asinh (sqrt (aux1 + aux2));
++  R = asin (min(1.0, sqrt (-aux1 + aux2)));
++  if (x < 0)
++    R = Pi - R;
++
++  A = 2 * tanh (0.5 * X) - 1;
++  B = tan (0.5 * R - Piq);
++
++  result = PunctEvalAtArbitPositionFast (v.d0, ivar, A, B, phi, nvar, n1, n2, n3);
++
++  Ui = (A - 1) * result;
++
++  return Ui;
++}
++
++// Evaluates the spectral expansion coefficients of v  
++void SpecCoef(int n1, int n2, int n3, int ivar, CCTK_REAL *v, CCTK_REAL *cf)
++{
++  DECLARE_CCTK_PARAMETERS;
++  // VASILIS: Here v is a pointer to the values of the variable v at the collocation points and cf_v a pointer to the spectral coefficients that this routine calculates
++
++	int i, j, k, N, n, l, m;
++	double *p, ***values3, ***values4;
++	
++	N=maximum3(n1,n2,n3);
++	p=dvector(0,N);
++	values3=d3tensor(0,n1,0,n2,0,n3);
++	values4=d3tensor(0,n1,0,n2,0,n3);
++
++
++
++	      // Caclulate values3[n,j,k] = a_n^{j,k} = (sum_i^(n1-1) f(A_i,B_j,phi_k) Tn(-A_i))/k_n , k_n = N/2 or N 
++	      for(k=0;k<n3;k++) {
++		for(j=0;j<n2;j++) {
++
++		  for(i=0;i<n1;i++) p[i]=v[ivar + (i + n1 * (j + n2 * k))];
++		  
++		  chebft_Zeros(p,n1,0); 
++		  for (n=0;n<n1;n++)	{
++		    values3[n][j][k] = p[n]; 
++		  }
++		}
++	      }
++	    
++	      // Caclulate values4[n,l,k] = a_{n,l}^{k} = (sum_j^(n2-1) a_n^{j,k} Tn(B_j))/k_l , k_l = N/2 or N 
++
++	      for (n = 0; n < n1; n++){
++		for(k=0;k<n3;k++) {
++		  for(j=0;j<n2;j++) p[j]=values3[n][j][k];
++		  chebft_Zeros(p,n2,0);   
++		  for (l = 0; l < n2; l++){
++		  values4[n][l][k] = p[l];
++		  }
++		}
++	      }
++
++	      // Caclulate coefficients  a_{n,l,m} = (sum_k^(n3-1) a_{n,m}^{k} fourier(phi_k))/k_m , k_m = N/2 or N 
++	      for (i = 0; i < n1; i++){
++		for (j = 0; j < n2; j++){
++		  for(k=0;k<n3;k++) p[k]=values4[i][j][k];
++		  fourft(p,n3,0); 
++		  for (k = 0; k<n3; k++){
++		    cf[ivar + (i + n1 * (j + n2 * k))] = p[k];
++		  }
++		}
++	      }
++   
++	      free_dvector(p,0,N);
++	      free_d3tensor(values3,0,n1,0,n2,0,n3);
++	      free_d3tensor(values4,0,n1,0,n2,0,n3);
++
++}
+Index: src/TwoPunctures.c
+===================================================================
+--- src/TwoPunctures.c	(revision 130)
++++ src/TwoPunctures.c	(working copy)
+@@ -216,7 +216,7 @@
+   int percent10 = 0;
+ #endif
+   static CCTK_REAL *F = NULL;
+-  static derivs u, v;
++  static derivs u, v, cf_v;
+   CCTK_REAL admMass;
+ 
+   if (! F) {
+@@ -225,6 +225,7 @@
+     F = dvector (0, ntotal - 1);
+     allocate_derivs (&u, ntotal);
+     allocate_derivs (&v, ntotal);
++    allocate_derivs (&cf_v, ntotal);
+ 
+     if (use_sources) {
+       CCTK_INFO ("Solving puncture equation for BH-NS/NS-NS system");
+@@ -236,6 +237,16 @@
+     /* initialise to 0 */
+     for (int j = 0; j < ntotal; j++)
+     {
++      cf_v.d0[j] = 0.0;
++      cf_v.d1[j] = 0.0;
++      cf_v.d2[j] = 0.0;
++      cf_v.d3[j] = 0.0;
++      cf_v.d11[j] = 0.0;
++      cf_v.d12[j] = 0.0;
++      cf_v.d13[j] = 0.0;
++      cf_v.d22[j] = 0.0;
++      cf_v.d23[j] = 0.0;
++      cf_v.d33[j] = 0.0;
+       v.d0[j] = 0.0;
+       v.d1[j] = 0.0;
+       v.d2[j] = 0.0;
+@@ -270,7 +281,7 @@
+ 
+       /* Loop until both ADM masses are within adm_tol of their target */
+       do {
+-        CCTK_VInfo (CCTK_THORNSTRING, "Bare masses: mp=%g, mm=%g",
++        CCTK_VInfo (CCTK_THORNSTRING, "Bare masses: mp=%.15g, mm=%.15g",
+                     (double)*mp, (double)*mm);
+         Newton (cctkGH, nvar, n1, n2, n3, v, Newton_tol, 1);
+ 
+@@ -286,8 +297,8 @@
+         /* Check how far the current ADM masses are from the target */
+         mp_adm_err = fabs(M_p-*mp_adm);
+         mm_adm_err = fabs(M_m-*mm_adm);
+-        CCTK_VInfo (CCTK_THORNSTRING, "ADM mass error: M_p_err=%.4g, M_m_err=%.4g",
+-                    (double) mp_adm_err, (double) mm_adm_err);
++        CCTK_VInfo (CCTK_THORNSTRING, "ADM mass error: M_p_err=%.15g, M_m_err=%.15g",
++                    (double)mp_adm_err, (double)mm_adm_err);
+         
+         /* Invert the ADM mass equation and update the bare mass guess so that
+            it gives the correct target ADM masses */
+@@ -299,10 +310,10 @@
+         
+         /* Set the par_m_plus and par_m_minus parameters */
+         sprintf (valbuf,"%.17g", (double) *mp);
+-        CCTK_ParameterSet ("par_m_plus", "twopunctures", valbuf);
++        CCTK_ParameterSet ("par_m_plus", "TwoPunctures", valbuf);
+         
+         sprintf (valbuf,"%.17g", (double) *mm);
+-        CCTK_ParameterSet ("par_m_minus", "twopunctures", valbuf);
++        CCTK_ParameterSet ("par_m_minus", "TwoPunctures", valbuf);
+         
+       } while ( (mp_adm_err > adm_tol) ||
+                 (mm_adm_err > adm_tol) );
+@@ -314,6 +325,8 @@
+  
+     F_of_v (cctkGH, nvar, n1, n2, n3, v, F, u);
+ 
++    SpecCoef(n1, n2, n3, 0, v.d0, cf_v.d0);
++
+     CCTK_VInfo (CCTK_THORNSTRING,
+ 		  "The two puncture masses are mp=%.17g and mm=%.17g",
+                 (double) *mp, (double) *mm);
+@@ -456,8 +469,7 @@
+             (0, nvar, n1, n2, n3, v, xx, yy, zz);
+           break;
+         case GSM_evaluation:
+-          U = PunctIntPolAtArbitPosition
+-            (0, nvar, n1, n2, n3, v, xx, yy, zz);
++          U = PunctIntPolAtArbitPositionFast(0, nvar, n1, n2, n3, cf_v, xx, yy, zz);
+           break;
+         default:
+           assert (0);
+@@ -664,6 +676,7 @@
+     free_dvector (F, 0, ntotal - 1);
+     free_derivs (&u, ntotal);
+     free_derivs (&v, ntotal);
++    free_derivs (&cf_v, ntotal);
+   }
+ }
+ 
+Index: src/TwoPunctures.h
+===================================================================
+--- src/TwoPunctures.h	(revision 130)
++++ src/TwoPunctures.h	(working copy)
+@@ -50,7 +50,14 @@
+ CCTK_REAL PunctIntPolAtArbitPosition (int ivar, int nvar, int n1,
+ 				   int n2, int n3, derivs v, CCTK_REAL x,
+ 				   CCTK_REAL y, CCTK_REAL z);
++void SpecCoef(int n1, int n2, int n3, int ivar, CCTK_REAL *v, CCTK_REAL *cf);
++CCTK_REAL PunctEvalAtArbitPositionFast (CCTK_REAL *v, int ivar, CCTK_REAL A, CCTK_REAL B, CCTK_REAL phi,
++                                 int nvar, int n1, int n2, int n3);
++CCTK_REAL PunctIntPolAtArbitPositionFast (int ivar, int nvar, int n1,
++                                   int n2, int n3, derivs v, CCTK_REAL x,
++                                   CCTK_REAL y, CCTK_REAL z);
+ 
++
+ /* Routines in  "CoordTransf.c"*/
+ void AB_To_XR (int nvar, CCTK_REAL A, CCTK_REAL B, CCTK_REAL *X,
+ 	       CCTK_REAL *R, derivs U);

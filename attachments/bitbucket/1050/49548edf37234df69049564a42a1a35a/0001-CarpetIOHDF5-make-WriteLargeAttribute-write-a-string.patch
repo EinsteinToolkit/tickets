@@ -1,0 +1,72 @@
+From 9642e892cd7471a734fffe3d742fbd65a2006720 Mon Sep 17 00:00:00 2001
+From: Anton Khirnov <anton@khirnov.net>
+Date: Mon, 20 Aug 2012 13:27:36 +0200
+Subject: [PATCH] CarpetIOHDF5: make WriteLargeAttribute write a string, not
+ an array of ints
+
+The data that's supplied to it is to be interpreted as a string.
+
+Before this commit the data is written as an array of int8, e.g.:
+h5dump -d '/Parameters and Global Attributes/Datasets' alpha.h5
+HDF5 "alpha.h5" {
+DATASET "/Parameters and Global Attributes/Datasets" {
+   DATATYPE  H5T_STD_I8LE
+   DATASPACE  SIMPLE { ( 16 ) / ( 16 ) }
+   DATA {
+   (0): 77, 76, 95, 66, 83, 83, 78, 58, 58, 97, 108, 112, 104, 97, 10, 0
+   }
+}
+}
+
+After this commit:
+h5dump -d '/Parameters and Global Attributes/Datasets' alpha.h5
+HDF5 "alpha.h5" {
+DATASET "/Parameters and Global Attributes/Datasets" {
+   DATATYPE  H5T_STRING {
+         STRSIZE 16;
+         STRPAD H5T_STR_NULLTERM;
+         CSET H5T_CSET_ASCII;
+         CTYPE H5T_C_S1;
+      }
+   DATASPACE  SIMPLE { ( 1 ) / ( 1 ) }
+   DATA {
+   (0): "ML_BSSN::alpha
+           "
+   }
+}
+}
+---
+ Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc |   12 ++++++++----
+ 1 file changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc b/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
+index c3053c3..3430427 100644
+--- a/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
++++ b/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
+@@ -1478,15 +1478,19 @@ static int WriteLargeAttribute (hid_t const group,
+                                 char const * const name,
+                                 char const * const svalue)
+ {
+-  hid_t dataspace, dataset;
++  hid_t dataspace, dataset, datatype;
+   int error_count = 0;
++  const hsize_t dataspace_size = 1;
+   
+   // Create a dataset, since the data may not fit into an attribute
+   hsize_t const size = strlen (svalue) + 1;
+-  HDF5_ERROR (dataspace = H5Screate_simple (1, & size, NULL));
+-  HDF5_ERROR (dataset = H5Dcreate (group, name, H5T_NATIVE_CHAR,
++  HDF5_ERROR (datatype = H5Tcopy (H5T_C_S1));
++  HDF5_ERROR (H5Tset_size (datatype, size));
++
++  HDF5_ERROR (dataspace = H5Screate_simple (1, &dataspace_size, NULL));
++  HDF5_ERROR (dataset = H5Dcreate (group, name, datatype,
+                                    dataspace, H5P_DEFAULT));
+-  HDF5_ERROR (H5Dwrite (dataset, H5T_NATIVE_CHAR, H5S_ALL, H5S_ALL,
++  HDF5_ERROR (H5Dwrite (dataset, datatype, H5S_ALL, H5S_ALL,
+                         H5P_DEFAULT, svalue));
+   HDF5_ERROR (H5Dclose (dataset));
+   HDF5_ERROR (H5Sclose (dataspace));
+-- 
+1.7.10.4
+

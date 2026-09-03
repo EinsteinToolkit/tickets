@@ -1,0 +1,108 @@
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 9)
++++ param.ccl	(working copy)
+@@ -221,7 +221,7 @@
+ 
+ restricted:
+ 
+-CCTK_REAL Diagnostics_Coord_x "the coordinate x at which diagnostics are to be measured"
++CCTK_REAL Diagnostics_Coord_x "the coordinate x at which diagnostics are to be measured" STEERABLE=ALWAYS
+ {
+   0:1  :: "will test only for x >= NullGrid::null_xin."
+ } 0.0 
+Index: src/NullEvol_Evol.F90
+===================================================================
+--- src/NullEvol_Evol.F90	(revision 9)
++++ src/NullEvol_Evol.F90	(working copy)
+@@ -346,42 +346,66 @@
+     CCTK_COMPLEX, dimension (lsh(1), lsh(2), nx), intent (in)    :: jos
+     CCTK_REAL,                                    intent(in)     :: dt
+ 
+-    CCTK_REAL,    dimension (lsh(1), lsh(2)) :: r_0o, r_1o, A, x_0o, x_1o, x_1n, r_1n, r_wt
+-    CCTK_COMPLEX, dimension (lsh(1), lsh(2)) :: j_0o, j_1o, j_1n
++    CCTK_REAL     :: r_0o, r_1o, A, x_0o, x_1o, x_1n, r_1n, r_wt, r_1h, x_1h, eta
++    CCTK_COMPLEX  :: j_0o, j_1o, j_1n
++    character(len=500) :: message
+ 
+-    integer B, i1, i2
++    integer i1, i2, B
+ 
+     B = i-1
+ 
+-    A = 1 + W * rwt * xc /( 1-xc)
++    ! write (message,*) "min. x_wt = ",minval(x_wt),"max. x_wt = ",maxval(x_wt),", xb(B+1) = ",xb(B+1),", dx = ",dx
++    ! call CCTK_INFO(trim(message))
++    do i2 = 1, lsh(2)
++       do i1 = 1, lsh(1)
+ 
+-    r_wt = rwt * x_wt / (1-x_wt)
+-    r_0o = 0.5 * A * dt + r_wt
++          A = 1 + W(i1,i2) * rwt * xc(i1,i2) /( 1-xc(i1,i2))
+ 
+-    r_1o = +0.25 * A * dt + rb(B+1)
+-    r_1n = -0.25 * A * dt + rb(B+1)
++          r_wt = rwt * x_wt(i1,i2) / (1-x_wt(i1,i2))
++          r_0o = 0.5 * A * dt + r_wt
+ 
+-    x_0o = r_0o/(rwt+r_0o)
+-    x_1o = r_1o/(rwt+r_1o)
+-    x_1n = r_1n/(rwt+r_1n)
++          x_1h = 0.5 * (x_wt(i1,i2) + xb(B+1))
++          r_1h = rwt * x_1h/(1-x_1h)
+ 
+-    j_0o = j_wt_o*(x_0o-xb(B+2))*(x_0o-xb(B+3))/(x_wt_o-xb(B+2))/(x_wt_o-xb(B+3)) &
+-        + jos(:,:,B+2)*(x_0o-x_wt_o)*(x_0o-xb(B+3))/(xb(B+2)-x_wt_o)/(xb(B+2)-xb(B+3)) &
+-        + jos(:,:,B+3)*(x_0o-x_wt_o)*(x_0o-xb(B+2))/(xb(B+3)-x_wt_o)/(xb(B+3)-xb(B+2))
++          r_1n = -0.25 * A * dt + rb(B+1)
++          x_1n = r_1n/(rwt+r_1n)
++          if(r_1h .gt. r_1n) then
++            r_1n = r_1h
++            x_1n = x_1h
++            eta = 1
++          else
++            eta = (xb(B+1)-x_1n)/(x_1n-x_wt(i1,i2))
++          end if
++          ! r_1o = +0.25 * A * dt + rb(B+1)
++          r_1o = r_1n + 0.5 * A * dt
+ 
+-    j_1o = j_wt_o*(x_1o-xb(B+2))*(x_1o-xb(B+3))/(x_wt_o-xb(B+2))/(x_wt_o-xb(B+3)) &
+-        + jos(:,:,B+2)*(x_1o-x_wt_o)*(x_1o-xb(B+3))/(xb(B+2)-x_wt_o)/(xb(B+2)-xb(B+3)) &
+-        + jos(:,:,B+3)*(x_1o-x_wt_o)*(x_1o-xb(B+2))/(xb(B+3)-x_wt_o)/(xb(B+3)-xb(B+2))
++          x_0o = r_0o/(rwt+r_0o)
++          x_1o = r_1o/(rwt+r_1o)
+ 
+-    j_1n = ( r_wt * j_wt - r_0o * j_0o + r_1o * j_1o&
+-            + 0.5 * dt * (r_1n-r_wt) * (P_u+h_c) ) / r_1n
++          j_0o = j_wt_o(i1,i2)*(x_0o-xb(B+2))*(x_0o-xb(B+3))/(x_wt_o(i1,i2)-xb(B+2))/(x_wt_o(i1,i2)-xb(B+3)) &
++              + jos(i1,i2,B+2)*(x_0o-x_wt_o(i1,i2))*(x_0o-xb(B+3))/(xb(B+2)-x_wt_o(i1,i2))/(xb(B+2)-xb(B+3)) &
++              + jos(i1,i2,B+3)*(x_0o-x_wt_o(i1,i2))*(x_0o-xb(B+2))/(xb(B+3)-x_wt_o(i1,i2))/(xb(B+3)-xb(B+2))
+ 
+-    j_Bp1 = j_wt + (xb(B+1)-x_wt) * ( j_1n-j_wt ) / ( x_1n-x_wt )
++          j_1o = j_wt_o(i1,i2)*(x_1o-xb(B+2))*(x_1o-xb(B+3))/(x_wt_o(i1,i2)-xb(B+2))/(x_wt_o(i1,i2)-xb(B+3)) &
++              + jos(i1,i2,B+2)*(x_1o-x_wt_o(i1,i2))*(x_1o-xb(B+3))/(xb(B+2)-x_wt_o(i1,i2))/(xb(B+2)-xb(B+3)) &
++              + jos(i1,i2,B+3)*(x_1o-x_wt_o(i1,i2))*(x_1o-xb(B+2))/(xb(B+3)-x_wt_o(i1,i2))/(xb(B+3)-xb(B+2))
+ 
+-    ! in case the WT is really near the point Bp1, we just copy the WT value
+-    do i2 = 1, lsh(2)
+-       do i1 = 1, lsh(1)
+-          if(abs(xb(B+1)-x_wt(i1,i2)).lt.1.e-5*dx) j_Bp1(i1,i2) = j_wt(i1,i2)
++          j_1n = ( r_wt * j_wt(i1,i2) - r_0o * j_0o + r_1o * j_1o&
++                  + 0.5 * dt * (r_1n-r_wt) * (P_u(i1,i2)+h_c(i1,i2)) ) / r_1n
++
++          j_Bp1(i1,i2) = j_1n + (j_1n-j_wt(i1,i2)) * eta
++!         if(abs(xb(B+1)-x_wt(i1,i2)).lt.min_dx) then
++!           write(message,*)" this is it!: x_wt-xb=",xb(B+1)-x_wt(i1,i2),"x1n=",x_1n,"x_wt=",x_wt(i1,i2),"xBp1=",xb(B+1)
++!           call CCTK_WARN(0,trim(message))
++!           j_Bp1(i1,i2) = j_wt(i1,i2)
++!         else
++!           j_Bp1(i1,i2) = j_wt(i1,i2) + (xb(B+1)-x_wt(i1,i2)) * ( j_1n-j_wt(i1,i2) ) / ( x_1n-x_wt(i1,i2) )
++!         end if
++
++
++!        if(abs(xb(B+1)-x_wt(i1,i2)).lt.1.e-5*dx) then
++!          j_Bp1(i1,i2) = j_wt(i1,i2)
++!        end if
+        end do
+     end do
+ 

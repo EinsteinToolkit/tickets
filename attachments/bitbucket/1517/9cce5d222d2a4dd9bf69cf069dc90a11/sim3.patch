@@ -1,0 +1,260 @@
+Index: lib/archive/petashare.py
+===================================================================
+--- lib/archive/petashare.py	(revision 2406)
++++ lib/archive/petashare.py	(working copy)
+@@ -28,7 +28,7 @@
+         dprint("Enter Petashare Password: ",)
+         sys.stdout.flush()
+ 
+-        fd = os.popen(fullcmd)
++        fd = simenv.popen(fullcmd)
+         
+         output = ""
+         while True:
+@@ -112,7 +112,7 @@
+         fullcmd = "%s/%s 2>&1" % (self.ToolsPath, cmd)
+         dprint("Executing petashare command: %s" % fullcmd)
+         
+-        fd = os.popen(fullcmd)
++        fd = simenv.popen(fullcmd)
+         
+         output = ""
+         while True:
+@@ -122,4 +122,4 @@
+         fd.close()
+         
+         return output
+-        
+\ No newline at end of file
++        
+Index: lib/archive/uberftp.py
+===================================================================
+--- lib/archive/uberftp.py	(revision 2406)
++++ lib/archive/uberftp.py	(working copy)
+@@ -19,7 +19,7 @@
+         
+         authtool = "grid-proxy-info -timeleft"
+         
+-        timeleft = int(os.popen(authtool).read().strip())
++        timeleft = int(simenv.popen(authtool).read().strip())
+         
+         dprint("time left: %s" % timeleft)
+         
+@@ -31,7 +31,7 @@
+         
+         dprint("Executing authcmd: %s\n" % authcmd)
+         
+-        ret = os.system(authcmd)
++        ret = simenv.system(authcmd)
+ 
+         if ret != 0:
+             dprint("Error: could not authenticate using myproxy-logon")
+@@ -104,7 +104,7 @@
+         fullcmd = "uberftp %s \"quote wait; parallel 8; %s\" 2>&1" % (self.HostName, cmd)
+         dprint("Executing uberftp command: %s" % fullcmd)
+         
+-        fd = os.popen(fullcmd)
++        fd = simenv.popen(fullcmd)
+         
+         output = ""
+         while True:
+@@ -114,4 +114,4 @@
+         fd.close()
+         
+         return output
+-        
+\ No newline at end of file
++        
+Index: lib/restartlib.py
+===================================================================
+--- lib/restartlib.py	(revision 2406)
++++ lib/restartlib.py	(working copy)
+@@ -484,7 +484,7 @@
+ def SubmitInteractiveRequest(command):
+     
+     #give up control to the executing terminal
+-    os.system(command)
++    simenv.system(command)
+     
+     #nodes = []
+     
+@@ -514,7 +514,7 @@
+     hostname = machineEntry.hostname
+     
+     # make sure fd is closed.
+-    fd = os.popen('whoami')
++    fd = simenv.popen('whoami')
+     user = fd.read().strip()
+     fd.close()
+     
+Index: lib/sim-info.py
+===================================================================
+--- lib/sim-info.py	(revision 2406)
++++ lib/sim-info.py	(working copy)
+@@ -150,7 +150,7 @@
+             display("        %-16s= %s" % ("job id", job_id))
+             
+             # Disk usage
+-            fd = os.popen("du -sk %s | cut -f1" % restart.SimulationDir)
++            fd = simenv.popen("du -sk %s | cut -f1" % restart.SimulationDir)
+             size_in_k = int(fd.read().strip())
+             fd.close()
+             display("        %-16s= %.1f GByte" % ("Disk usage", size_in_k * 1024 / 1.0e+9))
+Index: lib/simenv.py
+===================================================================
+--- lib/simenv.py	(revision 2406)
++++ lib/simenv.py	(working copy)
+@@ -1,6 +1,7 @@
+ # simenv -- environment stuff now as a module, instead of a class
+ 
+ import os, sys
++import libutil 
+ 
+ #simenv state
+ INITIALIZED = False
+@@ -38,6 +39,18 @@
+ CommandDoc = dict()
+ CommandOptions = dict()
+ 
++def popen(cmd):
++    global_dict = globals()
++    if global_dict['VERBOSE']:
++        libutil.info('EXECUTING COMMAND: '+cmd)
++    return os.popen(cmd)
++
++def system(cmd):
++    global_dict = globals()
++    if global_dict['VERBOSE']:
++        libutil.info('EXECUTING COMMAND: '+cmd)
++    return os.system(cmd)
++
+ def init(base, callingExecutable, usageString, optionGroups):
+ 
+     import simopts
+Index: lib/simlib.py
+===================================================================
+--- lib/simlib.py	(revision 2406)
++++ lib/simlib.py	(working copy)
+@@ -26,7 +26,7 @@
+         return hostname
+     
+     # lets get the hostname
+-    fd = os.popen("hostname")
++    fd = simenv.popen("hostname")
+     hostname = fd.read().strip()
+     fd.close()
+     
+@@ -396,7 +396,7 @@
+ def GetUsername():
+     
+     if "USER" not in os.environ:
+-        fd = os.popen("whoami")
++        fd = simenv.popen("whoami")
+         username = fd.read().strip()
+         fd.close()
+         
+@@ -541,10 +541,10 @@
+     
+     command = "/bin/bash -c %s" % (QuoteSafe(command))
+     
+-    if not output:
+-        info("executing command: %s\n" % command)
++    if (not output) or simenv.VERBOSE:
++        info("EXECUTING COMMAND: %s\n" % command)
+     else:
+-        logonly("executing command: %s\n" % command)
++        logonly("EXECUTING COMMAND: %s\n" % command)
+         
+     if not output:
+         ret = os.system(command)
+@@ -566,10 +566,10 @@
+ 
+ def ExecuteReplaceCommand(command, output=False):
+     
+-    if not output:
+-        info("Executing: %s\n" % command)
++    if (not output) or simenv.VERBOSE:
++        info("EXECUTING: %s\n" % command)
+     else:
+-        logonly("Executing: %s\n" % command)
++        logonly("EXECUTING: %s\n" % command)
+     envsetup = GetMachineOption('envsetup')
+     
+     DefineDatabase = simsubs.DefineDatabase()
+Index: lib/simrestart.py
+===================================================================
+--- lib/simrestart.py	(revision 2406)
++++ lib/simrestart.py	(working copy)
+@@ -1109,7 +1109,7 @@
+                 shutil.copy(parfile, self.RestartDir)
+                 restart_rpar = simlib.BuildPath(self.RestartDir, simlib.BaseName(parfile))
+                 MakeFileExecutable(restart_rpar)
+-                ret = os.system(restart_rpar)
++                ret = simenv.system(restart_rpar)
+                 if ret != 0:
+                     fatal("Error while executing parameter file script %s" % restart_rpar)
+                 restart_par = re.sub(r'(.*)\.rpar$', r'\1.par', restart_rpar)
+@@ -1168,7 +1168,7 @@
+ 
+         simlib.ExecuteReplaceCommand(cmd)
+ 
+-        display("Simfactory Done at date: %s" % os.system("date")) # This is wrong because system doesn't return the command output
++        display("Simfactory Done at date: %s" % simenv.system("date")) # This is wrong because system doesn't return the command output
+     
+     def done(self):
+         """This function cleans up the simulation. Specifically, it closes the simulation log file."""
+@@ -1450,14 +1450,14 @@
+                 stdoutcmd = "cd '%s' && { %s; }" % (self.RestartDir, stdoutcmd)
+                 stderrcmd = "cd '%s' && { %s; }" % (self.RestartDir, stderrcmd)
+                 
+-                ff = os.popen(stdoutcmd)
++                ff = simenv.popen(stdoutcmd)
+                 stdout_output = ff.read()
+                 ret = ff.close()
+                 
+                 if ret != None:
+                     warning("stdout command \"%s\" returned status %s" % (stdoutcmd, ret))
+                     
+-                ff = os.popen(stderrcmd)
++                ff = simenv.popen(stderrcmd)
+                 stderr_output = ff.read()
+                 ret = ff.close()
+                 
+@@ -1624,7 +1624,7 @@
+             
+         # step 5. remove half written checkpoint files
+         try:
+-            os.system("find %s -name *.chkpt.tmp.it_*.* -exec rm -rf {} \;" % self.RestartDir)
++            simenv.system("find %s -name *.chkpt.tmp.it_*.* -exec rm -rf {} \;" % self.RestartDir)
+         except:
+             pass
+         
+@@ -1643,8 +1643,8 @@
+         rids = restartlib.GetRestartIds(self)
+         
+         # All files of the current restart
+-        files = os.popen("cd %s && find . -name \*.tar.gz" %
+-                         self.RestartDir).read().split("\n")
++        files = simenv.popen("cd %s && find . -name \*.tar.gz" %
++                             self.RestartDir).read().split("\n")
+         for f in files:
+             path = "%s/%s" % (self.RestartDir, f)
+             # Ignore everything but regular files that are not
+@@ -1740,7 +1740,7 @@
+         
+         if not(os.path.exists(trashPath)):
+             try:
+-                os.system("mkdir -p %s" % trashPath)
++                simenv.system("mkdir -p %s" % trashPath)
+             except OSError, e:
+                 fatal("could not make trash path \"%s\", %s" % (trashPath, e))
+         
+@@ -1768,7 +1768,7 @@
+         
+         if not(os.path.exists(trashFolder)):
+             try:
+-                os.system("mkdir -p %s" % trashFolder)
++                simenv.system("mkdir -p %s" % trashFolder)
+             except OSError, e:
+                 fatal("could not make trash folder \"%s\", %s" % (trashFolder, e))
+         

@@ -1,0 +1,31 @@
+From 8da281ff2048f6da946bc467837d163621c914d2 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Thu, 15 Mar 2012 01:03:36 -0700
+Subject: [PATCH 5/9] Hydro_Analysis: warn if grid point with maximum value
+ cannot be found on grid
+
+this happens when Carpet used time interpolation in the maximum
+reduction
+---
+ src/Hydro_Analysis.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/Hydro_Analysis.c b/src/Hydro_Analysis.c
+index c3ad2e8..08278e0 100644
+--- a/src/Hydro_Analysis.c
++++ b/src/Hydro_Analysis.c
+@@ -205,6 +205,11 @@ void Hydro_Analysis_LocationSearch_Combine(CCTK_ARGUMENTS)
+     }
+ 
+   } else {
++    CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++               "Could not find grid point with maximum density %g on grid. Using old location  (%g,%g,%g).",
++               *Hydro_Analysis_rho_max,
++               Hydro_Analysis_rho_max_loc[0], Hydro_Analysis_rho_max_loc[1],
++               Hydro_Analysis_rho_max_loc[2]);
+     set_maximum_location = 0;
+   }
+ 
+-- 
+1.8.4.rc3
+

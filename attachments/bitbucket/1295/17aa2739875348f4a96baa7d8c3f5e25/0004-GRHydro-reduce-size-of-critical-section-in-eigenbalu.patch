@@ -1,0 +1,36 @@
+From df9752ed3d1fefdc7de8590b63b4707dd5f6beb8 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Sat, 9 Mar 2013 22:13:02 -0800
+Subject: [PATCH 04/11] GRHydro: reduce size of critical section in
+ eigenbalues routine
+
+---
+ src/GRHydro_Eigenproblem.F90 |    4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/GRHydro_Eigenproblem.F90 b/src/GRHydro_Eigenproblem.F90
+index 1a69403..7fe8bdb 100644
+--- a/src/GRHydro_Eigenproblem.F90
++++ b/src/GRHydro_Eigenproblem.F90
+@@ -86,16 +86,16 @@ subroutine eigenvalues(handle,rho,velx,vely,velz,eps, &
+        (1.0d0 + eps + press/rho)
+ 
+   if(cs2.lt.0.0d0) then
+-     !$OMP CRITICAL
+      if (abs(cs2) .gt. 1.0d-4) then
++       !$OMP CRITICAL
+         write(warnline,'(a60,6g16.7)') 'abs(cs2), rho, dpdrho, press*dpdeps/rho**2, eps, press/rho: ', abs(cs2), rho, dpdrho, press * dpdeps / (rho**2), eps, press/rho
+         call CCTK_WARN(1,warnline)
+         call CCTK_WARN(1,"cs2 < 0! Check speed of sound calculation!")
++        !$OMP END CRITICAL
+         cs2 = 0.0d0
+      else
+         cs2 = 0.0d0
+      endif
+-     !$OMP END CRITICAL
+   endif
+ 
+ 
+-- 
+1.7.10.4
+

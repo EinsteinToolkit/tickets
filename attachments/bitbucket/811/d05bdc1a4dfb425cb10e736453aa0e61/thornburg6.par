@@ -1,0 +1,65 @@
+# Fails when run on more than on MPI process and processor_topology==recursive
+#
+#------------------------------------------------------------------------------
+# Cactus parameters:
+#------------------------------------------------------------------------------
+Cactus::cctk_run_title     = "thornburg6"
+Cactus::cctk_full_warnings = "yes"
+
+#------------------------------------------------------------------------------
+# Activate all necessary thorns:
+#------------------------------------------------------------------------------
+
+ActiveThorns = "Boundary CartGrid3D CoordBase Fortran InitBase IOUtil LocalReduce SymBase Time"
+ActiveThorns = "Carpet CarpetInterp2 CarpetLib CarpetSlab LoopControl"
+
+# Multipatch
+ActiveThorns = "Coordinates Interpolate2"
+
+# disable to make work
+Carpet::processor_topology              = "recursive" 
+
+#------
+# Grid:
+#------
+
+Carpet::domain_from_multipatch          = yes
+CartGrid3D::type                        = multipatch
+CartGrid3D::set_coordinate_ranges_on    = "all maps"
+
+Coordinates::coordinate_system          = Thornburg04
+Coordinates::h_cartesian                = 6.0
+Coordinates::h_radial                   = 6.0
+
+Coordinates::sphere_inner_radius        = 60.0
+Coordinates::sphere_outer_radius        = 170.0
+Coordinates::radial_stretch             = no
+Coordinates::n_angular                  = 7
+
+Coordinates::patch_boundary_size        = 3
+Coordinates::additional_overlap_size    = 2
+Coordinates::outer_boundary_size        = 3
+
+Coordinates::store_jacobian             = no
+Coordinates::store_inverse_jacobian     = no
+Coordinates::store_volume_form          = no
+
+Interpolate::interpolator_order         = 3
+Driver::ghost_size                      = 3
+
+# System specific Carpet parameters:
+Carpet::prolongation_order_space = 1
+Carpet::prolongation_order_time  = 0
+
+#----------
+# Numerics:
+#----------
+
+InitBase::initial_data_setup_method = "init_some_levels"
+Carpet::init_fill_timelevels        = "yes"
+
+#------------------------------------------------------------------------------
+# Output:
+#------------------------------------------------------------------------------
+
+IO::out_dir = $parfile

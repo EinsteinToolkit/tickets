@@ -1,0 +1,72 @@
+diff --git a/Carpet/CarpetReduce/src/mask_coords.c b/Carpet/CarpetReduce/src/mask_coords.c
+index 7836d2a..7c458fb 100644
+--- a/Carpet/CarpetReduce/src/mask_coords.c
++++ b/Carpet/CarpetReduce/src/mask_coords.c
+@@ -21,6 +21,9 @@ CoordBase_SetupMask (CCTK_ARGUMENTS)
+   CCTK_INT is_internal[2*cctk_dim];
+   CCTK_INT is_staggered[2*cctk_dim];
+   CCTK_INT shiftout[2*cctk_dim];
++  CCTK_INT is_periodic[2*cctk_dim];
++
++  const CCTK_INT *periodic, *periodic_x, *periodic_y, *periodic_z;
+   
+   int bnd_points[2*cctk_dim];   /* points outside the domain */
+   int int_points[cctk_dim];     /* global interior points */
+@@ -50,8 +53,28 @@ CoordBase_SetupMask (CCTK_ARGUMENTS)
+     CCTK_WARN (CCTK_WARN_ABORT, "Could not get boundary specification");
+   }
+   
+-  
+-  
++  periodic   = (const CCTK_INT *) CCTK_ParameterGet("periodic", "periodiccarpet", NULL);
++  periodic_x = (const CCTK_INT *) CCTK_ParameterGet("periodic_x", "periodiccarpet", NULL);
++  periodic_y = (const CCTK_INT *) CCTK_ParameterGet("periodic_y", "periodiccarpet", NULL);
++  periodic_z = (const CCTK_INT *) CCTK_ParameterGet("periodic_z", "periodiccarpet", NULL);
++  for (int d=0; d<cctk_dim; ++d) {
++    for (int f=0; f<2; ++f) {
++      is_periodic[2*d+f] = 0;
++    }
++  }
++  if ( (periodic != NULL || periodic_x != NULL) && (*periodic || *periodic_x) ) {
++    is_periodic[0] = 1;
++    is_periodic[1] = 1;
++  }
++  if ( (periodic != NULL || periodic_y != NULL) && (*periodic || *periodic_y) ) {
++    is_periodic[2] = 1;
++    is_periodic[3] = 1;
++  }
++  if ( (periodic != NULL || periodic_x != NULL) && (*periodic || *periodic_z) ) {
++    is_periodic[4] = 1;
++    is_periodic[5] = 1;
++  }
++ 
+   /* Calculate the number of boundary points. This excludes points
+      that are directly on the boundary. */
+   for (int d=0; d<cctk_dim; ++d) {
+@@ -62,8 +85,12 @@ CoordBase_SetupMask (CCTK_ARGUMENTS)
+         bnd_points[2*d+f] = shiftout[2*d+f];
+       } else {
+         /* The boundary extends outwards */
+-        bnd_points[2*d+f] =
+-          nboundaryzones[2*d+f] + shiftout[2*d+f] + is_staggered[2*d+f] - 1;
++        if (is_periodic[2*d+f]) {
++          bnd_points[2*d+f] = nboundaryzones[2*d+f];
++        } else{ 
++          bnd_points[2*d+f] =
++            nboundaryzones[2*d+f] + shiftout[2*d+f] + is_staggered[2*d+f] - 1;
++        }
+       }
+       
+     }
+@@ -130,9 +157,9 @@ CoordBase_SetupMask (CCTK_ARGUMENTS)
+           iweight[ind] = 0;
+         } CCTK_ENDLOOP3(CoordBase_SetupMask_boundary);
+         
+-        /* When the boundary is not staggered, then give the points
++        /* When the boundary is neither staggered nor periodic, then give the points
+            directly on the boundary the weight 1/2 */
+-        if (! is_staggered[2*d+f]) {
++        if (! is_staggered[2*d+f] && ! is_periodic[2*d+f]) {
+           
+           /* Since we are going to cut off 1/2 at each boundary, the
+              domain size must be at least 1 to begin with */

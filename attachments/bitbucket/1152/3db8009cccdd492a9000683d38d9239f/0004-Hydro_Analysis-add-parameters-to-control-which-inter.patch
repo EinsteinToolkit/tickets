@@ -1,0 +1,108 @@
+From 788d99343fd53d123186fe84a9a508d0269b46a8 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Tue, 14 Feb 2012 21:06:39 -0800
+Subject: [PATCH 04/12] Hydro_Analysis: add parameters to control which
+ interpolator is used in GRHydro_Separation
+
+---
+ param.ccl                  |   20 ++++++++++++++++++++
+ src/GRHydro_Separation.F90 |   33 ++++++++++++++++++++++++++++++---
+ 2 files changed, 50 insertions(+), 3 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index 00723b8..f375e09 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -36,3 +36,23 @@ CCTK_INT Hydro_Analysis_rho_max_origin_distance_npoints "Number of points along
+   1:* :: "Any positive number"
+ } 100
+ 
++# Parameters for the interpolator in Hydro_Analysis_comp_rho_max_origin_distance
++
++STRING Hydro_Analysis_interpolator_name "Name of the interpolator" STEERABLE=always
++{
++  "Lagrange polynomial interpolation (tensor product)" :: "from AEILocalInterp"
++  "Lagrange polynomial interpolation (maximum degree)" :: "from AEILocalInterp"
++  "Hermite polynomial interpolation" :: "from AEILocalInterp"
++  "uniform cartesian" :: "from LocalInterp"
++  ".*" :: "must be a registered interpolator"
++} "uniform cartesian"
++
++STRING Hydro_Analysis_interpolator_options "Options for the interpolator" STEERABLE=always
++{
++  ".*" :: "must be a valid option specification"
++} "order=2"
++
++STRING Hydro_Analysis_interpolator_coordinates "Coordinate system" STEERABLE=always
++{
++  ".*" :: "must be a registered coordinate system"
++} "cart3d"
+diff --git a/src/GRHydro_Separation.F90 b/src/GRHydro_Separation.F90
+index 8175f9d..465ce30 100644
+--- a/src/GRHydro_Separation.F90
++++ b/src/GRHydro_Separation.F90
+@@ -48,6 +48,15 @@ subroutine Hydro_Analysis_FindSeparation(CCTK_ARGUMENTS)
+   CCTK_POINTER, dimension(6) :: out_arrays
+   CCTK_INT, dimension(6) :: out_array_type_codes
+ 
++  ! Fortran copies of the Cactus CCTK_STRING parameters controllin the
++  ! interpolator
++  integer, parameter:: max_string_length = 500
++  integer :: string_length
++  character(len=max_string_length) :: Hydro_Analysis_interpolator_options_fstring
++  character(len=max_string_length) :: Hydro_Analysis_interpolator_name_fstring
++  character(len=max_string_length) :: Hydro_Analysis_interpolator_coordinates_fstring
++
++
+ !!$  Proper separation requires interpolation
+ 
+   allocate(separation_x(Hydro_Analysis_rho_max_origin_distance_npoints), &
+@@ -57,6 +66,23 @@ subroutine Hydro_Analysis_FindSeparation(CCTK_ARGUMENTS)
+   if (ierr .ne. 0) then
+     call CCTK_WARN(0, "Failed to allocate separation coordinate arrays")
+   end if
++
++  call CCTK_FortranString(string_length, Hydro_Analysis_interpolator_options, &
++                          Hydro_Analysis_interpolator_options_fstring)
++  if (string_length .gt. max_string_length) then
++     call CCTK_WARN(CCTK_WARN_ALERT, "'Hydro_Analysis_interpolator_options' string too long!")
++  end if
++  call CCTK_FortranString(string_length, Hydro_Analysis_interpolator_name, &
++                          Hydro_Analysis_interpolator_name_fstring)
++  if (string_length .gt. max_string_length) then
++     call CCTK_WARN(CCTK_WARN_ALERT, "'Hydro_Analysis_interpolator_name' string too long!")
++  end if
++  call CCTK_FortranString(string_length, Hydro_Analysis_interpolator_coordinates, &
++                          Hydro_Analysis_interpolator_coordinates_fstring)
++  if (string_length .gt. max_string_length) then
++     call CCTK_WARN(CCTK_WARN_ALERT, "'Hydro_Analysis_interpolator_coordinates' string too long!")
++  end if
++
+   
+   separation_dx = Hydro_Analysis_rho_max_loc(1) / dble(Hydro_Analysis_rho_max_origin_distance_npoints)
+   separation_dy = Hydro_Analysis_rho_max_loc(2) / dble(Hydro_Analysis_rho_max_origin_distance_npoints)
+@@ -86,17 +112,18 @@ subroutine Hydro_Analysis_FindSeparation(CCTK_ARGUMENTS)
+   interp_handle = -1
+   coord_system_handle = -1
+ 
+-  call Util_TableCreateFromString (param_table_handle, "order = 2")
++  call Util_TableCreateFromString (param_table_handle, &
++                                   Hydro_Analysis_interpolator_options_fstring)
+   if (param_table_handle .lt. 0) then
+     call CCTK_WARN(0,"Cannot create parameter table for interpolator")
+   endif
+ 
+-  call CCTK_InterpHandle (interp_handle, "uniform cartesian")
++  call CCTK_InterpHandle (interp_handle, Hydro_Analysis_interpolator_name_fstring)
+   if (interp_handle.lt.0) then
+     call CCTK_WARN(0,"Cannot get handle for interpolation ! Forgot to activate an implementation providing interpolation operators (e.g. LocalInterp)?")
+   endif
+ 
+-  call CCTK_CoordSystemHandle (coord_system_handle, "cart3d")
++  call CCTK_CoordSystemHandle (coord_system_handle, Hydro_Analysis_interpolator_coordinates_fstring)
+   if (coord_system_handle .lt. 0) then
+     call CCTK_WARN(0,"Cannot get handle for cart3d coordinate system ! Forgot to activate an implementation providing coordinates (e.g. LocalInterp)?")
+   endif
+-- 
+1.7.10.4
+

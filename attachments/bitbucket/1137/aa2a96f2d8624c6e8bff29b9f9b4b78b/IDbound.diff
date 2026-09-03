@@ -1,0 +1,46 @@
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 178)
++++ param.ccl	(working copy)
+@@ -220,3 +220,7 @@
+   "register" :: "List the variables registered as well"
+   "extreme"  :: "Everything you never wanted to know"
+ } "normal"
++
++BOOLEAN overwrite_initial_data_boundaries "Should boundaries be overwritten (via synchronization, prolongation, boundary conditions) by MoL?"
++{
++} "yes"
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 178)
++++ schedule.ccl	(working copy)
+@@ -646,9 +646,12 @@
+ {
+ } "The group for physics thorns to schedule boundary calls etc."
+ 
+-schedule GROUP MoL_PostStep AT PostInitial
++if (overwrite_initial_data_boundaries)
+ {
+-} "Ensure that everything is correct after the initial data have been set up"
++  schedule GROUP MoL_PostStep AT PostInitial
++  {
++  } "Ensure that everything is correct after the initial data have been set up"
++}
+ 
+ ##################################################################
+ ###  Schedule the PostStep parts in the Carpet 'PostRegrid'    ###
+@@ -668,9 +671,12 @@
+ ###  expensive, but it's simplest for the moment.              ###
+ ##################################################################
+ 
+-schedule GROUP MoL_PostStep AT PostRestrictInitial
++if (overwrite_initial_data_boundaries)
+ {
+-} "Ensure that everything is correct after restriction"
++  schedule GROUP MoL_PostStep AT PostRestrictInitial
++  {
++  } "Ensure that everything is correct after restriction"
++}
+ 
+ schedule GROUP MoL_PostStep AT PostRestrict
+ {

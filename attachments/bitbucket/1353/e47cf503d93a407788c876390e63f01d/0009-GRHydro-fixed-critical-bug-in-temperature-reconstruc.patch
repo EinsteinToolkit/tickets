@@ -1,0 +1,38 @@
+From badd62cbeec5826a7c1ca8e81748da3bbf5fac89 Mon Sep 17 00:00:00 2001
+From: Christian David Ott <cott@zwicky.(none)>
+Date: Sat, 4 May 2013 18:06:46 -0700
+Subject: [PATCH 09/12] GRHydro: fixed critical bug in temperature
+ reconstruction in ePPM
+
+---
+ src/GRHydro_PPM.F90 |   13 +++++++------
+ 1 file changed, 7 insertions(+), 6 deletions(-)
+
+diff --git a/src/GRHydro_PPM.F90 b/src/GRHydro_PPM.F90
+index b53ded9..2f65bcb 100644
+--- a/src/GRHydro_PPM.F90
++++ b/src/GRHydro_PPM.F90
+@@ -1158,13 +1158,14 @@ subroutine SimplePPM_temperature_1d(&
+             tempminus(i+1) = tempplus(i)
+             
+          enddo
+-    
+-         !! Finally compute pressure gradient needed for flattening and shock detection
+-         do i = 2, nx-1
+-            dpress(i) = press(i+1) - press(i-1)
+-         end do
+-    
++        
+       endif
++
++      !! Finally compute pressure gradient needed for flattening and shock detection
++      do i = 2, nx-1
++         dpress(i) = press(i+1) - press(i-1)
++      end do
++
+    endif
+ 
+ !!$  Zone flattening. See appendix of C&W, p. 197-8.
+-- 
+1.7.10.4
+

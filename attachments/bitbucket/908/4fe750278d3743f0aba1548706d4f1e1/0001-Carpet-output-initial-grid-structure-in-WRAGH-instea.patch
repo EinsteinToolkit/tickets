@@ -1,0 +1,87 @@
+From 05f600c31503abfd2d8e3aede30a9f0f2bf253ce Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Thu, 17 May 2012 13:46:23 -0700
+Subject: [PATCH] Carpet: output initial grid structure in WRAGH instead of
+ SetupGH
+
+This is needed since Carpet's SetupGH runs before IOUtils (since IOUtils
+registers later due to a schedule AFTER) so we cannot call
+IO_TruncateOutputFiles in SetupGH. Only ever worked because IOUtil's
+routine behaves differently from what it documents.
+---
+ Carpet/Carpet/schedule.ccl   |    6 ++++++
+ Carpet/Carpet/src/SetupGH.cc |   20 +++++++++++++++++---
+ Carpet/Carpet/src/carpet.hh  |    1 +
+ 3 files changed, 24 insertions(+), 3 deletions(-)
+
+diff --git a/Carpet/Carpet/schedule.ccl b/Carpet/Carpet/schedule.ccl
+index b4f543e..a63c49a 100644
+--- a/Carpet/Carpet/schedule.ccl
++++ b/Carpet/Carpet/schedule.ccl
+@@ -18,6 +18,12 @@ schedule CarpetParamCheck at PARAMCHECK
+   LANG: C
+ } "Parameter checking routine"
+ 
++schedule CarpetOutputInitialGrid at WRAGH
++{
++  LANG: C
++  OPTIONS: global
++} "Output initial grid structure"
++
+ 
+ 
+ # Correct time step for finer levels when there are non-trivial
+diff --git a/Carpet/Carpet/src/SetupGH.cc b/Carpet/Carpet/src/SetupGH.cc
+index c43c73a..1381ee0 100644
+--- a/Carpet/Carpet/src/SetupGH.cc
++++ b/Carpet/Carpet/src/SetupGH.cc
+@@ -550,6 +550,21 @@ namespace Carpet {
+ 
+     return & carpetGH;
+   }
++
++  void
++  CarpetOutputInitialGrid (CCTK_ARGUMENTS)
++  {
++    DECLARE_CCTK_ARGUMENTS;
++
++    for (int m=0; m<maps; ++m) {
++      
++      // Output grid structure to files now that IO_TruncateFiles must be
++      // present
++      OutputGridStructure (cctkGH, m, vhh.AT(m)->regions);
++      OutputGridCoordinates (cctkGH, m, vhh.AT(m)->regions);
++      
++    } // for m
++  }
+   
+   
+   
+@@ -897,10 +912,9 @@ namespace Carpet {
+       vhh.AT(m)->recompose (rl, false);
+       vhh.AT(m)->regrid_free (false);
+       
+-      // Output grid structure
++      // Output grid structure to screen but not to files since
++      // IO_TruncateFiles might not be present yet
+       OutputGrids (cctkGH, m, * vhh.AT(m), * vdd.AT(m));
+-      OutputGridStructure (cctkGH, m, regssss.AT(m));
+-      OutputGridCoordinates (cctkGH, m, regssss.AT(m));
+       
+     } // for m
+     
+diff --git a/Carpet/Carpet/src/carpet.hh b/Carpet/Carpet/src/carpet.hh
+index 3da3d46..7693c96 100644
+--- a/Carpet/Carpet/src/carpet.hh
++++ b/Carpet/Carpet/src/carpet.hh
+@@ -21,6 +21,7 @@ namespace Carpet {
+   extern "C" {
+     int CarpetStartup (void);
+     int CarpetMultiModelStartup (void);
++    void CarpetOutputInitialGrid (CCTK_ARGUMENTS);
+     void CarpetParamCheck (CCTK_ARGUMENTS);
+     void CarpetRefineTimeStep (CCTK_ARGUMENTS);
+     void CarpetUnusedMask (CCTK_ARGUMENTS);
+-- 
+1.7.10
+

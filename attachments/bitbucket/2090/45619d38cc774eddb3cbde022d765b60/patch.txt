@@ -1,0 +1,19 @@
+1001,1003c1001,1010
+<     print "Do you want to update all existing components? yes, no [no] : ";
+<     my $answer = <STDIN>;
+<     chomp $answer;
+---
+>     my $answer="no";
+>     # If this is a terminal, and if we are not running inside a
+>     # Jupyter notebook, prompt for input. Otherwise, use the default.
+>     if(-t STDIN and !defined($ENV{JPY_PARENT_PID})) {
+>       print "Do you want to update all existing components? yes, no [$answer] : ";
+>       $answer = <STDIN>;
+>       chomp $answer;
+>     } else {
+>       print "Not updating existing components. If you want an update, re-run with --update\n";
+>     }
+1005c1012
+<     $DO_UPDATES = 1 if ( $answer =~ /^y/ );
+---
+>     $DO_UPDATES = 1 if ( $answer =~ /^y/i );

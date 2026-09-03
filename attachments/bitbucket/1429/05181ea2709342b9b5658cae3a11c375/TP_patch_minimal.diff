@@ -1,0 +1,47 @@
+Index: TP_utilities.c
+===================================================================
+--- TP_utilities.c	(revision 134)
++++ TP_utilities.c	(working copy)
+@@ -101,6 +101,7 @@
+ /* allocate a CCTK_REAL 3tensor with range t[nrl..nrh][ncl..nch][ndl..ndh] */
+ {
+   CCTK_REAL ***retval;
++  long i, j;
+ 
+   /* get memory for index structures */
+   retval = malloc(sizeof(CCTK_REAL **)*(nrh-nrl+1));
+@@ -112,7 +113,7 @@
+     CCTK_WARN (CCTK_WARN_ABORT, "allocation failure (2) in dmatrix()");
+ 
+   /* get all memory for the tensor in on chunk */
+-  retval[0][0] = malloc(sizeof(CCTK_REAL)*(nrh-nrl+1)*(nch-ncl+1)*(nrh-nrl+1));
++  retval[0][0] = malloc(sizeof(CCTK_REAL)*(nrh-nrl+1)*(nch-ncl+1)*(ndh-ndl+1));
+   if(retval[0][0] == NULL)
+     CCTK_WARN (CCTK_WARN_ABORT, "allocation failure (3) in dmatrix()");
+ 
+@@ -124,19 +125,19 @@
+   /* slice chunk into rows and columns */
+   long width = (nch-ncl+1);
+   long depth = (ndh-ndl+1);
+-  for(long j = ncl+1 ; j <= nch ; j++) { /* first row of columns */
++  for(j = ncl+1 ; j <= nch ; j++) { /* first row of columns */
+     retval[nrl][j] = retval[nrl][j-1] + depth;
+   }
+-  assert(retval[nrl][nch]-retval[nrl][ncl] == (nch-ncl)*depth);
+-  for(long i = nrl+1 ; i <= nrh ; i++) {
++  if(j==nch) assert(retval[nrl][nch]-retval[nrl][ncl] == (nch-ncl)*depth);
++  for(i = nrl+1 ; i <= nrh ; i++) {
+     retval[i] = retval[i-1] + width;
+     retval[i][ncl] = retval[i-1][ncl] + width*depth; /* first cell in column */
+-    for(long j = ncl+1 ; j <= nch ; j++) {
++    for(j = ncl+1 ; j <= nch ; j++) {
+       retval[i][j] = retval[i][j-1] + depth;
+     }
+-    assert(retval[i][nch]-retval[i][ncl] == (nch-ncl)*depth);
++    if(j==nch) assert(retval[i][nch]-retval[i][ncl] == (nch-ncl)*depth);
+   }
+-  assert(retval[nrh]-retval[nrl] == (nrh-nrl)*width);
++  if(i==nrh) assert(retval[nrh]-retval[nrl] == (nrh-nrl)*width);
+   assert(&retval[nrh][nch][ndh]-&retval[nrl][ncl][ndl] == (nrh-nrl+1)*(nch-ncl+1)*(ndh-ndl+1)-1);
+ 
+   return retval;

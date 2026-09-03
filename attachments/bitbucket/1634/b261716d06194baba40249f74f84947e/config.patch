@@ -1,0 +1,30 @@
+Index: lib/make/cctk_Config.h.in
+===================================================================
+--- lib/make/cctk_Config.h.in	(revision 5112)
++++ lib/make/cctk_Config.h.in	(working copy)
+@@ -382,7 +382,11 @@
+ /* Whether __builtin_unreachable exists. */
+ #undef HAVE_CCTK_C_BUILTIN_UNREACHABLE
+ #ifdef HAVE_CCTK_C_BUILTIN_UNREACHABLE
+-#  define CCTK_BUILTIN_UNREACHABLE __builtin_unreachable
++#  ifdef __CUDACC__
++#    define CCTK_BUILTIN_UNREACHABLE() asm("trap;")
++#  else
++#    define CCTK_BUILTIN_UNREACHABLE __builtin_unreachable
++#  endif
+ #else
+ #  define CCTK_BUILTIN_UNREACHABLE() CCTK_Abort(0, 1)
+ #endif
+@@ -599,7 +603,11 @@
+ /* Whether __builtin_unreachable exists. */
+ #undef HAVE_CCTK_CXX_BUILTIN_UNREACHABLE
+ #ifdef HAVE_CCTK_CXX_BUILTIN_UNREACHABLE
+-#  define CCTK_BUILTIN_UNREACHABLE __builtin_unreachable
++#  ifdef __CUDACC__
++#    define CCTK_BUILTIN_UNREACHABLE() asm("trap;")
++#  else
++#    define CCTK_BUILTIN_UNREACHABLE __builtin_unreachable
++#  endif
+ #else
+ #  define CCTK_BUILTIN_UNREACHABLE() CCTK_Abort(0, 1)
+ #endif

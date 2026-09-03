@@ -1,0 +1,34 @@
+Index: configure.sh
+===================================================================
+--- configure.sh	(revision 38)
++++ configure.sh	(working copy)
+@@ -80,6 +80,20 @@
+         if echo '' ${ARFLAGS} | grep 64 > /dev/null 2>&1; then
+             export OBJECT_MODE=64
+         fi
++
++        #######################################################################
++        # determine OPENMP_MODE from the OPENMP option
++        # if this option isn't set OPENMP_MODE will default to 'no'
++        OPENMP_MODE='no'
++        if test -n "$OPENMP" ; then
++          
++          OPENMP=`echo $OPENMP | tr '[:upper:]' '[:lower:]'`
++          
++          if test "$OPENMP" != 'yes' -a "$OPENMP" != 'no' ; then
++            { echo "configure: error: Didn't recognize setting of OPENMP=\"$OPENMP\" (should be either \"yes\" or \"no\")" 1>&2; exit 1; }
++          fi
++          OPENMP_MODE=$OPENMP
++        fi
+         
+         echo "HDF5: Preparing directory structure..."
+         mkdir build external done 2> /dev/null || true
+@@ -127,7 +141,7 @@
+         export HOME_LORENE=${BUILD_DIR}/${NAME}
+         cat > local_settings <<EOF
+ CXX = ${CXX}
+-CXXFLAGS = ${CXXFLAGS} ${CPPFLAGS} ${CPP_OPENMP_FLAGS}
++CXXFLAGS = ${CXXFLAGS} ${CPPFLAGS} $(test x${OPENMP_MODE} = xyes && echo ${CPP_OPENMP_FLAGS})
+ CXXFLAGS_G = ${CXXFLAGS} ${CPPFLAGS}
+ F77 = ${F77}
+ F77FLAGS = ${F77FLAGS} ${FIXEDF77FLAGS}

@@ -1,0 +1,40 @@
+From 388bbb7944e30e17eb48a41a2b3b517ab38a27a7 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Mon, 10 Sep 2012 18:16:07 -0400
+Subject: [PATCH 2/3] GRHydro: output error message if evolution_mask has no
+ storage and is requested
+
+---
+ GRHydro/src/GRHydro_ParamCheck.F90 |    9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/GRHydro/src/GRHydro_ParamCheck.F90 b/GRHydro/src/GRHydro_ParamCheck.F90
+index b9b3997..085fac1 100644
+--- a/GRHydro/src/GRHydro_ParamCheck.F90
++++ b/GRHydro/src/GRHydro_ParamCheck.F90
+@@ -35,7 +35,7 @@ subroutine GRHydro_ParamCheck(CCTK_ARGUMENTS)
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+ 
+-  integer :: coordinates_is_active
++  integer :: coordinates_is_active, evolution_mask_idx
+ 
+   if (GRHydro_stencil > minval(cctk_nghostzones)) then
+     call CCTK_PARAMWARN("The stencil is larger than the number of ghost zones. Answer will be dependent on processor number...")
+@@ -138,6 +138,13 @@ subroutine GRHydro_ParamCheck(CCTK_ARGUMENTS)
+     end if
+   end if
+ 
++  if(use_evolution_mask.ne.0) then
++    call CCTK_VarIndex(evolution_mask_idx, "CarpetEvolutionMask::evolution_mask")
++    if(evolution_mask_idx .lt.  0) then
++      call CCTK_PARAMWARN("You activated use_evolution_mask but I cannot find 'CarpetEvolutionMask::evolution_mask'. If you use Carpet, then you should activate thorn 'CarpetEvolutionMask', if using PUGH then evolution_mask makes no sense and you should disable this option.")
++    end if
++  end if
++
+   if(clean_divergence.ne.0 .and. evolve_MHD.eq.0) then
+     call CCTK_WARN(1, "You activated divergence cleaning but do not evolve a magnetic field. At best, nothing should happen, be preapered for a segfault otherwise.")
+   end if
+-- 
+1.7.10.4
+

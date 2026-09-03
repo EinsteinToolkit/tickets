@@ -1,0 +1,362 @@
+Index: src/ChangeType.c
+===================================================================
+--- src/ChangeType.c	(revision 204)
++++ src/ChangeType.c	(working copy)
+@@ -157,7 +157,7 @@
+           CCTK_WARN(0, "The index passed does not correspond to a GF.");
+         }
+ 
+-        if (!(MoLNumEvolvedVariables < MoL_Num_Evolved_Vars))
++        if (!(MoLNumEvolvedVariables < MoLMaxNumEvolvedVariables))
+         {
+           CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+                      "Warning whilst trying to change variable "
+@@ -165,7 +165,7 @@
+                      EvolvedIndex, CCTK_VarName(EvolvedIndex));
+           CCTK_WARN(0, "When changing type there are more variables "
+                     "than the accumulator parameter "
+-                    "MoL_Num_Evolved_Vars allows. Check that "
++                    "MoLMaxNumEvolvedVariables allows. Check that "
+                     "you are accumulating onto this parameter correctly");
+         }
+ 
+@@ -198,7 +198,7 @@
+           CCTK_WARN(0, "The RHS index passed does not correspond to a GF.");
+         }
+ 
+-        if (!(MoLNumEvolvedVariables < MoL_Num_Evolved_Vars))
++        if (!(MoLNumEvolvedVariables < MoLMaxNumEvolvedVariables))
+         {
+           CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+                      "Warning whilst trying to change variable "
+@@ -206,7 +206,7 @@
+                      EvolvedIndex, CCTK_VarName(EvolvedIndex));
+           CCTK_WARN(0, "When changing type there are more variables "
+                     "than the accumulator parameter "
+-                    "MoL_Num_Evolved_Vars allows. Check that "
++                    "MoLMaxNumEvolvedVariables allows. Check that "
+                     "you are accumulating onto this parameter correctly");
+         }
+ 
+@@ -238,7 +238,7 @@
+           CCTK_WARN(0, "The RHS index passed does not correspond to a GF.");
+         }
+ 
+-        if (!(MoLNumEvolvedVariables < MoL_Num_Evolved_Vars))
++        if (!(MoLNumEvolvedVariables < MoLMaxNumEvolvedVariables))
+         {
+           CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+                      "Warning whilst trying to change variable "
+@@ -246,7 +246,7 @@
+                      EvolvedIndex, CCTK_VarName(EvolvedIndex));
+           CCTK_WARN(0, "When changing type there are more variables "
+                     "than the accumulator parameter "
+-                    "MoL_Num_Evolved_Vars allows. Check that "
++                    "MoLMaxNumEvolvedVariables allows. Check that "
+                     "you are accumulating onto this parameter correctly");
+         }
+ 
+@@ -279,7 +279,7 @@
+           CCTK_WARN(0, "The RHS index passed does not correspond to a GF.");
+         }
+ 
+-        if (!(MoLNumEvolvedVariables < MoL_Num_Evolved_Vars))
++        if (!(MoLNumEvolvedVariables < MoLMaxNumEvolvedVariables))
+         {
+           CCTK_VWarn(1,__LINE__,__FILE__,CCTK_THORNSTRING,
+                      "Warning whilst trying to change variable "
+@@ -287,7 +287,7 @@
+                      EvolvedIndex, CCTK_VarName(EvolvedIndex));
+           CCTK_WARN(0, "When changing type there are more variables "
+                     "than the accumulator parameter "
+-                    "MoL_Num_Evolved_Vars allows. Check that "
++                    "MoLMaxNumEvolvedVariables allows. Check that "
+                     "you are accumulating onto this parameter correctly");
+         }
+ 
+Index: src/ExternalVariables.h
+===================================================================
+--- src/ExternalVariables.h	(revision 204)
++++ src/ExternalVariables.h	(working copy)
+@@ -24,6 +24,7 @@
+ 
+ 
+ extern CCTK_INT MoLNumEvolvedVariables;
++extern CCTK_INT MoLMaxNumEvolvedVariables;
+ extern CCTK_INT MoLNumEvolvedVariablesSlow;
+ extern CCTK_INT MoLNumConstrainedVariables;
+ extern CCTK_INT MoLNumSandRVariables;
+@@ -71,3 +72,5 @@
+ extern CCTK_REAL *ArrayScratchSpace;
+ extern CCTK_INT *ArrayScratchSizes;
+ extern CCTK_INT CurrentArrayScratchSize;
++
++void Mol_ExpandNumVariables();
+Index: src/GenericRK.c
+===================================================================
+--- src/GenericRK.c	(revision 204)
++++ src/GenericRK.c	(working copy)
+@@ -186,7 +186,7 @@
+         ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
+                                       scratchspace_firstindex
+                                       + var 
+-                                      + MoL_Num_Evolved_Vars * scratchindex);
++                                      + MoLMaxNumEvolvedVariables * scratchindex);
+ #ifdef MOLDEBUG
+         if (CCTK_EQUALS(verbose,"extreme"))
+         {
+@@ -242,7 +242,7 @@
+       ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
+                                     scratchspace_firstindex
+                                     + var 
+-                                    + MoL_Num_Evolved_Vars * (MoL_Intermediate_Steps - (*MoL_Intermediate_Step)));
++                                    + MoLMaxNumEvolvedVariables * (MoL_Intermediate_Steps - (*MoL_Intermediate_Step)));
+ #ifdef MOLDEBUG
+       printf("Writing to scratch space, initial address %ld, "
+              "index %d, totalsize %d \n", 
+Index: src/IndexArrays.c
+===================================================================
+--- src/IndexArrays.c	(revision 204)
++++ src/IndexArrays.c	(working copy)
+@@ -93,16 +93,17 @@
+   }
+ 
+ 
+-  if (MoL_Num_Evolved_Vars)
++  if (MoLMaxNumEvolvedVariables)
+   {
+-    EvolvedVariableIndex = (CCTK_INT *)malloc(MoL_Num_Evolved_Vars * 
++    printf("Allocating here\n");
++    EvolvedVariableIndex = (CCTK_INT *)malloc(MoLMaxNumEvolvedVariables * 
+ 					      sizeof(CCTK_INT));
+     if (!EvolvedVariableIndex)
+       {
+ 	CCTK_WARN(0,"Failed to allocate the evolved variable index array");
+       }
+ 
+-    RHSVariableIndex = (CCTK_INT *)malloc(MoL_Num_Evolved_Vars * 
++    RHSVariableIndex = (CCTK_INT *)malloc(MoLMaxNumEvolvedVariables * 
+ 					  sizeof(CCTK_INT));
+     if (!RHSVariableIndex)
+       {
+Index: src/InitialCopy.c
+===================================================================
+--- src/InitialCopy.c	(revision 204)
++++ src/InitialCopy.c	(working copy)
+@@ -776,7 +776,7 @@
+   CCTK_VInfo(CCTK_THORNSTRING,
+              "The maximum number of evolved variables is %d. "
+              "%d are registered.",
+-             MoL_Num_Evolved_Vars,MoLNumEvolvedVariables);
++             MoLMaxNumEvolvedVariables,MoLNumEvolvedVariables);
+ 
+   CCTK_VInfo(CCTK_THORNSTRING,
+              "The maximum number of constrained variables is %d. "
+Index: src/RK45.c
+===================================================================
+--- src/RK45.c	(revision 204)
++++ src/RK45.c	(working copy)
+@@ -173,7 +173,7 @@
+     ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
+                                               CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+                                               + var 
+-                                              + MoL_Num_Evolved_Vars * 
++                                              + MoLMaxNumEvolvedVariables * 
+                                               (MoL_Intermediate_Steps - 
+                                                (*MoL_Intermediate_Step)));
+ #pragma omp parallel for
+@@ -193,7 +193,7 @@
+     RHSVar = (CCTK_REAL const *)CCTK_VarDataPtrI(cctkGH, 0, 
+ 						 CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+ 						 + var 
+-						 + MoL_Num_Evolved_Vars * 
++						 + MoLMaxNumEvolvedVariables * 
+ 						 (MoL_Intermediate_Steps - 
+ 						  (*MoL_Intermediate_Step)));
+     ErrorVar =  (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
+@@ -217,7 +217,7 @@
+         ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
+                                                   CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+                                                   + var 
+-                                                  + MoL_Num_Evolved_Vars * scratchstep);
++                                                  + MoLMaxNumEvolvedVariables * scratchstep);
+         
+         beta = beta_array[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)][scratchstep];
+         
+@@ -249,7 +249,7 @@
+         ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
+                                                   CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+                                                   + var 
+-                                                  + MoL_Num_Evolved_Vars * scratchstep);
++                                                  + MoLMaxNumEvolvedVariables * scratchstep);
+         
+         gamma = gamma_array[scratchstep];
+         gamma_error = gamma - gammastar_array[scratchstep];
+Index: src/RK65.c
+===================================================================
+--- src/RK65.c	(revision 204)
++++ src/RK65.c	(working copy)
+@@ -137,7 +137,7 @@
+     ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
+                                               CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+                                               + var 
+-                                              + MoL_Num_Evolved_Vars * 
++                                              + MoLMaxNumEvolvedVariables * 
+                                               (MoL_Intermediate_Steps - 
+                                                (*MoL_Intermediate_Step)));
+ #pragma omp parallel for
+@@ -157,7 +157,7 @@
+     RHSVar = (CCTK_REAL const *)CCTK_VarDataPtrI(cctkGH, 0, 
+ 						 CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+ 						 + var 
+-						 + MoL_Num_Evolved_Vars * 
++						 + MoLMaxNumEvolvedVariables * 
+ 						 (MoL_Intermediate_Steps - 
+ 						  (*MoL_Intermediate_Step)));
+     ErrorVar =  (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
+@@ -181,7 +181,7 @@
+         ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
+                                                   CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+                                                   + var 
+-                                                  + MoL_Num_Evolved_Vars * scratchstep);
++                                                  + MoLMaxNumEvolvedVariables * scratchstep);
+         
+         beta = beta_array[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)][scratchstep];
+         
+@@ -213,7 +213,7 @@
+         ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
+                                                   CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+                                                   + var 
+-                                                  + MoL_Num_Evolved_Vars * scratchstep);
++                                                  + MoLMaxNumEvolvedVariables * scratchstep);
+         
+         gamma = gamma_array[scratchstep];
+         gamma_error = gamma - gammastar_array[scratchstep];
+Index: src/RK87.c
+===================================================================
+--- src/RK87.c	(revision 204)
++++ src/RK87.c	(working copy)
+@@ -158,7 +158,7 @@
+     ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
+                                               CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+                                               + var 
+-                                              + MoL_Num_Evolved_Vars * 
++                                              + MoLMaxNumEvolvedVariables * 
+                                               (MoL_Intermediate_Steps - 
+                                                (*MoL_Intermediate_Step)));
+ #pragma omp parallel for
+@@ -179,7 +179,7 @@
+     RHSVar = (CCTK_REAL const *)CCTK_VarDataPtrI(cctkGH, 0, 
+ 						 CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+ 						 + var 
+-						 + MoL_Num_Evolved_Vars * 
++						 + MoLMaxNumEvolvedVariables * 
+ 						 (MoL_Intermediate_Steps - 
+ 						  (*MoL_Intermediate_Step)));
+     ErrorVar =  (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
+@@ -203,7 +203,7 @@
+         ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
+                                                   CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+                                                   + var 
+-                                                  + MoL_Num_Evolved_Vars * scratchstep);
++                                                  + MoLMaxNumEvolvedVariables * scratchstep);
+         
+         beta = beta_array[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)][scratchstep];
+         
+@@ -235,7 +235,7 @@
+         ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
+                                                   CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+                                                   + var 
+-                                                  + MoL_Num_Evolved_Vars * scratchstep);
++                                                  + MoLMaxNumEvolvedVariables * scratchstep);
+         
+         gamma = gamma_array[scratchstep];
+         gamma_error = gamma - gammastar_array[scratchstep];
+Index: src/Registration.c
+===================================================================
+--- src/Registration.c	(revision 204)
++++ src/Registration.c	(working copy)
+@@ -1108,8 +1108,10 @@
+   else
+   {
+ 
+-    if (MoLNumEvolvedVariables+1 > MoL_Num_Evolved_Vars)
++    Mol_ExpandNumVariables();
++    if (MoLNumEvolvedVariables+1 > MoLMaxNumEvolvedVariables)
+     {
++      printf("MoLNumEvolvedVariables(%d)+1 > MoLMaxNumEvolvedVariables(%d)\n",MoLNumEvolvedVariables,MoLMaxNumEvolvedVariables);
+       CCTK_WARN(0,"You have tried to register more evolved "
+                 "variables than the accumulator parameter "
+                 "MoL_Num_Evolved_Variables allows. Check that "
+@@ -1622,6 +1624,13 @@
+   }
+ 
+   GroupNumVars = CCTK_NumVarsInGroupI(EvolvedGroupIndex);
++  if(GroupNumVars == 0)
++  {
++    CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++               "Group %d has no variables in it",
++               EvolvedGroupIndex);
++  }
++
+   if (CCTK_NumVarsInGroupI(RHSGroupIndex) != GroupNumVars)
+   {
+     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+Index: src/SetTime.c
+===================================================================
+--- src/SetTime.c	(revision 204)
++++ src/SetTime.c	(working copy)
+@@ -14,6 +14,7 @@
+ #include "cctk.h"
+ #include "cctk_Arguments.h"
+ #include "cctk_Parameters.h"
++#include <stdio.h>
+ 
+ static const char *rcsid = "$Header$";
+ 
+Index: src/Startup.c
+===================================================================
+--- src/Startup.c	(revision 204)
++++ src/Startup.c	(working copy)
+@@ -13,6 +13,7 @@
+  @@*/
+ 
+ #include <stddef.h>
++#include <stdlib.h>
+ 
+ #include "cctk.h"
+ #include "ExternalVariables.h"
+@@ -33,6 +34,7 @@
+ CCTK_INT *SandRVariableIndex = NULL;
+ 
+ CCTK_INT MoLNumEvolvedVariables = 0;
++CCTK_INT MoLMaxNumEvolvedVariables = 0;
+ CCTK_INT MoLNumEvolvedVariablesSlow = 0;
+ CCTK_INT MoLNumConstrainedVariables = 0;
+ CCTK_INT MoLNumSandRVariables = 0;
+@@ -122,9 +124,24 @@
+   CCTK_RegisterBanner(banner);
+   
+   return 0;
+-  
+ }
+ 
++void Mol_ExpandNumVariables()
++{
++  int newSize = MoLNumEvolvedVariables+1;
++  if(newSize+1 > MoLMaxNumEvolvedVariables) {
++    if(EvolvedVariableIndex == 0) {
++      EvolvedVariableIndex = (CCTK_INT *)malloc(sizeof(CCTK_INT)*newSize);
++      RHSVariableIndex = (CCTK_INT *)malloc(sizeof(CCTK_INT)*newSize);
++    } else {
++      EvolvedVariableIndex = (CCTK_INT *)realloc(EvolvedVariableIndex,sizeof(CCTK_INT)*newSize);
++      RHSVariableIndex = (CCTK_INT *)realloc(RHSVariableIndex,sizeof(CCTK_INT)*newSize);
++    }
++    MoLMaxNumEvolvedVariables = newSize;
++    printf("MoL New Size=%d\n",newSize);
++  }
++}
++
+ /********************************************************************
+  *********************     Local Routines   *************************
+  ********************************************************************/

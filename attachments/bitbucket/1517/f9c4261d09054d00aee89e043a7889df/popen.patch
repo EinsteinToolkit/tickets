@@ -1,0 +1,165 @@
+ default-configuration-name = sim
+Index: lib/archive/petashare.py
+===================================================================
+--- lib/archive/petashare.py	(revision 2250)
++++ lib/archive/petashare.py	(working copy)
+@@ -28,7 +28,7 @@
+         dprint("Enter Petashare Password: ",)
+         sys.stdout.flush()
+ 
+-        fd = os.popen(fullcmd)
++        fd = simenv.popen(fullcmd)
+         
+         output = ""
+         while True:
+@@ -112,7 +112,7 @@
+         fullcmd = "%s/%s 2>&1" % (self.ToolsPath, cmd)
+         dprint("Executing petashare command: %s" % fullcmd)
+         
+-        fd = os.popen(fullcmd)
++        fd = simenv.popen(fullcmd)
+         
+         output = ""
+         while True:
+@@ -122,4 +122,4 @@
+         fd.close()
+         
+         return output
+-        
+\ No newline at end of file
++        
+Index: lib/archive/uberftp.py
+===================================================================
+--- lib/archive/uberftp.py	(revision 2250)
++++ lib/archive/uberftp.py	(working copy)
+@@ -19,7 +19,7 @@
+         
+         authtool = "grid-proxy-info -timeleft"
+         
+-        timeleft = int(os.popen(authtool).read().strip())
++        timeleft = int(simenv.popen(authtool).read().strip())
+         
+         dprint("time left: %s" % timeleft)
+         
+@@ -104,7 +104,7 @@
+         fullcmd = "uberftp %s \"quote wait; parallel 8; %s\" 2>&1" % (self.HostName, cmd)
+         dprint("Executing uberftp command: %s" % fullcmd)
+         
+-        fd = os.popen(fullcmd)
++        fd = simenv.popen(fullcmd)
+         
+         output = ""
+         while True:
+@@ -114,4 +114,4 @@
+         fd.close()
+         
+         return output
+-        
+\ No newline at end of file
++        
+Index: lib/restartlib.py
+===================================================================
+--- lib/restartlib.py	(revision 2250)
++++ lib/restartlib.py	(working copy)
+@@ -514,7 +514,7 @@
+     hostname = machineEntry.hostname
+     
+     # make sure fd is closed.
+-    fd = os.popen('whoami')
++    fd = simenv.popen('whoami')
+     user = fd.read().strip()
+     fd.close()
+     
+Index: lib/sim-info.py
+===================================================================
+--- lib/sim-info.py	(revision 2250)
++++ lib/sim-info.py	(working copy)
+@@ -150,7 +150,7 @@
+             display("        %-16s= %s" % ("job id", job_id))
+             
+             # Disk usage
+-            fd = os.popen("du -sk %s | cut -f1" % restart.SimulationDir)
++            fd = simenv.popen("du -sk %s | cut -f1" % restart.SimulationDir)
+             size_in_k = int(fd.read().strip())
+             fd.close()
+             display("        %-16s= %.1f GByte" % ("Disk usage", size_in_k * 1024 / 1.0e+9))
+Index: lib/simenv.py
+===================================================================
+--- lib/simenv.py	(revision 2250)
++++ lib/simenv.py	(working copy)
+@@ -38,6 +38,12 @@
+ CommandDoc = dict()
+ CommandOptions = dict()
+ 
++def popen(cmd):
++    global_dict = globals()
++    if global_dict['VERBOSE']:
++        print 'EXECUTING:',cmd
++    return os.popen(cmd)
++
+ def init(base, callingExecutable, usageString, optionGroups):
+ 
+     import simopts
+Index: lib/simlib.py
+===================================================================
+--- lib/simlib.py	(revision 2250)
++++ lib/simlib.py	(working copy)
+@@ -26,7 +26,7 @@
+         return hostname
+     
+     # lets get the hostname
+-    fd = os.popen("hostname")
++    fd = simenv.popen("hostname")
+     hostname = fd.read().strip()
+     fd.close()
+     
+@@ -396,7 +396,7 @@
+ def GetUsername():
+     
+     if "USER" not in os.environ:
+-        fd = os.popen("whoami")
++        fd = simenv.popen("whoami")
+         username = fd.read().strip()
+         fd.close()
+         
+@@ -558,7 +558,7 @@
+                 dprint("   Command returned exit status %d" % status)
+         return ret
+     else:
+-        fd = os.popen(command)
++        fd = simenv.popen(command)
+         output = fd.read()
+         fd.close()
+         
+Index: lib/simrestart.py
+===================================================================
+--- lib/simrestart.py	(revision 2250)
++++ lib/simrestart.py	(working copy)
+@@ -1443,14 +1443,14 @@
+                 stdoutcmd = "cd '%s' && { %s; }" % (self.RestartDir, stdoutcmd)
+                 stderrcmd = "cd '%s' && { %s; }" % (self.RestartDir, stderrcmd)
+                 
+-                ff = os.popen(stdoutcmd)
++                ff = simenv.popen(stdoutcmd)
+                 stdout_output = ff.read()
+                 ret = ff.close()
+                 
+                 if ret != None:
+                     warning("stdout command \"%s\" returned status %s" % (stdoutcmd, ret))
+                     
+-                ff = os.popen(stderrcmd)
++                ff = simenv.popen(stderrcmd)
+                 stderr_output = ff.read()
+                 ret = ff.close()
+                 
+@@ -1636,8 +1636,8 @@
+         rids = restartlib.GetRestartIds(self)
+         
+         # All files of the current restart
+-        files = os.popen("cd %s && find . -name \*.tar.gz" %
+-                         self.RestartDir).read().split("\n")
++        files = simenv.popen("cd %s && find . -name \*.tar.gz" %
++                             self.RestartDir).read().split("\n")
+         for f in files:
+             path = "%s/%s" % (self.RestartDir, f)
+             # Ignore everything but regular files that are not

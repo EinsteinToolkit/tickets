@@ -1,0 +1,324 @@
+From: Erik Schnetter <eschnetter@perimeterinstitute.ca>
+Date: 2012-05-05
+Subject: Support real*16 (and real*4) in GRHydro
+
+Support using precisions other than real*8 in GRHydro by removing all
+explicit references to double precision functions and constants, and
+using type-generic functions and constants instead.
+
+In particular, use "one" and "half" as constants in some places, and
+use "abs", "max" etc. instead of "dabs", "dmax" etc.
+
+
+Index: arrangements/EinsteinEvolve/GRHydro/src/GRHydro_Con2Prim.F90
+===================================================================
+--- arrangements/EinsteinEvolve/GRHydro/src/GRHydro_Con2Prim.F90	(revision 317)
++++ arrangements/EinsteinEvolve/GRHydro/src/GRHydro_Con2Prim.F90	(working copy)
+@@ -1026,6 +1026,8 @@
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
++  CCTK_REAL, parameter :: half = 0.5d0
++
+   integer :: i, j, k, itracer, nx, ny, nz
+   CCTK_REAL :: uxxl, uxyl, uxzl, uyyl, uyzl, uzzl,&
+        uxxr, uxyr, uxzr, uyyr, uyzr, uzzr, pmin, epsmin
+@@ -1135,9 +1137,9 @@
+              velyminus(i,j,k),velzminus(i,j,k),epsminus(i,j,k),&
+              pressminus(i,j,k),w_lorentzminus(i,j,k),&
+              uxxl,uxyl,uxzl,uyyl,uyzl,uzzl,avg_detl,&
+-             x(i,j,k)-0.5d0*CCTK_DELTA_SPACE(1),&
+-             y(i,j,k)-0.5d0*CCTK_DELTA_SPACE(2), &
+-             z(i,j,k)-0.5d0*CCTK_DELTA_SPACE(3),r(i,j,k),&
++             x(i,j,k)-half*CCTK_DELTA_SPACE(1),&
++             y(i,j,k)-half*CCTK_DELTA_SPACE(2), &
++             z(i,j,k)-half*CCTK_DELTA_SPACE(3),r(i,j,k),&
+              epsnegative,GRHydro_rho_min,pmin, epsmin, GRHydro_reflevel, GRHydro_C2P_failed(i,j,k))
+         if (epsnegative) then
+           !$OMP CRITICAL
+@@ -1149,9 +1151,9 @@
+                velyminus(i,j,k),velzminus(i,j,k),epsminus(i,j,k),&
+                pressminus(i,j,k),w_lorentzminus(i,j,k),&
+                uxxl,uxyl,uxzl,uyyl,uyzl,uzzl,avg_detl,&
+-               x(i,j,k)-0.5d0*CCTK_DELTA_SPACE(1),&
+-               y(i,j,k)-0.5d0*CCTK_DELTA_SPACE(2), &
+-               z(i,j,k)-0.5d0*CCTK_DELTA_SPACE(3),r(i,j,k),GRHydro_rho_min, GRHydro_reflevel, GRHydro_C2P_failed(i,j,k))
++               x(i,j,k)-half*CCTK_DELTA_SPACE(1),&
++               y(i,j,k)-half*CCTK_DELTA_SPACE(2), &
++               z(i,j,k)-half*CCTK_DELTA_SPACE(3),r(i,j,k),GRHydro_rho_min, GRHydro_reflevel, GRHydro_C2P_failed(i,j,k))
+         end if
+ 
+         if (epsminus(i,j,k) .lt. 0.0d0) then
+@@ -1182,9 +1184,9 @@
+              velyplus(i,j,k),velzplus(i,j,k),epsplus(i,j,k),&
+              pressplus(i,j,k),w_lorentzplus(i,j,k),&
+              uxxr,uxyr,uxzr,uyyr,uyzr,uzzr,avg_detr,&
+-             x(i,j,k)+0.5d0*CCTK_DELTA_SPACE(1),&
+-             y(i,j,k)+0.5d0*CCTK_DELTA_SPACE(2), &
+-             z(i,j,k)+0.5d0*CCTK_DELTA_SPACE(3),r(i,j,k),&
++             x(i,j,k)+half*CCTK_DELTA_SPACE(1),&
++             y(i,j,k)+half*CCTK_DELTA_SPACE(2), &
++             z(i,j,k)+half*CCTK_DELTA_SPACE(3),r(i,j,k),&
+              epsnegative,GRHydro_rho_min,pmin, epsmin, GRHydro_reflevel,GRHydro_C2P_failed(i,j,k))
+         if (epsnegative) then
+           !$OMP CRITICAL
+@@ -1196,9 +1198,9 @@
+                velyplus(i,j,k),velzplus(i,j,k),epsplus(i,j,k),&
+                pressplus(i,j,k),w_lorentzplus(i,j,k),&
+                uxxr,uxyr,uxzr,uyyr,uyzr,uzzr,avg_detr,&
+-               x(i,j,k)+0.5d0*CCTK_DELTA_SPACE(1),&
+-               y(i,j,k)+0.5d0*CCTK_DELTA_SPACE(2), &
+-               z(i,j,k)+0.5d0*CCTK_DELTA_SPACE(3),r(i,j,k),GRHydro_rho_min, GRHydro_reflevel, GRHydro_C2P_failed(i,j,k))
++               x(i,j,k)+half*CCTK_DELTA_SPACE(1),&
++               y(i,j,k)+half*CCTK_DELTA_SPACE(2), &
++               z(i,j,k)+half*CCTK_DELTA_SPACE(3),r(i,j,k),GRHydro_rho_min, GRHydro_reflevel, GRHydro_C2P_failed(i,j,k))
+         end if
+ 
+         if (epsplus(i,j,k) .lt. 0.0d0) then
+Index: arrangements/EinsteinEvolve/GRHydro/src/GRHydro_PPM.F90
+===================================================================
+--- arrangements/EinsteinEvolve/GRHydro/src/GRHydro_PPM.F90	(revision 317)
++++ arrangements/EinsteinEvolve/GRHydro/src/GRHydro_PPM.F90	(working copy)
+@@ -66,6 +66,8 @@
+ 
+   DECLARE_CCTK_PARAMETERS
+ 
++  CCTK_REAL, parameter :: one = 1
++
+   CCTK_INT :: handle,poly,nx
+   CCTK_REAL :: dx
+   CCTK_REAL, dimension(nx) :: rho,velx,vely,velz,eps
+@@ -112,10 +114,10 @@
+ !use_std_ppm = 1
+ 
+ #define STEEP(x,dx,dmx)                                              \
+-	 if ( (x(i+1) - x(i)) * (x(i) - x(i-1)) > 0.d0 ) then           &&\
+-	    dmx(i) = sign(1.d0, dx(i)) *                                   \
+-	       min(abs(dx(i)), 2.d0 * abs(x(i) - x(i-1)),                \
+-				 2.d0 * abs(x(i+1) - x(i)))              &&\
++	 if ( (x(i+1) - x(i)) * (x(i) - x(i-1)) > 0 ) then           &&\
++	    dmx(i) = sign(one, dx(i)) *                                   \
++	       min(abs(dx(i)), 2 * abs(x(i) - x(i-1)),                \
++				 2 * abs(x(i+1) - x(i)))              &&\
+ 	 else                                                           &&\
+ 	    dmx(i) = 0.d0                                                &&\
+ 	 end if
+@@ -205,7 +207,7 @@
+ 	 D2a  = 3.0d0 * (a(i)   - 2.0d0*ah     + a(i+1))                                     &&\
+ 	 D2aL =         (a(i-1) - 2.0d0*a(i)   + a(i+1))                                     &&\
+ 	 D2aR =         (a(i)   - 2.0d0*a(i+1) + a(i+2))                                     &&\
+-	 D2aLim = sign(1.0d0, D2a)*min(C*abs(D2aL), C*abs(D2aR), abs(D2a))/3.0d0             &&\
++	 D2aLim = sign(one, D2a)*min(C*abs(D2aL), C*abs(D2aR), abs(D2a))/3.0d0             &&\
+ 	 if (D2a*D2aR .ge. 0 .and. D2a*D2aL .ge. 0 .and. abs(D2aLim) .lt. abs(0.5d0*(a(i)+a(i+1)))) then                     &&\
+ 	    alim = 0.5d0*(a(i)+a(i+1)) - D2aLim &&\
+ 	 else                                                                             &&\
+@@ -478,7 +480,7 @@
+ 	 end do
+       else  !!$ Really implement C&W, page 197; which requires stencil 4.
+ 	 do i = 4, nx - 3
+-	    s=sign(1.d0, -dpress(i))
++	    s=sign(one, -dpress(i))
+ 	    flatten = max(tilde_flatten(i), tilde_flatten(i+s))  
+ 	    if (abs(1.d0 - flatten) > 0.d0) then
+ 	       trivial_rp(i-1) = .false.
+@@ -543,8 +545,8 @@
+ 	 D3aL = D2aC - D2aL  &&\
+ 	 D3aR = D2aRR - D2aR &&\
+ 	 D3aLL = D2aL - D2aLL &&\
+-	 if (sign(1.0d0, D2a) .eq. sign(1.0d0, D2aC) .and. sign(1.0d0, D2a) .eq. sign(1.0d0, D2aL) .and. sign(1.0d0, D2a) .eq. sign(1.0d0, D2aR)) then &&\
+-	    D2aLim = sign(1.0d0, D2a) * min(C*abs(D2aL), C*abs(D2aR), C*abs(D2aC), abs(D2a))  &&\
++	 if (sign(one, D2a) .eq. sign(one, D2aC) .and. sign(one, D2a) .eq. sign(one, D2aL) .and. sign(one, D2a) .eq. sign(one, D2aR)) then &&\
++	    D2aLim = sign(one, D2a) * min(C*abs(D2aL), C*abs(D2aR), C*abs(D2aC), abs(D2a))  &&\
+ 	 else                                                      &&\
+ 	    D2aLim = 0  &&\
+ 	 end if                                                    &&\
+@@ -608,9 +610,9 @@
+ ! 	    D2aC = a(i-1) - 2.0d0*a(i)   + a(i+1)                                                     &&\
+ ! 	    D2aL = a(i-2) - 2.0d0*a(i-1) + a(i)                                                       &&\
+ ! 	    D2aR = a(i)   - 2.0d0*a(i+1) + a(i+2)                                                     &&\
+-! 	    if (D2a .ne. 0 .and. sign(1.0d0, D2a) .eq. sign(1.0d0, D2aC) .and. sign(1.0d0, D2a) .eq. sign(1.0d0, D2aL) .and. sign(1.0d0, D2a) .eq. sign(1.0d0, D2aR)) then &&\
+-! 	       aplus(i)  = a(i) + (aplus(i) -a(i)) * sign(1.0d0, D2a) * min(C*abs(D2aL), C*abs(D2aR), C*abs(D2aC), abs(D2a)) / D2a                   &&\
+-! 	       aminus(i) = a(i) + (aminus(i)-a(i)) * sign(1.0d0, D2a) * min(C*abs(D2aL), C*abs(D2aR), C*abs(D2aC), abs(D2a)) / D2a                   &&\
++! 	    if (D2a .ne. 0 .and. sign(one, D2a) .eq. sign(one, D2aC) .and. sign(one, D2a) .eq. sign(one, D2aL) .and. sign(one, D2a) .eq. sign(one, D2aR)) then &&\
++! 	       aplus(i)  = a(i) + (aplus(i) -a(i)) * sign(one, D2a) * min(C*abs(D2aL), C*abs(D2aR), C*abs(D2aC), abs(D2a)) / D2a                   &&\
++! 	       aminus(i) = a(i) + (aminus(i)-a(i)) * sign(one, D2a) * min(C*abs(D2aL), C*abs(D2aR), C*abs(D2aC), abs(D2a)) / D2a                   &&\
+ ! 	    else                                                      &&\
+ ! 	       aplus(i)  = a(i)                                       &&\
+ ! 	       aminus(i) = a(i)                                       &&\
+@@ -637,8 +639,8 @@
+ 	 D2aC = a(i-1) - 2.0d0*a(i)   + a(i+1)                                                     &&\
+ 	 D2aL = a(i-2) - 2.0d0*a(i-1) + a(i)                                                       &&\
+ 	 D2aR = a(i)   - 2.0d0*a(i+1) + a(i+2)                                                     &&\
+-	 if (sign(1.0d0, D2a) .eq. sign(1.0d0, D2aC) .and. sign(1.0d0, D2a) .eq. sign(1.0d0, D2aL) .and. sign(1.0d0, D2a) .eq. sign(1.0d0, D2aR)) then &&\
+-	    D2aLim = sign(1.0d0, D2a) * min(C*abs(D2aL), C*abs(D2aR), C*abs(D2aC), abs(D2a))  &&\
++	 if (sign(one, D2a) .eq. sign(one, D2aC) .and. sign(one, D2a) .eq. sign(one, D2aL) .and. sign(one, D2a) .eq. sign(one, D2aR)) then &&\
++	    D2aLim = sign(one, D2a) * min(C*abs(D2aL), C*abs(D2aR), C*abs(D2aC), abs(D2a))  &&\
+ 	 else                                                      &&\
+ 	    D2aLim = 0  &&\
+ 	 end if                                                    &&\
+@@ -898,6 +900,8 @@
+ 
+   DECLARE_CCTK_PARAMETERS
+ 
++  CCTK_REAL, parameter :: one = 1
++
+   CCTK_INT :: nx
+   CCTK_REAL :: dx
+   CCTK_REAL, dimension(nx) :: rho,velx,vely,velz
+@@ -934,7 +938,7 @@
+      do i = 2, nx - 1
+         if( (tracer(i+1,itracer) - tracer(i,itracer)) * &
+              (tracer(i,itracer) - tracer(i-1,itracer)) > 0.0d0 ) then
+-           dmtracer(i,itracer) = sign(1.0d0,dtracer(i,itracer)) * &
++           dmtracer(i,itracer) = sign(one,dtracer(i,itracer)) * &
+                 min(abs(dtracer(i,itracer)), 2.0d0 * &
+                 abs(tracer(i,itracer) - tracer(i-1,itracer)), &
+                 2.0d0 * abs(tracer(i+1,itracer) - tracer(i,itracer)))
+@@ -1111,6 +1115,8 @@
+ 
+   DECLARE_CCTK_PARAMETERS
+ 
++  CCTK_REAL, parameter :: one = 1
++
+   CCTK_INT :: nx
+   CCTK_REAL :: dx
+   CCTK_REAL, dimension(nx) :: rho,velx,vely,velz
+@@ -1151,7 +1157,7 @@
+       do i = 2, nx - 1
+          if( (Y_e(i+1) - Y_e(i)) * &
+                (Y_e(i) - Y_e(i-1)) > 0.0d0 ) then
+-            dmY_e(i) = sign(1.0d0,dY_e(i)) * &
++            dmY_e(i) = sign(one,dY_e(i)) * &
+                   min(abs(dY_e(i)), 2.0d0 * &
+                   abs(Y_e(i) - Y_e(i-1)), &
+                   2.0d0 * abs(Y_e(i+1) - Y_e(i)))
+@@ -1194,7 +1200,7 @@
+ 	 D2aL =         (a(i-1) - 2.0d0*a(i)   + a(i+1))                                     &&\
+ 	 D2aR =         (a(i)   - 2.0d0*a(i+1) + a(i+2))                                     &&\
+ 	 if (D2a*D2aR .ge. 0 .and. D2a*D2aL .ge. 0 .and. abs(D2aLim) .lt. abs(0.5d0*(a(i)+a(i+1)))) then                     &&\
+-	    alim = 0.5d0*(a(i)+a(i+1)) - sign(1.0d0, D2a)*min(C*abs(D2aL), C*abs(D2aR), abs(D2a))/3.0d0 &&\
++	    alim = 0.5d0*(a(i)+a(i+1)) - sign(one, D2a)*min(C*abs(D2aL), C*abs(D2aR), abs(D2a))/3.0d0 &&\
+ 	 else                                                                             &&\
+ 	    alim = 0.5d0*(a(i)+a(i+1))                                                    &&\
+ 	 end if                                                                           &&\
+@@ -1292,8 +1298,8 @@
+ 	 D3aL = D2aC - D2aL  &&\
+ 	 D3aR = D2aRR - D2aR &&\
+ 	 D3aLL = D2aL - D2aLL &&\
+-	 if (sign(1.0d0, D2a) .eq. sign(1.0d0, D2aC) .and. sign(1.0d0, D2a) .eq. sign(1.0d0, D2aL) .and. sign(1.0d0, D2a) .eq. sign(1.0d0, D2aR)) then &&\
+-	    D2aLim = sign(1.0d0, D2a) * min(C*abs(D2aL), C*abs(D2aR), C*abs(D2aC), abs(D2a))  &&\
++	 if (sign(one, D2a) .eq. sign(one, D2aC) .and. sign(one, D2a) .eq. sign(one, D2aL) .and. sign(one, D2a) .eq. sign(one, D2aR)) then &&\
++	    D2aLim = sign(one, D2a) * min(C*abs(D2aL), C*abs(D2aR), C*abs(D2aC), abs(D2a))  &&\
+ 	 else                                                      &&\
+ 	    D2aLim = 0  &&\
+ 	 end if                                                    &&\
+@@ -1358,8 +1364,8 @@
+ 	 D2aC = a(i-1) - 2.0d0*a(i)   + a(i+1)                                                     &&\
+ 	 D2aL = a(i-2) - 2.0d0*a(i-1) + a(i)                                                       &&\
+ 	 D2aR = a(i)   - 2.0d0*a(i+1) + a(i+2)                                                     &&\
+-	 if (sign(1.0d0, D2a) .eq. sign(1.0d0, D2aC) .and. sign(1.0d0, D2a) .eq. sign(1.0d0, D2aL) .and. sign(1.0d0, D2a) .eq. sign(1.0d0, D2aR)) then &&\
+-	    D2aLim = sign(1.0d0, D2a) * min(C*abs(D2aL), C*abs(D2aR), C*abs(D2aC), abs(D2a))  &&\
++	 if (sign(one, D2a) .eq. sign(one, D2aC) .and. sign(one, D2a) .eq. sign(one, D2aL) .and. sign(one, D2a) .eq. sign(one, D2aR)) then &&\
++	    D2aLim = sign(one, D2a) * min(C*abs(D2aL), C*abs(D2aR), C*abs(D2aC), abs(D2a))  &&\
+ 	 else                                                      &&\
+ 	    D2aLim = 0  &&\
+ 	 end if                                                    &&\
+Index: arrangements/EinsteinEvolve/GRHydro/src/GRHydro_FluxSplit.F90
+===================================================================
+--- arrangements/EinsteinEvolve/GRHydro/src/GRHydro_FluxSplit.F90	(revision 317)
++++ arrangements/EinsteinEvolve/GRHydro/src/GRHydro_FluxSplit.F90	(working copy)
+@@ -437,6 +437,8 @@
+   DECLARE_CCTK_PARAMETERS
+   DECLARE_CCTK_FUNCTIONS
+ 
++  CCTK_REAL, parameter :: half = 0.5d0
++
+   CCTK_INT :: i, nx, handle, ll
+   CCTK_REAL, dimension(nx) :: gxx, gxy, gxz, gyy, gyz, gzz, &
+        u, det, alp, beta, &
+@@ -493,21 +495,21 @@
+ !!$    Calculate the maximum eigenvalue and put it here
+ 
+     call eigenproblem_leftright(handle, &
+-         0.5d0 * (rho      (i) + rho      (i+1)), &
+-         0.5d0 * (velx1    (i) + velx1    (i+1)), &
+-         0.5d0 * (vely1    (i) + vely1    (i+1)), &
+-         0.5d0 * (velz1    (i) + velz1    (i+1)), &
+-         0.5d0 * (eps      (i) + eps      (i+1)), &
+-         0.5d0 * (w_lorentz(i) + w_lorentz(i+1)), &
+-         0.5d0 * (gxx      (i) + gxx      (i+1)), &
+-         0.5d0 * (gxy      (i) + gxy      (i+1)), &
+-         0.5d0 * (gxz      (i) + gxz      (i+1)), &
+-         0.5d0 * (gyy      (i) + gyy      (i+1)), &
+-         0.5d0 * (gyz      (i) + gyz      (i+1)), &
+-         0.5d0 * (gzz      (i) + gzz      (i+1)), &
+-         0.5d0 * (u        (i) + u        (i+1)), &
+-         0.5d0 * (alp      (i) + alp      (i+1)), &
+-         0.5d0 * (beta     (i) + beta     (i+1)), &
++         half * (rho      (i) + rho      (i+1)), &
++         half * (velx1    (i) + velx1    (i+1)), &
++         half * (vely1    (i) + vely1    (i+1)), &
++         half * (velz1    (i) + velz1    (i+1)), &
++         half * (eps      (i) + eps      (i+1)), &
++         half * (w_lorentz(i) + w_lorentz(i+1)), &
++         half * (gxx      (i) + gxx      (i+1)), &
++         half * (gxy      (i) + gxy      (i+1)), &
++         half * (gxz      (i) + gxz      (i+1)), &
++         half * (gyy      (i) + gyy      (i+1)), &
++         half * (gyz      (i) + gyz      (i+1)), &
++         half * (gzz      (i) + gzz      (i+1)), &
++         half * (u        (i) + u        (i+1)), &
++         half * (alp      (i) + alp      (i+1)), &
++         half * (beta     (i) + beta     (i+1)), &
+          lambda,&
+          levec,&
+          revec)
+Index: arrangements/EinsteinEvolve/GRHydro/src/GRHydro_Eigenproblem_Marquina.F90
+===================================================================
+--- arrangements/EinsteinEvolve/GRHydro/src/GRHydro_Eigenproblem_Marquina.F90	(revision 317)
++++ arrangements/EinsteinEvolve/GRHydro/src/GRHydro_Eigenproblem_Marquina.F90	(working copy)
+@@ -200,11 +200,11 @@
+ 
+ !!$  FINAL
+ 
+-  lam1 = dmax1(dabs(lam1l),dabs(lam1r))
++  lam1 = max(abs(lam1l),abs(lam1r))
+   lam2 = lam1
+   lam3 = lam1
+-  lamp = dmax1(dabs(lampl),dabs(lampr))
+-  lamm = dmax1(dabs(lamml),dabs(lammr))
++  lamp = max(abs(lampl),abs(lampr))
++  lamm = max(abs(lamml),abs(lammr))
+ 
+ !!$  lam(1) = lamm
+ !!$  lam(2) = lam1
+@@ -918,11 +918,11 @@
+ 
+ !!$  FINAL
+ 
+-  lam1 = dmax1(dabs(lam1l),dabs(lam1r))
++  lam1 = max(abs(lam1l),abs(lam1r))
+   lam2 = lam1
+   lam3 = lam1
+-  lamp = dmax1(dabs(lampl),dabs(lampr))
+-  lamm = dmax1(dabs(lamml),dabs(lammr))
++  lamp = max(abs(lampl),abs(lampr))
++  lamm = max(abs(lamml),abs(lammr))
+ 
+ !!$  lam(1) = lamm
+ !!$  lam(2) = lam1
+@@ -1610,11 +1610,11 @@
+ 
+ !!$  FINAL
+ 
+-  lam1 = dmax1(dabs(lam1l),dabs(lam1r))
++  lam1 = max(abs(lam1l),abs(lam1r))
+   lam2 = lam1
+   lam3 = lam1
+-  lamp = dmax1(dabs(lampl),dabs(lampr))
+-  lamm = dmax1(dabs(lamml),dabs(lammr))
++  lamp = max(abs(lampl),abs(lampr))
++  lamm = max(abs(lamml),abs(lammr))
+ 
+ !!$  lam(1) = lamm
+ !!$  lam(2) = lam1

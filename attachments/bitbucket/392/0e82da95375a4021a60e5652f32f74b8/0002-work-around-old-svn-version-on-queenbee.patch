@@ -1,0 +1,53 @@
+From d0747d4fc899513ccd5f9082a7858ad3aacd90ce Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Wed, 23 Oct 2013 23:54:57 -0700
+Subject: [PATCH 2/2] work around old svn version on queenbee
+
+info does not understand --xml or --non-interactive yet
+---
+ GetComponents | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/GetComponents b/GetComponents
+index 64c488a..63a3e5c 100755
+--- a/GetComponents
++++ b/GetComponents
+@@ -1220,7 +1220,7 @@ sub handle_svn {
+         # Check for relocated repositories
+         if ($out =~ /^svn: Repository moved permanently to '(.*)'; please relocate$/) {
+             my $new_location = $1;
+-            $cmd = "cd $target/$dir && $svn info --non-interactive";
++            $cmd = "cd $target/$dir && $svn info </dev/null";
+             ( $err, $out ) = run_command( $cmd, $VERBOSE, $bad_cert );
+             $out =~ /^URL: (.*)$/m;
+             my $old_location = $1;
+@@ -1294,7 +1294,7 @@ sub handle_svn {
+ 
+     elsif ( $method eq 'authenticate' ) {
+ 
+-        $cmd = "$svn info --non-interactive $user $url";
++        $cmd = "$svn info </dev/null $user $url";
+         $err = run_command($cmd);
+ 
+         # store username and repo
+@@ -1306,13 +1306,15 @@ sub handle_svn {
+ 
+     elsif ( $method eq 'verify_url' ) {
+         my $dir = defined($name) ? $name : $checkout;
+-        my $cmd = "$svn info --non-interactive --xml $target/$dir";
++        # svn info --version 1.1.4 (r13838) installed on QueenBee does not
++        # support --non-interactive or --xml
++        my $cmd = "$svn info </dev/null $target/$dir";
+ 
+         my $same_url;
+         my $new_url = $url;
+         $url =~ s!https?://!!;
+         my ( $err, $out ) = run_command($cmd);
+-        $out =~ m!<url>(.*)</url>!;
++        $out =~ m!^URL: (.*)!m;
+         my $old_url = $1;
+         unless ($old_url =~ /$url/) {
+             # URL's don't match. try `svn switch`
+-- 
+1.8.4.rc3
+

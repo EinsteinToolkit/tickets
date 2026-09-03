@@ -1,0 +1,69 @@
+Index: configure.pl
+===================================================================
+--- configure.pl	(revision 51)
++++ configure.pl	(working copy)
+@@ -18,7 +18,6 @@
+ # Prepare
+ ################################################################################
+ 
+-# Set up shell
+ my $verbose = 0;
+ $verbose = 1 if($ENV{VERBOSE} =~ /^yes$/i);
+ 
+@@ -65,15 +64,18 @@
+   if(is_set("MPI_INC_DIRS") or is_set("MPI_LIB_DIRS") or is_set("MPI_LIBS")) {
+     # If some of the MPI variables are set, this is a completely
+     # manual configuration.
+-    message("1: manual");
++    message("Manually configuring MPI") if($verbose);
+     $mpi_manual = 1;
+   } else {
+     # If none of the MPI variables are set, check for the compiler
+     # wrapper under MPI_DIR
++    message("Looking for mpi wrapper...");
+     $mpi_manual = 0;
+     for my $name (@mpicxx_names) {
++      message("Trying $name...") if($verbose);
+       my $full_name = $ENV{MPI_DIR}."/bin/".$name;
+       if(-x $full_name) {
++        message("Found $name") if($verbose);
+         $mpi_cmd = $full_name;
+         last;
+       }
+@@ -86,6 +88,7 @@
+     }
+   }
+ } else {
++  message("MPI build requsted") if($verbose);
+   $mpi_build = 1;
+   $mpi_search = 1;
+ }
+@@ -336,10 +339,12 @@
+ 
+ sub mpi_get_info {
+   my $fd = new FileHandle;
++  message("Trying $mpi_cmd -compile_info...") if($verbose);
+   open($fd,"$mpi_cmd -compile_info 2>/dev/null|");
+   $info = <$fd>;
+   close($fd);
+   if($info eq "") {
++    message("Trying $mpi_cmd -showme...") if($verbose);
+     open($fd,"$mpi_cmd --showme 2>/dev/null|");
+     $info = <$fd>;
+     close($fd);
+@@ -347,6 +352,7 @@
+   if($info eq "") {
+     # The command, mpicc, is quite often a shell script.
+     # Run it with -x to trace, and find the compile command.
++    message("Trying sh -x $mpi_cmd /dev/null...") if($verbose);
+     open($fd,"sh -x $mpi_cmd /dev/null 2>/dev/null|");
+     my $contents = <$fd>;
+     if($contents =~ /\w+cc.*-I\/.*-lmpi.*/) {
+@@ -354,6 +360,7 @@
+     }
+   }
+   if($info =~ /^\s*$/) {
++    message("Could not obtain command line from $mpi_cmd");
+     $mpi_info_set = 0;
+   } else {
+     $mpi_info_set = 1;

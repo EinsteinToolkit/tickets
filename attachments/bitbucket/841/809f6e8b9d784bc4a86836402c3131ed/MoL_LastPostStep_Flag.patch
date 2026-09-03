@@ -1,0 +1,78 @@
+diff -rupN --exclude=.svn --exclude=doc MoL/interface.ccl repos/Zelmani/MoL/interface.ccl
+--- MoL/interface.ccl	2012-04-30 11:08:06.000000000 -0700
++++ repos/Zelmani/MoL/interface.ccl	2012-04-30 11:31:43.670501311 -0700
+@@ -244,6 +244,11 @@ CCTK_INT MoL_Counters \
+   # Oustide the MoL loop, it is guaranteed to be 1.
+   # It is only zero for certain MoL substeps when multirate methods are used.
+   MoL_SlowPostStep
++  
++  # A flag indicating whether this is the last MoL POST step.
++  # This is useful for scheduling routines at the last MoL POST step.
++  MoL_LastPostStep
++  
+ } "The counter for the time integration method"
+ 
+ CCTK_REAL MoL_Original_Time \
+diff -rupN --exclude=.svn --exclude=doc MoL/src/Counter.c repos/Zelmani/MoL/src/Counter.c
+--- MoL/src/Counter.c	2012-04-30 11:08:06.000000000 -0700
++++ repos/Zelmani/MoL/src/Counter.c	2012-04-30 11:33:27.230488594 -0700
+@@ -68,6 +68,8 @@ void MoL_SetCounter(CCTK_ARGUMENTS)
+   DECLARE_CCTK_PARAMETERS;
+ 
+   *MoL_Intermediate_Step = MoL_Intermediate_Steps;
++  // We begin the MoL loop so this is NOT the last step or last post step ;)
++  *MoL_LastPostStep = 0; 
+ 
+   // Always indicate execution of slow steps.
+   // If multirate methods are used, they are set to zero
+@@ -120,6 +122,13 @@ void MoL_DecrementCounter(CCTK_ARGUMENTS
+   
+   (*MoL_Intermediate_Step) --;
+ 
++  // If counter becomes zero, the only thing left to do is to call PostStep!
++  if (*MoL_Intermediate_Step == 0)
++     *MoL_LastPostStep = 1;
++  else
++     *MoL_LastPostStep = 0;
++
++
+   if (CCTK_EQUALS(ODE_Method, "RK2-MR-2:1"))
+   {
+      switch (MoL_Intermediate_Steps - *MoL_Intermediate_Step)
+diff -rupN --exclude=.svn --exclude=doc MoL/src/IndexArrays.c repos/Zelmani/MoL/src/IndexArrays.c
+--- MoL/src/IndexArrays.c	2012-04-30 11:08:06.000000000 -0700
++++ repos/Zelmani/MoL/src/IndexArrays.c	2012-04-30 11:32:42.660753982 -0700
+@@ -376,10 +376,15 @@ void MoL_SetupIndexArrays(CCTK_ARGUMENTS
+ 
+   // These scalars must be 1 oustide of the MoL loop.
+   // They will only be zero for certain substeps when multirate methods are used.
+-  // Otherwise, they are guaranteed to always be one.
++  // Otherwise, they are guaranteed to always be ONE.
+   *MoL_SlowPostStep = 1;
+   *MoL_SlowStep = 1;
+ 
++  // These scalars must be 0 oustide of the MoL loop.
++  // They will only be ONE for the very last MoL substep.
++  // Otherwise, they are guaranteed to always be ZERO.
++  *MoL_LastPostStep = 0;
++
+   return;
+ 
+ }
+diff -rupN --exclude=.svn --exclude=doc MoL/src/StepSize.c repos/Zelmani/MoL/src/StepSize.c
+--- MoL/src/StepSize.c	2012-04-30 11:08:06.000000000 -0700
++++ repos/Zelmani/MoL/src/StepSize.c	2012-04-30 11:32:55.661807134 -0700
+@@ -359,9 +359,12 @@ void MoL_FinishLoop(CCTK_ARGUMENTS)
+   /* Keep time step size unchanged */
+   *MoL_Stepsize_Bad = 0;
+   
+-  // Set these flags to one outside of MoL-loop!
++  // Set these flags to ONE outside of MoL-loop!
+   *MoL_SlowPostStep = 1;
+   *MoL_SlowStep = 1;
++  
++  // Set these flags to ZERO outside of MoL-loop!
++  *MoL_LastPostStep = 0;
+ }
+ 
+ /********************************************************************

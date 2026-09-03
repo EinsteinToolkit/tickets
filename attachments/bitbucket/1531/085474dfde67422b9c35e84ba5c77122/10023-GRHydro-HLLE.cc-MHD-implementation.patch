@@ -1,0 +1,1187 @@
+From 26901b5e9e2d0f7958ff193efafc927cc8e2d80f Mon Sep 17 00:00:00 2001
+From: Philipp Moesta <pmoesta@tapir.caltech.edu>
+Date: Fri, 29 Nov 2013 00:19:18 -0800
+Subject: [PATCH 23/36] GRHydro: HLLE.cc MHD implementation
+
+only use C++ HLLE if use_cxx_code = yes.
+
+combined result of Christian Reisswig's, Philipp Moesta's and Roland Haas'
+commits
+---
+ src/GRHydro_HLLE.cc           | 878 ++++++++++++++++++++++++++++--------------
+ src/GRHydro_RiemannSolveM.F90 |  12 +-
+ 2 files changed, 605 insertions(+), 285 deletions(-)
+
+diff --git a/src/GRHydro_HLLE.cc b/src/GRHydro_HLLE.cc
+index 2278d1d..b0e509f 100644
+--- a/src/GRHydro_HLLE.cc
++++ b/src/GRHydro_HLLE.cc
+@@ -1,5 +1,6 @@
+ #include <cmath>
+ #include <vector>
++#include <iostream>
+ #include "cctk.h"
+ #include "cctk_Parameters.h"
+ #include "cctk_Arguments.h"
+@@ -8,6 +9,7 @@
+ 
+ #define MIN(a,b) (((a)<(b))?(a):(b))
+ #define MAX(a,b) (((a)>(b))?(a):(b))
++#define SQR(x) ((x)*(x))
+ 
+ using namespace std;
+ 
+@@ -15,12 +17,12 @@ using namespace std;
+ extern "C"
+ CCTK_INT GRHydro_UseGeneralCoordinates(const cGH * cctkGH);
+ 
+-static inline CCTK_REAL SpatialDeterminantC(CCTK_REAL gxx, CCTK_REAL gxy,
+-					CCTK_REAL gxz, CCTK_REAL gyy,
+-					CCTK_REAL gyz, CCTK_REAL gzz);
+-static inline void UpperMetricClim(CCTK_REAL * restrict uxx,
+-				CCTK_REAL * restrict uyy,
+-				CCTK_REAL * restrict uzz,
++static inline CCTK_REAL SpatialDeterminantC(const CCTK_REAL gxx, const CCTK_REAL gxy,
++					    const CCTK_REAL gxz, const CCTK_REAL gyy,
++					    const CCTK_REAL gyz, const CCTK_REAL gzz);
++static inline void UpperMetricClim(CCTK_REAL& restrict uxx,
++				CCTK_REAL& restrict uyy,
++				CCTK_REAL& restrict uzz,
+ 				const CCTK_REAL sdet,
+ 				const CCTK_REAL gxx,
+ 				const CCTK_REAL gxy,
+@@ -29,10 +31,10 @@ static inline void UpperMetricClim(CCTK_REAL * restrict uxx,
+ 				const CCTK_REAL gyz,
+ 				const CCTK_REAL gzz);
+ 
+-static inline CCTK_REAL max10(const CCTK_REAL * restrict a)
++static inline CCTK_REAL max10(const CCTK_REAL * const restrict a)
+ {
+   CCTK_REAL maxval=0;
+-  for(int i=0;i<10;++i) maxval=MAX(maxval,a[i]);
++  for(int i=0; i<10; ++i) maxval=MAX(maxval,a[i]);
+   return maxval;
+ }
+ 
+@@ -50,10 +52,10 @@ static inline CCTK_REAL max9(const CCTK_REAL a,
+   return MAX(a,MAX(b,MAX(c,MAX(d,MAX(e,MAX(f,MAX(g,MAX(h,i))))))));
+ }
+ 
+-static inline CCTK_REAL min10(const CCTK_REAL * restrict a)
++static inline CCTK_REAL min10(const CCTK_REAL * const restrict a)
+ {
+   CCTK_REAL minval=0;
+-  for(int i=0;i<10;++i) minval=MIN(minval,a[i]);
++  for(int i=0; i<10; ++i) minval=MIN(minval,a[i]);
+   return minval;
+ }
+ 
+@@ -62,11 +64,11 @@ static inline void num_x_flux_cc(const CCTK_REAL dens,
+ 				 const CCTK_REAL sy,
+ 				 const CCTK_REAL sz,
+ 				 const CCTK_REAL tau,
+-				 CCTK_REAL *restrict densflux,
+-				 CCTK_REAL *restrict sxflux,
+-				 CCTK_REAL *restrict syflux,
+-				 CCTK_REAL *restrict szflux,
+-				 CCTK_REAL *restrict tauflux,
++				 CCTK_REAL& densflux,
++				 CCTK_REAL& sxflux,
++				 CCTK_REAL& syflux,
++				 CCTK_REAL& szflux,
++				 CCTK_REAL& tauflux,
+ 				 const CCTK_REAL vel, 
+ 				 const CCTK_REAL press,
+ 				 const CCTK_REAL sdet,
+@@ -77,15 +79,64 @@ static inline void num_x_flux_cc(const CCTK_REAL dens,
+   const CCTK_REAL velmbetainvalp = vel - beta / alp;
+   const CCTK_REAL sqrtdetpress = sdet*press;
+   
+-  *densflux = dens * velmbetainvalp;
+-  *sxflux   = sx * velmbetainvalp + sqrtdetpress;
+-  *syflux   = sy * velmbetainvalp;
+-  *szflux   = sz * velmbetainvalp;
+-  *tauflux  = tau * velmbetainvalp + sqrtdetpress*vel;
++  densflux = dens * velmbetainvalp;
++  sxflux   = sx * velmbetainvalp + sqrtdetpress;
++  syflux   = sy * velmbetainvalp;
++  szflux   = sz * velmbetainvalp;
++  tauflux  = tau * velmbetainvalp + sqrtdetpress*vel;
+ 
+   return;
+ }
+ 
++static inline void num_x_fluxM_cc(const CCTK_REAL dens,
++				 const CCTK_REAL sx,
++				 const CCTK_REAL sy,
++				 const CCTK_REAL sz,
++				 const CCTK_REAL tau,
++				 const CCTK_REAL Bx,
++				 const CCTK_REAL By,
++				 const CCTK_REAL Bz,
++				 CCTK_REAL& densflux,
++				 CCTK_REAL& sxflux,
++				 CCTK_REAL& syflux,
++				 CCTK_REAL& szflux,
++				 CCTK_REAL& tauflux,
++                                 CCTK_REAL& Bxflux,
++                                 CCTK_REAL& Byflux,
++                                 CCTK_REAL& Bzflux,
++				 const CCTK_REAL velx, 
++				 const CCTK_REAL vely, 
++				 const CCTK_REAL velz, 
++				 const CCTK_REAL press,
++				 const CCTK_REAL sdet,
++				 const CCTK_REAL alp,
++				 const CCTK_REAL betax,
++				 const CCTK_REAL betay,
++				 const CCTK_REAL betaz,
++				 const CCTK_REAL bsubx,
++				 const CCTK_REAL bsuby,
++				 const CCTK_REAL bsubz,
++                                 const CCTK_REAL b2,
++				 const CCTK_REAL ab0,
++				 const CCTK_REAL w)
++{
++  
++  const CCTK_REAL velmbetainvalpx = velx - betax / alp;
++  const CCTK_REAL velmbetainvalpy = vely - betay / alp;
++  const CCTK_REAL velmbetainvalpz = velz - betaz / alp;
++  const CCTK_REAL pressstar = press + 0.5*b2;
++  const CCTK_REAL sqrtdetpressstar = sdet*pressstar;
++  
++  densflux = dens * velmbetainvalpx;
++  sxflux   = sx * velmbetainvalpx + sqrtdetpressstar - bsubx*Bx/w;
++  syflux   = sy * velmbetainvalpx - bsuby*Bx/w;
++  szflux   = sz * velmbetainvalpx - bsubz*Bx/w;
++  tauflux  = tau * velmbetainvalpx + sqrtdetpressstar*velx - ab0*Bx/w;
++  Bxflux = 0.0;
++  Byflux = By * velmbetainvalpx - Bx*velmbetainvalpy;
++  Bzflux = Bz * velmbetainvalpx - Bx*velmbetainvalpz;
++  return;
++}
+ 
+ static inline void eigenvalues_cc(const CCTK_REAL rho,
+ 				  const CCTK_REAL velx,
+@@ -104,7 +155,7 @@ static inline void eigenvalues_cc(const CCTK_REAL rho,
+ 				  const CCTK_REAL alp,
+ 				  const CCTK_REAL beta,
+ 				  const CCTK_REAL u,
+-				  CCTK_REAL *restrict lam) 
++				  CCTK_REAL * const restrict lam) 
+ {
+ 
+   const CCTK_REAL vlowx = gxx*velx + gxy*vely + gxz*velz;
+@@ -126,58 +177,151 @@ static inline void eigenvalues_cc(const CCTK_REAL rho,
+   return;
+ }
+ 
++static inline void eigenvaluesM_cc(const CCTK_REAL rho,
++				  const CCTK_REAL velx,
++				  const CCTK_REAL vely,
++				  const CCTK_REAL velz,
++				  const CCTK_REAL eps,
++				  const CCTK_REAL press,
++				  const CCTK_REAL Bx,
++				  const CCTK_REAL By,
++				  const CCTK_REAL Bz,
++				  const CCTK_REAL cs2,
++				  const CCTK_REAL w,
++				  const CCTK_REAL gxx,
++				  const CCTK_REAL gxy,
++				  const CCTK_REAL gxz,
++				  const CCTK_REAL gyy,
++				  const CCTK_REAL gyz,
++				  const CCTK_REAL gzz,
++				  const CCTK_REAL alp,
++				  const CCTK_REAL beta,
++				  const CCTK_REAL u,
++				  CCTK_REAL * const restrict lam) 
++{
++
++  const CCTK_REAL vlowx = gxx*velx + gxy*vely + gxz*velz;
++  const CCTK_REAL vlowy = gxy*velx + gyy*vely + gyz*velz;
++  const CCTK_REAL vlowz = gxz*velx + gyz*vely + gzz*velz;
++  const CCTK_REAL v2 = vlowx*velx + vlowy*vely + vlowz*velz;
++
++  const CCTK_REAL boa = beta/alp;
++  const CCTK_REAL Bxlow = gxx*Bx + gxy*By + gxz*Bz;
++  const CCTK_REAL Bylow = gxy*Bx + gyy*By + gyz*Bz;
++  const CCTK_REAL Bzlow = gxz*Bx + gyz*By + gzz*Bz;
++  const CCTK_REAL B2 =Bxlow*Bx+Bylow*By+Bzlow*Bz;
++  const CCTK_REAL Bdotv =Bxlow*velx+Bylow*vely+Bzlow*velz;
++  const CCTK_REAL Bdotv2 =Bdotv*Bdotv;
++  const CCTK_REAL w2 = w*w;
++  const CCTK_REAL b2 =B2/w2+Bdotv2;
++  const CCTK_REAL rhos = rho*(1.0+eps)+press+b2;
++  const CCTK_REAL va2 = b2/rhos;
++  const CCTK_REAL u2 = va2+cs2*(1.0-va2);
++
++  lam[1] = velx - boa;
++  lam[2] = lam[1];
++  lam[3] = lam[1];
++
++  const CCTK_REAL lam_tmp1 = (velx*(1.0-u2) - sqrt(u2*(1.0-v2)*
++			       (u*(1.0-v2*u2) - velx*velx*(1.0-u2))))/(1.0-v2*u2);
++  const CCTK_REAL lam_tmp2 = (velx*(1.0-u2) + sqrt(u2*(1.0-v2)*
++			       (u*(1.0-v2*u2) - velx*velx*(1.0-u2))))/(1.0-v2*u2);
++
++  lam[0] = lam_tmp1 - boa;
++  lam[4] = lam_tmp2 - boa;
++
++  return;
++}
++
+ // helpers for H viscosity
+ static inline CCTK_REAL etaX(const cGH *cctkGH,
+ 			  const int i, const int j, const int k,
+-			  const CCTK_REAL *restrict vel,
+-			  const CCTK_REAL *restrict cs) {
++			  const CCTK_REAL * const restrict vel,
++			  const CCTK_REAL * const restrict cs) {
+ 
+   const int vidxr = CCTK_VECTGFINDEX3D(cctkGH,i+1,j,k,0);
+   const int vidx = CCTK_VECTGFINDEX3D(cctkGH,i,j,k,0);
+   const int idxr = CCTK_GFINDEX3D(cctkGH,i+1,j,k);
+   const int idx = CCTK_GFINDEX3D(cctkGH,i,j,k);
+ 
+-  return 0.5 * (fabs(vel[idxr]-vel[idx]) + fabs(cs[idxr]-cs[idx]));
++  return 0.5 * (fabs(vel[vidxr]-vel[vidx]) + fabs(cs[idxr]-cs[idx]));
+ }
+ 
+ static inline CCTK_REAL etaY(const cGH *cctkGH,
+ 			  const int i, const int j, const int k,
+-			  const CCTK_REAL *restrict vel,
+-			  const CCTK_REAL *restrict cs) {
++			  const CCTK_REAL * const restrict vel,
++			  const CCTK_REAL * const restrict cs) {
+ 
+   const int vidxr = CCTK_VECTGFINDEX3D(cctkGH,i,j+1,k,1);
+   const int vidx = CCTK_VECTGFINDEX3D(cctkGH,i,j,k,1);
+   const int idxr = CCTK_GFINDEX3D(cctkGH,i,j+1,k);
+   const int idx = CCTK_GFINDEX3D(cctkGH,i,j,k);
+ 
+-  return 0.5 * (fabs(vel[idxr]-vel[idx]) + fabs(cs[idxr]-cs[idx]));
++  return 0.5 * (fabs(vel[vidxr]-vel[vidx]) + fabs(cs[idxr]-cs[idx]));
+ }
+ 
+ static inline CCTK_REAL etaZ(const cGH *cctkGH,
+ 			  const int i, const int j, const int k,
+-			  const CCTK_REAL *restrict vel,
+-			  const CCTK_REAL *restrict cs) {
++			  const CCTK_REAL * const restrict vel,
++			  const CCTK_REAL * const restrict cs) {
+ 
+-  int vidxr = CCTK_VECTGFINDEX3D(cctkGH,i,j,k+1,2);
+-  int vidx = CCTK_VECTGFINDEX3D(cctkGH,i,j,k,2);
+-  int idxr = CCTK_GFINDEX3D(cctkGH,i,j,k+1);
+-  int idx = CCTK_GFINDEX3D(cctkGH,i,j,k);
++  const int vidxr = CCTK_VECTGFINDEX3D(cctkGH,i,j,k+1,2);
++  const int vidx = CCTK_VECTGFINDEX3D(cctkGH,i,j,k,2);
++  const int idxr = CCTK_GFINDEX3D(cctkGH,i,j,k+1);
++  const int idx = CCTK_GFINDEX3D(cctkGH,i,j,k);
+ 
+   return 0.5 * (fabs(vel[vidxr]-vel[vidx]) + fabs(cs[idxr]-cs[idx]));
+ }
+ 
++static inline void vlow_blow(const CCTK_REAL gxx,const CCTK_REAL gxy,const CCTK_REAL gxz,const CCTK_REAL gyy,const CCTK_REAL gyz,const CCTK_REAL gzz, 
++     const CCTK_REAL velx,const CCTK_REAL vely,const CCTK_REAL velz,const CCTK_REAL Bvecx,const CCTK_REAL Bvecy,const CCTK_REAL Bvecz, 
++     CCTK_REAL& ab0,CCTK_REAL& b2,CCTK_REAL& w,CCTK_REAL& bxlow,CCTK_REAL& bylow,CCTK_REAL& bzlow)
++{
++        
++  // Calculates v_i (see Anton Eq. 5) and B_i (Bvecxlow)- undensitized!
++  // calculates B^i v_i [Anton eq. 44] and b^2 [LHS of Anton eq. 46]
++  // Calculates w (Lorentz factor) as (1-v^i v_i)^{-1/2}
++  // Calculates b_i (bxlow)
++
++  // vel_i  = g_ij v^j
++  // B_i = g_ij B^i
++  const CCTK_REAL velxlow = gxx*velx + gxy*vely + gxz*velz;
++  const CCTK_REAL velylow = gxy*velx + gyy*vely + gyz*velz;
++  const CCTK_REAL velzlow = gxz*velx + gyz*vely + gzz*velz;
++  const CCTK_REAL Bvecxlow = gxx*Bvecx + gxy*Bvecy + gxz*Bvecz;
++  const CCTK_REAL Bvecylow = gxy*Bvecx + gyy*Bvecy + gyz*Bvecz;
++  const CCTK_REAL Bveczlow = gxz*Bvecx + gyz*Bvecy + gzz*Bvecz;
++
++  // B^i v_i (= b^0/u^0)
++  const CCTK_REAL Bdotv = velxlow*Bvecx+velylow*Bvecy+velzlow*Bvecz;
++
++  // v^2 = v_i v^i; w=(1-v^2)^{-1/2}
++  const CCTK_REAL v2 = velxlow*velx + velylow*vely + velzlow*velz;
++  w = 1./sqrt(1.-v2);
++
++  // b^2 = B^i B_i / w^2 + (b^0/u^0)^2
++  b2=(Bvecx*Bvecxlow+Bvecy*Bvecylow+Bvecz*Bveczlow)/SQR(w)+SQR(Bdotv);
++
++  // b_i = B_i/w +w*(B dot v)*v_i
++  bxlow = Bvecxlow/w+w*Bdotv*velxlow;
++  bylow = Bvecylow/w+w*Bdotv*velylow;
++  bzlow = Bveczlow/w+w*Bdotv*velzlow;
++
++  // alpha b_0 = w_lorentz B^i vel_i
++  ab0 = w * Bdotv;
++}
+ 
+-template<const int fdir, const bool do_ye, const bool do_hvisc, const bool do_tracers>
++template<const int fdir, const bool do_ye, const bool do_hvisc, const bool do_tracers, const bool do_mhd>
+ void GRHydro_HLLE_CC_LL(CCTK_ARGUMENTS) 
+ {
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+ 
+   // save memory when multipatch is not used
+-  CCTK_REAL * restrict g11, * restrict g12, * restrict g13;
+-  CCTK_REAL * restrict g22, * restrict g23, * restrict g33;
+-  CCTK_REAL * restrict beta1, * restrict beta2, * restrict beta3;
+-  CCTK_REAL * restrict vup;
++  const CCTK_REAL * restrict g11, * restrict g12, * restrict g13;
++  const CCTK_REAL * restrict g22, * restrict g23, * restrict g33;
++  const CCTK_REAL * restrict beta1, * restrict beta2, * restrict beta3;
++  const CCTK_REAL * restrict vup;
+   const int offsetx = fdir==1, offsety = fdir==2, offsetz = fdir==3;
+   assert(offsetx+offsety+offsetz == 1);
+ 
+@@ -224,20 +368,29 @@ void GRHydro_HLLE_CC_LL(CCTK_ARGUMENTS)
+   }
+ 
+ #pragma omp parallel for
+-  for(int k = GRHydro_stencil-1; k < cctk_lsh[2]-GRHydro_stencil; k++)
+-    for(int j = GRHydro_stencil-1; j < cctk_lsh[1]-GRHydro_stencil; j++) 
+-      for(int i = GRHydro_stencil-1; i < cctk_lsh[0]-GRHydro_stencil; i++) {
++  for(int k = GRHydro_stencil-1; k < cctk_lsh[2]-GRHydro_stencil+ transport_constraints*(1-offsetz); ++k)
++    for(int j = GRHydro_stencil-1; j < cctk_lsh[1]-GRHydro_stencil+ transport_constraints*(1-offsety); ++j)
++      for(int i = GRHydro_stencil-1; i < cctk_lsh[0]-GRHydro_stencil+ transport_constraints*(1-offsetx); ++i) {
+ 
+ 	const int idx = CCTK_GFINDEX3D(cctkGH,i,j,k);
+ 	const int idxr = 
+ 	  CCTK_GFINDEX3D(cctkGH,i+offsetx,j+offsety,k+offsetz);
+ 
+-	CCTK_REAL consp[5],consm_i[5];
+-	CCTK_REAL fplus[5],fminus[5], f1[5];
++        // C++98 does not allow variable sized arrays (C99 does)
++        // C++98 does however allow the use of a const-variable as the aray
++        // size as long as its value is known at compile time
++	const int arraysize = do_mhd ? 8 : 5;
++
++        CCTK_REAL consp[8];
++        CCTK_REAL consm_i[8];
++	CCTK_REAL fplus[8];
++	CCTK_REAL fminus[8];
++	CCTK_REAL f1[8];
++	CCTK_REAL qdiff[8];
++	
+ 	CCTK_REAL lamplusminus[10];
+         CCTK_REAL * const lamminus = lamplusminus;
+         CCTK_REAL * const lamplus = lamplusminus+5;
+-	CCTK_REAL qdiff[5];
+ 	CCTK_REAL avg_beta;
+ 
+ 	consp[0] = densplus[idx];
+@@ -245,20 +398,32 @@ void GRHydro_HLLE_CC_LL(CCTK_ARGUMENTS)
+ 	consp[2] = syplus[idx];
+ 	consp[3] = szplus[idx];
+ 	consp[4] = tauplus[idx];
+-
++	if (do_mhd) {
++	  consp[5] = Bvecxplus[idx];
++	  consp[6] = Bvecyplus[idx];
++	  consp[7] = Bveczplus[idx];
++	}
+ 	consm_i[0] = densminus[idxr];
+ 	consm_i[1] = sxminus[idxr];
+ 	consm_i[2] = syminus[idxr];
+ 	consm_i[3] = szminus[idxr];
+ 	consm_i[4] = tauminus[idxr];
+-	
+-	if(fdir==1) 
++	if (do_mhd) {
++	  consm_i[5] = Bvecxminus[idxr];
++	  consm_i[6] = Bvecyminus[idxr];
++	  consm_i[7] = Bveczminus[idxr];
++	}
++
++        if(fdir==1) 
+ 	  avg_beta = 0.5 * (beta1[idxr]+beta1[idx]);
+ 	else if(fdir==2)
+ 	  avg_beta = 0.5 * (beta2[idxr]+beta2[idx]);
+ 	else 
+ 	  avg_beta = 0.5 * (beta3[idxr]+beta3[idx]);
+ 
++	const CCTK_REAL avg_betax = 0.5 * (beta1[idxr]+beta1[idx]);
++	const CCTK_REAL avg_betay = 0.5 * (beta2[idxr]+beta2[idx]);
++	const CCTK_REAL avg_betaz = 0.5 * (beta3[idxr]+beta3[idx]);
+ 	const CCTK_REAL avg_alp = 0.5 * (alp[idxr]+alp[idx]);
+ 
+ 	const CCTK_REAL gxxh = 0.5 * (g11[idx] + g11[idxr]);
+@@ -271,32 +436,79 @@ void GRHydro_HLLE_CC_LL(CCTK_ARGUMENTS)
+ 	const CCTK_REAL savg_detr = 
+ 	  sqrt(SpatialDeterminantC(gxxh,gxyh,gxzh,gyyh,gyzh,gzzh));
+ 
++        // these need to be initialized otherwise the compiler complains even
++        // if they are only ever used when do_mhd is true
++        CCTK_REAL ab0m = -42.0;
++        CCTK_REAL ab0p = -42.0;
++        CCTK_REAL b2m = -42.0;
++        CCTK_REAL b2p = -42.0;
++        CCTK_REAL wm = -42.0;
++        CCTK_REAL wp = -42.0;
++        CCTK_REAL blowxm = -42.0;
++        CCTK_REAL blowym = -42.0;
++        CCTK_REAL blowzm = -42.0;
++        CCTK_REAL blowxp = -42.0;
++        CCTK_REAL blowyp = -42.0;
++        CCTK_REAL blowzp = -42.0;
++
++        if (do_mhd) {
++          // TODO: we do actually store w_lorentz on the grid and could use it
++          vlow_blow(gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,
++               velxplus[idx],velyplus[idx],velzplus[idx],Bvecxplus[idx],Bvecyplus[idx],Bveczplus[idx],
++               ab0p,b2p,wp,blowxp,blowyp,blowzp);
++   
++          vlow_blow(gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,
++               velxminus[idxr],velyminus[idxr],velzminus[idxr],Bvecxminus[idxr],Bvecyminus[idxr],Bveczminus[idxr],
++               ab0m,b2m,wm,blowxm,blowym,blowzm);
++	}
+ 
+ 	// If the Riemann problem is trivial, just calculate the fluxes
+ 	// from the left state and skip to the next cell
+ 	if ( SpaceMask_CheckStateBits(space_mask, idx, type_bits, trivial) ) {
+ 
+-	  if(fdir==1)
+-	    num_x_flux_cc(consp[0],consp[1],consp[2],consp[3],consp[4],
+-			  &f1[0],&f1[1],&f1[2],&f1[3],&f1[4],
+-			  velxplus[idx],pressplus[idx],savg_detr,
+-			  avg_alp,avg_beta);
+-	  else if (fdir==2) 
+-	    num_x_flux_cc(consp[0],consp[2],consp[3],consp[1],consp[4],
+-			  &f1[0],&f1[2],&f1[3],&f1[1],&f1[4],
+-			  velyplus[idx],pressplus[idx],savg_detr,
+-			  avg_alp,avg_beta);
+-	  else 
+-	    num_x_flux_cc(consp[0],consp[3],consp[1],consp[2],consp[4],
+-			  &f1[0],&f1[3],&f1[1],&f1[2],&f1[4],
+-			  velzplus[idx],pressplus[idx],savg_detr,
+-			  avg_alp,avg_beta);
++          if (do_mhd) {
++
++            if (fdir==1)
++              num_x_fluxM_cc(consp[0],consp[1],consp[2],consp[3],consp[4],consp[5],consp[6],consp[7],
++                          fplus[0],fplus[1],fplus[2],fplus[3],fplus[4],fplus[5],fplus[6],fplus[7],
++                          velxplus[idx],velyplus[idx],velzplus[idx],
++                          pressplus[idx],savg_detr,
++                          avg_alp,avg_betax,avg_betay,avg_betaz,blowxp,blowyp,blowzp,b2p,ab0p,wp);
++            else if(fdir==2)
++              num_x_fluxM_cc(consp[0],consp[2],consp[3],consp[1],consp[4],consp[6],consp[7],consp[5],
++                          fplus[0],fplus[2],fplus[3],fplus[1],fplus[4],fplus[6],fplus[7],fplus[5],
++                          velyplus[idx],velzplus[idx],velxplus[idx],
++                          pressplus[idx],savg_detr,
++                          avg_alp,avg_betay,avg_betaz,avg_betax,blowyp,blowzp,blowxp,b2p,ab0p,wp);
++            else
++              num_x_fluxM_cc(consp[0],consp[3],consp[1],consp[2],consp[4],consp[7],consp[5],consp[6],
++                          fplus[0],fplus[3],fplus[1],fplus[2],fplus[4],fplus[7],fplus[5],fplus[6],
++                          velzplus[idx],velxplus[idx],velyplus[idx],
++                          pressplus[idx],savg_detr,
++                          avg_alp,avg_betaz,avg_betax,avg_betay,blowzp,blowxp,blowyp,b2p,ab0p,wp);
++          } else {
++            if(fdir==1)
++              num_x_flux_cc(consp[0],consp[1],consp[2],consp[3],consp[4],
++                            f1[0],f1[1],f1[2],f1[3],f1[4],
++                            velxplus[idx],pressplus[idx],savg_detr,
++                            avg_alp,avg_beta);
++            else if (fdir==2)
++              num_x_flux_cc(consp[0],consp[2],consp[3],consp[1],consp[4],
++                            f1[0],f1[2],f1[3],f1[1],f1[4],
++                            velyplus[idx],pressplus[idx],savg_detr,
++                            avg_alp,avg_beta);
++            else
++              num_x_flux_cc(consp[0],consp[3],consp[1],consp[2],consp[4],
++                            f1[0],f1[3],f1[1],f1[2],f1[4],
++                            velzplus[idx],pressplus[idx],savg_detr,
++                            avg_alp,avg_beta);
++          }
+ 
+ 	} else {
+ 
+ 	  // normal case -- full HLLE Riemann solution
+ 	  CCTK_REAL uxxh,uyyh,uzzh;
+-	  UpperMetricClim(&uxxh,&uyyh,&uzzh,savg_detr,gxxh,gxyh,gxzh,
++	  UpperMetricClim(uxxh,uyyh,uzzh,savg_detr,gxxh,gxyh,gxzh,
+ 			  gyyh, gyzh, gzzh);
+ 
+ 	  CCTK_REAL usendh;
+@@ -308,108 +520,230 @@ void GRHydro_HLLE_CC_LL(CCTK_ARGUMENTS)
+ 	    usendh = uzzh;
+ 
+ 	  // calculate the jumps in the conserved variables
+-	  qdiff[0] = consm_i[0] - consp[0];
+-	  qdiff[1] = consm_i[1] - consp[1];
+-	  qdiff[2] = consm_i[2] - consp[2];
+-	  qdiff[3] = consm_i[3] - consp[3];
+-	  qdiff[4] = consm_i[4] - consp[4];
+-
+-	  if (fdir==1) {
+-	    eigenvalues_cc(rhominus[idxr],
+-			   velxminus[idxr],
+-			   velyminus[idxr],
+-			   velzminus[idxr],
+-			   epsminus[idxr],
+-			   pressminus[idxr],
+-			   cs2minus[idxr],
+-			   w_lorentzminus[idxr],
+-			   gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,
+-			   avg_alp,avg_beta,usendh,
+-			   lamminus);
+-	    eigenvalues_cc(rhoplus[idx],
+-			   velxplus[idx],
+-			   velyplus[idx],
+-			   velzplus[idx],
+-			   epsplus[idx],
+-			   pressplus[idx],
+-			   cs2plus[idx],
+-			   w_lorentzplus[idx],
+-			   gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,
+-			   avg_alp,avg_beta,usendh,
+-			   lamplus);
+-	    num_x_flux_cc(consp[0],consp[1],consp[2],consp[3],consp[4],
+-			  &fplus[0],&fplus[1],&fplus[2],&fplus[3],&fplus[4],
+-			  velxplus[idx],pressplus[idx],savg_detr,
+-			  avg_alp,avg_beta);	    
+-	    num_x_flux_cc(consm_i[0],consm_i[1],consm_i[2],consm_i[3],consm_i[4],
+-			  &fminus[0],&fminus[1],&fminus[2],&fminus[3],&fminus[4],
+-			  velxminus[idxr],pressminus[idxr],savg_detr,
+-			  avg_alp,avg_beta);	    
++          for(int m=0;m<arraysize;++m)
++            qdiff[m] = consm_i[m] - consp[m];
++
++	  if (do_mhd) {
++
++      	    if (fdir==1) {
++      	      eigenvaluesM_cc(rhominus[idxr],
++      	          	   velxminus[idxr],
++      	          	   velyminus[idxr],
++      	          	   velzminus[idxr],
++      	          	   epsminus[idxr],
++      	          	   pressminus[idxr],
++			   Bvecxminus[idxr],
++			   Bvecyminus[idxr],
++			   Bveczminus[idxr],
++      	          	   cs2minus[idxr],
++      	          	   w_lorentzminus[idxr],
++      	          	   gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,
++      	          	   avg_alp,avg_beta,usendh,
++      	          	   lamminus);
++      	      eigenvaluesM_cc(rhoplus[idx],
++      	          	   velxplus[idx],
++      	          	   velyplus[idx],
++      	          	   velzplus[idx],
++      	          	   epsplus[idx],
++      	          	   pressplus[idx],
++			   Bvecxplus[idx],
++			   Bvecyplus[idx],
++			   Bveczplus[idx],
++      	          	   cs2plus[idx],
++      	          	   w_lorentzplus[idx],
++      	          	   gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,
++      	          	   avg_alp,avg_beta,usendh,
++      	          	   lamplus);
++
++      	      num_x_fluxM_cc(consp[0],consp[1],consp[2],consp[3],consp[4],consp[5],consp[6],consp[7],
++      	          	  fplus[0],fplus[1],fplus[2],fplus[3],fplus[4],fplus[5],fplus[6],fplus[7],
++      	          	  velxplus[idx],velyplus[idx],velzplus[idx],
++			  pressplus[idx],savg_detr,
++                          avg_alp,avg_betax,avg_betay,avg_betaz,blowxp,blowyp,blowzp,b2p,ab0p,wp);
++      	      num_x_fluxM_cc(consm_i[0],consm_i[1],consm_i[2],consm_i[3],consm_i[4],consm_i[5],consm_i[6],consm_i[7],
++      	          	  fminus[0],fminus[1],fminus[2],fminus[3],fminus[4],fminus[5],fminus[6],fminus[7],
++      	          	  velxminus[idxr],velyminus[idxr],velzminus[idxr],
++      	          	  pressminus[idxr],savg_detr,
++                          avg_alp,avg_betax,avg_betay,avg_betaz,blowxm,blowym,blowzm,b2m,ab0m,wm);
++      	    }
++      	    else if(fdir==2) {
++      	      eigenvaluesM_cc(rhominus[idxr],
++      	          	   velyminus[idxr],
++      	          	   velzminus[idxr],
++      	          	   velxminus[idxr],
++      	          	   epsminus[idxr],
++      	          	   pressminus[idxr],
++			   Bvecyminus[idxr],
++			   Bveczminus[idxr],
++			   Bvecxminus[idxr],
++      	          	   cs2minus[idxr],
++      	          	   w_lorentzminus[idxr],
++      	          	   gyyh,gyzh,gxyh,gzzh,gxzh,gxxh,
++      	          	   avg_alp,avg_beta,usendh,
++      	          	   lamminus);
++      	      eigenvaluesM_cc(rhoplus[idx],
++      	          	   velyplus[idx],
++      	          	   velzplus[idx],
++      	          	   velxplus[idx],
++      	          	   epsplus[idx],
++      	          	   pressplus[idx],
++			   Bvecyplus[idx],
++			   Bveczplus[idx],
++			   Bvecxplus[idx],
++      	          	   cs2plus[idx],
++      	          	   w_lorentzplus[idx],
++      	          	   gyyh,gyzh,gxyh,gzzh,gxzh,gxxh,
++      	          	   avg_alp,avg_beta,usendh,
++      	          	   lamplus);
++      	      num_x_fluxM_cc(consp[0],consp[2],consp[3],consp[1],consp[4],consp[6],consp[7],consp[5],
++      	          	  fplus[0],fplus[2],fplus[3],fplus[1],fplus[4],fplus[6],fplus[7],fplus[5],
++      	          	  velyplus[idx],velzplus[idx],velxplus[idx],
++      	          	  pressplus[idx],savg_detr,
++                          avg_alp,avg_betay,avg_betaz,avg_betax,blowyp,blowzp,blowxp,b2p,ab0p,wp);
++      	      num_x_fluxM_cc(consm_i[0],consm_i[2],consm_i[3],consm_i[1],consm_i[4],consm_i[6],consm_i[7],consm_i[5],
++      	          	  fminus[0],fminus[2],fminus[3],fminus[1],fminus[4],fminus[6],fminus[7],fminus[5],
++      	          	  velyminus[idxr],velzminus[idxr],velxminus[idxr],
++      	          	  pressminus[idxr],savg_detr,
++                          avg_alp,avg_betay,avg_betaz,avg_betax,blowym,blowzm,blowxm,b2m,ab0m,wm);
++      	    } else {
++      	      eigenvaluesM_cc(rhominus[idxr],
++      	          	   velzminus[idxr],
++      	          	   velxminus[idxr],
++      	          	   velyminus[idxr],
++      	          	   epsminus[idxr],
++      	          	   pressminus[idxr],
++			   Bveczminus[idxr],
++			   Bvecxminus[idxr],
++			   Bvecyminus[idxr],
++      	          	   cs2minus[idxr],
++      	          	   w_lorentzminus[idxr],
++      	          	   gzzh,gxzh,gyzh,gxxh,gxyh,gyyh,
++      	          	   avg_alp,avg_beta,usendh,
++      	          	   lamminus);
++      	      eigenvaluesM_cc(rhoplus[idx],
++      	          	   velzplus[idx],
++      	          	   velxplus[idx],
++      	          	   velyplus[idx],
++      	          	   epsplus[idx],
++      	          	   pressplus[idx],
++			   Bveczplus[idx],
++			   Bvecxplus[idx],
++			   Bvecyplus[idx],
++      	          	   cs2plus[idx],
++      	          	   w_lorentzplus[idx],
++      	          	   gzzh,gxzh,gyzh,gxxh,gxyh,gyyh,
++      	          	   avg_alp,avg_beta,usendh,
++      	          	   lamplus);
++      	      num_x_fluxM_cc(consp[0],consp[3],consp[1],consp[2],consp[4],consp[7],consp[5],consp[6],
++      	          	  fplus[0],fplus[3],fplus[1],fplus[2],fplus[4],fplus[7],fplus[5],fplus[6],
++      	          	  velzplus[idx],velxplus[idx],velyplus[idx],
++      	          	  pressplus[idx],savg_detr,
++                          avg_alp,avg_betaz,avg_betax,avg_betay,blowzp,blowxp,blowyp,b2p,ab0p,wp);
++      	      num_x_fluxM_cc(consm_i[0],consm_i[3],consm_i[1],consm_i[2],consm_i[4],consm_i[7],consm_i[5],consm_i[6],
++      	          	  fminus[0],fminus[3],fminus[1],fminus[2],fminus[4],fminus[7],fminus[5],fminus[6],
++      	          	  velzminus[idxr],velxminus[idxr],velyminus[idxr],
++      	          	  pressminus[idxr],savg_detr,
++                          avg_alp,avg_betaz,avg_betax,avg_betay,blowzm,blowxm,blowym,b2m,ab0m,wm);
++      	    } 
++          }
++          else {
++  	    
++      	    if (fdir==1) {
++      	      eigenvalues_cc(rhominus[idxr],
++      	          	   velxminus[idxr],
++      	          	   velyminus[idxr],
++      	          	   velzminus[idxr],
++      	          	   epsminus[idxr],
++      	          	   pressminus[idxr],
++      	          	   cs2minus[idxr],
++      	          	   w_lorentzminus[idxr],
++      	          	   gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,
++      	          	   avg_alp,avg_beta,usendh,
++      	          	   lamminus);
++      	      eigenvalues_cc(rhoplus[idx],
++      	          	   velxplus[idx],
++      	          	   velyplus[idx],
++      	          	   velzplus[idx],
++      	          	   epsplus[idx],
++      	          	   pressplus[idx],
++      	          	   cs2plus[idx],
++      	          	   w_lorentzplus[idx],
++      	          	   gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,
++      	          	   avg_alp,avg_beta,usendh,
++      	          	   lamplus);
++      	      num_x_flux_cc(consp[0],consp[1],consp[2],consp[3],consp[4],
++      	          	  fplus[0],fplus[1],fplus[2],fplus[3],fplus[4],
++      	          	  velxplus[idx],pressplus[idx],savg_detr,
++      	          	  avg_alp,avg_beta);	    
++      	      num_x_flux_cc(consm_i[0],consm_i[1],consm_i[2],consm_i[3],consm_i[4],
++      	          	  fminus[0],fminus[1],fminus[2],fminus[3],fminus[4],
++      	          	  velxminus[idxr],pressminus[idxr],savg_detr,
++      	          	  avg_alp,avg_beta);	    
++      	    }
++      	    else if(fdir==2) {
++      	      eigenvalues_cc(rhominus[idxr],
++      	          	   velyminus[idxr],
++      	          	   velzminus[idxr],
++      	          	   velxminus[idxr],
++      	          	   epsminus[idxr],
++      	          	   pressminus[idxr],
++      	          	   cs2minus[idxr],
++      	          	   w_lorentzminus[idxr],
++      	          	   gyyh,gyzh,gxyh,gzzh,gxzh,gxxh,
++      	          	   avg_alp,avg_beta,usendh,
++      	          	   lamminus);
++      	      eigenvalues_cc(rhoplus[idx],
++      	          	   velyplus[idx],
++      	          	   velzplus[idx],
++      	          	   velxplus[idx],
++      	          	   epsplus[idx],
++      	          	   pressplus[idx],
++      	          	   cs2plus[idx],
++      	          	   w_lorentzplus[idx],
++      	          	   gyyh,gyzh,gxyh,gzzh,gxzh,gxxh,
++      	          	   avg_alp,avg_beta,usendh,
++      	          	   lamplus);
++      	      num_x_flux_cc(consp[0],consp[2],consp[3],consp[1],consp[4],
++      	          	  fplus[0],fplus[2],fplus[3],fplus[1],fplus[4],
++      	          	  velyplus[idx],pressplus[idx],savg_detr,
++      	          	  avg_alp,avg_beta);	    
++      	      num_x_flux_cc(consm_i[0],consm_i[2],consm_i[3],consm_i[1],consm_i[4],
++      	          	  fminus[0],fminus[2],fminus[3],fminus[1],fminus[4],
++      	          	  velyminus[idxr],pressminus[idxr],savg_detr,
++      	          	  avg_alp,avg_beta);	    
++      	    } else {
++      	      eigenvalues_cc(rhominus[idxr],
++      	          	   velzminus[idxr],
++      	          	   velxminus[idxr],
++      	          	   velyminus[idxr],
++      	          	   epsminus[idxr],
++      	          	   pressminus[idxr],
++      	          	   cs2minus[idxr],
++      	          	   w_lorentzminus[idxr],
++      	          	   gzzh,gxzh,gyzh,gxxh,gxyh,gyyh,
++      	          	   avg_alp,avg_beta,usendh,
++      	          	   lamminus);
++      	      eigenvalues_cc(rhoplus[idx],
++      	          	   velzplus[idx],
++      	          	   velxplus[idx],
++      	          	   velyplus[idx],
++      	          	   epsplus[idx],
++      	          	   pressplus[idx],
++      	          	   cs2plus[idx],
++      	          	   w_lorentzplus[idx],
++      	          	   gzzh,gxzh,gyzh,gxxh,gxyh,gyyh,
++      	          	   avg_alp,avg_beta,usendh,
++      	          	   lamplus);
++      	      num_x_flux_cc(consp[0],consp[3],consp[1],consp[2],consp[4],
++      	          	  fplus[0],fplus[3],fplus[1],fplus[2],fplus[4],
++      	          	  velzplus[idx],pressplus[idx],savg_detr,
++      	          	  avg_alp,avg_beta);	    
++      	      num_x_flux_cc(consm_i[0],consm_i[3],consm_i[1],consm_i[2],consm_i[4],
++      	          	  fminus[0],fminus[3],fminus[1],fminus[2],fminus[4],
++      	          	  velzminus[idxr],pressminus[idxr],savg_detr,
++      	          	  avg_alp,avg_beta);	    
++      	    } 
+ 	  }
+-	  else if(fdir==2) {
+-	    eigenvalues_cc(rhominus[idxr],
+-			   velyminus[idxr],
+-			   velzminus[idxr],
+-			   velxminus[idxr],
+-			   epsminus[idxr],
+-			   pressminus[idxr],
+-			   cs2minus[idxr],
+-			   w_lorentzminus[idxr],
+-			   gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,
+-			   avg_alp,avg_beta,usendh,
+-			   lamminus);
+-	    eigenvalues_cc(rhoplus[idx],
+-			   velyplus[idx],
+-			   velzplus[idx],
+-			   velxplus[idx],
+-			   epsplus[idx],
+-			   pressplus[idx],
+-			   cs2plus[idx],
+-			   w_lorentzplus[idx],
+-			   gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,
+-			   avg_alp,avg_beta,usendh,
+-			   lamplus);
+-	    num_x_flux_cc(consp[0],consp[2],consp[3],consp[1],consp[4],
+-			  &fplus[0],&fplus[2],&fplus[3],&fplus[1],&fplus[4],
+-			  velyplus[idx],pressplus[idx],savg_detr,
+-			  avg_alp,avg_beta);	    
+-	    num_x_flux_cc(consm_i[0],consm_i[2],consm_i[3],consm_i[1],consm_i[4],
+-			  &fminus[0],&fminus[2],&fminus[3],&fminus[1],&fminus[4],
+-			  velyminus[idxr],pressminus[idxr],savg_detr,
+-			  avg_alp,avg_beta);	    
+-	  } else {
+-	    eigenvalues_cc(rhominus[idxr],
+-			   velzminus[idxr],
+-			   velxminus[idxr],
+-			   velyminus[idxr],
+-			   epsminus[idxr],
+-			   pressminus[idxr],
+-			   cs2minus[idxr],
+-			   w_lorentzminus[idxr],
+-			   gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,
+-			   avg_alp,avg_beta,usendh,
+-			   lamminus);
+-	    eigenvalues_cc(rhoplus[idx],
+-			   velzplus[idx],
+-			   velxplus[idx],
+-			   velyplus[idx],
+-			   epsplus[idx],
+-			   pressplus[idx],
+-			   cs2plus[idx],
+-			   w_lorentzplus[idx],
+-			   gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,
+-			   avg_alp,avg_beta,usendh,
+-			   lamplus);
+-	    num_x_flux_cc(consp[0],consp[3],consp[1],consp[2],consp[4],
+-			  &fplus[0],&fplus[3],&fplus[1],&fplus[2],&fplus[4],
+-			  velzplus[idx],pressplus[idx],savg_detr,
+-			  avg_alp,avg_beta);	    
+-	    num_x_flux_cc(consm_i[0],consm_i[3],consm_i[1],consm_i[2],consm_i[4],
+-			  &fminus[0],&fminus[3],&fminus[1],&fminus[2],&fminus[4],
+-			  velzminus[idxr],pressminus[idxr],savg_detr,
+-			  avg_alp,avg_beta);	    
+-	  } 
+-
+ 	  // H-viscosity
+ 	  if(do_hvisc) {
+ 	    CCTK_REAL etabar = 0.0;
+@@ -460,19 +794,22 @@ void GRHydro_HLLE_CC_LL(CCTK_ARGUMENTS)
+ 	  CCTK_REAL charmin = min10(lamplusminus);
+ 
+ 	  CCTK_REAL icharpm = 1.0 / (charmax-charmin);
+-
+-	  for(int m=0;m<5;m++) {
+-	    f1[m] = (charmax * fplus[m] - charmin * fminus[m] +
+-		     charmax*charmin * qdiff[m]) * icharpm;
+-	      }
+-
++  	  for(int m=0;m<arraysize; ++m) {
++  	      f1[m] = (charmax * fplus[m] - charmin * fminus[m] +
++  	               charmax*charmin * qdiff[m]) * icharpm;
++  	  }
+ 	} // else trivial
+-	
+-	densflux[idx] = f1[0];
+-	sxflux[idx]   = f1[1];
+-	syflux[idx]   = f1[2];
+-	szflux[idx]   = f1[3];
+-	tauflux[idx]  = f1[4];
++
++   	densflux[idx] = f1[0];
++   	sxflux[idx]   = f1[1];
++   	syflux[idx]   = f1[2];
++   	szflux[idx]   = f1[3];
++   	tauflux[idx]  = f1[4];
++        if (do_mhd) {	
++   	  Bconsxflux[idx]   = f1[5];
++   	  Bconsyflux[idx]   = f1[6];
++   	  Bconszflux[idx]   = f1[7];
++        }
+ 
+ 	if(do_ye) {
+ 	  if(densflux[idx] > 0.0) 
+@@ -483,13 +820,13 @@ void GRHydro_HLLE_CC_LL(CCTK_ARGUMENTS)
+ 	
+ 	if(do_tracers) {
+ 	  if(densflux[idx] > 0.0) 
+-	    for(int m=0;m<number_of_tracers;m++) {
++	    for(int m=0;m<number_of_tracers; ++m) {
+ 	      const int idx4 = CCTK_VECTGFINDEX3D(cctkGH,i,j,k,m);
+ 	      cons_tracerflux[idx4] = cons_tracerplus[idx4] 
+ 		* densflux[idx];
+ 	    }
+ 	  else 
+-	    for(int m=0;m<number_of_tracers;m++) {
++	    for(int m=0;m<number_of_tracers; ++m) {
+ 	      const int idx4 = CCTK_VECTGFINDEX3D(cctkGH,i,j,k,m);
+ 	      const int idx4r = 
+ 		CCTK_VECTGFINDEX3D(cctkGH,i+offsetx,j+offsety,k+offsetz,m);
+@@ -502,114 +839,89 @@ void GRHydro_HLLE_CC_LL(CCTK_ARGUMENTS)
+       } // end big loop
+ }				  
+ 
+-// instantiate the templates explicitely
+-template void GRHydro_HLLE_CC_LL<1,false,false,false>(CCTK_ARGUMENTS);
+-template void GRHydro_HLLE_CC_LL<2,false,false,false>(CCTK_ARGUMENTS);
+-template void GRHydro_HLLE_CC_LL<3,false,false,false>(CCTK_ARGUMENTS);
+-template void GRHydro_HLLE_CC_LL<1,true, false,false>(CCTK_ARGUMENTS);
+-template void GRHydro_HLLE_CC_LL<2,true, false,false>(CCTK_ARGUMENTS);
+-template void GRHydro_HLLE_CC_LL<3,true, false,false>(CCTK_ARGUMENTS);
+-template void GRHydro_HLLE_CC_LL<1,false,true,false>(CCTK_ARGUMENTS);
+-template void GRHydro_HLLE_CC_LL<2,false,true,false>(CCTK_ARGUMENTS);
+-template void GRHydro_HLLE_CC_LL<3,false,true,false>(CCTK_ARGUMENTS);
+-template void GRHydro_HLLE_CC_LL<1,true, true,false>(CCTK_ARGUMENTS);
+-template void GRHydro_HLLE_CC_LL<2,true, true,false>(CCTK_ARGUMENTS);
+-template void GRHydro_HLLE_CC_LL<3,true, true,false>(CCTK_ARGUMENTS);
+-
+-template void GRHydro_HLLE_CC_LL<1,false,false,true>(CCTK_ARGUMENTS);
+-template void GRHydro_HLLE_CC_LL<2,false,false,true>(CCTK_ARGUMENTS);
+-template void GRHydro_HLLE_CC_LL<3,false,false,true>(CCTK_ARGUMENTS);
+-template void GRHydro_HLLE_CC_LL<1,true, false,true>(CCTK_ARGUMENTS);
+-template void GRHydro_HLLE_CC_LL<2,true, false,true>(CCTK_ARGUMENTS);
+-template void GRHydro_HLLE_CC_LL<3,true, false,true>(CCTK_ARGUMENTS);
+-template void GRHydro_HLLE_CC_LL<1,false,true,true>(CCTK_ARGUMENTS);
+-template void GRHydro_HLLE_CC_LL<2,false,true,true>(CCTK_ARGUMENTS);
+-template void GRHydro_HLLE_CC_LL<3,false,true,true>(CCTK_ARGUMENTS);
+-template void GRHydro_HLLE_CC_LL<1,true, true,true>(CCTK_ARGUMENTS);
+-template void GRHydro_HLLE_CC_LL<2,true, true,true>(CCTK_ARGUMENTS);
+-template void GRHydro_HLLE_CC_LL<3,true, true,true>(CCTK_ARGUMENTS);
+-
+ 
+-
+-void GRHydro_HLLE_CC(CCTK_ARGUMENTS) 
+-{
+-  DECLARE_CCTK_ARGUMENTS;
+-  DECLARE_CCTK_PARAMETERS;
+-
+-  // flux direction 1
+-  if(*flux_direction==1)
+-    if(apply_H_viscosity) 
+-      if(*evolve_Y_e)
++/**
++   Select a particular flavor of HLLE Riemann solver.
++*/
++template <int dir>
++struct riemann {
++
++  static inline void select(const bool apply_Hvisc,
++                            const bool evolve_Y_e,
++                            const bool evolve_tracer,
++                            const bool evolve_MHD,
++                             CCTK_ARGUMENTS)
++  {
++    if(apply_Hvisc) 
++      if(evolve_Y_e)
+ 	if(evolve_tracer) 
+-	  GRHydro_HLLE_CC_LL<1,true,true,true>(CCTK_PASS_CTOC);
++	  if(evolve_MHD) 
++	    GRHydro_HLLE_CC_LL<dir,true,true,true,true>(CCTK_PASS_CTOC);
++	  else
++	    GRHydro_HLLE_CC_LL<dir,true,true,true,false>(CCTK_PASS_CTOC);
+ 	else
+-	  GRHydro_HLLE_CC_LL<1,true,true,false>(CCTK_PASS_CTOC);
++	  if(evolve_MHD) 
++	    GRHydro_HLLE_CC_LL<dir,true,true,false,true>(CCTK_PASS_CTOC);
++	  else
++	    GRHydro_HLLE_CC_LL<1,true,true,false,false>(CCTK_PASS_CTOC);
+       else
+ 	if(evolve_tracer)
+-	  GRHydro_HLLE_CC_LL<1,false,true,true>(CCTK_PASS_CTOC);
++	  if(evolve_MHD) 
++	    GRHydro_HLLE_CC_LL<dir,false,true,true,true>(CCTK_PASS_CTOC);
++	  else
++	    GRHydro_HLLE_CC_LL<dir,false,true,true,false>(CCTK_PASS_CTOC);
+ 	else
+-	  GRHydro_HLLE_CC_LL<1,false,true,false>(CCTK_PASS_CTOC);
++	  if(evolve_MHD) 
++	    GRHydro_HLLE_CC_LL<dir,false,true,false,true>(CCTK_PASS_CTOC);
++	  else
++	    GRHydro_HLLE_CC_LL<dir,false,true,false,false>(CCTK_PASS_CTOC);
+     else
+-      if(*evolve_Y_e)
++      if(evolve_Y_e)
+ 	if(evolve_tracer)
+-	  GRHydro_HLLE_CC_LL<1,true,false,true>(CCTK_PASS_CTOC);
++	  if(evolve_MHD) 
++	    GRHydro_HLLE_CC_LL<dir,true,false,true,true>(CCTK_PASS_CTOC);
++	  else
++	    GRHydro_HLLE_CC_LL<dir,true,false,true,false>(CCTK_PASS_CTOC);
+ 	else
+-	  GRHydro_HLLE_CC_LL<1,true,false,false>(CCTK_PASS_CTOC);
++	  if(evolve_MHD) 
++	    GRHydro_HLLE_CC_LL<dir,true,false,false,true>(CCTK_PASS_CTOC);
++	  else
++	    GRHydro_HLLE_CC_LL<dir,true,false,false,false>(CCTK_PASS_CTOC);
+       else
+ 	if(evolve_tracer) 
+-	  GRHydro_HLLE_CC_LL<1,false,false,true>(CCTK_PASS_CTOC);
++	  if(evolve_MHD) 
++	    GRHydro_HLLE_CC_LL<dir,false,false,true,true>(CCTK_PASS_CTOC);
++	  else
++	    GRHydro_HLLE_CC_LL<dir,false,false,true,false>(CCTK_PASS_CTOC);
+ 	else
+-	  GRHydro_HLLE_CC_LL<1,false,false,false>(CCTK_PASS_CTOC);
++	  if(evolve_MHD) 
++	    GRHydro_HLLE_CC_LL<dir,false,false,false,true>(CCTK_PASS_CTOC);
++	  else
++	    GRHydro_HLLE_CC_LL<dir,false,false,false,false>(CCTK_PASS_CTOC);
++  }
++
++};
++
++
++void GRHydro_HLLE_CC(CCTK_ARGUMENTS) 
++{
++  DECLARE_CCTK_ARGUMENTS;
++  DECLARE_CCTK_PARAMETERS;
++
++  // flux direction 1
++  if(*flux_direction==1)
++
++    riemann<1>::select(apply_H_viscosity, *evolve_Y_e, evolve_tracer, *evolve_MHD, CCTK_PASS_CTOC);
+ 
+   // flux direction 2
+   else if(*flux_direction==2)
+-    if(apply_H_viscosity) 
+-      if(*evolve_Y_e)
+-	if(evolve_tracer)
+-	  GRHydro_HLLE_CC_LL<2,true,true,true>(CCTK_PASS_CTOC);
+-	else
+-	  GRHydro_HLLE_CC_LL<2,true,true,false>(CCTK_PASS_CTOC);
+-      else
+-	if(evolve_tracer) 
+-	  GRHydro_HLLE_CC_LL<2,false,true,true>(CCTK_PASS_CTOC);
+-	else
+-	  GRHydro_HLLE_CC_LL<2,false,true,false>(CCTK_PASS_CTOC);
+-    else
+-      if(*evolve_Y_e)
+-	if(evolve_tracer)
+-	  GRHydro_HLLE_CC_LL<2,true,false,true>(CCTK_PASS_CTOC);
+-	else
+-	  GRHydro_HLLE_CC_LL<2,true,false,false>(CCTK_PASS_CTOC);
+-      else
+-	if(evolve_tracer) 
+-	  GRHydro_HLLE_CC_LL<2,false,false,true>(CCTK_PASS_CTOC);
+-	else
+-	  GRHydro_HLLE_CC_LL<2,false,false,false>(CCTK_PASS_CTOC);
+ 
+-  // flux direction 3
++    riemann<2>::select(apply_H_viscosity, *evolve_Y_e, evolve_tracer, *evolve_MHD, CCTK_PASS_CTOC);
++
++    // flux direction 3
+   else if(*flux_direction==3)
+-    if(apply_H_viscosity) 
+-      if(*evolve_Y_e)
+-	if(evolve_tracer)
+-	  GRHydro_HLLE_CC_LL<3,true,true,true>(CCTK_PASS_CTOC);
+-	else
+-	  GRHydro_HLLE_CC_LL<3,true,true,false>(CCTK_PASS_CTOC);
+-      else
+-	if(evolve_tracer)
+-	  GRHydro_HLLE_CC_LL<3,false,true,true>(CCTK_PASS_CTOC);
+-	else
+-	  GRHydro_HLLE_CC_LL<3,false,true,false>(CCTK_PASS_CTOC);
+-    else
+-      if(*evolve_Y_e)
+-	if(evolve_tracer)
+-	  GRHydro_HLLE_CC_LL<3,true,false,true>(CCTK_PASS_CTOC);
+-	else
+-	  GRHydro_HLLE_CC_LL<3,true,false,false>(CCTK_PASS_CTOC);
+-      else
+-	if(evolve_tracer)
+-	  GRHydro_HLLE_CC_LL<3,false,false,true>(CCTK_PASS_CTOC);
+-	else
+-	  GRHydro_HLLE_CC_LL<3,false,false,false>(CCTK_PASS_CTOC);
++
++    riemann<3>::select(apply_H_viscosity, *evolve_Y_e, evolve_tracer, *evolve_MHD, CCTK_PASS_CTOC);
+ 
+   else
+     CCTK_ERROR("Illegal flux direction!");
+@@ -632,7 +944,7 @@ void H_viscosity_calc_cs_cc(CCTK_ARGUMENTS) {
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+ 
+-  size_t n = size_t(cctk_ash[0]*cctk_ash[1]*cctk_ash[2]);
++  const size_t n = size_t(cctk_ash[0]*cctk_ash[1]*cctk_ash[2]);
+   std::vector<int> keyerr(n);
+   int anyerr = 0;
+   int keytemp = 0;
+@@ -641,13 +953,13 @@ void H_viscosity_calc_cs_cc(CCTK_ARGUMENTS) {
+ #pragma omp parallel for
+     for(int k=0;k<cctk_lsh[2];k++)
+       for(int j=0;j<cctk_lsh[1];j++) {
+-	int i = CCTK_GFINDEX3D(cctkGH,0,j,k);
++	const int i = CCTK_GFINDEX3D(cctkGH,0,j,k);
+ 	CCTK_REAL cs2[cctk_ash[0]];
+ 	EOS_Omni_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,cctk_lsh[0],
+ 		     &(rho[i]),&(eps[i]),NULL,NULL,&cs2[i],
+ 		     &(keyerr[i]),&anyerr);
+ 
+-	for(int ii=0;ii<cctk_lsh[0];i++) {
++	for(int ii=0;ii<cctk_lsh[0];++ii) {
+ 	  eos_c[ii+i] = sqrt(cs2[ii]);
+ 	}
+       }
+@@ -655,12 +967,12 @@ void H_viscosity_calc_cs_cc(CCTK_ARGUMENTS) {
+ #pragma omp parallel for
+     for(int k=0;k<cctk_lsh[2];k++)
+       for(int j=0;j<cctk_lsh[1];j++) {
+-	int i = CCTK_GFINDEX3D(cctkGH,0,j,k);
++	const int i = CCTK_GFINDEX3D(cctkGH,0,j,k);
+ 	CCTK_REAL cs2[cctk_ash[0]];
+ 	EOS_Omni_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,cctk_lsh[0],
+ 		     &rho[i],&eps[i],&temperature[i],&Y_e[i],
+ 		     &cs2[i],&keyerr[i],&anyerr);
+-	for(int ii=0;ii<cctk_lsh[0];i++) {
++	for(int ii=0;ii<cctk_lsh[0];++ii) {
+ 	  eos_c[ii+i] = sqrt(cs2[ii]);
+ 	}
+       } // for
+@@ -685,9 +997,9 @@ void H_viscosity_calc_cs_cc(CCTK_ARGUMENTS) {
+ 
+ }
+ 
+-static inline void UpperMetricClim(CCTK_REAL * restrict uxx,
+-				CCTK_REAL * restrict uyy,
+-				CCTK_REAL * restrict uzz,
++static inline void UpperMetricClim(CCTK_REAL& restrict uxx,
++				CCTK_REAL& restrict uyy,
++				CCTK_REAL& restrict uzz,
+ 				const CCTK_REAL sdet,
+ 				const CCTK_REAL gxx,
+ 				const CCTK_REAL gxy,
+@@ -697,19 +1009,19 @@ static inline void UpperMetricClim(CCTK_REAL * restrict uxx,
+ 				const CCTK_REAL gzz)
+ {
+   const CCTK_REAL invdet = 1.0 / (sdet*sdet);
+-  *uxx = (-gyz*gyz + gyy*gzz)*invdet;
++  uxx = (-gyz*gyz + gyy*gzz)*invdet;
+   //  *uxy = (gxz*gyz - gxy*gzz)*invdet;
+   //  *uxz = (-gxz*gyy + gxy*gyz)*invdet;
+-  *uyy = (-gxz*gxz + gxx*gzz)*invdet;
++  uyy = (-gxz*gxz + gxx*gzz)*invdet;
+   //  *uyz = (gxy*gxz - gxx*gyz)*invdet;
+-  *uzz = (-gxy*gxy + gxx*gyy)*invdet;
++  uzz = (-gxy*gxy + gxx*gyy)*invdet;
+ 
+   return;
+ }
+ 
+-static inline CCTK_REAL SpatialDeterminantC(CCTK_REAL gxx, CCTK_REAL gxy,
+-					 CCTK_REAL gxz, CCTK_REAL gyy,
+-					 CCTK_REAL gyz, CCTK_REAL gzz) 
++static inline CCTK_REAL SpatialDeterminantC(const CCTK_REAL gxx, const CCTK_REAL gxy,
++					    const CCTK_REAL gxz, const CCTK_REAL gyy,
++					    const CCTK_REAL gyz, const CCTK_REAL gzz) 
+ {
+   return -gxz*gxz*gyy + 2.0*gxy*gxz*gyz - gxx*gyz*gyz 
+     - gxy*gxy*gzz + gxx*gyy*gzz;
+diff --git a/src/GRHydro_RiemannSolveM.F90 b/src/GRHydro_RiemannSolveM.F90
+index 5c5eb57..f43e337 100644
+--- a/src/GRHydro_RiemannSolveM.F90
++++ b/src/GRHydro_RiemannSolveM.F90
+@@ -38,7 +38,11 @@ subroutine RiemannSolveM(CCTK_ARGUMENTS)
+ 
+   if (CCTK_EQUALS(riemann_solver,"HLLE").or.CCTK_EQUALS(riemann_solver,"LLF")) then
+      
+-     call GRHydro_HLLEM(CCTK_PASS_FTOF)
++     if (use_cxx_code.eq.0) then
++        call GRHydro_HLLEM(CCTK_PASS_FTOF)
++     else
++        call GRHydro_HLLE_CC_F2C(cctkGH)
++     endif
+      
+      if (evolve_tracer .ne. 0) then
+         
+@@ -100,7 +104,11 @@ subroutine RiemannSolvePolytypeM(CCTK_ARGUMENTS)
+ 
+   if (CCTK_EQUALS(riemann_solver,"HLLE")) then
+     
+-     call GRHydro_HLLEM(CCTK_PASS_FTOF)
++     if (use_cxx_code.eq.0) then
++        call GRHydro_HLLEM(CCTK_PASS_FTOF)
++     else
++        call GRHydro_HLLE_CC_F2C(cctkGH)
++     endif
+      
+      if (evolve_tracer .ne. 0) then
+         
+-- 
+1.8.5.3
+

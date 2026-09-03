@@ -1,0 +1,53 @@
+Index: configure.in
+===================================================================
+--- configure.in	(revision 4662)
++++ configure.in	(working copy)
+@@ -358,7 +358,19 @@
+ AC_SUBST(F90_OPTIMISE_FLAGS)
+ : ${F90_OPTIMISE_FLAGS=''}
+ 
++AC_SUBST(C_NO_OPTIMISE_FLAGS)
++: ${C_NO_OPTIMISE_FLAGS='-O0'}
+ 
++AC_SUBST(CXX_NO_OPTIMISE_FLAGS)
++: ${CXX_NO_OPTIMISE_FLAGS='-O0'}
++
++AC_SUBST(F77_NO_OPTIMISE_FLAGS)
++: ${F77_NO_OPTIMISE_FLAGS='-O0'}
++
++AC_SUBST(F90_NO_OPTIMISE_FLAGS)
++: ${F90_NO_OPTIMISE_FLAGS='-O0'}
++
++
+ # Set the profiling flags if they've not been set by now
+ # (using '-pg' as a reasonable default)
+ AC_SUBST(PROFILE_MODE)
+Index: make.config.defn.in
+===================================================================
+--- make.config.defn.in	(revision 4662)
++++ make.config.defn.in	(working copy)
+@@ -76,6 +76,12 @@
+ export F90_OPTIMISE_FLAGS = @F90_OPTIMISE_FLAGS@
+ export F77_OPTIMISE_FLAGS = @F77_OPTIMISE_FLAGS@
+ 
++# No-optimisation flags
++export C_NO_OPTIMISE_FLAGS   = @C_NO_OPTIMISE_FLAGS@
++export CXX_NO_OPTIMISE_FLAGS = @CXX_NO_OPTIMISE_FLAGS@
++export F90_NO_OPTIMISE_FLAGS = @F90_NO_OPTIMISE_FLAGS@
++export F77_NO_OPTIMISE_FLAGS = @F77_NO_OPTIMISE_FLAGS@
++
+ # Profiling flags
+ export CPP_PROFILE_FLAGS = @CPP_PROFILE_FLAGS@
+ export FPP_PROFILE_FLAGS = @FPP_PROFILE_FLAGS@
+@@ -228,6 +234,11 @@
+   CXXFLAGS += $(CXX_OPTIMISE_FLAGS)
+   F77FLAGS += $(F77_OPTIMISE_FLAGS)
+   F90FLAGS += $(F90_OPTIMISE_FLAGS)
++else
++  CFLAGS   += $(C_NO_OPTIMISE_FLAGS)
++  CXXFLAGS += $(CXX_NO_OPTIMISE_FLAGS)
++  F77FLAGS += $(F77_NO_OPTIMISE_FLAGS)
++  F90FLAGS += $(F90_NO_OPTIMISE_FLAGS)
+ endif
+ 
+ # Is this a profiling configuration ?

@@ -1,0 +1,66 @@
+--- Decorate.py.orig	2014-01-26 19:47:14.267621682 -0800
++++ Decorate.py	2014-01-26 19:46:30.935620579 -0800
+@@ -64,6 +64,7 @@
+             d['user_optionsurl'] = mlist.GetOptionsURL(member)
+         except Errors.NotAMemberError:
+             pass
++    d['archive_url'] = get_archived_url(mlist, msg)
+     # These strings are descriptive for the log file and shouldn't be i18n'd
+     d.update(msgdata.get('decoration-data', {}))
+     header = decorate(mlist, mlist.msg_header, 'non-digest header', d)
+@@ -208,6 +209,55 @@
+ 
+ 
+ 
++def strip_separators(s):
++    "Remove quotes or parenthesization from a Message-ID string"
++    if not s:
++        return ""
++    if s[0] in '"<([' and s[-1] in '">)]':
++        s = s[1:-1]
++    return s
++
++
++
++def get_archived_url(mlist, msg):
++    """HACK to construct the URL under which this message will appear in
++    pipermail. This assumes monthly archiving. Code taken from pipermail.py and
++    HyperArch.py"""
++    def get_date(message):
++        import email
++        import datetime
++        def floatdate(header):
++            missing = []
++            datestr = message.get(header, missing)
++            if datestr is missing:
++                return None
++            date = email.utils.parsedate_tz(datestr)
++            try:
++                return email.utils.mktime_tz(date)
++            except (TypeError, ValueError, OverflowError):
++                return None
++        date = floatdate('date')
++        if date is None:
++            date = floatdate('x-list-received-date')
++        if date is None:
++            # What's left to try?
++            date = datetime.utcnow()
++        return date
++    def dateToVolName(date):
++        import time
++        datetuple=time.localtime(date)
++        return time.strftime("%Y-%B",datetuple)
++    fullmsgid = strip_separators(msg.get('message-id', False))
++    m = re.match('([a-zA-Z0-9-]+)', fullmsgid)
++    if m:
++        date = get_date(msg)
++        volName = dateToVolName(date)
++        return mlist.GetBaseArchiveURL()+volName+"/"+m.group(1)+".html"
++    else:
++        return fullmsgid
++
++
++
+ def decorate(mlist, template, what, extradict=None):
+     # `what' is just a descriptive phrase used in the log message
+     #

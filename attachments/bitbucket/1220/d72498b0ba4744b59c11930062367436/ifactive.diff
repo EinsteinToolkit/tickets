@@ -1,0 +1,403 @@
+Index: sbin/ConfigurationParser.pl
+===================================================================
+--- sbin/ConfigurationParser.pl	(revision 4934)
++++ sbin/ConfigurationParser.pl	(working copy)
+@@ -38,12 +38,14 @@
+ #    if($debug)
+ #    {
+ #      print "   $thorn\n";
+-#      print "           Provides: ", $cfg{"\U$thorn\E PROVIDES"}, "\n"
++#      print "           Provides:          ", $cfg{"\U$thorn\E PROVIDES"}, "\n"
+ #        if ($cfg{"\U$thorn\E PROVIDES"});
+-#      print "           Requires: ", $cfg{"\U$thorn\E REQUIRES"}, "\n"
++#      print "           Requires:          ", $cfg{"\U$thorn\E REQUIRES"}, "\n"
+ #        if ($cfg{"\U$thorn\E REQUIRES"});
+-#      print "           Optional: ", $cfg{"\U$thorn\E OPTIONAL"}, "\n"
++#      print "           Optional:          ", $cfg{"\U$thorn\E OPTIONAL"}, "\n"
+ #        if ($cfg{"\U$thorn\E OPTIONAL"});
++#      print "           Optional-ifactive: ", $cfg{"\U$thorn\E OPTIONAL_IFACTIVE"}, "\n"
++#        if ($cfg{"\U$thorn\E OPTIONAL_IFACTIVE"});
+ #    }
+ 
+     $cfg{"\U$thorn\E USES THORNS"} = '';
+@@ -89,6 +91,16 @@
+   }
+   foreach my $thorn (sort keys %thorns)
+   {
++      if ($cfg{"\U$thorn\E REQUIRES"})
++      {
++          foreach my $requiredcap (split (' ', $cfg{"\U$thorn\E REQUIRES"}))
++          {
++              $cfg{"\U$thorn\E ACTIVATES"} .= "$requiredcap ";
++          }
++      }
++  }
++  foreach my $thorn (sort keys %thorns)
++  {
+       if ($cfg{"\U$thorn\E OPTIONAL"})
+       {
+           foreach my $optionalcap (split (' ', $cfg{"\U$thorn\E OPTIONAL"}))
+@@ -96,9 +108,21 @@
+               if ($providedcaps{$optionalcap})
+               {
+                   $cfg{"\U$thorn\E REQUIRES"} .= "$optionalcap ";
++                  $cfg{"\U$thorn\E ACTIVATES"} .= "$optionalcap ";
+               }
+           }
+       }
++      if ($cfg{"\U$thorn\E OPTIONAL_IFACTIVE"})
++      {
++          foreach my $optionalcap (split (' ', $cfg{"\U$thorn\E OPTIONAL_IFACTIVE"}))
++          {
++              if ($providedcaps{$optionalcap})
++              {
++                  $cfg{"\U$thorn\E REQUIRES"} .= "$optionalcap ";
++                  # nothing is activated
++              }
++          }
++      }
+   }
+ 
+   foreach my $thorn (sort keys %thorns)
+@@ -140,10 +164,31 @@
+     }
+   }
+ 
+-# Check for cyclic dependencies
+-# create a hash with thorn-> used thorns (no prefix)
++  # Translate capability to thorn names
++  my %capabilities;
+   foreach my $thorn (sort keys %thorns)
+   {
++      next if ! $cfg{"\U$thorn\E PROVIDES"};
++      foreach my $cap (split (' ', $cfg{"\U$thorn\E PROVIDES"}))
++      {
++          $capabilities{"\U$cap\E"} = $thorn;
++      }
++  }
++  foreach my $thorn (sort keys %thorns)
++  {
++      my $activates = '';
++      foreach my $cap (split (' ', $cfg{"\U$thorn\E ACTIVATES"}))
++      {
++          my $cap_thorn = $capabilities{"\U$cap\E"};
++          $activates .= " $cap_thorn";
++      }
++      $cfg{"\U$thorn\E ACTIVATES THORNS"} = $activates;
++  }
++
++  # Check for cyclic dependencies
++  # create a hash with thorn-> used thorns (no prefix)
++  foreach my $thorn (sort keys %thorns)
++  {
+     $thorn_dependencies{uc($thorn)}=$cfg{"\U$thorn\E USES THORNS"};
+     $thorn_dependencies{uc($thorn)} =~ s/\b$thorn\b//i;
+   }
+@@ -151,10 +196,10 @@
+   my $message = &find_dep_cycles(%thorn_dependencies);
+   if ("" ne $message)
+   {
+-    $message  =~ s/^\s*//g;
+-    $message  =~ s/\s*$//g;
++    $message =~ s/^\s*//g;
++    $message =~ s/\s*$//g;
+     $message =~ s/\s+/->/g;
+-    $message = "Found a cyclic dependency in configuration requirements:".$message."\n";
++    $message = "Found a cyclic dependency in configuration requirements:$message\n";
+     &CST_error(0, $message);
+   }
+ 
+@@ -184,6 +229,8 @@
+   $cfg->{"\U$thorn\E REQUIRES"} = '';
+   $cfg->{"\U$thorn\E REQUIRES THORNS"} = '';
+   $cfg->{"\U$thorn\E OPTIONAL"} = '';
++  $cfg->{"\U$thorn\E OPTIONAL_IFACTIVE"} = '';
++  $cfg->{"\U$thorn\E ACTIVATES"} = '';
+   $cfg->{"\U$thorn\E OPTIONS"}  = '';
+ 
+   # Read the data
+@@ -260,6 +307,15 @@
+       $cfg->{"\U$thorn\E OPTIONAL"} .= "$optional ";
+       $cfg->{"\U$thorn\E OPTIONAL \U$optional\E DEFINE"} = $define;
+     }
++    elsif($line =~ m/^\s*OPTIONAL_IFACTIVE\s*/i)
++    {
++      ($optional, $define, $line_number) = &ParseOptionalBlock($filename, $line_number, \@data);
++      if ($optional !~ m{^[A-Za-z0-9_. ]+$}) {
++        &CST_error (0, "Illegal optional capability '$optional' line '$line' in configure.ccl of thorn '$thorn'");
++      }
++      $cfg->{"\U$thorn\E OPTIONAL_IFACTIVE"} .= "$optional ";
++      $cfg->{"\U$thorn\E OPTIONAL_IFACTIVE \U$optional\E DEFINE"} = $define;
++    }
+     elsif($line =~ m/^\s*NO_SOURCE\s*/i)
+     {
+       $cfg->{"\U$thorn\E OPTIONS"} .= "NO_SOURCE";
+@@ -343,7 +399,7 @@
+ #  @date       Mon May  8 15:52:40 2000
+ #  @author     Tom Goodale
+ #  @desc
+-#  Parses the OPTIONAL block in a configuration.ccl file.
++#  Parses the OPTIONAL or OPTIONAL_IFACTIVE block in a configuration.ccl file.
+ #  @enddesc
+ #@@*/
+ sub ParseOptionalBlock
+@@ -351,9 +407,9 @@
+   my ($file_name, $line_number, $data) = @_;
+   my ($optional, $define);
+ 
+-  $data->[$line_number] =~ m/^\s*OPTIONAL\s*(.*)/i;
++  $data->[$line_number] =~ m/^\s*OPTIONAL(_IFACTIVE)?\s*(.*)/i;
+ 
+-  $optional = $1;
++  $optional = $2;
+ 
+   $define = "";
+ 
+Index: sbin/CreateImplementationBindings.pl
+===================================================================
+--- sbin/CreateImplementationBindings.pl	(revision 4934)
++++ sbin/CreateImplementationBindings.pl	(working copy)
+@@ -11,7 +11,7 @@
+ {
+   my($bindings_dir, $rhparameter_db, $rhinterface_db, $configuration_db) = @_;
+   my($i, $start_dir, $thorn);
+-  my(@data, @thorns, @ancestors, @friends, @requires_thorns);
++  my(@data, @thorns, @ancestors, @friends, @requires_thorns, @activates_thorns);
+ 
+   if(! $build_dir)
+   {
+@@ -87,6 +87,7 @@
+     @ancestors = map { "    \"$_\"," } split (' ', $rhinterface_db->{"IMPLEMENTATION \U$myimp\E ANCESTORS"});
+     @friends = map { "    \"$_\"," } split (' ', $rhinterface_db->{"\U$thorn\E FRIEND"});
+     @requires_thorns = map { "    \"$_\"," } split (' ', $configuration_db->{"\U$thorn\E REQUIRES THORNS"});
++    @activates_thorns = map { "    \"$_\"," } split (' ', $configuration_db->{"\U$thorn\E ACTIVATES THORNS"});
+ 
+     @data = ();
+     push(@data, '#include <stdio.h>');
+@@ -134,6 +135,17 @@
+       $i++;
+     }
+ 
++    if (@activates_thorns)
++    {
++      push(@data, '  const char *activates_thorns[] =');
++      push(@data, '  {');
++      push(@data, @activates_thorns);
++      push(@data, '    0,');
++      push(@data, '  };');
++      push(@data, '');
++      $i++;
++    }
++
+     push(@data, '  /*');
+     push(@data, '   * Should be able to do below with a constant initializer');
+     push(@data, '   * but sr8000 compiler doesn\'t like it.');
+@@ -164,6 +176,12 @@
+       push(@data, "  attributes[$i].AttributeData.StringList = requires_thorns;");
+       $i++;
+     }
++    if (@activates_thorns)
++    {
++      push(@data, "  attributes[$i].attribute                = \"activates thorns\";");
++      push(@data, "  attributes[$i].AttributeData.StringList = activates_thorns;");
++      $i++;
++    }
+     push(@data, "  attributes[$i].attribute                = 0;");
+     push(@data, "  attributes[$i].AttributeData.StringList = 0;");
+     push(@data, '');
+Index: main/ActiveThorns.c
+===================================================================
+--- main/ActiveThorns.c	(revision 4929)
++++ main/ActiveThorns.c	(working copy)
+@@ -38,6 +38,7 @@
+   int active;
+   char *implementation;
+   const char **requires_thorns;
++  const char **activates_thorns;
+ };
+ 
+ struct IMPLEMENTATION
+@@ -124,11 +125,11 @@
+   t_sktree *node, *temp;
+   struct THORN *thorn;
+   const char *name, *imp;
+-  const char **ancestors, **friends, **requires_thorns;
++  const char **ancestors, **friends, **requires_thorns, **activates_thorns;
+ 
+ 
+   name = imp = NULL;
+-  ancestors = friends = requires_thorns = NULL;
++  ancestors = friends = requires_thorns = activates_thorns = NULL;
+ 
+   for(i=0; attributes[i].attribute; i++)
+   {
+@@ -158,6 +159,10 @@
+     {
+       requires_thorns = attributes[i].AttributeData.StringList;
+     }
++    else if(!strcmp(attributes[i].attribute, "activates thorns"))
++    {
++      activates_thorns = attributes[i].AttributeData.StringList;
++    }
+     else
+     {
+       fprintf(stderr, "Unknown/unimplemented thorn attribute %s\n", attributes[i].attribute);
+@@ -190,6 +195,20 @@
+         }
+       }
+ 
++      thorn->activates_thorns = NULL;
++      if (activates_thorns)
++      {
++        /* count the number of thorns */
++        for (i = 0; activates_thorns[i]; i++);
++
++        thorn->activates_thorns = malloc ((i+1) * sizeof(char *));
++        thorn->activates_thorns[i] = NULL;
++        while (--i >= 0)
++        {
++          thorn->activates_thorns[i] = Util_Strdup (activates_thorns[i]);
++        }
++      }
++
+       thorn->implementation = Util_Strdup(imp);
+       if(thorn->implementation)
+       {
+@@ -882,6 +901,8 @@
+ {
+   int retval;
+   char *local_list;
++  uStringList *activated_thorns;
++  uStringList *new_thorns;
+   uStringList *required_thorns;
+   uStringList *requested_imps;
+   uStringList *required_imps;
+@@ -894,14 +915,16 @@
+ 
+   struct IMPLEMENTATION *imp;
+   struct THORN *this_thorn;
++  int did_add_thorns;
+   int i, j;
+ 
+   const char *imp1, *imp2;
+-  const char *this, *thorn;
++  const char *this, *thorn, *new_thorn;
+   struct iInternalStringList *current;
+ 
+   local_list = Util_Strdup(activethornlist);
+ 
++  activated_thorns = Util_StringListCreate(n_thorns);
+   required_thorns  = Util_StringListCreate(n_thorns);
+   required_imps    = Util_StringListCreate(n_imps);
+   requested_imps   = Util_StringListCreate(n_imps);
+@@ -911,24 +934,70 @@
+   n_errors = 0;
+   n_warnings = 0;
+ 
+-  token = strtok(local_list, " \t\n");
+-  while(token)
++  /* Parse list of activated thorns */
++  for(token = strtok(local_list, " \t\n"); token; token = strtok(NULL," \t\n"))
+   {
+-    if(CCTK_IsThornActive(token))
++    if (! Util_StringListAdd(activated_thorns, token))
+     {
+-      printf("Warning: thorn %s already active\n", token);
++      CCTK_Warn(0, __LINE__, __FILE__, "Cactus", "internal error");
++    }
++  }
++
++  /* Auto-activate some thorns */
++  did_add_thorns = 1;
++  while(did_add_thorns) {
++    new_thorns = Util_StringListCreate(n_thorns);
++    // Copy existing thorns
++    for(thorn = Util_StringListNext(activated_thorns,1); thorn;
++        thorn = Util_StringListNext(activated_thorns,0))
++    {
++      Util_StringListAdd(new_thorns, thorn);
++    }
++    // Add all thorns activated by these thorns
++    did_add_thorns = 0;
++    for(thorn = Util_StringListNext(activated_thorns,1); thorn;
++        thorn = Util_StringListNext(activated_thorns,0))
++    {
++      this_thorn = ((t_sktree *) SKTreeFindNode(thornlist, thorn))->data;
++      if(this_thorn->activates_thorns)
++      {
++        for(i = 0; this_thorn->activates_thorns[i]; i++)
++        {
++          new_thorn = this_thorn->activates_thorns[i];
++          if (! CCTK_IsThornActive(new_thorn))
++          {
++            if (Util_StringListAdd(new_thorns, new_thorn))
++            {
++              printf("Automatic activation requested for thorn %s\n",
++                     new_thorn);
++              did_add_thorns = 1;
++            }
++          }
++        }
++      }
++    }
++    Util_StringListDestroy(activated_thorns);
++    activated_thorns = new_thorns;
++  }
++
++  for(thorn = Util_StringListNext(activated_thorns,1); thorn;
++      thorn = Util_StringListNext(activated_thorns,0))
++  {
++    if(CCTK_IsThornActive(thorn))
++    {
++      printf("Warning: thorn %s already active\n", thorn);
+       n_warnings++;
+     }
+-    else if (! (this_imp = CCTK_ThornImplementation(token)))
++    else if (! (this_imp = CCTK_ThornImplementation(thorn)))
+     {
+-      printf("Error: Thorn %s not found\n", token);
++      printf("Error: Thorn %s not found\n", thorn);
+       n_errors++;
+       /*  Give some more help */
+-      if (CCTK_IsImplementationCompiled(token))
++      if (CCTK_IsImplementationCompiled(thorn))
+       {
+-        impthornlist = CCTK_ImpThornList(token);
++        impthornlist = CCTK_ImpThornList(thorn);
+ 
+-        printf("       However, implementation %s was found and is\n",token);
++        printf("       However, implementation %s was found and is\n",thorn);
+         printf("       provided by thorn(s):");
+         SKTreeTraverseInorder(impthornlist, JustPrintThornName, NULL);
+         printf("\n");
+@@ -937,18 +1006,18 @@
+     else if (CCTK_IsImplementationActive(this_imp))
+     {
+       printf("Error: thorn %s provides implementation %s - already active\n",
+-             token, this_imp);
++             thorn, this_imp);
+       n_errors++;
+     }
+-    else if (! Util_StringListAdd(required_thorns,token))
++    else if (! Util_StringListAdd(required_thorns,thorn))
+     {
+-      printf("Warning: thorn %s already scheduled for activation\n", token);
++      printf("Warning: thorn %s already scheduled for activation\n", thorn);
+       n_warnings++;
+     }
+     else if (! Util_StringListAdd(requested_imps,this_imp))
+     {
+       printf("Error: thorn %s provides implementation %s which is already "
+-             "scheduled for activation\n", token, this_imp);
++             "scheduled for activation\n", thorn, this_imp);
+       n_errors++;
+     }
+     else if ((impnode = SKTreeFindNode(implist, this_imp)))
+@@ -987,7 +1056,6 @@
+       CCTK_Warn(0, __LINE__, __FILE__, "Cactus", "Internal error :- please "
+                 "report this to cactusmaint@cactuscode.org");
+     }
+-    token = strtok(NULL," \t\n");
+   }
+ 
+   /* No longer need the local list */

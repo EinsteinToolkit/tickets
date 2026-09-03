@@ -1,0 +1,19 @@
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 420)
++++ schedule.ccl	(working copy)
+@@ -541,6 +541,14 @@
+   LANG: Fortran
+ } "Initialize the atmosphere mask"
+ 
++# Early atmosphere reset. This will not capture relative atmosphere settings (rho_rel_min) which
++# is scheduled later. However, this will ensure that all time and refinement levels are handled
++# correctly for rho_abs_min set.
++schedule GRHydro_InitialAtmosphereReset AT CCTK_Initial AFTER HydroBase_Initial BEFORE HydroBase_Prim2ConInitial
++{
++  LANG: Fortran
++} "Use mask to enforce atmosphere at initial time"
++
+ if (wk_atmosphere)
+ {
+   schedule GRHydro_InitAtmosMask AT CCTK_PostInitial

@@ -1,0 +1,40 @@
+From b9ed2f5cef00da7f780d142c7a09693a3ad72df3 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Wed, 11 Dec 2013 19:15:24 +0100
+Subject: [PATCH 2/2] Revert "Carpet: Disable automatic synchronisation after
+ restriction"
+
+This reverts commit 4acaa0d0d3e59d6e618815515871f1f1115a6789.  The
+synchronisation after restriction is necessary since the
+synchronisation in POSTRESTRICT happens in the wrong order. See
+https://trac.einsteintoolkit.org/ticket/1499.
+test_restrict_sync_mlwavetoy now passes on both 1 and 2 processes.
+---
+ Carpet/Carpet/src/Restrict.cc | 5 -----
+ 1 file changed, 5 deletions(-)
+
+diff --git a/Carpet/Carpet/src/Restrict.cc b/Carpet/Carpet/src/Restrict.cc
+index 3598000..90cce60 100644
+--- a/Carpet/Carpet/src/Restrict.cc
++++ b/Carpet/Carpet/src/Restrict.cc
+@@ -71,17 +71,12 @@ namespace Carpet {
+     }
+ 
+     // Synchronise
+-    // TODO: Why? Restricted grid functions need to have boundary
+-    // conditions applied in postrestrict anyway, so this should not
+-    // be necessary.
+-#if 0
+     {
+       static Timers::Timer timer ("RestrictSync");
+       timer.start();
+       SyncGroups (cctkGH, groups);
+       timer.stop();
+     }
+-#endif
+   }
+   
+ 
+-- 
+1.8.4.3
+

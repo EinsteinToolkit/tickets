@@ -1,0 +1,25 @@
+From e3b70e66175819a1e9d11149c9f9bce1c67f3591 Mon Sep 17 00:00:00 2001
+From: Barry Wardell <barry.wardell@gmail.com>
+Date: Sun, 16 Mar 2014 14:11:56 -0400
+Subject: [PATCH] Show paths relative to CCTK_HOME in non-verbose output
+
+---
+ lib/make/make.config.rules.in | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/lib/make/make.config.rules.in b/lib/make/make.config.rules.in
+index 5c146a6..2131be6 100644
+--- a/lib/make/make.config.rules.in
++++ b/lib/make/make.config.rules.in
+@@ -51,7 +51,7 @@ endef
+ define NOTIFY_COPYING
+ endef
+ define NOTIFY_COMPILING
+-	echo COMPILING $<
++	echo COMPILING $(subst $(CCTK_HOME)/,,$<)
+ endef
+ define NOTIFY_POSTPROCESSING
+ endef
+-- 
+1.8.5.5
+

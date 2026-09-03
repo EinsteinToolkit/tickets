@@ -1,0 +1,309 @@
+Index: src/include/utili_Expression.h
+===================================================================
+--- src/include/utili_Expression.h	(revision 4802)
++++ src/include/utili_Expression.h	(working copy)
+@@ -28,6 +28,7 @@
+               OP_PLUS,
+               OP_MINUS,
+               OP_DIV,
++              OP_REMAINDER,
+               OP_TIMES,
+               OP_POWER,
+               OP_NOT,
+Index: src/main/Parameters.c
+===================================================================
+--- src/main/Parameters.c	(revision 4802)
++++ src/main/Parameters.c	(working copy)
+@@ -2707,7 +2707,9 @@
+           vals[i].type = ival;
+           ierr = 0;
+       }
+-      else if (strpbrk(vars[i], "eDdD."))
++      else if (strpbrk(vars[i], "eDdD.") ||
++               Util_StrCmpi(vars[i], "nan") == 0 ||
++               Util_StrCmpi(vars[i], "inf") == 0)
+       {
+         /*
+          * Canonicalize the string by converting all exponent letters
+Index: src/util/Expression.c
+===================================================================
+--- src/util/Expression.c	(revision 4802)
++++ src/util/Expression.c	(working copy)
+@@ -34,7 +34,7 @@
+ #include "util_String.h"
+ #define strdup(a) Util_Strdup(a)
+ #else
+-#define CCTK_VWarn(lvl, line, file, thorn, fmt, ...)  printf("(%s) L%d at %s line %d: "fmt"\n", thorn, lvl, file, line, ## __VA_ARGS__)
++#define CCTK_VWarn(lvl, line, file, thorn, fmt, ...)  do { printf("(%s) L%d at %s line %d: "fmt"\n", thorn, lvl, file, line, ## __VA_ARGS__); if(lvl == 0) exit(1); } while(0)
+ #endif
+ 
+ /********************************************************************
+@@ -106,33 +106,34 @@
+   {">=", binary, 1,OP_GEQUALS},
+   {"&&", binary, 2,OP_AND},
+   {"||", binary, 2,OP_OR},
+-  /* Sign change. */
+-  {"_",  unary, 3,OP_NEGATE}, /* unary '-' */
+-  {"@",  unary, 3,OP_PASS},   /* unary '+' */
+   /* Binary operators. */
+   {"+",  binary, 3,OP_PLUS},
+   {"-",  binary, 3,OP_MINUS},
+   {"/",  binary, 4,OP_DIV},
++  {"%",  binary, 4,OP_REMAINDER},
+   {"*",  binary, 4,OP_TIMES},
+   {"^",  binary, 5,OP_POWER},
++  /* Sign change */
++  {"_",     unary, 6,OP_NEGATE}, /* unary '-' */
++  {"@",     unary, 6,OP_PASS},   /* unary '+' */
+   /* Unary Operators - these must have the highest precedence. */
+-  {"!",     unary, 6, OP_NOT},
+-  {"acos",  unary, 6, OP_ACOS},
+-  {"asin",  unary, 6, OP_ASIN},
+-  {"atan",  unary, 6, OP_ATAN},
+-  {"ceil",  unary, 6, OP_CEIL},
+-  {"cos" ,  unary, 6, OP_COS},  
+-  {"cosh",  unary, 6, OP_COSH},
+-  {"exp",   unary, 6, OP_EXP},
+-  {"fabs",  unary, 6, OP_FABS},  
+-  {"floor", unary, 6, OP_FLOOR},  
+-  {"log",   unary, 6, OP_LOG},  
+-  {"log10", unary, 6, OP_LOG10},
+-  {"sin",   unary, 6, OP_SIN},  
+-  {"sinh",  unary, 6, OP_SINH},  
+-  {"sqrt",  unary, 6, OP_SQRT},  
+-  {"tan",   unary, 6, OP_TAN},  
+-  {"tanh",  unary, 6, OP_TANH},  
++  {"!",     unary, 7, OP_NOT},
++  {"acos",  unary, 7, OP_ACOS},
++  {"asin",  unary, 7, OP_ASIN},
++  {"atan",  unary, 7, OP_ATAN},
++  {"ceil",  unary, 7, OP_CEIL},
++  {"cos" ,  unary, 7, OP_COS},  
++  {"cosh",  unary, 7, OP_COSH},
++  {"exp",   unary, 7, OP_EXP},
++  {"fabs",  unary, 7, OP_FABS},  
++  {"floor", unary, 7, OP_FLOOR},  
++  {"log",   unary, 7, OP_LOG},  
++  {"log10", unary, 7, OP_LOG10},
++  {"sin",   unary, 7, OP_SIN},  
++  {"sinh",  unary, 7, OP_SINH},  
++  {"sqrt",  unary, 7, OP_SQRT},  
++  {"tan",   unary, 7, OP_TAN},  
++  {"tanh",  unary, 7, OP_TANH},  
+   {NULL, binary, -1,OP_NONE}
+ };
+ 
+@@ -469,7 +470,7 @@
+ 
+   /* class '@' below is "everything else", "e" can be either scientific
+    * notation or the literal character 'e' */
+-  const char *classes[] = {"-+", "0123456789", ".", "eEdD", "*/^=&|<>!", "(", ")", " \t", "@"};
++  const char *classes[] = {"-+", "0123456789", ".", "eEdD", "*/^=&|<>!", "(", ")", " \t\n", "@"};
+   /* if we are in state s and read a charcter of class c we transition to state
+    * states[s][c] */
+   /* if this is -1 then this is a transition that does not happen in well
+@@ -477,7 +478,7 @@
+   int states[][sizeof(classes)/sizeof(classes[0])] = {
+       /* -   0   .   e   *   (   )  ' '  @ */
+ /* 0*/ {10,  2,  3,  9, -1,  0, -1,  0,  9}, /* beginning of subexpression */
+-/* 1*/ {-1,  2,  3,  9,  1,  0, -1,  1,  9}, /* after binary operator or '!' */
++/* 1*/ {10,  2,  3,  9,  1,  0, -1,  1,  9}, /* after binary operator or '!' */
+ /* 2*/ { 1,  2,  3,  4,  1, -1,  5,  5, -1}, /* after first digit of integer */
+ /* 3*/ {-1,  7, -1,  4,  1, -1,  5,  5, -1}, /* after decimal point */
+ /* 4*/ { 8,  8, -1, -1, -1, -1, -1, -1, -1}, /* after 'e' of exponent */
+@@ -488,12 +489,12 @@
+ /* 9*/ { 1,  9, -1,  9,  1,  0,  5,  6,  9}, /* after first letter of name */
+ /*10*/ {-1,  2,  3,  9, -1,  0, -1, 10,  9}, /* after unary operator */
+   };
+-  /* we terminate a token whenever we transition out of a state we check here
+-   * is this transition could be a termination of a token */
++  /* we possibly terminate a token when we transition out of a state. we check here
++   * if this transition is a termination of a token */
+   int end_of_token[][sizeof(classes)/sizeof(classes[0])] = {
+       /* -   0   .   e   *   (   )  ' '  @ */
+-/* 0*/ { 1,  1,  1,  1, -1,  1, -1,  0,  1}, /* beginning of subexpression */
+-/* 1*/ {-1,  1,  1,  1,  0,  1, -1,  0,  1}, /* after binary operator or '!' */
++/* 0*/ { 1,  1,  1,  1, -1,  1, -1,  0,  1}, /* after beginning of subexpression */
++/* 1*/ { 1,  1,  1,  1,  0,  1, -1,  0,  1}, /* after binary operator or '!' */
+ /* 2*/ { 1,  0,  0,  0,  1,  1,  1,  1, -1}, /* after first digit of integer */
+ /* 3*/ {-1,  0, -1,  0,  1, -1,  1,  1, -1}, /* after decimal point */
+ /* 4*/ { 0,  0, -1, -1, -1, -1, -1, -1, -1}, /* after 'e' of exponent */
+@@ -502,7 +503,7 @@
+ /* 7*/ {-1,  0, -1,  0,  1, -1,  1,  1, -1}, /* after first digit of fraction */
+ /* 8*/ {-1,  0, -1, -1,  1, -1,  1,  1, -1}, /* after first digit of exponent */
+ /* 9*/ { 1,  0, -1,  0,  1,  1,  1,  1,  0}, /* after first letter of name */
+-/*10*/ {-1,  0,  0,  0, -1,  1, -1,  1,  0}, /* after unary operator */
++/*10*/ {-1,  0,  0,  1, -1,  1, -1,  1,  1}, /* after unary operator */
+   };
+   int tokenstate, state, class, error;
+ 
+@@ -511,7 +512,7 @@
+ 
+   tokenstart = expression;
+   state = 0;
+-  while(*tokenstart)
++  while(*tokenstart) /* as long as we have tokens left */
+   {
+ 
+     /* Remove leading whitespace */ 
+@@ -520,7 +521,7 @@
+     tokenend = NULL;
+     tokenstate = -1;
+ 
+-    /* classify first input character */
++    /* classify first input character of token*/
+     for(class = 0; class < (int)(sizeof(classes)/sizeof(classes[0]))-1; class++)
+     {
+       if(strchr(classes[class], *tokenstart))
+@@ -534,6 +535,7 @@
+     printf("Initial state: %d, token '%c', class '%c'\n", state, *tokenstart, classes[class][0]);
+ #endif
+ 
++    /* collect remainder of token */
+     error = 0;
+     for(position = tokenstart+1; *position && *tokenstart; position++)
+     {
+@@ -544,21 +546,20 @@
+           break;
+       }
+ 
+-      /* see if transition closes the previous token */
+-      if(end_of_token[state][class])
+-      {
+-        tokenend = position-1;
+-        tokenstate = state;
+-      }
+-
+ #ifdef TEST_EXPRESSION_PARSER
+       printf("read '%c', current state: %d, class '%c', will transition to %d, token = '%.*s', will %sappend token\n",
+           *position, state, classes[class][0], states[state][class], (int)(position-tokenstart), tokenstart, end_of_token[state][class] ? "" : "not ");
+ #endif
+ 
+-      /* transition to new state or state 0 upon errors */
+-      if(states[state][class] >= 0)
++      /* see if transition closes the current token */
++      if(end_of_token[state][class])
+       {
++        tokenend = position-1;
++        tokenstate = state;
++      }
++      else if(states[state][class] >= 0)
++      {
++        /* transition to new state or state 0 upon errors */
+         state = states[state][class];
+       }
+       else
+@@ -579,7 +580,7 @@
+       }
+     }
+ 
+-    /* Have we reached the end of the string ? */
++    /* Have we reached the end of the string ? If so, make sure to add last token */
+     if(!tokenend)
+     {
+       tokenend = position;
+@@ -622,8 +623,8 @@
+     }
+     else
+     {
+-      fprintf(stderr, "Unable to allocate memory for new token !\n");
+-      abort();
++      CCTK_VWarn (0, __LINE__, __FILE__, "Cactus",
++                  "Unable to allocate memory for new token !\n");
+     }
+   }
+     
+@@ -826,10 +827,16 @@
+   {
+     if(buffer->tokens[position].type == val)
+     {
++#if TEST_EXPRESSION_PARSER
++      printf("%s ",buffer->vars[buffer->tokens[position].token.varnum]);
++#endif
+       stackpointer++;
+     }
+     else
+     {
++#if TEST_EXPRESSION_PARSER
++      printf("%s ",opname(buffer->tokens[position].token.opcode));
++#endif
+       /* Evaluate operation, clear operands from stack and add the result to the stack. */
+       switch(buffer->tokens[position].type)
+       {
+@@ -876,6 +883,10 @@
+     retcode = 0;
+   }
+ 
++#if TEST_EXPRESSION_PARSER
++      printf("\n");
++#endif
++
+   return retcode;
+ }
+ 
+@@ -946,6 +957,9 @@
+     case OP_DIV :                                      \
+       (retval) = ((val1)/(val2));                      \
+       break;                                           \
++    case OP_REMAINDER :                                \
++      (retval) = (fmod(val1,val2));                    \
++      break;                                           \
+     case OP_TIMES :                                    \
+       (retval) = ((val1)*(val2));                      \
+       break;                                           \
+@@ -1604,9 +1618,19 @@
+ 
+   for(i = 0; i < nvars; i++)
+   {
+-    if(strchr(vars[i],'.') || strchr(vars[i],'e'))
++    if (strcmp(vars[i], "pi") == 0)
+     {
+       vals[i].type = rval;
++      vals[i].value.rval = M_PI;
++    }
++    else if (strcmp(vars[i], "one") == 0)
++    {
++      vals[i].type = ival;
++      vals[i].value.ival = 1;
++    }
++    else if(strchr(vars[i],'.') || strchr(vars[i],'e') || strcasecmp(vars[i], "nan") == 0 || strcasecmp(vars[i], "inf") == 0)
++    {
++      vals[i].type = rval;
+       vals[i].value.rval = strtod(vars[i], &endp);
+       if(*endp)
+         printf("Unrecognisable number format '%s' read as %g, unread '%s'\n", vars[i], vals[i].value.rval, endp);
+@@ -1649,7 +1673,7 @@
+     }
+     else
+     {
+-      printf("Value is %g\n", value.value.rval); 
++      printf("Value is %#g\n", value.value.rval); 
+     }
+     
+     Util_ExpressionFree(buffer);
+Index: doc/UsersGuide/Notes.tex
+===================================================================
+--- doc/UsersGuide/Notes.tex	(revision 4799)
++++ doc/UsersGuide/Notes.tex	(working copy)
+@@ -1354,12 +1354,12 @@
+         \hline
+         \verb|/| & C-like division		 & \verb|sinh| & hyperbolic sine \\
+         \hline
+-        \verb|*| & multiplication		 & \verb|sqrt| & square root \\
++        \verb|%| & remainder of division	 & \verb|sqrt| & square root \\
++        \hline                                                                         
++        \verb|*| & multiplication		 & \verb|tan| & tangent \\
++        \hline                                                                         
++        \verb|^| & exponentiation $x^y$		 & \verb|tanh| & hyperbolic tangent \\
+         \hline
+-        \verb|^| & exponentiation $x^y$		 & \verb|tan| & tangent \\
+-        \hline
+-                 &                               & \verb|tanh| & hyperbolic tangent \\
+-        \hline
+     \end{tabular}
+     \caption{Supported functions inside of expressions, in increasing order of
+     precedence.}
+Index: doc/UsersGuide.pdf
+===================================================================
+Cannot display: file marked as a binary type.
+svn:mime-type = application/pdf

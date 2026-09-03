@@ -1,0 +1,225 @@
+Subject: LSUThorns/Vectors: Add kifneg function
+From: Erik Schnetter <eschnetter@perimeterinstitute.ca>
+Date: 2011-11-26
+
+Add an kifneg function that does the opposite of kifpos, because
+kifneg is more natural (in the same sense as "ifnotzero" is natural in
+C.)
+
+Incidentally, it should probably be renamed "ifmsb" instead, because
+it can also be applied to unsigned quantities which don't have a sign
+bit.
+
+Index: src/vectors-8-SSE2.h
+===================================================================
+--- src/vectors-8-SSE2.h	(revision 35)
++++ src/vectors-8-SSE2.h	(working copy)
+@@ -212,7 +262,9 @@
+ // Choice   [sign(x)>0 ? y : z]
+ #ifdef __SSE4_1__
+ #  define k8ifpos(x,y,z) (_mm_blendv_pd(y,z,x))
++#  define k8ifneg(x,y,z) (_mm_blendv_pd(z,y,x))
+ #elif 0
++#  define k8ifneg(x,y,z) k8ifpos(x,z,y)
+ #  define k8ifpos(x_,y_,z_)                     \
+   ({                                            \
+     CCTK_REAL8_VEC const xx=(x_);               \
+@@ -232,8 +287,8 @@
+     CCTK_REAL8_VEC r;                           \
+     switch (m) {                                \
+     case 0: r = y; break;                       \
+-    case 1: r = _mm_move_sd(y,z); break;        \
+-    case 2: r = _mm_move_sd(z,y); break;        \
++    case 1: r = _mm_move_sd(z,y); break;        \
++    case 2: r = _mm_move_sd(y,z); break;        \
+     case 3: r = z; break;                       \
+     }                                           \
+     r;                                          \
+@@ -244,7 +299,8 @@
+ #  else
+ #    define k4sgn(x) (signbit(x))
+ #  endif
+-#  define k8ifpos(x_,y_,z_)                                             \
++#  define k8ifpos(x,y,z) k8ifneg(x,z,y)
++#  define k8ifneg(x_,y_,z_)                                             \
+   ({                                                                    \
+     CCTK_REAL8_VEC const xx=(x_);                                       \
+     CCTK_REAL8_VEC const x=xx;                                          \
+@@ -252,8 +308,8 @@
+     CCTK_REAL8_VEC const y=yy;                                          \
+     CCTK_REAL8_VEC const zz=(z_);                                       \
+     CCTK_REAL8_VEC const z=zz;                                          \
+-    vec8_set(k8sgn(vec8_elt0(x)) ? vec8_elt0(z) : vec8_elt0(y),         \
+-             k8sgn(vec8_elt1(x)) ? vec8_elt1(z) : vec8_elt1(y));        \
++    vec8_set(k8sgn(vec8_elt0(x)) ? vec8_elt0(y) : vec8_elt0(z),         \
++             k8sgn(vec8_elt1(x)) ? vec8_elt1(y) : vec8_elt1(z));        \
+   })
+ #else
+ static const union {
+@@ -261,7 +317,8 @@
+   double             d;
+ } k8one_union = { 0x1ULL };
+ #  define k8one (k8one_union.d)
+-#  define k8ifpos(x_,y_,z_)                                             \
++#  define k8ifpos(x,y,z) k8ifneg(x,z,y)
++#  define k8ifneg(x_,y_,z_)                                             \
+   ({                                                                    \
+     CCTK_REAL8_VEC const xx=(x_);                                       \
+     CCTK_REAL8_VEC const x=xx;                                          \
+@@ -273,7 +330,7 @@
+     CCTK_REAL8_VEC const imask =                                        \
+       (__m128d)_mm_sub_epi64(_mm_srli_epi64((__m128i)x, 63),            \
+                              (__m128i)_mm_set1_pd(k8one));              \
+-    /* (y & ~mask) | (z & mask);   imask = ~mask */                     \
+-    _mm_or_pd(_mm_and_pd(imask, y), _mm_andnot_pd(imask, z));           \
++    /* (z & ~mask) | (y & mask);   imask = ~mask */                     \
++    _mm_or_pd(_mm_and_pd(imask, z), _mm_andnot_pd(imask, y));           \
+   })
+ #endif
+Index: src/vectors-8-VSX.h
+===================================================================
+--- src/vectors-8-VSX.h	(revision 35)
++++ src/vectors-8-VSX.h	(working copy)
+@@ -111,3 +110,5 @@
+ 
+ #define k8ifpos(x,y,z)                                                  \
+   (vec_sel((y), (z), vec_sra(vec_convert((x), &(vector long long*)0), 63)))
++#define k8ifneg(x,y,z)                                                  \
++  (vec_sel((z), (y), vec_sra(vec_convert((x), &(vector long long*)0), 63)))
+Index: src/vectors-4-default.h
+===================================================================
+--- src/vectors-4-default.h	(revision 35)
++++ src/vectors-4-default.h	(working copy)
+@@ -91,3 +95,4 @@
+ #endif
+ 
+ #define k4ifpos(x,y,z) (k4sgn(x)?(z):(y))
++#define k4ifneg(x,y,z) (k4sgn(x)?(y):(z))
+Index: src/vectors-4-Altivec.h
+===================================================================
+--- src/vectors-4-Altivec.h	(revision 35)
++++ src/vectors-4-Altivec.h	(working copy)
+@@ -163,3 +163,5 @@
+ 
+ #define k4ifpos(x,y,z)                                                  \
+   (vec_sel((y), (z), vec_sra(vec_convert((x), &(vector int*)0), 31)))
++#define k4ifneg(x,y,z)                                                  \
++  (vec_sel((z), (y), vec_sra(vec_convert((x), &(vector int*)0), 31)))
+Index: src/vectors-8-default.h
+===================================================================
+--- src/vectors-8-default.h	(revision 35)
++++ src/vectors-8-default.h	(working copy)
+@@ -91,3 +95,4 @@
+ #endif
+ 
+ #define k8ifpos(x,y,z) (k8sgn(x)?(z):(y))
++#define k8ifneg(x,y,z) (k8sgn(x)?(y):(z))
+Index: src/test.cc
+===================================================================
+--- src/test.cc	(revision 35)
++++ src/test.cc	(working copy)
+@@ -176,6 +188,13 @@
+   VECTEST("kifpos 0",  kifpos(vec_set1(0.),bv,cv),  b[i]);
+   VECTEST("kifpos -0", kifpos(vec_set1(-0.),bv,cv), c[i]);
+ 
++  VECTEST("kifneg positive",
++          kifneg(av, bv, cv), my_signbit(a[i]) ? b[i] : c[i]);
++  VECTEST("kifneg negative",
++          kifneg(bv, bv, cv), my_signbit(b[i]) ? b[i] : c[i]);
++  VECTEST("kifneg 0",  kifneg(vec_set1(0.),bv,cv),  c[i]);
++  VECTEST("kifneg -0", kifneg(vec_set1(-0.),bv,cv), b[i]);
++
+   if (passed != numtests)
+     CCTK_VWarn(CCTK_WARN_ALERT, __LINE__, __FILE__, CCTK_THORNSTRING,
+       "Failed %d correctness tests", numtests - passed);
+Index: src/vectors-4-SSE.h
+===================================================================
+--- src/vectors-4-SSE.h	(revision 35)
++++ src/vectors-4-SSE.h	(working copy)
+@@ -306,13 +306,15 @@
+ // Choice   [sign(x)>0 ? y : z]
+ #ifdef __SSE4_1__
+ #  define k4ifpos(x,y,z) (_mm_blendv_ps(y,z,x))
++#  define k4ifneg(x,y,z) (_mm_blendv_ps(z,y,x))
+ #elif 0
+ #  ifdef __cplusplus
+ #    define k4sgn(x) ({ using namespace std; signbit(x); })
+ #  else
+ #    define k4sgn(x) (signbit(x))
+ #  endif
+-#  define k4ifpos(x,y,z)                                                \
++#  define k4ifpos(x,y,z) k4ifneg(x,z,y)
++#  define k4ifneg(x,y,z)                                                \
+   ({                                                                    \
+     CCTK_REAL4_VEC const xx=(x_);                                       \
+     CCTK_REAL4_VEC const x=xx;                                          \
+@@ -320,13 +322,14 @@
+     CCTK_REAL4_VEC const y=yy;                                          \
+     CCTK_REAL4_VEC const zz=(z_);                                       \
+     CCTK_REAL4_VEC const z=zz;                                          \
+-    vec4_set(k4sgn(vec4_elt0(x)) ? vec4_elt0(z) : vec4_elt0(y),   \
+-             k4sgn(vec4_elt1(x)) ? vec4_elt1(z) : vec4_elt1(y),   \
+-             k4sgn(vec4_elt2(x)) ? vec4_elt2(z) : vec4_elt2(y),   \
+-             k4sgn(vec4_elt3(x)) ? vec4_elt3(z) : vec4_elt3(y));  \
++    vec4_set(k4sgn(vec4_elt0(x)) ? vec4_elt0(y) : vec4_elt0(z),         \
++             k4sgn(vec4_elt1(x)) ? vec4_elt1(y) : vec4_elt1(z),         \
++             k4sgn(vec4_elt2(x)) ? vec4_elt2(y) : vec4_elt2(z),         \
++             k4sgn(vec4_elt3(x)) ? vec4_elt3(y) : vec4_elt3(z));        \
+   })
+ #else
+-#  define k4ifpos(x_,y_,z_)                                     \
++#  define k4ifpos(x,y,z) k4ifneg(x,z,y)
++#  define k4ifneg(x_,y_,z_)                                     \
+   ({                                                            \
+     CCTK_REAL4_VEC const xx=(x_);                               \
+     CCTK_REAL4_VEC const x=xx;                                  \
+@@ -335,7 +338,7 @@
+     CCTK_REAL4_VEC const zz=(z_);                               \
+     CCTK_REAL4_VEC const z=zz;                                  \
+     CCTK_REAL4_VEC const mask = _mm_srai_epi32(x, 31);          \
+-    /* (y & ~mask) | (z & mask) */                              \
+-    _mm_or_ps(_mm_andnot_ps(mask, y), _mm_and_ps(mask, z));     \
++    /* (z & ~mask) | (y & mask) */                              \
++    _mm_or_ps(_mm_andnot_ps(mask, z), _mm_and_ps(mask, y));     \
+   })
+ #endif
+Index: src/vectors-8-DoubleHummer.h
+===================================================================
+--- src/vectors-8-DoubleHummer.h	(revision 35)
++++ src/vectors-8-DoubleHummer.h	(working copy)
+@@ -212,3 +211,4 @@
+ #define k8sqrt(x)  K8REPL(sqrt,x)
+ 
+ #define k8ifpos(x,y,z) (__fpsel(x,z,y))
++#define k8ifneg(x,y,z) (__fpsel(x,y,z))
+Index: src/vectors.h
+===================================================================
+--- src/vectors.h	(revision 35)
++++ src/vectors.h	(working copy)
+@@ -85,6 +88,7 @@
+ #  define ksqrt  k4sqrt
+ 
+ #  define kifpos k4ifpos
++#  define kifneg k4ifneg
+ 
+ #elif defined(CCTK_REAL_PRECISION_8)
+ 
+@@ -132,6 +140,7 @@
+ #  define ksqrt  k8sqrt
+ 
+ #  define kifpos k8ifpos
++#  define kifneg k8ifneg
+ 
+ #else
+ 
+Index: src/vectors-8-AVX.h
+===================================================================
+--- src/vectors-8-AVX.h	(revision 35)
++++ src/vectors-8-AVX.h	(working copy)
+@@ -193,4 +237,6 @@
+ #define k8log(x)   K8REPL(log,x)
+ #define k8pow(x,a) K8REPL2(pow,x,a)
+ 
++// Choice   [sign(x)>0 ? y : z]
+ #define k8ifpos(x,y,z) (_mm256_blendv_pd(y,z,x))
++#define k8ifneg(x,y,z) (_mm256_blendv_pd(z,y,x))

@@ -1,0 +1,32 @@
+From b23e8e9b667fb28730eb1020d791b3b0aa609cd1 Mon Sep 17 00:00:00 2001
+From: Christian David Ott <cott@zwicky.(none)>
+Date: Sun, 30 Jun 2013 17:48:42 -0700
+Subject: [PATCH 23/24] GRHydro: make atmosphere threshold steerable on
+ recovery
+
+---
+ param.ccl |    4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index 84d6245..726ee35 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -482,12 +482,12 @@ REAL tau_rel_min "A minimum relative tau (taumin = maxtau(t=0) * tau_rel_min) be
+   0: :: ""
+ } 1.e-10
+ 
+-REAL rho_abs_min "A minimum rho below which evolution is turned off (atmosphere). If negative, the relative minimum will be used instead."
++REAL rho_abs_min "A minimum rho below which evolution is turned off (atmosphere). If negative, the relative minimum will be used instead." STEERABLE=recover
+ {
+   -1.0: :: ""
+ } -1.0
+ 
+-REAL rho_rel_min "A minimum relative rho (rhomin = centden * rho_rel_min) below which evolution is turned off (atmosphere). Only used if rho_abs_min < 0.0"
++REAL rho_rel_min "A minimum relative rho (rhomin = centden * rho_rel_min) below which evolution is turned off (atmosphere). Only used if rho_abs_min < 0.0" STEERABLE=recover
+ {
+   0: :: ""
+ } 1.e-9
+-- 
+1.7.10.4
+

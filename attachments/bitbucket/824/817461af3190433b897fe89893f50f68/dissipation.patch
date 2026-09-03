@@ -1,0 +1,283 @@
+Index: test/test_ah.par
+===================================================================
+--- test/test_ah.par	(revision 46)
++++ test/test_ah.par	(working copy)
+@@ -8,14 +8,16 @@
+ #
+ # Edited IH 31.Jul.2003 for Carpet.
+ #
++# Edited RH 29.Apr.2012 for ML_BSSN.
++#
+ 
+-ActiveThorns = "ahfinderdirect sphericalsurface symbase CoordBase carpetioascii idaxibrillbh spacemask admcoupling admbase staticconformal admmacros coordgauge admanalysis mol bssn_mol admconstraints carpetinterp localinterp aeilocalinterp boundary time carpet carpetlib carpetregrid carpetreduce loopcontrol carpetslab cartgrid3d ioutil carpetiobasic carpetioscalar ellbase nanchecker dissipation localreduce"
++ActiveThorns = "ahfinderdirect sphericalsurface symbase CoordBase carpetioascii idaxibrillbh spacemask admcoupling admbase staticconformal admmacros coordgauge admanalysis mol ml_bssn ml_bssn_helper genericfd loopcontrol newrad tmunubase ml_admconstraints carpetinterp localinterp aeilocalinterp boundary time carpet carpetlib carpetregrid carpetreduce loopcontrol carpetslab cartgrid3d ioutil carpetiobasic carpetioscalar ellbase nanchecker dissipation localreduce reflectionsymmetry"
+ 
+ #--- grid
+ time::dtfac                             = 0.25
+ grid::type                              = "coordbase"
+ grid::avoid_origin                     = "no"
+-grid::domain                            = "bitant"
++grid::domain                            = "full"
+ carpet::domain_from_coordbase = "yes"
+ coordbase::xmin = -12.45
+ coordbase::xmax = +12.35
+@@ -27,9 +29,14 @@
+ coordbase::dy=0.4
+ coordbase::dz=0.4
+ coordbase::boundary_size_x_lower = 2 #ghost size
+-coordbase::boundary_shiftout_x_lower = 1 #due to avoid_origin="no"
+-coordbase::boundary_size_z_lower = 2
++coordbase::boundary_size_y_lower = 2 #ghost size
++coordbase::boundary_size_z_lower = 2 #ghost size
++coordbase::boundary_size_x_upper = 2 #ghost size
++coordbase::boundary_size_y_upper = 2 #ghost size
++coordbase::boundary_size_z_upper = 2 #ghost size
+ coordbase::boundary_shiftout_z_lower = 1
++reflectionsymmetry::avoid_origin_z = "no"
++reflectionsymmetry::reflection_z = "yes"
+ carpetregrid::smart_outer_boundaries = "yes"
+ carpet::grid_structure_filename = "grids"
+ cactus::cctk_itlast                     = 4
+@@ -54,48 +61,57 @@
+ idaxibrillbh::n                    = 4
+ idaxibrillbh::ne                   = 302
+ idaxibrillbh::nq                   = 54
+-admbase::initial_shift             = "zero"
+-admbase::evolution_method          = "adm_bssn"
+-admbase::metric_type               = "static conformal"
+-staticconformal::conformal_storage = "factor+derivs+2nd derivs"
+-adm_bssn::timelevels		   =	3
+-ADMConstraints::constraints_timelevels	= 3 
+-ADMConstraints::constraints_persist	= yes
++idaxibrillbh::generate_StaticConformal_metric = false
++admbase::evolution_method          = "ml_bssn"
++# this lies since generate_StaticConformal_metric == false (rev 79), but there
++# is a pesky ParamWarn since rev 48 that tests for this. If ML_BSSN ever tests
++# for this (and it should) we are cheesed
++admbase::metric_type               = "static conformal"  
++ml_bssn::timelevels		   =	3
++admbase::metric_timelevels	   =	3
++ML_ADMConstraints::timelevels	   = 3 
+ 
+ #--- numerics
+ mol::ode_method        = "icn"
+ mol::initial_data_is_crap = "yes"
+-adm_bssn::bound        = "newrad"
+-adm_bssn::stencil_size = 2
+-adm_bssn::advection    = "upwind2"
++ml_bssn::fdOrder       = 2
++ml_bssn::my_initial_boundary_condition = "extrapolate-gammas"
++ml_bssn::ml_log_confac_bound = "flat"
++ml_bssn::ml_metric_bound     = "flat"
++ml_bssn::ml_gamma_bound      = "flat"
++ml_bssn::ml_trace_curv_bound = "flat"
++ml_bssn::ml_curv_bound       = "flat"
++ml_bssn::ml_lapse_bound      = "flat"
++ml_bssn::ml_dtlapse_bound    = "flat"
++ml_bssn::ml_shift_bound      = "flat"
++ml_bssn::ml_dtshift_bound    = "flat"
+ boundary::radpower     = 3
+ 
+ #--- gauge
+ admbase::initial_lapse          = "one"
+-admbase::lapse_evolution_method = "1+log"
+-adm_bssn::lapsesource           = "modified"
+-adm_bssn::harmonic_f            = 2.0
+-adm_bssn::force_lapse_positive  = "yes"
+-adm_bssn::LapsePsiPower         = 4
+-adm_bssn::AlphaDissip           = 2.0
+-admbase::shift_evolution_method = "gamma0"
+-adm_bssn::ShiftGammaCoeff       = 0.75
+-adm_bssn::BetaDriver            = 1.1
+-adm_bssn::BetaDriverAlpPower    = 1
+-#adm_bssn::BetaDriverAlpPower    = 0
+-adm_bssn::ShiftAlpPower         = 1
+-adm_bssn::ShiftPsiPower         = 2
++admbase::lapse_evolution_method = "ML_BSSN"
++admbase::dtlapse_evolution_method = "ML_BSSN"
++ML_BSSN::AlphaDriver = 1
++ML_BSSN::LapseAdvectionCoeff = 0
++ml_bssn::harmonicf             = 2.0
++admbase::initial_shift         = "zero"
++admbase::initial_dtshift         = "zero"
++admbase::shift_evolution_method = "ML_BSSN"
++admbase::dtshift_evolution_method = "ML_BSSN"
++ml_bssn::ShiftGammaCoeff       = 0.75
++ml_bssn::BetaDriver            = 1.1
++ML_BSSN::ShiftAdvectionCoeff    = 0
+ 
+ #--- output
+ io::out_dir                             = $parfile
+ io::parfile_write                       = no
+ io::out_fileinfo                        = "axis labels"
+ ioscalar::outScalar_every               = 2
+-ioscalar::outScalar_vars                = "admbase::alp admbase::metric admbase::shift admconstraints::momentum admconstraints::ham dissipation::epsdisA"
++ioscalar::outScalar_vars                = "admbase::alp admbase::metric admbase::shift ml_admconstraints::ML_mom ml_admconstraints::ML_ham dissipation::epsdisA"
+ iobasic::outInfo_every                  = 2
+ iobasic::outInfo_vars                   = "dissipation::epsdisA"
+ ioascii::out1D_every                    = 1
+-ioascii::out1D_vars                     = "admbase::alp admbase::metric admbase::curv admbase::shift admconstraints::momentum admconstraints::ham dissipation::epsdisA"
++ioascii::out1D_vars                     = "admbase::alp admbase::metric admbase::curv admbase::shift ml_admconstraints::ML_mom ml_admconstraints::ML_ham dissipation::epsdisA"
+ ## ascii 2D output gets big
+ #ioascii::out2D_every                    = 1
+ #ioascii::out2D_vars                     = "admbase::alp admbase::metric admbase::curv admbase::shift admconstraints::momentum admconstraints::ham admconstraints::normalized_hamiltonian adm_bssn::adm_bs_phi adm_bssn::adm_bssn_metric adm_bssn::adm_bs_k adm_bssn::adm_bssn_gamma adm_bssn::adm_bssn_curv dissipation::epsdisA"
+@@ -134,11 +150,11 @@
+ dissipation::surface_number[0] = 0
+ dissipation::horizon_number[0] = 1
+ Dissipation::vars = "
+-        ADM_BSSN::ADM_BSSN_phi
+-        ADM_BSSN::ADM_BSSN_metric
+-        ADM_BSSN::ADM_BSSN_curv
+-        ADM_BSSN::ADM_BSSN_K
+-        ADM_BSSN::ADM_BSSN_gamma
+-        ADMBase::lapse
+-        ADMBase::shift
++        ML_BSSN::phi
++        ML_BSSN::ML_metric
++        ML_BSSN::ML_curv
++        ML_BSSN::trK
++        ML_BSSN::ML_Gamma
++        ML_BSSN::ML_lapse
++        ML_BSSN::ML_shift
+ "
+Index: test/test_ob.par
+===================================================================
+--- test/test_ob.par	(revision 46)
++++ test/test_ob.par	(working copy)
+@@ -8,14 +8,16 @@
+ #
+ # Edited IH 31.Jul.2003 for Carpet.
+ #
++# Edited RH 29.Apr.2012 for ML_BSSN.
++#
+ 
+-ActiveThorns = "ahfinderdirect sphericalsurface symbase CoordBase carpetioascii idaxibrillbh spacemask admcoupling admbase staticconformal admmacros coordgauge admanalysis mol bssn_mol admconstraints carpetinterp localinterp aeilocalinterp boundary time carpet carpetlib carpetregrid carpetreduce loopcontrol carpetslab cartgrid3d ioutil carpetiobasic carpetioscalar ellbase nanchecker dissipation localreduce"
++ActiveThorns = "ahfinderdirect sphericalsurface symbase CoordBase carpetioascii idaxibrillbh spacemask admcoupling admbase staticconformal admmacros coordgauge admanalysis mol ml_bssn ml_bssn_helper genericfd loopcontrol newrad tmunubase ml_admconstraints carpetinterp localinterp aeilocalinterp boundary time carpet carpetlib carpetregrid carpetreduce loopcontrol carpetslab cartgrid3d ioutil carpetiobasic carpetioscalar ellbase nanchecker dissipation localreduce reflectionsymmetry"
+ 
+ #--- grid
+ time::dtfac                             = 0.25
+ grid::type                              = "coordbase"
+ grid::avoid_origin                     = "no"
+-grid::domain                            = "bitant"
++grid::domain                            = "full"
+ carpet::domain_from_coordbase = "yes"
+ coordbase::xmin = -12.45
+ coordbase::xmax = +12.35
+@@ -27,9 +29,14 @@
+ coordbase::dy=0.4
+ coordbase::dz=0.4
+ coordbase::boundary_size_x_lower = 2 #ghost size
+-coordbase::boundary_shiftout_x_lower = 1 #due to avoid_origin="no"
+-coordbase::boundary_size_z_lower = 2
++coordbase::boundary_size_y_lower = 2 #ghost size
++coordbase::boundary_size_z_lower = 2 #ghost size
++coordbase::boundary_size_x_upper = 2 #ghost size
++coordbase::boundary_size_y_upper = 2 #ghost size
++coordbase::boundary_size_z_upper = 2 #ghost size
+ coordbase::boundary_shiftout_z_lower = 1
++reflectionsymmetry::avoid_origin_z = "no"
++reflectionsymmetry::reflection_z = "yes"
+ carpetregrid::smart_outer_boundaries = "yes"
+ carpet::grid_structure_filename = "grids"
+ cactus::cctk_itlast                     = 4
+@@ -54,47 +61,56 @@
+ idaxibrillbh::n                    = 4
+ idaxibrillbh::ne                   = 302
+ idaxibrillbh::nq                   = 54
+-admbase::initial_shift             = "zero"
+-admbase::evolution_method          = "adm_bssn"
+-admbase::metric_type               = "static conformal"
+-staticconformal::conformal_storage = "factor+derivs+2nd derivs"
+-adm_bssn::timelevels		   =	3
+-ADMConstraints::constraints_timelevels	= 3 
+-ADMConstraints::constraints_persist	= yes
++idaxibrillbh::generate_StaticConformal_metric = false
++admbase::evolution_method          = "ml_bssn"
++# this lies since generate_StaticConformal_metric == false (rev 79), but there
++# is a pesky ParamWarn since rev 48 that tests for this. If ML_BSSN ever tests
++# for this (and it should) we are cheesed
++admbase::metric_type               = "static conformal"  
++ml_bssn::timelevels		   =	3
++admbase::metric_timelevels	   =	3
++ML_ADMConstraints::timelevels	   = 3 
+ 
+ #--- numerics
+ mol::ode_method        = "icn"
+ mol::initial_data_is_crap = "yes"
+-adm_bssn::bound        = "newrad"
+-adm_bssn::stencil_size = 2
+-adm_bssn::advection    = "upwind2"
++ml_bssn::fdOrder       = 2
++ml_bssn::my_initial_boundary_condition = "extrapolate-gammas"
++ml_bssn::ml_log_confac_bound = "flat"
++ml_bssn::ml_metric_bound     = "flat"
++ml_bssn::ml_gamma_bound      = "flat"
++ml_bssn::ml_trace_curv_bound = "flat"
++ml_bssn::ml_curv_bound       = "flat"
++ml_bssn::ml_lapse_bound      = "flat"
++ml_bssn::ml_dtlapse_bound    = "flat"
++ml_bssn::ml_shift_bound      = "flat"
++ml_bssn::ml_dtshift_bound    = "flat"
+ boundary::radpower     = 3
+ 
+ #--- gauge
+ admbase::initial_lapse          = "one"
+-admbase::lapse_evolution_method = "1+log"
+-adm_bssn::lapsesource           = "modified"
+-adm_bssn::harmonic_f            = 2.0
+-adm_bssn::force_lapse_positive  = "yes"
+-adm_bssn::LapsePsiPower         = 4
+-adm_bssn::AlphaDissip           = 2.0
+-admbase::shift_evolution_method = "gamma0"
+-adm_bssn::ShiftGammaCoeff       = 0.75
+-adm_bssn::BetaDriver            = 1.1
+-adm_bssn::BetaDriverAlpPower    = 1
+-#adm_bssn::BetaDriverAlpPower    = 0
+-adm_bssn::ShiftAlpPower         = 1
+-adm_bssn::ShiftPsiPower         = 2
++admbase::lapse_evolution_method = "ML_BSSN"
++admbase::dtlapse_evolution_method = "ML_BSSN"
++ML_BSSN::AlphaDriver = 1
++ML_BSSN::LapseAdvectionCoeff = 0
++ml_bssn::harmonicf             = 2.0
++admbase::initial_shift         = "zero"
++admbase::initial_dtshift         = "zero"
++admbase::shift_evolution_method = "ML_BSSN"
++admbase::dtshift_evolution_method = "ML_BSSN"
++ml_bssn::ShiftGammaCoeff       = 0.75
++ml_bssn::BetaDriver            = 1.1
++ML_BSSN::ShiftAdvectionCoeff    = 0
+ 
+ #--- output
+ io::out_dir                             = $parfile
+ io::out_fileinfo                        = "none"
+ ioscalar::outScalar_every               = 2
+-ioscalar::outScalar_vars                = "admbase::alp admbase::metric admbase::shift admconstraints::momentum admconstraints::ham dissipation::epsdisA"
++ioscalar::outScalar_vars                = "admbase::alp admbase::metric admbase::shift ml_admconstraints::ML_mom ml_admconstraints::ML_ham dissipation::epsdisA"
+ iobasic::outInfo_every                  = 2
+ iobasic::outInfo_vars                   = "dissipation::epsdisA"
+ ioascii::out1D_every                    = 1
+-ioascii::out1D_vars                     = "admbase::alp admbase::metric admbase::curv admbase::shift admconstraints::momentum admconstraints::ham dissipation::epsdisA"
++ioascii::out1D_vars                     = "admbase::alp admbase::metric admbase::curv admbase::shift ml_admconstraints::ML_mom ml_admconstraints::ML_ham dissipation::epsdisA"
+ ## ascii 2D output gets big
+ #ioascii::out2D_every                    = 1
+ #ioascii::out2D_vars                     = "admbase::alp admbase::metric admbase::curv admbase::shift admconstraints::momentum admconstraints::ham admconstraints::normalized_hamiltonian adm_bssn::adm_bs_phi adm_bssn::adm_bssn_metric adm_bssn::adm_bs_k adm_bssn::adm_bssn_gamma adm_bssn::adm_bssn_curv dissipation::epsdisA"
+@@ -136,11 +152,11 @@
+ dissipation::outer_bound_npoints = 5
+ dissipation::ob_slope = 1
+ Dissipation::vars = "
+-        ADM_BSSN::ADM_BSSN_phi
+-        ADM_BSSN::ADM_BSSN_metric
+-        ADM_BSSN::ADM_BSSN_curv
+-        ADM_BSSN::ADM_BSSN_K
+-        ADM_BSSN::ADM_BSSN_gamma
+-        ADMBase::lapse
+-        ADMBase::shift
++        ML_BSSN::phi
++        ML_BSSN::ML_metric
++        ML_BSSN::ML_curv
++        ML_BSSN::trK
++        ML_BSSN::ML_Gamma
++        ML_BSSN::ML_lapse
++        ML_BSSN::ML_shift
+ "

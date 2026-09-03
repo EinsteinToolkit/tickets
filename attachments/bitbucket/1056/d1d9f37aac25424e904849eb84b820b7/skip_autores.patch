@@ -1,0 +1,27 @@
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 50)
++++ param.ccl	(working copy)
+@@ -19,6 +19,8 @@
+ } ""
+ 
+ 
++# Warning: this will MPI hang when the number of components per refinement
++# level differs between processors
+ BOOLEAN auto_res[42] "Automatically determine resolution according to radius and Cartesian resolution"
+ {
+ } no
+Index: src/setup.cc
+===================================================================
+--- src/setup.cc	(revision 50)
++++ src/setup.cc	(working copy)
+@@ -336,6 +336,9 @@
+     // can decide which reflevel to use
+      
+     // set resolution according to Radius and Cartesian resolution
++
++    if (!auto_res[n])
++        continue;
+       
+     CCTK_REAL my_radius;
+       

@@ -1,0 +1,82 @@
+Index: interface.ccl
+===================================================================
+--- interface.ccl	(revision 46)
++++ interface.ccl	(working copy)
+@@ -9,8 +9,15 @@
+ CCTK_INT FUNCTION GetRefinementLevel (CCTK_POINTER_TO_CONST IN cctkGH)
+ USES FUNCTION GetRefinementLevel
+ 
++# simple translation function from user-friendly name to numerical Id
++# if name is not empty returns the first matching name and -1 if no name matches
++# if name is empty returns fallbackid
++CCTK_INT \
++FUNCTION sf_IdFromName (CCTK_INT IN fallbackid, CCTK_POINTER_TO_CONST IN name)
++PROVIDES FUNCTION sf_IdFromName WITH SphericalSurface_IdFromName LANGUAGE C
+ 
+ 
++
+ PUBLIC:
+ 
+ 
+@@ -108,4 +115,3 @@
+ {
+   sf_delta_theta_estimate sf_delta_phi_estimate
+ } "Surface coordinate estimators"
+-
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 46)
++++ param.ccl	(working copy)
+@@ -11,6 +11,12 @@
+   0:42 :: ""
+ } 0
+ 
++# can be queried via SphericalSurface_IdFromName()
++CCTK_STRING name[42] "User friendly name of spherical surface" STEERABLE=always
++{
++  ""   :: "none set"
++  ".*" :: "any string"
++} ""
+ 
+ 
+ BOOLEAN auto_res[42] "Automatically determine resolution according to radius and Cartesian resolution"
+Index: src/setup.cc
+===================================================================
+--- src/setup.cc	(revision 46)
++++ src/setup.cc	(working copy)
+@@ -20,9 +20,34 @@
+ }
+ 
+ 
++// simple translation function from user-friendly name to numerical Id
++// if name is not empty returns the first matching name and -1 if no name matches
++// if name is empty returns fallbackid
++extern "C" CCTK_INT SphericalSurface_IdFromName (CCTK_INT fallbackid, CCTK_POINTER_TO_CONST sfname)
++{
++  DECLARE_CCTK_PARAMETERS;
++  CCTK_INT retval = -1;
++
++  if (CCTK_Equals(static_cast<CCTK_STRING>(sfname), "")) {
++
++    retval = fallbackid;
++  } else {
++
++    for (CCTK_INT n=0; n<nsurfaces; ++n) {
++      
++      if (CCTK_Equals(static_cast<CCTK_STRING>(sfname), name[n])) {
++        
++        retval = n;
++        break;
++      }
++    }
++  }
++
++  return retval;
++}
++
+ //TODO:  overlap with finer levels still seems to be incorrect!
+ 
+-
+ extern "C" void SphericalSurface_Setup (CCTK_ARGUMENTS)
+ {
+   DECLARE_CCTK_ARGUMENTS;

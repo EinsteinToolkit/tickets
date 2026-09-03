@@ -1,0 +1,929 @@
+From: Erik Schnetter <eschnetter@perimeterinstitute.ca>
+Date: 2012-05-05
+Subject: Introduce scratchbasedir instead of scratchdir
+
+Remove "scratchdir" MDB entry. Remove logic that creates and deletes
+scratch directories.
+
+Introduce "scratchbasedir" MDB entry.
+
+
+Index: mdb/machines/intrepid.ini
+===================================================================
+--- mdb/machines/intrepid.ini	(revision 1655)
++++ mdb/machines/intrepid.ini	(working copy)
+@@ -55,7 +55,6 @@
+ queuedpattern   = " queued   "
+ runningpattern  = " running  "
+ holdingpattern  = " user hold  "
+-scratchdir      = scratchdir
+ exechost        = qstat -f @JOB_ID@
+ exechostpattern = exec_host = (\w+)/
+ stdout          = ssh @EXECHOST@ cat /var/spool/torque/spool/@JOB_ID@.qb2.OU
+Index: mdb/machines/neptune.ini
+===================================================================
+--- mdb/machines/neptune.ini	(revision 1655)
++++ mdb/machines/neptune.ini	(working copy)
+@@ -65,7 +65,6 @@
+ queuedpattern   = " I  "
+ runningpattern  = " R  "
+ holdingpattern  = " H  "
+-scratchdir      = scratchdir
+ exechost        = llq -f '%h' @JOB_ID@b | tail +3 | head -1
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/poseidon.ini
+===================================================================
+--- mdb/machines/poseidon.ini	(revision 1655)
++++ mdb/machines/poseidon.ini	(working copy)
+@@ -57,7 +57,7 @@
+ queuedpattern   = " Q "
+ runningpattern  = " R "
+ holdingpattern  = " H "
+-scratchdir      = /var/scratch/${USER}/${PBS_JOBID}
++scratchbasedir  = /var/scratch/@USER@
+ exechost        = qstat -f @JOB_ID@
+ exechostpattern = exec_host = (\w+)/
+ stdout          = ssh @EXECHOST@ cat /var/spool/torque/spool/@JOB_ID@.posei.OU
+Index: mdb/machines/bd.ini
+===================================================================
+--- mdb/machines/bd.ini	(revision 1655)
++++ mdb/machines/bd.ini	(working copy)
+@@ -74,7 +74,6 @@
+ queuedpattern   = " I  "
+ runningpattern  = " (R|ST)  "
+ holdingpattern  = " H  "
+-scratchdir      = scratchdir
+ exechost        = llq -f '%h' @JOB_ID@.0 | tail +3 | head -1
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/bluedawg.ini
+===================================================================
+--- mdb/machines/bluedawg.ini	(revision 1655)
++++ mdb/machines/bluedawg.ini	(working copy)
+@@ -65,7 +65,6 @@
+ queuedpattern   = " I  "
+ runningpattern  = " R  "
+ holdingpattern  = " H  "
+-scratchdir      = scratchdir
+ exechost        = llq -f '%h' @JOB_ID@b | tail +3 | head -1
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/bp.ini
+===================================================================
+--- mdb/machines/bp.ini	(revision 1655)
++++ mdb/machines/bp.ini	(working copy)
+@@ -67,7 +67,6 @@
+ queuedpattern   = " I  "
+ runningpattern  = " (R|ST)  "
+ holdingpattern  = " H  "
+-scratchdir      = scratchdir
+ exechost        = llq -f '%h' @JOB_ID@.0 | tail +3 | head -1
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/longhorn.ini
+===================================================================
+--- mdb/machines/longhorn.ini	(revision 1655)
++++ mdb/machines/longhorn.ini	(working copy)
+@@ -62,7 +62,6 @@
+ queuedpattern   = ^@JOB_ID@[ \t]+qw
+ runningpattern  = ^@JOB_ID@[ \t]+r
+ holdingpattern  = ^@JOB_ID@[ \t]+hqw
+-scratchdir      = scratchdir
+ exechost        = head -n 1 SIMFACTORY/NODES
+ exechostpattern = ^(\S+)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/queenbee.ini
+===================================================================
+--- mdb/machines/queenbee.ini	(revision 1655)
++++ mdb/machines/queenbee.ini	(working copy)
+@@ -56,7 +56,7 @@
+ queuedpattern   = " Q "
+ runningpattern  = " R "
+ holdingpattern  = " H "
+-scratchdir      = /var/scratch/${USER}/${PBS_JOBID}
++scratchbasedir  = /var/scratch/@USER@
+ exechost        = qstat -f @JOB_ID@
+ exechostpattern = exec_host = (\w+)/
+ stdout          = ssh @EXECHOST@ cat /var/spool/torque/spool/@JOB_ID@.qb2.OU
+Index: mdb/machines/damiana.ini
+===================================================================
+--- mdb/machines/damiana.ini	(revision 1655)
++++ mdb/machines/damiana.ini	(working copy)
+@@ -51,7 +51,7 @@
+ queuedpattern   = ^@JOB_ID@[ \t]+qw
+ runningpattern  = ^@JOB_ID@[ \t]+r
+ holdingpattern  = ^@JOB_ID@[ \t]+hqw
+-scratchdir      = /tmp/${USER}/${JOB_ID}
++scratchbasedir  = /tmp
+ exechost        = head -n 1 SIMFACTORY/NODES
+ exechostpattern = ^(\S+)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/hopper.ini
+===================================================================
+--- mdb/machines/hopper.ini	(revision 1655)
++++ mdb/machines/hopper.ini	(working copy)
+@@ -90,7 +90,7 @@
+ queuedpattern   = " Q "
+ runningpattern  = " R "
+ holdingpattern  = " H "
+-scratchdir      = /scratch/scratchdirs/@USER@/scratch/@JOB_ID@
++scratchbasedir   = /scratch/scratchdirs/@USER@
+ exechost        = /usr/common/nsg/bin/qstat -f @JOB_ID@
+ exechostpattern = exec_host = (\w+)/
+ stdout          = cat @JOB_ID@.sdb.OU
+Index: mdb/machines/bassi.ini
+===================================================================
+--- mdb/machines/bassi.ini	(revision 1655)
++++ mdb/machines/bassi.ini	(working copy)
+@@ -41,7 +41,7 @@
+ queuedpattern   = " I  "
+ runningpattern  = " R  "
+ holdingpattern  = " H  "
+-scratchdir      = /scratch/scratchdirs/${USER}/${PBS_JOBID}
++scratchbasedir  = /scratch/scratchdirs/@USER@
+ exechost        = false
+ exechostpattern = $^
+ stdout          = false
+Index: mdb/machines/forge.ini
+===================================================================
+--- mdb/machines/forge.ini	(revision 1655)
++++ mdb/machines/forge.ini	(working copy)
+@@ -65,7 +65,7 @@
+ queuedpattern   = " Q "
+ runningpattern  = " R "
+ holdingpattern  = " H "
+-scratchdir      = /tmp # what is this for? /scratch/batch/users/${USER}/${PBS_JOBID}
++scratchbasedir  = /tmp
+ exechost        = /usr/local/torque/bin/qstat -f @JOB_ID@
+ exechostpattern = exec_host = (\w+)/
+ stdout          = cat /u/ac/@USER@/.pbs_spool/@JOB_ID@.abem5.OU
+Index: mdb/machines/fermi.ini
+===================================================================
+--- mdb/machines/fermi.ini	(revision 1655)
++++ mdb/machines/fermi.ini	(working copy)
+@@ -58,7 +58,6 @@
+ queuedpattern   = $^
+ runningpattern  = ^
+ holdingpattern  = $^
+-scratchdir      = scratchdir
+ exechost        = echo localhost
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/supermuc.ini
+===================================================================
+--- mdb/machines/supermuc.ini	(revision 1655)
++++ mdb/machines/supermuc.ini	(working copy)
+@@ -55,7 +55,7 @@
+ queuedpattern   = " I "
+ runningpattern  = " R "
+ holdingpattern  = " H "
+-scratchdir      = /scratch/pr32pi/${USER}/${JOB_ID}
++scratchbasedir  = /scratch/pr32pi/@USER@
+ exechost        = llq -f '%h' @JOB_ID@b | tail +3 | head -1
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/lacumba.ini
+===================================================================
+--- mdb/machines/lacumba.ini	(revision 1655)
++++ mdb/machines/lacumba.ini	(working copy)
+@@ -65,7 +65,6 @@
+ queuedpattern   = " I  "
+ runningpattern  = " R  "
+ holdingpattern  = " H  "
+-scratchdir      = scratchdir
+ exechost        = llq -f '%h' @JOB_ID@b | tail +3 | head -1
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/numrel05.ini
+===================================================================
+--- mdb/machines/numrel05.ini	(revision 1655)
++++ mdb/machines/numrel05.ini	(working copy)
+@@ -51,7 +51,6 @@
+ queuedpattern   = $^
+ runningpattern  = ^
+ holdingpattern  = $^
+-scratchdir      = scratchdir
+ exechost        = echo localhost
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/numrel07.ini
+===================================================================
+--- mdb/machines/numrel07.ini	(revision 1655)
++++ mdb/machines/numrel07.ini	(working copy)
+@@ -52,7 +52,6 @@
+ queuedpattern   = $^
+ runningpattern  = ^
+ holdingpattern  = $^
+-scratchdir      = scratchdir
+ exechost        = echo localhost
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/numrel09.ini
+===================================================================
+--- mdb/machines/numrel09.ini	(revision 1655)
++++ mdb/machines/numrel09.ini	(working copy)
+@@ -52,7 +52,6 @@
+ queuedpattern   = $^
+ runningpattern  = ^
+ holdingpattern  = $^
+-scratchdir      = scratchdir
+ exechost        = echo localhost
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/angel.ini
+===================================================================
+--- mdb/machines/angel.ini	(revision 1655)
++++ mdb/machines/angel.ini	(working copy)
+@@ -53,4 +53,3 @@
+ queuedpattern   = ' Q '
+ runningpattern  = ' R '
+ holdingpattern  = ' H '   # TODO
+-scratchdir      = scratchdir
+Index: mdb/machines/vip.ini
+===================================================================
+--- mdb/machines/vip.ini	(revision 1655)
++++ mdb/machines/vip.ini	(working copy)
+@@ -63,4 +63,4 @@
+ queuedpattern   = " I  "
+ runningpattern  = " R  "
+ holdingpattern  = " H  "
+-scratchdir      = /ptmp/@USER@/@JOB_ID@
++scratchbasedir  = /ptmp/@USER@/@JOB_ID@
+Index: mdb/machines/zeke.ini
+===================================================================
+--- mdb/machines/zeke.ini	(revision 1655)
++++ mdb/machines/zeke.ini	(working copy)
+@@ -65,7 +65,6 @@
+ queuedpattern   = " I  "
+ runningpattern  = " R  "
+ holdingpattern  = " H  "
+-scratchdir      = scratchdir
+ exechost        = llq -f '%h' @JOB_ID@b | tail +3 | head -1
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/mars.ini
+===================================================================
+--- mdb/machines/mars.ini	(revision 1655)
++++ mdb/machines/mars.ini	(working copy)
+@@ -30,4 +30,3 @@
+ queuedpattern   = $^
+ runningpattern  = $^
+ holdingpattern  = $^
+-scratchdir      = /no/scratchdir
+Index: mdb/machines/numrel10.ini
+===================================================================
+--- mdb/machines/numrel10.ini	(revision 1655)
++++ mdb/machines/numrel10.ini	(working copy)
+@@ -52,7 +52,6 @@
+ queuedpattern   = $^
+ runningpattern  = ^
+ holdingpattern  = $^
+-scratchdir      = scratchdir
+ exechost        = echo localhost
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/tesla.ini
+===================================================================
+--- mdb/machines/tesla.ini	(revision 1655)
++++ mdb/machines/tesla.ini	(working copy)
+@@ -35,7 +35,6 @@
+ queuedpattern   = $^
+ runningpattern  = ^
+ holdingpattern  = $^
+-scratchdir      = scratchdir
+ exechost        = echo localhost
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/s-kraken.ini
+===================================================================
+--- mdb/machines/s-kraken.ini	(revision 1655)
++++ mdb/machines/s-kraken.ini	(working copy)
+@@ -53,4 +53,3 @@
+ queuedpattern   = ' Q '
+ runningpattern  = ' R '
+ holdingpattern  = ' H '   # TODO
+-scratchdir      = scratchdir
+Index: mdb/machines/eric.ini
+===================================================================
+--- mdb/machines/eric.ini	(revision 1655)
++++ mdb/machines/eric.ini	(working copy)
+@@ -65,7 +65,7 @@
+ queuedpattern   = " Q "
+ runningpattern  = " R "
+ holdingpattern  = " H "
+-scratchdir      = /var/scratch/${USER}/${PBS_JOBID}
++scratchbasedir  = /var/scratch/@USER@
+ exechost        = qstat -f @JOB_ID@
+ exechostpattern = exec_host = (\w+)/
+ stdout          = ssh @EXECHOST@ cat /var/spool/torque/spool/@JOB_ID@.eric.OU
+Index: mdb/machines/orca.ini
+===================================================================
+--- mdb/machines/orca.ini	(revision 1655)
++++ mdb/machines/orca.ini	(working copy)
+@@ -94,4 +94,3 @@
+ queuedpattern   = ' Q '
+ runningpattern  = ' R '
+ holdingpattern  = ' H '   # TODO
+-scratchdir      = scratchdir
+Index: mdb/machines/compute2.ini
+===================================================================
+--- mdb/machines/compute2.ini	(revision 1655)
++++ mdb/machines/compute2.ini	(working copy)
+@@ -42,7 +42,6 @@
+ queuedpattern   = $^
+ runningpattern  = ^
+ holdingpattern  = $^
+-scratchdir      = scratchdir
+ exechost        = echo localhost
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/compute4.ini
+===================================================================
+--- mdb/machines/compute4.ini	(revision 1655)
++++ mdb/machines/compute4.ini	(working copy)
+@@ -42,7 +42,6 @@
+ queuedpattern   = $^
+ runningpattern  = ^
+ holdingpattern  = $^
+-scratchdir      = scratchdir
+ exechost        = echo localhost
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/oliver.ini
+===================================================================
+--- mdb/machines/oliver.ini	(revision 1655)
++++ mdb/machines/oliver.ini	(working copy)
+@@ -56,7 +56,7 @@
+ queuedpattern   = " Q "
+ runningpattern  = " R "
+ holdingpattern  = " H "
+-scratchdir      = /var/scratch/${USER}/${PBS_JOBID}
++scratchbasedir  = /var/scratch/@USER@
+ exechost        = qstat -f @JOB_ID@
+ exechostpattern = exec_host = (\w+)/
+ stdout          = ssh @EXECHOST@ cat /var/spool/torque/spool/@JOB_ID@.oliv.OU
+Index: mdb/machines/trestles.ini
+===================================================================
+--- mdb/machines/trestles.ini	(revision 1655)
++++ mdb/machines/trestles.ini	(working copy)
+@@ -48,7 +48,6 @@
+ queuedpattern   = ^@JOB_ID@[ \t]+qw
+ runningpattern  = ^@JOB_ID@[ \t]+r
+ holdingpattern  = ^@JOB_ID@[ \t]+hqw
+-scratchdir      = scratchdir
+ exechost        = head -n 1 SIMFACTORY/NODES
+ exechostpattern = ^(\S+)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/datura.ini
+===================================================================
+--- mdb/machines/datura.ini	(revision 1655)
++++ mdb/machines/datura.ini	(working copy)
+@@ -51,7 +51,7 @@
+ queuedpattern   = ^@JOB_ID@[ \t]+qw
+ runningpattern  = ^@JOB_ID@[ \t]+r
+ holdingpattern  = ^@JOB_ID@[ \t]+hqw
+-scratchdir      = /tmp/@USER@/@JOB_ID@
++scratchbasedir  = /tmp
+ exechost        = head -n 1 SIMFACTORY/NODES
+ exechostpattern = ^(\S+)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/philip.ini
+===================================================================
+--- mdb/machines/philip.ini	(revision 1655)
++++ mdb/machines/philip.ini	(working copy)
+@@ -66,7 +66,7 @@
+ queuedpattern   = " Q "
+ runningpattern  = " R "
+ holdingpattern  = " H "
+-scratchdir      = /var/scratch/${USER}/${PBS_JOBID}
++scratchbasedir  = /var/scratch/@USER@
+ exechost        = qstat -f @JOB_ID@
+ exechostpattern = exec_host = (\w+)/
+ stdout          = ssh @EXECHOST@ cat /var/spool/torque/spool/@JOB_ID@.philip1.OU
+Index: mdb/machines/bethe.ini
+===================================================================
+--- mdb/machines/bethe.ini	(revision 1655)
++++ mdb/machines/bethe.ini	(working copy)
+@@ -56,7 +56,6 @@
+ queuedpattern   = $^
+ runningpattern  = ^
+ holdingpattern  = $^
+-scratchdir      = scratchdir
+ exechost        = echo localhost
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/abe.ini
+===================================================================
+--- mdb/machines/abe.ini	(revision 1655)
++++ mdb/machines/abe.ini	(working copy)
+@@ -64,7 +64,7 @@
+ queuedpattern   = " Q "
+ runningpattern  = " R "
+ holdingpattern  = " H "
+-scratchdir      = /cfs/scratch/users/${USER}/${PBS_JOBID}
++scratchbasedir  = /cfs/scratch/users/@USER@
+ exechost        = /usr/local/torque/bin/qstat -f @JOB_ID@
+ exechostpattern = exec_host = (\w+)/
+ stdout          = cat /u/ac/@USER@/.pbs_spool/@JOB_ID@.abem5.OU
+Index: mdb/machines/tezpur.ini
+===================================================================
+--- mdb/machines/tezpur.ini	(revision 1655)
++++ mdb/machines/tezpur.ini	(working copy)
+@@ -57,7 +57,7 @@
+ queuedpattern   = " Q "
+ runningpattern  = " R "
+ holdingpattern  = " H "
+-scratchdir      = /var/scratch/${USER}/${PBS_JOBID}
++scratchbasedir  = /var/scratch/@USER@
+ exechost        = qstat -f @JOB_ID@
+ exechostpattern = exec_host = (\w+)/
+ stdout          = ssh @EXECHOST@ cat /var/spool/torque/spool/@JOB_ID@.tezpu.OU
+Index: mdb/machines/saw.ini
+===================================================================
+--- mdb/machines/saw.ini	(revision 1655)
++++ mdb/machines/saw.ini	(working copy)
+@@ -54,4 +54,3 @@
+ queuedpattern   = ' Q '
+ runningpattern  = ' R '
+ holdingpattern  = ' H '   # TODO
+-scratchdir      = scratchdir
+Index: mdb/machines/requin.ini
+===================================================================
+--- mdb/machines/requin.ini	(revision 1655)
++++ mdb/machines/requin.ini	(working copy)
+@@ -57,4 +57,3 @@
+ queuedpattern   = ' Q '
+ runningpattern  = ' R '
+ holdingpattern  = ' H '   # TODO
+-scratchdir      = scratchdir
+Index: mdb/machines/kraken.ini
+===================================================================
+--- mdb/machines/kraken.ini	(revision 1655)
++++ mdb/machines/kraken.ini	(working copy)
+@@ -90,7 +90,7 @@
+ queuedpattern   = "^@JOB_ID@[. ].* Q "
+ runningpattern  = "^@JOB_ID@[. ].* R "
+ holdingpattern  = "^@JOB_ID@[. ].* H "
+-scratchdir      = /lustre/scratch/@USER@/scratch/@JOB_ID@
++scratchbasedir   = /lustre/scratch/@USER@
+ exechost        = /opt/torque/2.5.7/bin/qstat -f @JOB_ID@
+ exechostpattern = exec_host = (\w+)/
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/pelican.ini
+===================================================================
+--- mdb/machines/pelican.ini	(revision 1655)
++++ mdb/machines/pelican.ini	(working copy)
+@@ -62,7 +62,6 @@
+ queuedpattern   = " I  "
+ runningpattern  = " R  "
+ holdingpattern  = " H  "
+-scratchdir      = scratchdir
+ exechost        = llq -f '%h' @JOB_ID@b | tail +3 | head -1
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/generic.ini
+===================================================================
+--- mdb/machines/generic.ini	(revision 1655)
++++ mdb/machines/generic.ini	(working copy)
+@@ -30,7 +30,6 @@
+ queuedpattern   = $^
+ runningpattern  = ^
+ holdingpattern  = $^
+-scratchdir      = scratchdir
+ exechost        = echo localhost
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/franklin.ini
+===================================================================
+--- mdb/machines/franklin.ini	(revision 1655)
++++ mdb/machines/franklin.ini	(working copy)
+@@ -61,7 +61,7 @@
+ queuedpattern   = " Q "
+ runningpattern  = " R "
+ holdingpattern  = " H "
+-scratchdir      = /scratch/scratchdirs/${USER}/${PBS_JOBID}
++scratchbasedir  = /scratch/scratchdirs/@USER@
+ exechost        = qstat -f @JOB_ID@
+ exechostpattern = exec_host = (\w+)/
+ stdout          = cat /var/spool/torque/mom_priv/jobs/@JOB_ID@.nid0.OU
+Index: mdb/machines/numrel02.ini
+===================================================================
+--- mdb/machines/numrel02.ini	(revision 1655)
++++ mdb/machines/numrel02.ini	(working copy)
+@@ -53,7 +53,6 @@
+ queuedpattern   = $^
+ runningpattern  = ^
+ holdingpattern  = $^
+-scratchdir      = scratchdir
+ exechost        = echo localhost
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/cyder.ini
+===================================================================
+--- mdb/machines/cyder.ini	(revision 1655)
++++ mdb/machines/cyder.ini	(working copy)
+@@ -52,7 +52,6 @@
+ queuedpattern   = $^
+ runningpattern  = ^
+ holdingpattern  = $^
+-scratchdir      = scratchdir
+ exechost        = echo localhost
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/numrel06.ini
+===================================================================
+--- mdb/machines/numrel06.ini	(revision 1655)
++++ mdb/machines/numrel06.ini	(working copy)
+@@ -52,7 +52,6 @@
+ queuedpattern   = $^
+ runningpattern  = ^
+ holdingpattern  = $^
+-scratchdir      = scratchdir
+ exechost        = echo localhost
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/hlrb2.ini
+===================================================================
+--- mdb/machines/hlrb2.ini	(revision 1655)
++++ mdb/machines/hlrb2.ini	(working copy)
+@@ -55,7 +55,7 @@
+ queuedpattern   = " Q "
+ runningpattern  = " R "
+ holdingpattern  = " H "
+-scratchdir      = /ptmp1/pr32pi/${USER}/${PBS_JOBID}
++scratchbasedir  = /ptmp1/pr32pi/@USER@
+ exechost        = qstat -f @JOB_ID@
+ exechostpattern = exec_host = (\w+)/
+ stdout          = false   # don't know
+Index: mdb/machines/numrel08.ini
+===================================================================
+--- mdb/machines/numrel08.ini	(revision 1655)
++++ mdb/machines/numrel08.ini	(working copy)
+@@ -52,7 +52,6 @@
+ queuedpattern   = $^
+ runningpattern  = ^
+ holdingpattern  = $^
+-scratchdir      = scratchdir
+ exechost        = echo localhost
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/nvidia.ini
+===================================================================
+--- mdb/machines/nvidia.ini	(revision 1655)
++++ mdb/machines/nvidia.ini	(working copy)
+@@ -44,7 +44,6 @@
+ queuedpattern   = $^
+ runningpattern  = ^
+ holdingpattern  = $^
+-scratchdir      = scratchdir
+ exechost        = echo localhost
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/compute.ini
+===================================================================
+--- mdb/machines/compute.ini	(revision 1655)
++++ mdb/machines/compute.ini	(working copy)
+@@ -43,7 +43,6 @@
+ queuedpattern   = $^
+ runningpattern  = ^
+ holdingpattern  = $^
+-scratchdir      = scratchdir
+ exechost        = echo localhost
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/louie.ini
+===================================================================
+--- mdb/machines/louie.ini	(revision 1655)
++++ mdb/machines/louie.ini	(working copy)
+@@ -55,7 +55,7 @@
+ queuedpattern   = " Q "
+ runningpattern  = " R "
+ holdingpattern  = " H "
+-scratchdir      = /var/scratch/${USER}/${PBS_JOBID}
++scratchbasedir  = /var/scratch/@USER@
+ exechost        = qstat -f @JOB_ID@
+ exechostpattern = exec_host = (\w+)/
+ stdout          = ssh @EXECHOST@ cat /var/spool/torque/spool/@JOB_ID@.loui.OU
+Index: mdb/machines/ducky.ini
+===================================================================
+--- mdb/machines/ducky.ini	(revision 1655)
++++ mdb/machines/ducky.ini	(working copy)
+@@ -65,7 +65,6 @@
+ queuedpattern   = " I  "
+ runningpattern  = " R  "
+ holdingpattern  = " H  "
+-scratchdir      = scratchdir
+ exechost        = llq -f '%h' @JOB_ID@b | tail +3 | head -1
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/carver.ini
+===================================================================
+--- mdb/machines/carver.ini	(revision 1655)
++++ mdb/machines/carver.ini	(working copy)
+@@ -61,7 +61,7 @@
+ queuedpattern   = ^@JOB_ID@[ \t]+qw
+ runningpattern  = ^@JOB_ID@[ \t]+r
+ holdingpattern  = ^@JOB_ID@[ \t]+hqw
+-scratchdir      = /global/scratch/sd/@USER@/scratch/${PBS_JOBID}
++scratchbasedir  = /global/scratch/sd/@USER@
+ exechost        = /usr/syscom/opt/torque/default/bin/qstat -f @JOB_ID@
+ exechostpattern = exec_host = (\w+)/
+ stdout          = cat @RUNDIR@/@SIMULATION_NAME@.out
+Index: mdb/machines/lincoln.ini
+===================================================================
+--- mdb/machines/lincoln.ini	(revision 1655)
++++ mdb/machines/lincoln.ini	(working copy)
+@@ -56,7 +56,7 @@
+ queuedpattern   = " Q "
+ runningpattern  = " R "
+ holdingpattern  = " H "
+-scratchdir      = /cfs/scratch/users/${USER}/${PBS_JOBID}
++scratchbasedir  = /cfs/scratch/users/@USER@
+ exechost        = /usr/local/torque/bin/qstat -f @JOB_ID@
+ exechostpattern = exec_host = (\w+)/
+ stdout          = cat /u/ac/@USER@/.pbs_spool/@JOB_ID@.abem5.OU
+Index: mdb/machines/painter.ini
+===================================================================
+--- mdb/machines/painter.ini	(revision 1655)
++++ mdb/machines/painter.ini	(working copy)
+@@ -55,7 +55,7 @@
+ queuedpattern   = " Q "
+ runningpattern  = " R "
+ holdingpattern  = " H "
+-scratchdir      = /var/scratch/${USER}/${PBS_JOBID}
++scratchbasedir  = /var/scratch/@USER@
+ exechost        = qstat -f @JOB_ID@
+ exechostpattern = exec_host = (\w+)/
+ stdout          = ssh @EXECHOST@ cat /var/spool/torque/spool/@JOB_ID@.olive.OU
+Index: mdb/machines/gpc.ini
+===================================================================
+--- mdb/machines/gpc.ini	(revision 1655)
++++ mdb/machines/gpc.ini	(working copy)
+@@ -56,7 +56,6 @@
+ queuedpattern   = " Q "
+ runningpattern  = " R "
+ holdingpattern  = " H "
+-scratchdir      = scratchdir
+ exechost        = qstat -f @JOB_ID@ #?
+ exechostpattern = exec_host = (\w+)/ #?
+ stdout          = cat /u/ac/@USER@/.pbs_spool/@JOB_ID@.abem5.OU #?
+Index: mdb/machines/shc.ini
+===================================================================
+--- mdb/machines/shc.ini	(revision 1655)
++++ mdb/machines/shc.ini	(working copy)
+@@ -69,7 +69,7 @@
+ queuedpattern   = " Q "
+ runningpattern  = " R "
+ holdingpattern  = " H "
+-scratchdir      = /scratch
++scratchbasedir  = /scratch
+ exechost        = qstat -f @JOB_ID@
+ exechostpattern = exec_host = (\w+)/
+ stdout          = ssh @EXECHOST@ cat /var/spool/torque/spool/@JOB_ID@.mistress.OU
+Index: mdb/machines/ranger.ini
+===================================================================
+--- mdb/machines/ranger.ini	(revision 1655)
++++ mdb/machines/ranger.ini	(working copy)
+@@ -67,7 +67,6 @@
+ queuedpattern   = ^@JOB_ID@[ \t]+qw
+ runningpattern  = ^@JOB_ID@[ \t]+r
+ holdingpattern  = ^@JOB_ID@[ \t]+hqw
+-scratchdir      = scratchdir
+ exechost        = head -n 1 SIMFACTORY/NODES
+ exechostpattern = ^(\S+)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/zwicky.ini
+===================================================================
+--- mdb/machines/zwicky.ini	(revision 1655)
++++ mdb/machines/zwicky.ini	(working copy)
+@@ -58,7 +58,6 @@
+ queuedpattern   = " Q "
+ runningpattern  = " R "
+ holdingpattern  = " H "
+-scratchdir      = scratchdir
+ exechost        = qstat -f @JOB_ID@
+ exechostpattern = exec_host = (\w+)/
+ stdout          = ssh @EXECHOST@ cat /var/spool/torque/spool/@JOB_ID@.maestro.OU
+Index: mdb/machines/scinet.ini
+===================================================================
+--- mdb/machines/scinet.ini	(revision 1655)
++++ mdb/machines/scinet.ini	(working copy)
+@@ -30,4 +30,3 @@
+ queuedpattern   = $^
+ runningpattern  = $^
+ holdingpattern  = $^
+-scratchdir      = /no/scratchdir
+Index: mdb/machines/lonestar.ini
+===================================================================
+--- mdb/machines/lonestar.ini	(revision 1655)
++++ mdb/machines/lonestar.ini	(working copy)
+@@ -57,7 +57,6 @@
+ queuedpattern   = ^@JOB_ID@[ \t]+qw
+ runningpattern  = ^@JOB_ID@[ \t]+r
+ holdingpattern  = ^@JOB_ID@[ \t]+hqw
+-scratchdir      = scratchdir
+ exechost        = head -n 1 SIMFACTORY/NODES
+ exechostpattern = ^(\S+)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/compute1.ini
+===================================================================
+--- mdb/machines/compute1.ini	(revision 1655)
++++ mdb/machines/compute1.ini	(working copy)
+@@ -42,7 +42,6 @@
+ queuedpattern   = $^
+ runningpattern  = ^
+ holdingpattern  = $^
+-scratchdir      = scratchdir
+ exechost        = echo localhost
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/surveyor.ini
+===================================================================
+--- mdb/machines/surveyor.ini	(revision 1655)
++++ mdb/machines/surveyor.ini	(working copy)
+@@ -68,7 +68,6 @@
+ queuedpattern   = " queued   "
+ runningpattern  = " running  "
+ holdingpattern  = " user hold  "
+-scratchdir      = scratchdir
+ exechost        = qstat -f @JOB_ID@
+ exechostpattern = exec_host = (\w+)/
+ stdout          = ssh @EXECHOST@ cat /var/spool/torque/spool/@JOB_ID@.qb2.OU
+Index: mdb/machines/compute3.ini
+===================================================================
+--- mdb/machines/compute3.ini	(revision 1655)
++++ mdb/machines/compute3.ini	(working copy)
+@@ -42,7 +42,6 @@
+ queuedpattern   = $^
+ runningpattern  = ^
+ holdingpattern  = $^
+-scratchdir      = scratchdir
+ exechost        = echo localhost
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: mdb/machines/compute5.ini
+===================================================================
+--- mdb/machines/compute5.ini	(revision 1655)
++++ mdb/machines/compute5.ini	(working copy)
+@@ -42,7 +42,6 @@
+ queuedpattern   = $^
+ runningpattern  = ^
+ holdingpattern  = $^
+-scratchdir      = scratchdir
+ exechost        = echo localhost
+ exechostpattern = (.*)
+ stdout          = cat @SIMULATION_NAME@.out
+Index: lib/simrestart.py
+===================================================================
+--- lib/simrestart.py	(revision 1655)
++++ lib/simrestart.py	(working copy)
+@@ -452,39 +452,6 @@
+         
+         return job_id
+     
+-    def makeScratchdir(self, DefineDatabase):
+-        """Create a restart's scratch directory"""
+-        
+-        scratchdir = DefineDatabase.SubAll(simlib.GetMachineOption('scratchdir'))
+-        
+-        if not(os.path.exists(scratchdir)):
+-            
+-            if not(scratchdir.startswith("/")):
+-                sspath = simlib.BuildPath(self.RestartDir, scratchdir)
+-                
+-                if not(os.path.exists(sspath)):
+-                    try:
+-                        # have to rely on os.system due to the possibility of shell expansion 
+-                        # annoying.
+-                        os.system("mkdir -p %s" % sspath)
+-                    except OSError, e:
+-                        fatal("Error: could not make scratch directory \"%s\", %s" % (sspath, e))
+-                scratchdir = sspath
+-            else:
+-                try:
+-                    os.system("mkdir -p %s" % scratchdir)
+-                except OSError, e:
+-                    fatal("Error: could not make scratch directory \"%s\", %s" % (scratchdir, e))
+-
+-                sspath = simlib.BuildPath(self.RestartDir, "scratch")
+-                
+-                try:
+-                    os.system("ln -s %s %s 2>&1" % (scratchdir, sspath))
+-                except OSError, e:
+-                    pass
+-        
+-        DefineDatabase.Set("SCRATCHDIR", scratchdir)
+-
+     def copyTestsuiteData(self):
+         """Copy testsuite data into restart directory"""
+         if self.Properties.testsuite == "True":
+@@ -580,7 +547,7 @@
+         DefineDatabase = simsubs.DefineDatabase()
+ 
+         machineEntry = simenv.LocalMachineEntry
+-        simlib.VerifyKeys(machineEntry, ['scratchdir', 'num-threads', 'ppn', 'maxwalltime', 'hostname'])
++        simlib.VerifyKeys(machineEntry, ['num-threads', 'ppn', 'maxwalltime', 'hostname'])
+         
+         submitscript_contents = simlib.GetFileContents(submitScript)
+ 
+@@ -742,8 +709,6 @@
+         # make executable!
+         os.chmod(newsspath, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+         
+-        self.makeScratchdir(DefineDatabase)
+-        
+         self.copyTestsuiteData()
+ 
+         submitCommand = DefineDatabase.SubAll(machineEntry.submit)
+@@ -1021,8 +986,6 @@
+         else:
+             self.Properties.AddProperty("checkpointing", "no")
+ 
+-        scratchdir = simlib.GetMachineOption('scratchdir')
+-        
+         if self.Properties.parfile != "":
+             parname = simlib.FileBaseName(self.Properties.parfile)
+             my_workdir = simlib.BuildPath(self.RestartDir, parname)
+@@ -1096,7 +1059,6 @@
+         else:
+             DefineDatabase.AddReplacement("TerminationTrigger::max_walltime", "0")
+             
+-        new_properties['SCRATCHDIR'] = scratchdir
+         #new_properties['CHAINED_JOB_ID'] = ''
+         
+         self.SimulationLog.Write("Defined substitution properties for execution/run")
+@@ -1612,30 +1574,17 @@
+                     self.SimulationLog.Write("unable to chmod 644 %s, it may not exist" % f)
+                     pass
+             
+-        # step 4. remove scratch dir
+-        machineEntry = simenv.LocalMachineEntry
+-        
+-        scratchdir = machineEntry.GetKey('scratchdir')
+-        
+-        # TODO: This looks like a logic error -- the scratch dir is
+-        # only removed if its path does not start with a slash.
++        # [step 4. remove scratch dir]
++
+         # TODO: This looks like a pattern -- calling BuildPath only if
+         # a path does not start with a slash. This could be abstracted
+         # into a function, e.g. "create-an-absolute-path-name".
+-        if not(scratchdir.startswith("/")):
+-            sspath = simlib.BuildPath(self.RestartDir, scratchdir)
+-        else:
+-            sspath = scratchdir
+             
+-        if os.path.exists(sspath):
+-            shutil.rmtree(sspath, True)
+-            
+         # step 5. remove half written checkpoint files
+         try:
+             os.system("find %s -name *.chkpt.tmp.it_*.* -exec rm -rf {} \;" % self.RestartDir)
+         except:
+             pass
+-            
+         
+         # step 6. Hard-link (Formaline) tarballs between different restarts
+         
+Index: bin/distribute-watch
+===================================================================
+--- bin/distribute-watch	(revision 1655)
++++ bin/distribute-watch	(working copy)
+@@ -111,8 +111,8 @@
+         path = os.path.join(logdir, file)
+         f = open(path, "r")
+         lines = f.readlines()
+-        # Consider only last 10k lines to speed things up
+-        lines = lines[:100] + lines[-10000:]
++        # Consider only last 100k lines to speed things up
++        lines = lines[:100] + lines[-100000:]
+         f.close()
+         #duration = end_time(lines[-10]) - start_time(lines[:10])
+         duration = os.path.getmtime(path) - start_time(lines[:10])
+Index: etc/syntax/mdb-syntax.ini
+===================================================================
+--- etc/syntax/mdb-syntax.ini	(revision 1656)
++++ etc/syntax/mdb-syntax.ini	(working copy)
+@@ -917,17 +917,17 @@
+ description     = Test whether an active job is held in the queue
+ section         = simulation
+ 
+-[scratchdir]
++[scratchbasedir]
+ 
+ # Description
+-necessity       = required
++necessity       = optional
+ type            = string
+ pattern         = [^/]$
+ # default        
+ 
+ # Documentation
+-example         = /tmp/@USER@/@JOB_ID@
+-description     = Scratch directory for temporary files during execution. This directory must be unique to a restart, and is expected to disappear after the restart finishes, and needs to be visible on the head node.
++example         = /scratch
++description     = A fast directory where temporary files can be stored. This directory may not be available on the head node, and files may be deleted when a job has finished.
+ section         = simulation
+ 
+ [exechost]

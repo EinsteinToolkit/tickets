@@ -1,0 +1,45 @@
+From 43535cd2c41bb59c46227362a629bef265474928 Mon Sep 17 00:00:00 2001
+From: Christian Reisswig <reisswig@scriwalker.(none)>
+Date: Wed, 27 Mar 2013 11:21:06 -0700
+Subject: [PATCH 03/12] GRHydro: MP5: Make epsilon parameter scale dependent
+ on reconstructed field.
+
+---
+ src/GRHydro_MP5Reconstruct.F90 |    7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/src/GRHydro_MP5Reconstruct.F90 b/src/GRHydro_MP5Reconstruct.F90
+index 72b2f73..e575a4d 100644
+--- a/src/GRHydro_MP5Reconstruct.F90
++++ b/src/GRHydro_MP5Reconstruct.F90
+@@ -48,7 +48,7 @@ subroutine GRHydro_MP5Reconstruct1d(nx, v, vminus, vplus, trivial_rp, &
+   logical, dimension(nx) :: excise
+   logical :: normal_m5
+ 
+-  CCTK_REAL :: vl, vmp, djm1, dj, djp1, dm4jph, dm4jmh, vul, vav, vmd, vlc, vmin, vmax
++  CCTK_REAL :: vl, vmp, djm1, dj, djp1, dm4jph, dm4jmh, vul, vav, vmd, vlc, vmin, vmax, vnorm
+ 
+   ! sign requires its arguments to be of identical KIND
+   CCTK_REAL, parameter :: one = 1d0
+@@ -89,6 +89,9 @@ subroutine GRHydro_MP5Reconstruct1d(nx, v, vminus, vplus, trivial_rp, &
+     end if
+ 
+     if (normal_m5) then
++    
++      vnorm = sqrt(v(i-2)**2 + v(i-1)**2 + v(i)**2 + v(i+1)**2 + v(i+2)**2)
++    
+ #define MINMOD(x,y)  \
+      0.5d0*(sign(one,x) + sign(one,y)) * min(abs(x), abs(y))
+ 
+@@ -98,7 +101,7 @@ subroutine GRHydro_MP5Reconstruct1d(nx, v, vminus, vplus, trivial_rp, &
+ #define MP5(am2, am1, a, ap1, ap2, arecon) \
+       vl = (2.0d0*am2 - 13.0d0*am1 + 47.0d0*a + 27.0d0*ap1 - 3.0d0*ap2)/60.0d0  &&\
+       vmp = a + MINMOD( ap1-a, mp5_alpha*(a-am1) )  &&\
+-      if ((vl-a)*(vl-vmp) .le. mp5_eps) then &&\
++      if ((vl-a)*(vl-vmp) .le. mp5_eps*vnorm) then &&\
+          arecon = vl &&\
+       else &&\
+         djm1 = am2 -2.0d0*am1 + a &&\
+-- 
+1.7.10.4
+

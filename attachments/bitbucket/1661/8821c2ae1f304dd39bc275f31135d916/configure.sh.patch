@@ -1,0 +1,28 @@
+Index: configure.sh
+===================================================================
+--- configure.sh	(revision 16)
++++ configure.sh	(working copy)
+@@ -134,8 +134,21 @@
+         ${TAR?} xzf ${SRCDIR}/dist/${TARNAME}.tar.gz
+         
+         echo "PAPI: Applying patches..."
+-        pushd ${NAME}
+-        # Replace <malloc.h> by <stdlib.h>
++        pushd ${NAME} 
++        ${PATCH?} -p1 < ${SRCDIR}/dist/remove_Werror.patch 
++        # Some (ancient but still used) versions of patch don't support the 
++        # patch format used here but also don't report an error using the 
++        # exit code. So we use this patch to test for this 
++        ${PATCH?} -p0 < ${SRCDIR}/dist/patchtest.patch 
++        if [ ! -e .patch_tmp ]; then 
++            echo 'BEGIN ERROR' 
++            echo 'The version of patch is too old to understand this patch format.' 
++            echo 'Please set the PATCH environment variable to a more recent ' 
++            echo 'version of the patch command.' 
++            echo 'END ERROR' 
++            exit 1 
++        fi 
++        rm -f .patch_tmp 
+         find . -type f -print | xargs perl -pi -e 's/malloc.h/stdlib.h/'
+         popd
+         

@@ -1,0 +1,45 @@
+From 85e4b82c0bbc6c49e0f7c58fae0823a3b3fe309e Mon Sep 17 00:00:00 2001
+From: Christian Ott <cott@tapir.caltech.edu>
+Date: Sat, 6 Jul 2013 13:05:13 -0700
+Subject: [PATCH 02/19] * add "bitant_hack" functionality to C2P in the same
+ way we use   "oct_hack"
+
+---
+ param.ccl                |    4 ++++
+ src/GRHydro_Con2Prim.F90 |    5 +++++
+ 2 files changed, 9 insertions(+)
+
+diff --git a/param.ccl b/param.ccl
+index e7427cc..b56cea2 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -746,6 +746,10 @@ boolean con2prim_oct_hack "Disregard c2p failures in oct/rotsym90 boundary cells
+ {
+ } "no"
+ 
++boolean con2prim_bitant_hack "Disregard c2p failures in bitant boundary cells with z < 0" STEERABLE=ALWAYS
++{
++} "no"
++
+ int GRHydro_c2p_warn_from_reflevel "Start warning on given refinement level and on higher levels" STEERABLE=ALWAYS
+ {
+   0:           :: "Greater or equal to 0"
+diff --git a/src/GRHydro_Con2Prim.F90 b/src/GRHydro_Con2Prim.F90
+index 64785b5..223cf1d 100644
+--- a/src/GRHydro_Con2Prim.F90
++++ b/src/GRHydro_Con2Prim.F90
+@@ -1768,6 +1768,11 @@ subroutine check_GRHydro_C2P_failed(CCTK_ARGUMENTS)
+               cycle
+            endif
+ 
++           if(con2prim_bitant_hack.ne.0.and.&
++                z(i,j,k) .lt. -1.0d-12) then
++              cycle
++           endif
++
+            !if ( rho(i,j,k) .le. GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance) ) then
+            IF_BELOW_ATMO(rho(i,j,k), GRHydro_rho_min, GRHydro_atmo_tolerance, r(i,j,k)) then
+                cycle
+-- 
+1.7.10.4
+

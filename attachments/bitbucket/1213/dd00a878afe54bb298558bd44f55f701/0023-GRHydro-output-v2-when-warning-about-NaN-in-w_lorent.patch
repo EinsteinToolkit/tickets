@@ -1,0 +1,27 @@
+From a5054d2e30592df35bcb343e08caf172263eda2a Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Fri, 14 Dec 2012 11:05:02 -0800
+Subject: [PATCH 23/25] GRHydro: output v2 when warning about NaN in w_lorentz
+
+---
+ src/GRHydro_Prim2ConM.F90 |    4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/GRHydro_Prim2ConM.F90 b/src/GRHydro_Prim2ConM.F90
+index f46b9ff..78c31bb 100644
+--- a/src/GRHydro_Prim2ConM.F90
++++ b/src/GRHydro_Prim2ConM.F90
+@@ -255,8 +255,8 @@ subroutine prim2conM_hot(handle, GRHydro_reflevel, ii, jj, kk, x, y, z, gxx, gxy
+     call CCTK_WARN(1, NaN_WarnLine)
+     write(NaN_WarnLine,'(a100,3g15.6)') 'NaN produced in sqrt(): (x,y,z)', x, y, z
+     call CCTK_WARN(1, NaN_WarnLine)
+-    !write(NaN_WarnLine,'(a100,g15.6)') 'NaN produced in sqrt(): w', w
+-    !call CCTK_WARN(GRHydro_NaN_verbose, NaN_WarnLine)
++    write(NaN_WarnLine,'(a100,g15.6)') 'NaN produced in sqrt(): v2', DOT2(dvelx(1),dvely(1),dvelz(1))
++    call CCTK_WARN(GRHydro_NaN_verbose, NaN_WarnLine)
+     !$OMP END CRITICAL
+   endif
+ !!$ END: Check for NaN value
+-- 
+1.7.10.4
+

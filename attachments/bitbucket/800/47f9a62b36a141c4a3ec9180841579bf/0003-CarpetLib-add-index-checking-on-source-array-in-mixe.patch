@@ -1,0 +1,42 @@
+From 8693465077bbfb87011508e1cf3b65357a15f98f Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Sat, 5 May 2012 15:15:09 -0700
+Subject: [PATCH 3/3] CarpetLib: add index checking on source array in mixed
+ restriction operator
+
+---
+ Carpet/CarpetLib/src/restrict_3d_vc_rf2.cc |   18 ++++++++++++++++++
+ 1 files changed, 18 insertions(+), 0 deletions(-)
+
+diff --git a/Carpet/CarpetLib/src/restrict_3d_vc_rf2.cc b/Carpet/CarpetLib/src/restrict_3d_vc_rf2.cc
+index f39f298..4b43f5e 100644
+--- a/Carpet/CarpetLib/src/restrict_3d_vc_rf2.cc
++++ b/Carpet/CarpetLib/src/restrict_3d_vc_rf2.cc
+@@ -248,6 +248,24 @@ namespace CarpetLib {
+     for (int k=0; k<regkext; ++k) {
+       for (int j=0; j<regjext; ++j) {
+         for (int i=0; i<regiext; ++i) {
++#ifdef CARPET_DEBUG
++    if(not (2 * k + centk < srckext and
++            2 * j + centj < srcjext and
++            2 * i + centi < srciext))
++    {
++      cout << "restrict_3d_vc_rf2.cc\n";
++      cout << "regext " << regext << "\n";
++      cout << "srcext " << srcext << "\n";
++      cout << "srcbbox=" << srcbbox << "\n";
++      cout << "dstbbox=" << dstbbox << "\n";
++      cout << "regbbox=" << regbbox << "\n";
++      cout << "srcregbbox=" << srcregbbox << "\n";
++      cout << "icent=" << icent << "\n";
++    }
++    assert(2 * k + centk < srckext and
++           2 * j + centj < srcjext and
++           2 * i + centi < srciext);
++#endif    
+           
+           dst [DSTIND3(i, j, k)] =
+             restrict3<T,centi,centj,centk>::call
+-- 
+1.7.9
+

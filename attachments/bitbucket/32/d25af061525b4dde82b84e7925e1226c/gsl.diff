@@ -1,0 +1,117 @@
+Index: GSL.sh
+===================================================================
+--- GSL.sh	(revision 13)
++++ GSL.sh	(working copy)
+@@ -47,30 +47,28 @@
+ # Build
+ ################################################################################
+ 
+-if [ -z "${GSL_DIR}" ]; then
++if [ -z "${GSL_DIR}" -o "${GSL_DIR}" = 'BUILD' ]; then
+     echo "BEGIN MESSAGE"
+     echo "Building GSL..."
+     echo "END MESSAGE"
+     
+     # Set locations
+-    NAME=gsl-1.12
++    THORN=GSL
++    NAME=gsl-1.14
+     SRCDIR=$(dirname $0)
+-    INSTALL_DIR=${SCRATCH_BUILD}
+-    GSL_DIR=${INSTALL_DIR}/${NAME}
+-
+-    # Set up environment
+-    unset LIBS
+-    if echo '' ${ARFLAGS} | grep 64 > /dev/null 2>&1; then
+-        export OBJECT_MODE=64
+-    fi
++    BUILD_DIR=${SCRATCH_BUILD}/build/${THORN}
++    INSTALL_DIR=${SCRATCH_BUILD}/external/${THORN}
++    DONE_FILE=${SCRATCH_BUILD}/done/${THORN}
++    GSL_DIR=${INSTALL_DIR}
+     
+ (
+     exec >&2                    # Redirect stdout to stderr
+     set -x                      # Output commands
+     set -e                      # Abort on errors
+-    cd ${INSTALL_DIR}
+-    if [ -e done-${NAME} -a done-${NAME} -nt ${SRCDIR}/dist/${NAME}.tar.gz \
+-                         -a done-${NAME} -nt ${SRCDIR}/GSL.sh ]
++    
++    cd ${SCRATCH_BUILD}
++    if [ -e ${DONE_FILE} -a ${DONE_FILE} -nt ${SRCDIR}/dist/${NAME}.tar.gz \
++                         -a ${DONE_FILE} -nt ${SRCDIR}/GSL.sh ]
+     then
+         echo "GSL: The enclosed GSL library has already been built; doing nothing"
+     else
+@@ -78,20 +76,28 @@
+         
+         # Should we use gmake or make?
+         MAKE=$(gmake --help > /dev/null 2>&1 && echo gmake || echo make)
++        # Should we use gtar or tar?
++        TAR=$(gtar --help > /dev/null 2> /dev/null && echo gtar || echo tar)
+         
++        # Set up environment
++        unset LIBS
++        if echo '' ${ARFLAGS} | grep 64 > /dev/null 2>&1; then
++            export OBJECT_MODE=64
++        fi
++        echo "GSL: Current environment settings:"
++        env | sort
++        
++        echo "GSL: Preparing directory structure..."
++        mkdir build external done 2> /dev/null || true
++        rm -rf ${BUILD_DIR} ${INSTALL_DIR}
++        mkdir ${BUILD_DIR} ${INSTALL_DIR}
++        
+         echo "GSL: Unpacking archive..."
+-        rm -rf build-${NAME}
+-        mkdir build-${NAME}
+-        pushd build-${NAME}
+-        # Should we use gtar or tar?
+-        TAR=$(gtar --help > /dev/null 2> /dev/null && echo gtar || echo tar)
++        pushd ${BUILD_DIR}
+         ${TAR} xzf ${SRCDIR}/dist/${NAME}.tar.gz
+-        popd
+         
+         echo "GSL: Configuring..."
+-        rm -rf ${NAME}
+-        mkdir ${NAME}
+-        pushd build-${NAME}/${NAME}
++        cd ${NAME}
+         ./configure --prefix=${GSL_DIR}
+         
+         echo "GSL: Building..."
+@@ -101,14 +107,17 @@
+         ${MAKE} install
+         popd
+         
+-        echo 'done' > done-${NAME}
++        echo "GSL: Cleaning up..."
++        rm -rf ${BUILD_DIR}
++        
++        date > ${DONE_FILE}
+         echo "GSL: Done."
+     fi
+ )
+ 
+     if (( $? )); then
+         echo 'BEGIN ERROR'
+-        echo 'Error while building GSL.  Aborting.'
++        echo 'Error while building GSL. Aborting.'
+         echo 'END ERROR'
+         exit 1
+     fi
+@@ -123,9 +132,9 @@
+ 
+ # Set options
+ if [ -x ${GSL_DIR}/bin/gsl-config ]; then
+-  GSL_INC_DIRS=`${GSL_DIR}/bin/gsl-config --cflags | sed -e 's/ \+-[^I][^ ]\+//g;s/^ *-[^I][^ ]\+ *//g;s/ \+-I/ /g;s/^ *-I//g'`;
+-  GSL_LIB_DIRS=`${GSL_DIR}/bin/gsl-config --libs   | sed -e 's/ \+-[^L][^ ]\+//g;s/^ *-[^L][^ ]\+ *//g;s/ \+-L/ /g;s/^ *-L//g'`;
+-  GSL_LIBS=`${GSL_DIR}/bin/gsl-config --libs       | sed -e 's/ \+-[^l][^ ]\+//g;s/^ *-[^l][^ ]\+ *//g;s/ \+-l/ /g;s/^ *-l//g'`;
++    GSL_INC_DIRS=`${GSL_DIR}/bin/gsl-config --cflags | sed -e 's/ \+-[^I][^ ]\+//g;s/^ *-[^I][^ ]\+ *//g;s/ \+-I/ /g;s/^ *-I//g'`;
++    GSL_LIB_DIRS=`${GSL_DIR}/bin/gsl-config --libs   | sed -e 's/ \+-[^L][^ ]\+//g;s/^ *-[^L][^ ]\+ *//g;s/ \+-L/ /g;s/^ *-L//g'`;
++    GSL_LIBS=`${GSL_DIR}/bin/gsl-config --libs       | sed -e 's/ \+-[^l][^ ]\+//g;s/^ *-[^l][^ ]\+ *//g;s/ \+-l/ /g;s/^ *-l//g'`;
+ fi
+ 
+ # Pass options to Cactus

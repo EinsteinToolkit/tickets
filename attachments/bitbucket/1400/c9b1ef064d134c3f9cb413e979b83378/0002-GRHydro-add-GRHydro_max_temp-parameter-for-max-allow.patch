@@ -1,0 +1,33 @@
+From 0703b98012c07f10f03aa31a84734e2411e31fb8 Mon Sep 17 00:00:00 2001
+From: Christian David Ott <cott@zwicky-b.(none)>
+Date: Mon, 25 Mar 2013 23:01:34 -0700
+Subject: [PATCH 02/24] GRHydro: add GRHydro_max_temp parameter for max
+ allowed T
+
+---
+ param.ccl |    9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index 8f0b60d..89e825b 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -370,8 +370,13 @@ boolean reconstruct_temper "if set to true, temperature will be reconstructed" S
+  
+ REAL GRHydro_hot_atmo_temp "Temperature of the hot atmosphere in MeV" STEERABLE=ALWAYS
+ {
+- 0.0:*   :: "Larger than 0 MeV"
+-} 0.5e0
++ (0.0:*   :: "Larger than 0 MeV"
++} 0.1e0
++
++REAL GRHydro_max_temp "maximum temperature we allow" STEERABLE=ALWAYS
++{
++ (0.0:*   :: "Larger than 0 MeV"
++} 90.0e0
+ 
+ REAL GRHydro_hot_atmo_Y_e "Y_e of the hot atmosphere" STEERABLE=ALWAYS
+ {
+-- 
+1.7.10.4
+

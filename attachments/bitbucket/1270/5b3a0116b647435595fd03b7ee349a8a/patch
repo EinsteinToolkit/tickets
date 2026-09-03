@@ -1,0 +1,43 @@
+Index: make.configuration.deps
+===================================================================
+--- make.configuration.deps	(revision 228)
++++ make.configuration.deps	(working copy)
+@@ -135,20 +135,21 @@
+ 	cd $(CCTK_HOME) && \
+ 	$(TAR) czf $@ -T $< || [ $$(( $$? / ($(IS_GNUTAR)+1) )) -eq 0 ]
+ 
++CACTUS_CONFIGS_DIR ?= configs
+ # This dependency means that the tarball for a thorn is only updated
+ # if the thorn is actually recompiled.  This does not catch changes to
+ # files that do not influence the executable.
+ $(TARBALL_DIR)/flesh-Cactus.files: $(CCTK_LIBDIR)/$(LIBNAME_PREFIX)$(CCTK_LIBNAME_PREFIX)$(FLESHLIB)$(LIBNAME_SUFFIX) $(TARBALL_DIR)/flesh-Cactus.ccldeps
+ 	cd $(CCTK_HOME) && \
+ 	find CONTRIBUTORS COPYRIGHT Makefile lib/ src/ \
+-		`ls configs/$(notdir $(TOP))/OptionList 2> /dev/null` \
+-		`ls configs/$(notdir $(TOP))/properties.ini 2> /dev/null` \
+-		`ls configs/$(notdir $(TOP))/RunScript 2> /dev/null` \
+-		`ls configs/$(notdir $(TOP))/ScriptFile 2> /dev/null` \
+-		`ls configs/$(notdir $(TOP))/SubmitScript 2> /dev/null` \
+-		configs/$(notdir $(TOP))/ThornList \
+-		configs/$(notdir $(TOP))/config-data \
+-		configs/$(notdir $(TOP))/config-info \
++		`ls $(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/OptionList 2> /dev/null` \
++		`ls $(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/properties.ini 2> /dev/null` \
++		`ls $(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/RunScript 2> /dev/null` \
++		`ls $(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/ScriptFile 2> /dev/null` \
++		`ls $(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/SubmitScript 2> /dev/null` \
++		$(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/ThornList \
++		$(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/config-data \
++		$(CACTUS_CONFIGS_DIR)/$(notdir $(TOP))/config-info \
+ 		-name 'CVS' -prune -o \
+ 		-name '_darcs' -prune -o \
+ 		-name '.git' -prune -o \
+@@ -354,7 +355,7 @@
+ 	{ \
+ 	'$(GIT-BIN)/git-init-repo.pl' '$(GIT)' '$(GIT-REPO)' && \
+ 	echo "Formaline: Adding flesh to git repository..." && \
+-	'$(GIT-BIN)/git-rm-thorn.pl' '$(GIT)' '$(GIT-REPO)' '$(GIT-ROOT)' 'Cactus' CONTRIBUTORS COPYRIGHT Makefile lib src configs && \
++	'$(GIT-BIN)/git-rm-thorn.pl' '$(GIT)' '$(GIT-REPO)' '$(GIT-ROOT)' 'Cactus' CONTRIBUTORS COPYRIGHT Makefile lib src $(CACTUS_CONFIGS_DIR) && \
+ 	xargs '$(GIT-BIN)/git-add-thorn.pl' '$(GIT)' '$(GIT-REPO)' '$(GIT-ROOT)' 'Cactus' < $(TARBALL_DIR)/flesh-Cactus.files && \
+ 	: > $@; \
+ 	} || echo "Formaline: WARNING: Error while adding flesh to git repository"

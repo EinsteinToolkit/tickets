@@ -1,0 +1,34 @@
+ActiveThorns = "Boundary CartGrid3D CoordBase Fortran InitBase IOUtil LocalReduce SymBase Time"
+ActiveThorns = "Carpet CarpetLib CarpetReduce CarpetRegrid2 CarpetSlab LoopControl"
+ActiveThorns = "ADMbase HydroBase"
+
+Carpet::domain_from_coordbase           = yes
+CartGrid3D::type                        = coordbase
+
+coordbase::xmin = -80
+coordbase::ymin = -80
+coordbase::zmin = -80
+coordbase::xmax = +80
+coordbase::ymax = +80
+coordbase::zmax = +80
+coordbase::dx = 8
+coordbase::dy = 8
+coordbase::dz = 8
+
+Carpet::regrid_during_initialisation = "yes"
+Carpet::init_fill_timelevels=yes
+
+Carpet::max_refinement_levels    = 9
+
+CarpetRegrid2::regrid_every = 1
+CarpetRegrid2::num_centres  = 1
+
+CarpetRegrid2::num_levels_1 = 4
+CarpetRegrid2::position_x_1 = 0
+CarpetRegrid2::radius_1[1]  = 40
+CarpetRegrid2::radius_1[2]  = 20
+CarpetRegrid2::radius_1[3]  = 10
+
+# required to set HydroBase  use_excision
+ActiveThorns = "GRHydro ADMCoupling ADMMacros SpaceMask StaticConformal TmunuBase EOS_Omni"
+SpaceMask::use_mask = "yes"

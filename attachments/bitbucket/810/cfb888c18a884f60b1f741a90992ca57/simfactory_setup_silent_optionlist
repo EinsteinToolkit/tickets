@@ -1,0 +1,17 @@
+Index: simdt.py
+===================================================================
+--- simdt.py	(revision 1634)
++++ simdt.py	(working copy)
+@@ -441,6 +441,12 @@
+         io = self.tParser.GetOption(mm, "basedir")
+         io.Value = self.macro_GET_BASEDIR()
+         self.tParser.parser.WriteKey(mm, "basedir", io)
++
++        # optionlist
++        if (simenv.OptionsManager.RawOptionDefined("optionlist")):
++            io = self.tParser.GetOption(mm, "optionlist")
++            io.Value = simlib.GetOptionList(False)
++            self.tParser.parser.WriteKey(mm, "optionlist", io)
+         
+         simlib.WriteContents(dstPath, self.tParser.GetIniAsString())
+         return "machine %s [%s] created successfully" % (mm, dstPath)

@@ -1,0 +1,166 @@
+From 7ffbf66ef024672e7362c3717fe3c9282d3202bd Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Wed, 4 Dec 2013 14:43:22 +0100
+Subject: [PATCH 2/3] Add mvapich optionlist and runscript for stampede
+
+---
+ mdb/optionlists/stampede-mvapich.cfg | 104 +++++++++++++++++++++++++++++++++++
+ mdb/runscripts/stampede-mvapich.run  |  35 ++++++++++++
+ 2 files changed, 139 insertions(+)
+ create mode 100644 mdb/optionlists/stampede-mvapich.cfg
+ create mode 100755 mdb/runscripts/stampede-mvapich.run
+
+diff --git a/mdb/optionlists/stampede-mvapich.cfg b/mdb/optionlists/stampede-mvapich.cfg
+new file mode 100644
+index 0000000..263c03c
+--- /dev/null
++++ b/mdb/optionlists/stampede-mvapich.cfg
+@@ -0,0 +1,104 @@
++# Whenever this version string changes, the application is configured
++# and rebuilt from scratch
++VERSION = stampede-2013-12-04
++
++CPP = cpp
++FPP = cpp
++CC  = icc
++CXX = icpc
++F77 = ifort
++F90 = ifort
++
++CPPFLAGS = -g -DMPICH_IGNORE_CXX_SEEK
++FPPFLAGS = -g -traditional
++CFLAGS   = -g -traceback -debug all -xhost -align -std=gnu99
++CXXFLAGS = -g -traceback -debug all -xhost -align -std=gnu++11
++F77FLAGS = -g -traceback -debug all -xhost -align -pad -safe-cray-ptr
++F90FLAGS = -g -traceback -debug all -xhost -align -pad -safe-cray-ptr
++
++LDFLAGS = -rdynamic
++
++C_LINE_DIRECTIVES = yes
++F_LINE_DIRECTIVES = yes
++
++VECTORISE                = yes
++VECTORISE_ALIGNED_ARRAYS = no
++VECTORISE_INLINE         = no
++
++DEBUG           = no
++CPP_DEBUG_FLAGS = -DCARPET_DEBUG
++FPP_DEBUG_FLAGS = -DCARPET_DEBUG
++C_DEBUG_FLAGS   = -O0
++CXX_DEBUG_FLAGS = -O0
++F77_DEBUG_FLAGS = -O0 -check bounds -check format
++F90_DEBUG_FLAGS = -O0 -check bounds -check format
++
++OPTIMISE           = yes
++CPP_OPTIMISE_FLAGS = # -DCARPET_OPTIMISE -DNDEBUG
++FPP_OPTIMISE_FLAGS = # -DCARPET_OPTIMISE -DNDEBUG
++C_OPTIMISE_FLAGS   = -Ofast
++CXX_OPTIMISE_FLAGS = -Ofast
++F77_OPTIMISE_FLAGS = -Ofast
++F90_OPTIMISE_FLAGS = -Ofast
++
++CPP_NO_OPTIMISE_FLAGS  = 
++FPP_NO_OPTIMISE_FLAGS  = 
++C_NO_OPTIMISE_FLAGS    = -O0
++CXX_NO_OPTIMISE_FLAGS  = -O0
++CUCC_NO_OPTIMISE_FLAGS =
++F77_NO_OPTIMISE_FLAGS  = -O0
++F90_NO_OPTIMISE_FLAGS  = -O0
++
++PROFILE           = no
++CPP_PROFILE_FLAGS =
++FPP_PROFILE_FLAGS =
++C_PROFILE_FLAGS   = -pg
++CXX_PROFILE_FLAGS = -pg
++F77_PROFILE_FLAGS = -pg
++F90_PROFILE_FLAGS = -pg
++
++OPENMP           = yes
++CPP_OPENMP_FLAGS = -fopenmp
++FPP_OPENMP_FLAGS = -fopenmp
++C_OPENMP_FLAGS   = -fopenmp
++CXX_OPENMP_FLAGS = -fopenmp
++F77_OPENMP_FLAGS = -fopenmp
++F90_OPENMP_FLAGS = -fopenmp
++
++WARN           = yes
++CPP_WARN_FLAGS =
++FPP_WARN_FLAGS =
++C_WARN_FLAGS   =
++CXX_WARN_FLAGS =
++F77_WARN_FLAGS =
++F90_WARN_FLAGS =
++
++
++
++BLAS_DIR  = NO_BUILD
++BLAS_LIBS = -mkl
++
++BOOST_DIR = /opt/apps/intel13/boost/1.51.0
++
++GSL_DIR = /opt/apps/intel13/gsl/1.15
++
++# This lacks libhdf5_hl_cpp:
++#HDF5_DIR = /opt/apps/intel13/hdf5/1.8.9
++HDF5_DIR = BUILD
++
++HWLOC_DIR = BUILD
++
++LAPACK_DIR  = NO_BUILD
++LAPACK_LIBS = -mkl
++
++MPI_DIR  = /opt/apps/intel13/mvapich2/1.9
++MPI_LIBS = mpich rt
++
++# needs latest compiler (13.1.1.163)
++OPENCL_DIR      = /opt/apps/intel/opencl
++OPENCL_LIB_DIRS = /opt/apps/intel/opencl/lib64
++OPENCL_LIBS     = -lOpenCL
++
++PAPI_DIR = /opt/apps/papi/5.2RC
++
++PTHREADS = yes
+diff --git a/mdb/runscripts/stampede-mvapich.run b/mdb/runscripts/stampede-mvapich.run
+new file mode 100755
+index 0000000..a4a10c1
+--- /dev/null
++++ b/mdb/runscripts/stampede-mvapich.run
+@@ -0,0 +1,35 @@
++#! /bin/bash
++
++echo "Preparing:"
++set -x                          # Output commands
++set -e                          # Abort on errors
++
++cd @RUNDIR@-active
++
++# mvapich2 module is loaded by default
++
++echo "Checking:"
++pwd
++hostname
++date
++
++echo "Environment:"
++export CACTUS_NUM_PROCS=@NUM_PROCS@
++export CACTUS_NUM_THREADS=@NUM_THREADS@
++export GMON_OUT_PREFIX=gmon.out
++export KMP_AFFINITY=norespect,compact # verbose
++export OMP_NUM_THREADS=@NUM_THREADS@
++env | sort > SIMFACTORY/ENVIRONMENT
++echo ${SLURM_NODELIST} > NODES
++
++echo "Starting:"
++export CACTUS_STARTTIME=$(date +%s)
++# NOTE: ibrun depends on environment settings; make sure this (i.e.
++# the loaded modules) corresponds to the MPI selection in the option
++# list
++time ibrun @EXECUTABLE@ -L 3 @PARFILE@
++
++echo "Stopping:"
++date
++
++echo "Done."
+-- 
+1.8.4.3
+

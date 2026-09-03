@@ -1,0 +1,22 @@
+Index: dist/F77_COMMON_NAME.patch
+===================================================================
+Index: src/build.sh
+===================================================================
+--- src/build.sh	(revision 51)
++++ src/build.sh	(working copy)
+@@ -75,10 +89,14 @@
+ #unset CPP
+ #export MPICC=
+ 
++# get rid of NAME variables in make since PAPI's Makefile uses it as well
++unset NAME
++MAKEFLAGS=${MAKEFLAGS%% -- *}
++
+ ./configure --prefix=${PAPI_DIR} --with-shared-lib=no
+ 
+ echo "PAPI: Building..."
+-${MAKE}
++${MAKE} $(pwd)/libpfm4/lib/libpfm.a static
+ 
+ echo "PAPI: Installing..."
+ ${MAKE} install

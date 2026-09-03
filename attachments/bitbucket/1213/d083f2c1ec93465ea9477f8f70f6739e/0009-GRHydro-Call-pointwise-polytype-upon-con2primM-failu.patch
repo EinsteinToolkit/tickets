@@ -1,0 +1,94 @@
+From 79879a1b73bf08824b8e2d2a02125ba2dfe4cf6e Mon Sep 17 00:00:00 2001
+From: Bruno Coutinho Mundim <bcmsma@astro.rit.edu>
+Date: Thu, 1 Nov 2012 09:03:44 -0700
+Subject: [PATCH 09/25] GRHydro: Call pointwise polytype upon con2primM
+ failure. If it fails just use previous primitive
+ values and get the cons from them. Basically freezing
+ their values at previous time step.
+
+---
+ src/GRHydro_Con2PrimM.F90 |   52 ++++++++++++++++++++++++++++-----------------
+ 1 file changed, 32 insertions(+), 20 deletions(-)
+
+diff --git a/src/GRHydro_Con2PrimM.F90 b/src/GRHydro_Con2PrimM.F90
+index 31ae4a1..9e4552e 100644
+--- a/src/GRHydro_Con2PrimM.F90
++++ b/src/GRHydro_Con2PrimM.F90
+@@ -344,8 +344,8 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+                    uxx,uxy,uxz,uyy,uyz,uzz,det, &
+                    epsnegative,GRHydro_C2P_failed(i,j,k))
+ 
+-              if(sdet.ge.sqrtdet_thr) then
+-                if(GRHydro_C2P_failed(i,j,k).ne.0) then
++              if(GRHydro_C2P_failed(i,j,k).ne.0) then
++                if(sdet.ge.sqrtdet_thr) then
+                   GRHydro_C2P_failed(i,j,k) = 0
+ 
+                   rho_tmp = rho(i,j,k)
+@@ -358,17 +358,38 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+                   Bvecx_tmp = Bprim(i,j,k,1)
+                   Bvecy_tmp = Bprim(i,j,k,2)
+                   Bvecz_tmp = Bprim(i,j,k,3)
+-
+-                  call GRHydro_Con2PrimM_pt(GRHydro_polytrope_handle, keytemp, &
+-                       GRHydro_eos_rf_prec, local_gam(1), dens(i,j,k), &
+-                       scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3), tau(i,j,k), &
+-                       Bcons(i,j,k,1),Bcons(i,j,k,2),Bcons(i,j,k,3),xye(1), &
+-                       xtemp(1),rho_tmp,velx_tmp,vely_tmp,velz_tmp,&
+-                       eps_tmp,press_tmp,Bvecx_tmp,Bvecy_tmp,Bvecz_tmp,b2,&
+-                       w_lorentz_tmp,g11(i,j,k),g12(i,j,k),g13(i,j,k),&
+-                       g22(i,j,k),g23(i,j,k),g33(i,j,k), &
++              
++                  xrho=1.0d0; xtemp=0.0d0; xeps=1.0d0
++                  call EOS_Omni_press(GRHydro_polytrope_handle,keytemp,GRHydro_eos_rf_prec,n,&
++                       xrho,xeps,xtemp,xye,xpress,keyerr,anyerr)
++                  local_K = xpress(1); 
++
++                  xrho=10.0d0; xeps=1.0d0
++                  call EOS_Omni_press(GRHydro_polytrope_handle,keytemp,GRHydro_eos_rf_prec,n,&
++                       xrho,xeps,xtemp,xye,xpress,keyerr,anyerr)
++                  local_pgam=log(xpress(1)/local_K)/log(xrho(1))
++                  sc = local_K*dens(i,j,k)
++
++                  call GRHydro_Con2PrimM_Polytype_pt(GRHydro_eos_handle, local_pgam, &
++                       dens(i,j,k),scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3), sc, &
++                       Bcons(i,j,k,1), Bcons(i,j,k,2), Bcons(i,j,k,3),rho_tmp,&
++                       velx_tmp,vely_tmp,velz_tmp,eps_tmp,press_tmp,&
++                       Bvecx_tmp,Bvecy_tmp,Bvecz_tmp,b2,w_lorentz_tmp,&
++                       g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k), &
+                        uxx,uxy,uxz,uyy,uyz,uzz,det, &
+                        epsnegative,GRHydro_C2P_failed(i,j,k))
++
++                  if(GRHydro_C2P_failed(i,j,k).ne.0) then
++                    GRHydro_C2P_failed(i,j,k) = 0
++                    call prim2conM(GRHydro_eos_handle,g11(i,j,k),g12(i,j,k), &
++                         g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k),det, &
++                       dens(i,j,k),scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3), &
++                      tau(i,j,k),Bcons(i,j,k,1),Bcons(i,j,k,2),Bcons(i,j,k,3), &
++                          rho(i,j,k),vup(i,j,k,1),vup(i,j,k,2),vup(i,j,k,3), &
++                          eps(i,j,k),press(i,j,k), &
++                  Bprim(i,j,k,1),Bprim(i,j,k,2),Bprim(i,j,k,3),w_lorentz(i,j,k))
++                    cycle
++                  end if
+                 end if
+               end if
+ 
+@@ -526,15 +547,6 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+                    uxx,uxy,uxz,uyy,uyz,uzz,det, &
+                    epsnegative,GRHydro_C2P_failed(i,j,k))
+ 
+-
+-!            call GRHydro_Con2PrimM_Polytype_pt(GRHydro_eos_handle, local_pgam, dens(i,j,k), &
+-!                   scon(i,j,k,1),scon(i,j,k,2),scon(i,j,k,3), sc, &
+-!                   Bcons(i,j,k,1), Bcons(i,j,k,2), Bcons(i,j,k,3), rho(i,j,k),&
+-!                   vup(i,j,k,1),vup(i,j,k,2),vup(i,j,k,3),eps(i,j,k),press(i,j,k),&
+-!                   Bprim(i,j,k,1), Bprim(i,j,k,2), Bprim(i,j,k,3),b2, w_lorentz(i,j,k),&
+-!                   g11(i,j,k),g12(i,j,k),g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k), &
+-!                   uxx,uxy,uxz,uyy,uyz,uzz,det, &
+-
+ #endif          
+               
+            end if    ! if (epsnegative .ne. 0) then  
+-- 
+1.7.10.4
+

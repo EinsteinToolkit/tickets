@@ -1,0 +1,42 @@
+diff -r f33caf3aba96 Carpet/Carpet/src/OutputGH.cc
+--- a/Carpet/Carpet/src/OutputGH.cc	Thu Jun 02 11:13:41 2011 +0200
++++ b/Carpet/Carpet/src/OutputGH.cc	Tue Jul 19 17:26:18 2011 -0400
+@@ -30,6 +30,7 @@
+     
+     int const num_methods = CCTK_NumIOMethods();
+     if (num_methods == 0) {
++      timer.stop();
+       return -1;
+     }
+     
+diff -r f33caf3aba96 Carpet/Carpet/src/TimerNode.cc
+--- a/Carpet/Carpet/src/TimerNode.cc	Thu Jun 02 11:13:41 2011 +0200
++++ b/Carpet/Carpet/src/TimerNode.cc	Tue Jul 19 17:26:18 2011 -0400
+@@ -92,7 +92,9 @@
+     if(d_running)
+     {
+       // A timer can only be stopped if it is the current timer
+-      assert(this==d_current);
++      if(this != d_current)
++        CCTK_VWarn (0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                    "Tried to stop non-current timer '%s'", getName().c_str());
+ 
+       timer->stop();
+ 
+diff -r f33caf3aba96 Carpet/Carpet/src/Timers.cc
+--- a/Carpet/Carpet/src/Timers.cc	Thu Jun 02 11:13:41 2011 +0200
++++ b/Carpet/Carpet/src/Timers.cc	Tue Jul 19 17:26:18 2011 -0400
+@@ -50,7 +50,12 @@
+   /// Stop the timer - it must be the most recently started timer
+   void Timer::stop ()
+   {
+-    TimerNode::getCurrentTimer()->stop();
++    TimerNode *current = TimerNode::getCurrentTimer();
++    if(current->getName() != name())
++      CCTK_VWarn (0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                  "Trying to stop enclosing timer '%s' before enclosed time '%s'",
++                  name().c_str(), current->getName().c_str());
++    current->stop();
+   }
+ 
+   /// Return the name of the timer

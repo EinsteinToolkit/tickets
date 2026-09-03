@@ -1,0 +1,13 @@
+Index: lib/simrestart.py
+===================================================================
+--- lib/simrestart.py	(revision 1481)
++++ lib/simrestart.py	(working copy)
+@@ -506,7 +506,7 @@
+             # Would like to have checks here that the argument names
+             # something which is actually present in the thorn list
+ 
+-            os.system("rsync -avL --include='/arrangements' --include='/arrangements/*' --include='/arrangements/*/*' --include='/arrangements/*/*/test' --include='/arrangements/*/*/test/test.ccl' --include=/Makefile --include=/lib --include='/lib/**' --include='/configs' --include='/configs/*' --include='/configs/*/ThornList' --include='/configs/*/config-data' --include='/configs/*/config-data/cctk_Extradefs.h' %s --exclude='*' %s/ %s/" %(include,self.Properties.sourcedir,testsuitedir))
++            os.system("rsync -avL --exclude .svn --include='/arrangements' --include='/arrangements/*' --include='/arrangements/*/*' --include='/arrangements/*/*/test' --include='/arrangements/*/*/test/test.ccl' --include=/Makefile --include=/lib --include='/lib/**' --include='/configs' --include='/configs/%s' --include='/configs/*/ThornList' --include='/configs/*/config-data' --include='/configs/*/config-data/cctk_Extradefs.h' %s --exclude='*' %s/ %s/" %(self.Properties.configuration,include,self.Properties.sourcedir,testsuitedir))
+             
+     def submit(self, submitScript, chainedJobId=None, chainedRestartId=None):
+         """Low-level job submission function."""

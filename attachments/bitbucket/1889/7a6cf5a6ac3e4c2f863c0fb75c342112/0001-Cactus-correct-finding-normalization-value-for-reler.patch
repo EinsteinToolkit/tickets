@@ -1,0 +1,38 @@
+From 535e6314b61d73a61632d163adcc004d1c94aa86 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@aei.mpg.de>
+Date: Sat, 7 May 2016 20:57:49 +0200
+Subject: [PATCH] Cactus: correct finding normalization value for relerr
+ compuation
+
+before it would have taken the larger of the abs value of the new and
+old data of the last data set rather than the largest abs value of the
+new and old data of all the datasets.
+
+This will make relative errros smaller and will be particularly
+noticeable in cases where the last dataset was small or zero.
+
+This should get rid of the "Error, how did I get here" warnings (that
+really indicated an logic error).
+---
+ lib/sbin/RunTestUtils.pl | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/lib/sbin/RunTestUtils.pl b/lib/sbin/RunTestUtils.pl
+index 2ac9929..334e7c6 100644
+--- a/lib/sbin/RunTestUtils.pl
++++ b/lib/sbin/RunTestUtils.pl
+@@ -1738,8 +1738,9 @@ sub CompareTestFiles
+                 if ($maxabsdiff[$count] < $absdiff[$count]);
+               my $absoldval = abs ($oldvals[$count]);
+               my $absnewval = abs ($newvals[$count]);
+-              $valmax[$count] = $absoldval > $absnewval ?
+-                                $absoldval : $absnewval;
++              my $absval = $absoldval > $absnewval ?
++                           $absoldval : $absnewval;
++              $valmax[$count] = $absval if ($valmax[$count] < $absval);
+             }
+ 
+             for ($count = 0; $count < $nold; $count++)
+-- 
+2.8.1
+

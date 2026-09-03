@@ -1,0 +1,38 @@
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 165)
++++ param.ccl	(working copy)
+@@ -162,6 +162,12 @@
+ 
+ 
+ 
++BOOLEAN init_RHS_zero "Initialise the RHS to zero" STEERABLE=recover
++{
++} "yes"
++
++
++
+ BOOLEAN adaptive_stepsize "Choose the time step size adaptively"
+ {
+ } "no"
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 165)
++++ schedule.ccl	(working copy)
+@@ -484,10 +484,13 @@
+ ###  The time step is initialised to zero  ###
+ ##############################################
+ 
+-schedule MoL_InitRHS IN MoL_Step BEFORE MoL_CalcRHS
++if (init_RHS_zero)
+ {
+-  LANG: C
+-} "Initialise the RHS functions"
++  schedule MoL_InitRHS IN MoL_Step BEFORE MoL_CalcRHS
++  {
++    LANG: C
++  } "Initialise the RHS functions"
++}
+ 
+ #####################################################
+ ###  The group where all the physics takes place  ###

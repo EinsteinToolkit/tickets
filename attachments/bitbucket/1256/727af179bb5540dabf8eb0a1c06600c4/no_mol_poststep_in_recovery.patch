@@ -1,0 +1,32 @@
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 194)
++++ param.ccl	(working copy)
+@@ -171,8 +171,10 @@
+ {
+ } "yes"
+ 
++BOOLEAN run_MoL_PostStep_in_Post_Recover_Variables "run MoL poststep after recovery"
++{
++} "yes"
+ 
+-
+ # The default for this parameter corresponds to generic RK2
+ STRING Generic_Method_Descriptor "A string used to create a table containing the description of the generic method"
+ {
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 194)
++++ schedule.ccl	(working copy)
+@@ -703,9 +703,11 @@
+ ###  expensive, but it's simplest for the moment.          ###
+ ##############################################################
+ 
++if(run_MoL_PostStep_in_Post_Recover_Variables) {
+ schedule GROUP MoL_PostStep AT Post_Recover_Variables
+ {
+ } "Ensure that everything is correct after recovery"
++}
+ 
+ #########################################################################
+ ###  Physics thorns can enforce constraints in PostStepModify.        ###

@@ -1,0 +1,32 @@
+Index: HDF5.sh
+===================================================================
+--- HDF5.sh	(revision 27)
++++ HDF5.sh	(working copy)
+@@ -8,7 +8,16 @@
+ set -x                          # Output commands
+ set -e                          # Abort on errors
+ 
++################################################################################
++# Check for old mechanism
++################################################################################
+ 
++if [ -n "${HDF5}" ]; then
++    echo 'BEGIN ERROR'
++    echo "Setting the option \"HDF5\" is incompatible with the HDF5 thorn.  Please remove HDF5 = $HDF5."
++    echo 'END ERROR'
++    exit 1
++fi
+ 
+ ################################################################################
+ # Search
+Index: configuration.ccl
+===================================================================
+--- configuration.ccl	(revision 27)
++++ configuration.ccl	(working copy)
+@@ -4,5 +4,5 @@
+ {
+   SCRIPT HDF5.sh
+   LANG bash
+-  OPTIONS HDF5_DIR LIBSZ_DIR LIBZ_DIR
++  OPTIONS HDF5 HDF5_DIR LIBSZ_DIR LIBZ_DIR
+ }

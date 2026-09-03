@@ -1,0 +1,42 @@
+From 41fff5c0e15f8438143c0f4a8be9d78f82f20f82 Mon Sep 17 00:00:00 2001
+From: Christian David Ott <cott@zwicky-b.(none)>
+Date: Mon, 25 Mar 2013 23:04:53 -0700
+Subject: [PATCH 02/12] GRHydro: add error checking after call for cs2 in
+ Eigenproblem
+
+---
+ src/GRHydro_Eigenproblem.F90 |   11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/src/GRHydro_Eigenproblem.F90 b/src/GRHydro_Eigenproblem.F90
+index 4981508..c6e4a3a 100644
+--- a/src/GRHydro_Eigenproblem.F90
++++ b/src/GRHydro_Eigenproblem.F90
+@@ -146,6 +146,8 @@ subroutine eigenvalues_hot(handle,keytemp,ii,jj,kk,rho,velx,vely,velz,eps, &
+   CCTK_REAL lam1,lam2,lam3,lamm,lamp,lamm_nobeta,lamp_nobeta
+   CCTK_INT handle,ii,jj,kk
+ 
++  character(len=512) :: warnline
++
+ ! begin EOS Omni vars
+   integer :: n,keytemp,anyerr,keyerr(1)
+   real*8  :: xpress,xeps
+@@ -159,6 +161,15 @@ subroutine eigenvalues_hot(handle,keytemp,ii,jj,kk,rho,velx,vely,velz,eps, &
+ !!$  Set required fluid quantities
+   call EOS_Omni_cs2(handle,keytemp,GRHydro_eos_rf_prec,n,&
+        rho,eps,temp,ye,cs2,keyerr,anyerr)
++  if(anyerr.ne.0) then
++     !$OMP CRITICAL
++     call CCTK_WARN(1,"EOS ERROR in eigenvalues_hot")
++     write(warnline,"(A10,i5,A10,i5)") "keyerr: ", keyerr, "keytemp: ",keytemp
++     call CCTK_WARN(1,warnline)
++     write(warnline,"(1P10E15.6)") rho,eps,temp,ye,cs2
++     call CCTK_WARN(0,warnline)
++     !$OMP END CRITICAL
++  endif
+ 
+   vlowx = gxx*velx + gxy*vely + gxz*velz
+   vlowy = gxy*velx + gyy*vely + gyz*velz
+-- 
+1.7.10.4
+

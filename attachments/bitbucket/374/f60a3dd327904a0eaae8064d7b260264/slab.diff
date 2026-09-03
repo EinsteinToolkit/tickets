@@ -1,0 +1,1256 @@
+Index: interface.ccl
+===================================================================
+--- interface.ccl	(revision 75)
++++ interface.ccl	(working copy)
+@@ -1,11 +1,12 @@
+ # Interface definition for thorn Slab
+-# $Header$
+ 
+ IMPLEMENTS: Slab
+ 
+ INCLUDES HEADER: slab.h IN Slab.h
+ INCLUDES HEADER: slab.inc IN Slab.inc
+ 
++USES INCLUDE HEADER: loopcontrol.h
++
+ CCTK_POINTER_TO_CONST \
+ FUNCTION GetMPICommWorld (CCTK_POINTER_TO_CONST IN cctkGH)
+ USES FUNCTION GetMPICommWorld
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 75)
++++ param.ccl	(working copy)
+@@ -1,5 +1,4 @@
+ # Parameter definitions for thorn Slab
+-# $Header$
+ 
+ BOOLEAN timer_output "Print slabbing timings at shutdown time" STEERABLE=always
+ {
+Index: doc/documentation.tex
+===================================================================
+--- doc/documentation.tex	(revision 75)
++++ doc/documentation.tex	(working copy)
+@@ -2,7 +2,6 @@
+ %  Cactus Thorn template for ThornGuide documentation
+ %  Author: Ian Kelley
+ %  Date: Sun Jun 02, 2002
+-%  $Header$                                                             
+ %
+ %  Thorn documentation in the latex file doc/documentation.tex 
+ %  will be included in ThornGuides built with the Cactus make system.
+@@ -64,7 +63,6 @@
+ % *======================================================================* 
+ 
+ % If you are using CVS use this line to give version information
+-% $Header$
+ 
+ \documentclass{article}
+ 
+Index: src/make.code.defn
+===================================================================
+--- src/make.code.defn	(revision 75)
++++ src/make.code.defn	(working copy)
+@@ -1,5 +1,4 @@
+ # Main make.code.defn file for thorn Slab
+-# $Header$
+ 
+ # Source files in this directory
+ SRCS = slab.cc
+Index: src/slab.cc
+===================================================================
+--- src/slab.cc	(revision 75)
++++ src/slab.cc	(working copy)
+@@ -37,6 +37,8 @@
+ #include "util_ErrorCodes.h"
+ #include "util_Table.h"
+ 
++#include "loopcontrol.h"
++
+ #ifdef CCTK_MPI
+ #  include <mpi.h>
+ #  define HAVE_MPI 1
+@@ -75,10 +77,21 @@
+ 
+ 
+ 
+-static int timer_init      = -1;
+-static int timer_copy_in   = -1;
+-static int timer_xfer      = -1;
+-static int timer_copy_back = -1;
++static int timer_init                  = -1;
++static int timer_apply                 = -1;
++static int timer_copy_in               = -1;
++static int timer_copy_in_noxpose       = -1;
++static int timer_copy_in_xposexy       = -1;
++static int timer_copy_in_xposegeneral  = -1;
++static int timer_copy_in_general       = -1;
++static int timer_xfer                  = -1;
++static int timer_copy_back             = -1;
++static int timer_copy_back_noflip      = -1;
++static int timer_copy_back_flipx       = -1;
++static int timer_copy_back_flipy       = -1;
++static int timer_copy_back_flipxy      = -1;
++static int timer_copy_back_flipgeneral = -1;
++static int timer_copy_back_general     = -1;
+ 
+ 
+ 
+@@ -87,20 +100,42 @@
+ Slab_InitTimers (CCTK_ARGUMENTS)
+ {
+   DECLARE_CCTK_ARGUMENTS;
+-  timer_init      = CCTK_TimerCreate ("Slab/init");
+-  timer_copy_in   = CCTK_TimerCreate ("Slab/copy in");
+-  timer_xfer      = CCTK_TimerCreate ("Slab/xfer");
+-  timer_copy_back = CCTK_TimerCreate ("Slab/copy back");
++  timer_init                  = CCTK_TimerCreate ("Slab/init"                 );
++  timer_apply                 = CCTK_TimerCreate ("Slab/apply"                );
++  timer_copy_in               = CCTK_TimerCreate ("Slab/copy_in"              );
++  timer_copy_in_noxpose       = CCTK_TimerCreate ("Slab/copy_in_noxpose"      );
++  timer_copy_in_xposexy       = CCTK_TimerCreate ("Slab/copy_in_xposexy"      );
++  timer_copy_in_xposegeneral  = CCTK_TimerCreate ("Slab/copy_in_xposegeneral" );
++  timer_copy_in_general       = CCTK_TimerCreate ("Slab/copy_in_general"      );
++  timer_xfer                  = CCTK_TimerCreate ("Slab/xfer"                 );
++  timer_copy_back             = CCTK_TimerCreate ("Slab/copy_back"            );
++  timer_copy_back_noflip      = CCTK_TimerCreate ("Slab/copy_back_noflip"     );
++  timer_copy_back_flipx       = CCTK_TimerCreate ("Slab/copy_back_flipx"      );
++  timer_copy_back_flipy       = CCTK_TimerCreate ("Slab/copy_back_flipy"      );
++  timer_copy_back_flipxy      = CCTK_TimerCreate ("Slab/copy_back_flipxy"     );
++  timer_copy_back_flipgeneral = CCTK_TimerCreate ("Slab/copy_back_flipgeneral");
++  timer_copy_back_general     = CCTK_TimerCreate ("Slab/copy_back_general"    );
+ }
+ 
+ extern "C"
+ int
+ Slab_PrintTimers ()
+ {
+-  CCTK_TimerPrintDataI (timer_init     , -1);
+-  CCTK_TimerPrintDataI (timer_copy_in  , -1);
+-  CCTK_TimerPrintDataI (timer_xfer     , -1);
+-  CCTK_TimerPrintDataI (timer_copy_back, -1);
++  CCTK_TimerPrintDataI (timer_init                 , -1);
++  CCTK_TimerPrintDataI (timer_apply                , -1);
++  CCTK_TimerPrintDataI (timer_copy_in              , -1);
++  CCTK_TimerPrintDataI (timer_copy_in_noxpose      , -1);
++  CCTK_TimerPrintDataI (timer_copy_in_xposexy      , -1);
++  CCTK_TimerPrintDataI (timer_copy_in_xposegeneral , -1);
++  CCTK_TimerPrintDataI (timer_copy_in_general      , -1);
++  CCTK_TimerPrintDataI (timer_xfer                 , -1);
++  CCTK_TimerPrintDataI (timer_copy_back            , -1);
++  CCTK_TimerPrintDataI (timer_copy_back_noflip     , -1);
++  CCTK_TimerPrintDataI (timer_copy_back_flipx      , -1);
++  CCTK_TimerPrintDataI (timer_copy_back_flipy      , -1);
++  CCTK_TimerPrintDataI (timer_copy_back_flipxy     , -1);
++  CCTK_TimerPrintDataI (timer_copy_back_flipgeneral, -1);
++  CCTK_TimerPrintDataI (timer_copy_back_general    , -1);
+   return 0;
+ }
+ 
+@@ -375,16 +410,25 @@
+ {
+ #ifdef CCTK_MPI
+ #  ifdef HAVE_CCTK_REAL4
++  assert (CACTUS_MPI_REAL4 != MPI_DATATYPE_NULL);
+   MPI_Type_contiguous (2, CACTUS_MPI_REAL4, &CACTUS_MPI_COMPLEX8);
+   MPI_Type_commit (&CACTUS_MPI_COMPLEX8);
+ #  endif
+ #  ifdef HAVE_CCTK_REAL8
++  assert (CACTUS_MPI_REAL8 != MPI_DATATYPE_NULL);
+   MPI_Type_contiguous (2, CACTUS_MPI_REAL8, &CACTUS_MPI_COMPLEX16);
+   MPI_Type_commit (&CACTUS_MPI_COMPLEX16);
+ #  endif
+ #  ifdef HAVE_CCTK_REAL16
+-  MPI_Type_contiguous (2, CACTUS_MPI_REAL16, &CACTUS_MPI_COMPLEX32);
+-  MPI_Type_commit (&CACTUS_MPI_COMPLEX32);
++  if (CACTUS_MPI_REAL16 != MPI_DATATYPE_NULL) {
++    MPI_Type_contiguous (2, CACTUS_MPI_REAL16, &CACTUS_MPI_COMPLEX32);
++    MPI_Type_commit (&CACTUS_MPI_COMPLEX32);
++  } else {
++    // CCTK_REAL16 is not supported by MPI
++    CCTK_WARN (CCTK_WARN_ALERT,
++               "CCTK_REAL16 support is enabled in Cactus, but is not supported by MPI. All MPI operations with this datatype will fail.");
++    CACTUS_MPI_COMPLEX32 = MPI_DATATYPE_NULL;
++  }
+ #  endif
+ #endif
+   
+@@ -708,8 +752,10 @@
+   fprintf (out, "  flip: %d\n", xferinfo->flip);
+ }                
+ 
+-// workhorse routine responsible for the actual copying/transposing of data
+-template<typename T> inline void
++// workhorse routines for the actual copying transposing, and flipping
++// of data
++template<typename T>
++inline void
+ copy_data (const vector<xfer> &info,
+            const vector<bbox> &srcdetail,
+            const vector<int> &srcoffset,
+@@ -719,9 +765,9 @@
+            const int n,
+            const vector<int> &varis,
+            const int nvaris,
+-           const int xpose_x=0,
+-           const int xpose_y=1,
+-           const int xpose_z=2)
++           const int xpose_x,
++           const int xpose_y,
++           const int xpose_z)
+ {
+   assert (srcptrs);
+   
+@@ -740,11 +786,11 @@
+   int const srcdetailleni = srcdetail[n*SLAB_MAXDIM+0].len;
+   int const srcdetaillenj = srcdetail[n*SLAB_MAXDIM+1].len;
+   int const srcdetaillenk = srcdetail[n*SLAB_MAXDIM+2].len;
+-
++  
+   int const dstdetailleni = srcdetail[n*SLAB_MAXDIM+xpose_x].len;
+   int const dstdetaillenj = srcdetail[n*SLAB_MAXDIM+xpose_y].len;
+-  //int const dstdetaillenk = srcdetail[n*SLAB_MAXDIM+xpose_z].len; unused
+-
++  int const dstdetaillenk = srcdetail[n*SLAB_MAXDIM+xpose_z].len;
++  
+   if (n==0) assert (srcoffset[n]==0);
+   // TODO: This does not take nvaris into account
+   // if (n<size-1) assert (srcoffset[n+1]==srcoffset[n]+srcdetailleni*srcdetaillenj*srcdetaillenk);
+@@ -757,35 +803,91 @@
+       }
+     }
+   }
+-
++  
++  assert (dstdetailleni*dstdetaillenj*dstdetaillenk == srcelems[n]);
++  if (srcelems[n] == 0) return;
++  
+   for (int vari=0; vari<nvaris; ++vari) {
+     T * restrict const srcdataptr =
+       (T *)&srcdata.front() + srcoffset[n] + vari * srcelems[n];
+-    T const * restrict const srcptr =
+-      (T const *)srcptrs[varis[vari]];
++    T const * restrict const srcptr = (T const *)srcptrs[varis[vari]];
+     assert(srcptr);
+     
+-#   pragma omp parallel for
+-    for (int k = 0; k < srcdetaillenk; ++k) {
+-      for (int j = 0; j < srcdetaillenj; ++j) {
+-        for (int i = 0; i < srcdetailleni; ++i) {
+-          int ipos[SLAB_MAXDIM];
+-          ipos[0] = i;
+-          ipos[1] = j;
+-          ipos[2] = k;
+-          int const srcindi = srcdetailoffi + ipos[0] - srcoffi;
+-          int const srcindj = srcdetailoffj + ipos[1] - srcoffj;
+-          int const srcindk = srcdetailoffk + ipos[2] - srcoffk;
+-          ifcheck assert (srcindi>=0 and srcindi<srcleni);
+-          ifcheck assert (srcindj>=0 and srcindj<srclenj);
+-          ifcheck assert (srcindk>=0 and srcindk<srclenk);
+-          size_t const srcind =
+-            srcindi + srcleni * (srcindj + srclenj * srcindk);
+-          size_t const bufind =
+-            ipos[xpose_x] + dstdetailleni * (ipos[xpose_y] + dstdetaillenj * ipos[xpose_z]);
+-          srcdataptr[bufind] = srcptr[srcind];
+-        }
+-      }
++    if (xpose_x==0 and xpose_y==1 and xpose_z==2) {
++      // no transposition
++      
++      CCTK_TimerStartI (timer_copy_in_noxpose);
++#     pragma omp parallel
++      CCTK_LOOP3(Slab_copy_in_noxpose, i,j,k,
++                 0,0,0, srcdetailleni,srcdetaillenj,srcdetaillenk,
++                 srcleni,srcleni*srclenj,srcleni*srclenj*srclenk)
++      {
++        int const srcindi = srcdetailoffi + i - srcoffi;
++        int const srcindj = srcdetailoffj + j - srcoffj;
++        int const srcindk = srcdetailoffk + k - srcoffk;
++        ifcheck assert (srcindi>=0 and srcindi<srcleni);
++        ifcheck assert (srcindj>=0 and srcindj<srclenj);
++        ifcheck assert (srcindk>=0 and srcindk<srclenk);
++        size_t const srcind =
++          srcindi + srcleni * (srcindj + srclenj * srcindk);
++        size_t const bufind =
++          i + dstdetailleni * (j + dstdetaillenj * k);
++        srcdataptr[bufind] = srcptr[srcind];
++      } CCTK_ENDLOOP3(Slab_copy_in_noxpose);
++      CCTK_TimerStopI (timer_copy_in_noxpose);
++      
++    } else if (xpose_x==1 and xpose_y==0 and xpose_z==2) {
++      // transpose x and y
++      
++      CCTK_TimerStartI (timer_copy_in_xposexy);
++#     pragma omp parallel
++      // Interchange i and j loops
++      CCTK_LOOP3(Slab_copy_in_xposexy, j,i,k,
++                 0,0,0, srcdetaillenj,srcdetailleni,srcdetaillenk,
++                 srcleni,srcleni*srclenj,srcleni*srclenj*srclenk)
++      {
++        int const srcindi = srcdetailoffi + i - srcoffi;
++        int const srcindj = srcdetailoffj + j - srcoffj;
++        int const srcindk = srcdetailoffk + k - srcoffk;
++        ifcheck assert (srcindi>=0 and srcindi<srcleni);
++        ifcheck assert (srcindj>=0 and srcindj<srclenj);
++        ifcheck assert (srcindk>=0 and srcindk<srclenk);
++        size_t const srcind =
++          srcindi + srcleni * (srcindj + srclenj * srcindk);
++        size_t const bufind =
++          j + dstdetailleni * (i + dstdetaillenj * k);
++        srcdataptr[bufind] = srcptr[srcind];
++      } CCTK_ENDLOOP3(Slab_copy_in_xposexy);
++      CCTK_TimerStopI (timer_copy_in_xposexy);
++      
++    } else {
++      // general transposition
++      
++      CCTK_TimerStartI (timer_copy_in_xposegeneral);
++#     pragma omp parallel
++      CCTK_LOOP3(Slab_copy_in_xposegeneral, i,j,k,
++                 0,0,0, srcdetailleni,srcdetaillenj,srcdetaillenk,
++                 srcleni,srcleni*srclenj,srcleni*srclenj*srclenk)
++      {
++        int ipos[SLAB_MAXDIM];
++        ipos[0] = i;
++        ipos[1] = j;
++        ipos[2] = k;
++        int const srcindi = srcdetailoffi + i - srcoffi;
++        int const srcindj = srcdetailoffj + j - srcoffj;
++        int const srcindk = srcdetailoffk + k - srcoffk;
++        ifcheck assert (srcindi>=0 and srcindi<srcleni);
++        ifcheck assert (srcindj>=0 and srcindj<srclenj);
++        ifcheck assert (srcindk>=0 and srcindk<srclenk);
++        size_t const srcind =
++          srcindi + srcleni * (srcindj + srclenj * srcindk);
++        size_t const bufind =
++          (ipos[xpose_x] + dstdetailleni *
++           (ipos[xpose_y] + dstdetaillenj * ipos[xpose_z]));
++        srcdataptr[bufind] = srcptr[srcind];
++      } CCTK_ENDLOOP3(Slab_copy_in_xposegeneral);
++      CCTK_TimerStopI (timer_copy_in_xposegeneral);
++      
+     }
+     
+   } // for vari
+@@ -802,9 +904,9 @@
+                 const int n,
+                 const vector<int> &varis,
+                 const int nvaris,
+-                const bool flip_x=false,
+-                const bool flip_y=false,
+-                const bool flip_z=false)
++                const bool flip_x,
++                const bool flip_y,
++                const bool flip_z)
+ {
+   assert (dstptrs);
+   
+@@ -824,46 +926,157 @@
+   int const dstdetaillenj = dstdetail[n*SLAB_MAXDIM+1].len;
+   int const dstdetaillenk = dstdetail[n*SLAB_MAXDIM+2].len;
+   
++  assert (dstdetailleni*dstdetaillenj*dstdetaillenk == dstelems[n]);
++  if (dstelems[n] == 0) return;
++  
+   for (int vari=0; vari<nvaris; ++vari) {
+     T * restrict const dstptr = (T *)dstptrs[varis[vari]];
+     assert (dstptr);
+     T const * restrict const dstdataptr =
+-      (T const *)&dstdata.front() +
+-      dstoffset[n] + vari * dstelems[n];
++      (T const *)&dstdata.front() + dstoffset[n] + vari * dstelems[n];
+     
+-#   pragma omp parallel for
+-    for (int k = 0; k < dstdetaillenk; ++k) {
+-      for (int j = 0; j < dstdetaillenj; ++j) {
+-        for (int i = 0; i < dstdetailleni; ++i) {
+-          int const dstindi = dstdetailoffi + (flip_x ? dstdetailleni - 1 - i : i) - dstoffi;
+-          int const dstindj = dstdetailoffj + (flip_y ? dstdetaillenj - 1 - j : j) - dstoffj;
+-          int const dstindk = dstdetailoffk + (flip_z ? dstdetaillenk - 1 - k : k) - dstoffk;
+-          ifcheck assert (dstindi>=0 and dstindi<dstleni);
+-          ifcheck assert (dstindj>=0 and dstindj<dstlenj);
+-          ifcheck assert (dstindk>=0 and dstindk<dstlenk);
+-          size_t const dstind =
+-            dstindi + dstleni * (dstindj + dstlenj * dstindk);
+-          size_t const bufind =
+-            i + dstdetailleni * (j + dstdetaillenj * k);
+-          dstptr[dstind] = dstdataptr[bufind];
+-        }
+-      }
++    if (not flip_x and not flip_y and not flip_z) {
++      // no flipping
++      
++      CCTK_TimerStartI (timer_copy_back_noflip);
++#     pragma omp parallel
++      CCTK_LOOP3(Slab_copy_back_noflip, i,j,k,
++                 0,0,0, dstdetailleni,dstdetaillenj,dstdetaillenk,
++                 dstleni,dstleni*dstlenj,dstleni*dstlenj*dstlenk)
++      {
++        int const dstindi = dstdetailoffi + i - dstoffi;
++        int const dstindj = dstdetailoffj + j - dstoffj;
++        int const dstindk = dstdetailoffk + k - dstoffk;
++        ifcheck assert (dstindi>=0 and dstindi<dstleni);
++        ifcheck assert (dstindj>=0 and dstindj<dstlenj);
++        ifcheck assert (dstindk>=0 and dstindk<dstlenk);
++        size_t const dstind =
++          dstindi + dstleni * (dstindj + dstlenj * dstindk);
++        size_t const bufind =
++          i + dstdetailleni * (j + dstdetaillenj * k);
++        dstptr[dstind] = dstdataptr[bufind];
++      } CCTK_ENDLOOP3(Slab_copy_back_noflip);
++      CCTK_TimerStartI (timer_copy_back_noflip);
++      
++    } else if (flip_x and not flip_y and not flip_z) {
++      // flip in x direction
++      
++      CCTK_TimerStartI (timer_copy_back_flipx);
++#     pragma omp parallel
++      CCTK_LOOP3(Slab_copy_back_flipx, i,j,k,
++                 0,0,0, dstdetailleni,dstdetaillenj,dstdetaillenk,
++                 dstleni,dstleni*dstlenj,dstleni*dstlenj*dstlenk)
++      {
++        int const dstindi = dstdetailoffi + (dstdetailleni - 1 - i) - dstoffi;
++        int const dstindj = dstdetailoffj + j - dstoffj;
++        int const dstindk = dstdetailoffk + k - dstoffk;
++        ifcheck assert (dstindi>=0 and dstindi<dstleni);
++        ifcheck assert (dstindj>=0 and dstindj<dstlenj);
++        ifcheck assert (dstindk>=0 and dstindk<dstlenk);
++        size_t const dstind =
++          dstindi + dstleni * (dstindj + dstlenj * dstindk);
++        size_t const bufind =
++          i + dstdetailleni * (j + dstdetaillenj * k);
++        dstptr[dstind] = dstdataptr[bufind];
++      } CCTK_ENDLOOP3(Slab_copy_back_flipx);
++      CCTK_TimerStopI (timer_copy_back_flipx);
++      
++    } else if (not flip_x and flip_y and not flip_z) {
++      // flip in y direction
++      
++      CCTK_TimerStartI (timer_copy_back_flipy);
++#     pragma omp parallel
++      CCTK_LOOP3(Slab_copy_back_flipy, i,j,k,
++                 0,0,0, dstdetailleni,dstdetaillenj,dstdetaillenk,
++                 dstleni,dstleni*dstlenj,dstleni*dstlenj*dstlenk)
++      {
++        int const dstindi = dstdetailoffi + i - dstoffi;
++        int const dstindj = dstdetailoffj + (dstdetaillenj - 1 - j) - dstoffj;
++        int const dstindk = dstdetailoffk + k - dstoffk;
++        ifcheck assert (dstindi>=0 and dstindi<dstleni);
++        ifcheck assert (dstindj>=0 and dstindj<dstlenj);
++        ifcheck assert (dstindk>=0 and dstindk<dstlenk);
++        size_t const dstind =
++          dstindi + dstleni * (dstindj + dstlenj * dstindk);
++        size_t const bufind =
++          i + dstdetailleni * (j + dstdetaillenj * k);
++        dstptr[dstind] = dstdataptr[bufind];
++      } CCTK_ENDLOOP3(Slab_copy_back_flipy);
++      CCTK_TimerStopI (timer_copy_back_flipy);
++      
++    } else if (flip_x and flip_y and not flip_z) {
++      // flip in both x and y direction
++      
++      CCTK_TimerStartI (timer_copy_back_flipxy);
++#     pragma omp parallel
++      CCTK_LOOP3(Slab_copy_back_flipxy, i,j,k,
++                 0,0,0, dstdetailleni,dstdetaillenj,dstdetaillenk,
++                 dstleni,dstleni*dstlenj,dstleni*dstlenj*dstlenk)
++      {
++        int const dstindi = dstdetailoffi + (dstdetailleni - 1 - i) - dstoffi;
++        int const dstindj = dstdetailoffj + (dstdetaillenj - 1 - j) - dstoffj;
++        int const dstindk = dstdetailoffk + k - dstoffk;
++        ifcheck assert (dstindi>=0 and dstindi<dstleni);
++        ifcheck assert (dstindj>=0 and dstindj<dstlenj);
++        ifcheck assert (dstindk>=0 and dstindk<dstlenk);
++        size_t const dstind =
++          dstindi + dstleni * (dstindj + dstlenj * dstindk);
++        size_t const bufind =
++          i + dstdetailleni * (j + dstdetaillenj * k);
++        dstptr[dstind] = dstdataptr[bufind];
++      } CCTK_ENDLOOP3(Slab_copy_back_flipxy);
++      CCTK_TimerStopI (timer_copy_back_flipxy);
++      
++    } else {
++      // general flipping
++      
++      CCTK_TimerStartI (timer_copy_back_flipgeneral);
++#     pragma omp parallel
++      CCTK_LOOP3(Slab_copy_back_flipgeneral, i,j,k,
++                 0,0,0, dstdetailleni,dstdetaillenj,dstdetaillenk,
++                 dstleni,dstleni*dstlenj,dstleni*dstlenj*dstlenk)
++      {
++        int const dstindi =
++          dstdetailoffi + (flip_x ? dstdetailleni - 1 - i : i) - dstoffi;
++        int const dstindj =
++          dstdetailoffj + (flip_y ? dstdetaillenj - 1 - j : j) - dstoffj;
++        int const dstindk =
++          dstdetailoffk + (flip_z ? dstdetaillenk - 1 - k : k) - dstoffk;
++        ifcheck assert (dstindi>=0 and dstindi<dstleni);
++        ifcheck assert (dstindj>=0 and dstindj<dstlenj);
++        ifcheck assert (dstindk>=0 and dstindk<dstlenk);
++        size_t const dstind =
++          dstindi + dstleni * (dstindj + dstlenj * dstindk);
++        size_t const bufind =
++          i + dstdetailleni * (j + dstdetaillenj * k);
++        dstptr[dstind] = dstdataptr[bufind];
++      } CCTK_ENDLOOP3(Slab_copy_back_flipgeneral);
++      CCTK_TimerStopI (timer_copy_back_flipgeneral);
++      
+     }
+     
+   } // for vari
+ }
+ 
++
++
++struct slabsetup {
++  MPI_Comm comm;
++  vector<xfer> info;
++  vector<xfer> allinfo;
++  vector<bbox> srcdetail, dstdetail;
++  size_t srclentot, dstlentot;
++};
++
++
++
+ extern "C"
+-int
+-Slab_MultiTransfer (cGH      const                  * restrict const cctkGH,
+-                    int                                        const dim,
+-                    xferinfo const                  * restrict const xferinfo,
+-                    int                                        const options,
+-                    int                                        const nvars,
+-                    int      const                  * restrict const srctypes,
+-                    void     const * restrict const * restrict const srcptrs,
+-                    int      const                  * restrict const dsttypes,
+-                    void           * restrict const * restrict const dstptrs)
++slabsetup *
++Slab_MultiTransfer_Init
++(cGH       const* restrict const cctkGH,
++ int                       const dim,
++ xferinfo  const* restrict const xferinfo,
++ int                       const options)
+ {
+   DECLARE_CCTK_PARAMETERS;
+   
+@@ -871,20 +1084,15 @@
+   check (cctkGH);
+   check (dim >= 0);
+   check (xferinfo);
+-  check (nvars >= 0);
+-  check (nvars==0 or srctypes);
+-  for (int var=0; var<nvars; ++var) check (srctypes[var] >= 0);
+-  check (nvars==0 or srcptrs);
+-  // for (int var=0; var<nvars; ++var) check (srcptrs[var]);
+-  check (nvars==0 or dsttypes);
+-  for (int var=0; var<nvars; ++var) check (dsttypes[var] >= 0);
+-  check (nvars==0 or dstptrs);
+-  // for (int var=0; var<nvars; ++var) check (dstptrs[var]);
+   
+-  if (nvars==0) return 0;
+   
++  
+   CCTK_TimerStartI (timer_init);
+   
++  slabsetup * CCTK_RESTRICT const slabsetup = new struct slabsetup;
++  
++  
++  
+   bool useghosts;
+   {
+     CCTK_INT tmp;
+@@ -904,7 +1112,8 @@
+   }
+   
+   check (dim <= SLAB_MAXDIM);
+-  vector<xfer> info (SLAB_MAXDIM);
++  vector<xfer>& info = slabsetup->info;
++  info.resize (SLAB_MAXDIM);
+   for (int d=0; d<dim; ++d) {
+     global2bbox (&xferinfo[d].src, &info[d].src.global);
+     local2bbox  (&xferinfo[d].src, &info[d].src.local);
+@@ -1004,20 +1213,18 @@
+     }
+   }
+   
+-  size_t srclentot = 1;
+-  size_t dstlentot = 1;
++  size_t& srclentot = slabsetup->srclentot;
++  size_t& dstlentot = slabsetup->dstlentot;
++  srclentot = 1;
++  dstlentot = 1;
+   for (int d=0; d<SLAB_MAXDIM; ++d) {
+     srclentot *= info[d].src.local.len;
+     dstlentot *= info[d].dst.local.len;
+   }
+   
+-  // Check arguments (continued)
+-  for (int var=0; var<nvars; ++var) if (srclentot > 0) assert (srcptrs[var]);
+-  for (int var=0; var<nvars; ++var) if (dstlentot > 0) assert (dstptrs[var]);
+   
+   
+-  
+-  MPI_Comm comm;
++  MPI_Comm& comm = slabsetup->comm;
+   {
+     CCTK_POINTER_TO_CONST tmp1;
+     int const iret1 = Util_TableGetPointerToConst (options, &tmp1, "comm");
+@@ -1025,7 +1232,7 @@
+       // There was an entry, use it
+       comm = * (MPI_Comm const *) tmp1;
+     } else if (iret1 == UTIL_ERROR_TABLE_WRONG_DATA_TYPE) {
+-      // Entry has wront type, fall back
++      // Entry has wrong type, fall back
+       CCTK_POINTER tmp2;
+       int const iret2 = Util_TableGetPointer (options, &tmp2, "comm");
+       if (iret2 == 1) {
+@@ -1066,7 +1273,8 @@
+   
+   
+   
+-  vector<xfer> allinfo (size * SLAB_MAXDIM);
++  vector<xfer>& allinfo = slabsetup->allinfo;
++  allinfo.resize (size * SLAB_MAXDIM);
+   {
+     int const info_nints = sizeof(xfer) / sizeof(int);
+     ifdebug fflush (stdout);
+@@ -1119,7 +1327,8 @@
+   
+   
+   
+-  vector<bbox> srcdetail (size * SLAB_MAXDIM);
++  vector<bbox>& srcdetail = slabsetup->srcdetail;
++  srcdetail.resize (size * SLAB_MAXDIM);
+   for (int n = 0; n < size; ++n) {
+     ifdebug printf ("srcdetail n=%d:\n", n);
+     for (int d=0; d<SLAB_MAXDIM; ++d) {
+@@ -1158,13 +1367,10 @@
+     }
+   }
+   
+-  vector<int> srcelems (size);
+-  vector<int> srccount (size);
+-  vector<int> srcoffset (size + 1);
+   
+   
+-  
+-  vector<bbox> dstdetail (size * SLAB_MAXDIM);
++  vector<bbox>& dstdetail = slabsetup->dstdetail;
++  dstdetail.resize (size * SLAB_MAXDIM);
+   for (int n = 0; n < size; ++n) {
+     ifdebug printf ("dstdetail n=%d:\n", n);
+     for (int d=0; d<SLAB_MAXDIM; ++d) {
+@@ -1209,14 +1415,88 @@
+     }
+   }
+   
++  
++  
++  CCTK_TimerStopI (timer_init);
++  
++  return slabsetup;
++}
++
++
++
++extern "C"
++int
++Slab_MultiTransfer_Apply
++(cGH       const                  * restrict const cctkGH,
++ slabsetup const                  * restrict const slabsetup,
++ int                                         const nvars,
++ int       const                  * restrict const srctypes,
++ void      const * restrict const * restrict const srcptrs,
++ int       const                  * restrict const dsttypes,
++ void            * restrict const * restrict const dstptrs)
++{
++  DECLARE_CCTK_PARAMETERS;
++  
++  // Check arguments
++  check (cctkGH);
++  check (slabsetup);
++  check (nvars >= 0);
++  check (nvars==0 or srctypes);
++  for (int var=0; var<nvars; ++var) check (srctypes[var] >= 0);
++  check (nvars==0 or srcptrs);
++  size_t const& srclentot = slabsetup->srclentot;
++  for (int var=0; var<nvars; ++var) if (srclentot > 0) assert (srcptrs[var]);
++  check (nvars==0 or dsttypes);
++  for (int var=0; var<nvars; ++var) check (dsttypes[var] >= 0);
++  check (nvars==0 or dstptrs);
++  size_t const& dstlentot = slabsetup->dstlentot;
++  for (int var=0; var<nvars; ++var) if (dstlentot > 0) assert (dstptrs[var]);
++  
++  if (nvars==0) return 0;
++  
++  
++  
++  CCTK_TimerStartI (timer_apply);
++  
++  
++  
++  MPI_Comm const& comm = slabsetup->comm;
++  
++  ifcheck {
++    ifdebug fflush (stdout);
++    MPI_Barrier (comm);
++  }
++  
++  int size, rank;
++  MPI_Comm_size (comm, &size);
++  MPI_Comm_rank (comm, &rank);
++  
++  ifcheck {
++    static int count = 424242;
++    int mycount = count;
++    ifdebug fflush (stdout);
++    MPI_Bcast (&mycount, 1, MPI_INT, 0, comm);
++    assert (mycount == count);
++    ++ count;
++  }
++  
++  
++  
++  vector<xfer> const& info = slabsetup->info;
++  vector<xfer> const& allinfo = slabsetup->allinfo;
++  vector<bbox> const& srcdetail = slabsetup->srcdetail;
++  vector<bbox> const& dstdetail = slabsetup->dstdetail;
++  
++  vector<int> srcelems (size);
++  vector<int> srccount (size);
++  vector<int> srcoffset (size + 1);
++  
+   vector<int> dstelems (size);
+   vector<int> dstcount (size);
+   vector<int> dstoffset (size + 1);
+   
+-  CCTK_TimerStopI (timer_init);
+   
+   
+-  
+   int nvartypes = 0;
+   vector<int> vartypes (nvars);
+   vector<int> vartypecount (nvars);
+@@ -1321,79 +1601,44 @@
+         check (dst2count[n] == srccount[n]);
+       }
+     }
+-    
+-    
+-    
++
++
++
+     CCTK_TimerStartI (timer_copy_in);
+     
+     for (int n = 0; n < size; ++n) {
+       check (SLAB_MAXDIM == 3);
+       
+-      if (info[0].xpose==0 and info[1].xpose==1 and info[2].xpose==2 and
+-          srcdetail[n*SLAB_MAXDIM  ].str==1 and
++      if (srcdetail[n*SLAB_MAXDIM  ].str==1 and
+           srcdetail[n*SLAB_MAXDIM+1].str==1 and
+           srcdetail[n*SLAB_MAXDIM+2].str==1 and
+           vartype == CCTK_VARIABLE_REAL)
+       {
+-        // Optimised version for a special case: no transposing
+-        
+-        copy_data<CCTK_REAL> (info, srcdetail, srcoffset, srcelems, srcdata, srcptrs, 
+-                              n, varis, nvaris);
+-        
+-      } else if (info[0].xpose==1 and info[1].xpose==0 and info[2].xpose==2 and
+-                 srcdetail[n*SLAB_MAXDIM  ].str==1 and
++        // Optimised for stride 1 and CCTK_REAL
++        copy_data<CCTK_REAL>
++          (info, srcdetail, srcoffset, srcelems, srcdata, srcptrs, 
++           n, varis, nvaris, info[0].xpose, info[1].xpose, info[2].xpose);
++      } else if (srcdetail[n*SLAB_MAXDIM  ].str==1 and
+                  srcdetail[n*SLAB_MAXDIM+1].str==1 and
+                  srcdetail[n*SLAB_MAXDIM+2].str==1 and
+-                 vartype == CCTK_VARIABLE_REAL)
++                 vartype == CCTK_VARIABLE_COMPLEX)
+       {
+-        // Optimised version for a special case: transpose x and y
+-        
+-        copy_data<CCTK_REAL> (info, srcdetail, srcoffset, srcelems, srcdata, srcptrs, 
+-                              n, varis, nvaris, 1, 0, 2);
+-        
++        // Optimised for stride 1 and CCTK_COMPLEX
++        copy_data<CCTK_COMPLEX>
++          (info, srcdetail, srcoffset, srcelems, srcdata, srcptrs, 
++           n, varis, nvaris, info[0].xpose, info[1].xpose, info[2].xpose);
+       } else if (srcdetail[n*SLAB_MAXDIM  ].str==1 and
+                  srcdetail[n*SLAB_MAXDIM+1].str==1 and
+                  srcdetail[n*SLAB_MAXDIM+2].str==1 and
+-                 vartype == CCTK_VARIABLE_REAL)
+-      {
+-        // Optimised version for CCTK_REAL and stride 1
+-        
+-        copy_data<CCTK_REAL> (info, srcdetail, srcoffset, srcelems, srcdata, srcptrs, 
+-                              n, varis, nvaris, info[0].xpose, info[1].xpose, info[2].xpose);
+-        
+-      } else if (info[0].xpose==0 and info[1].xpose==1 and info[2].xpose==2 and
+-                 srcdetail[n*SLAB_MAXDIM  ].str==1 and
+-                 srcdetail[n*SLAB_MAXDIM+1].str==1 and
+-                 srcdetail[n*SLAB_MAXDIM+2].str==1 and
+                  vartype == CCTK_VARIABLE_INT)
+       {
+-        // Optimised version for a special case: no transposing
+-        
+-        copy_data<CCTK_INT> (info, srcdetail, srcoffset, srcelems, srcdata, srcptrs, 
+-                              n, varis, nvaris);
+-
+-      } else if (info[0].xpose==1 and info[1].xpose==0 and info[2].xpose==2 and
+-                 srcdetail[n*SLAB_MAXDIM  ].str==1 and
+-                 srcdetail[n*SLAB_MAXDIM+1].str==1 and
+-                 srcdetail[n*SLAB_MAXDIM+2].str==1 and
+-                 vartype == CCTK_VARIABLE_INT)
+-      {
+-        // Optimised version for a special case: transpose x and y
+-        
+-        copy_data<CCTK_INT> (info, srcdetail, srcoffset, srcelems, srcdata, srcptrs, 
+-                              n, varis, nvaris, 1, 0, 2);
+-
+-      } else if (srcdetail[n*SLAB_MAXDIM  ].str==1 and
+-                 srcdetail[n*SLAB_MAXDIM+1].str==1 and
+-                 srcdetail[n*SLAB_MAXDIM+2].str==1)
+-      {
+-        // Optimised version for CCTK_INT and stride 1
+-        
+-        copy_data<CCTK_INT> (info, srcdetail, srcoffset, srcelems, srcdata, srcptrs, 
+-                              n, varis, nvaris, info[0].xpose, info[1].xpose, info[2].xpose);
+-
++        // Optimised for stride 1 and CCTK_INT
++        copy_data<CCTK_INT>
++          (info, srcdetail, srcoffset, srcelems, srcdata, srcptrs, 
++           n, varis, nvaris, info[0].xpose, info[1].xpose, info[2].xpose);
+       } else {
+         // Generic, unoptimised version
++        CCTK_TimerStartI (timer_copy_in_general);
+         
+         int const srcdetailleni = srcdetail[n*SLAB_MAXDIM+info[0].xpose].len;
+         int const srcdetaillenj = srcdetail[n*SLAB_MAXDIM+info[1].xpose].len;
+@@ -1443,6 +1688,7 @@
+           }
+           
+         } // for vari
++        CCTK_TimerStopI (timer_copy_in_general);
+         
+       }
+     } // for n
+@@ -1470,25 +1716,26 @@
+          &dstdata.front(), &dstcount.front(), &dstoffset.front(), vardatatype,
+          comm);
+     } else {
+-      vector<MPI_Request> requests (2 * size);
++      vector<MPI_Request> requests;
++      requests.reserve (2 * size);
+       // Start receive
+       for (int n = 0; n < size; ++n) {
+         if (n != rank and dstcount[n] > 0) {
++          MPI_Request req;
+           MPI_Irecv
+             (&dstdata[vartypesize * dstoffset[n]], dstcount[n], vardatatype,
+-             n, 0, comm, &requests[n]);
+-        } else {
+-          requests[n] = MPI_REQUEST_NULL;
++             n, 0, comm, &req);
++          requests.push_back (req);
+         }
+       }
+       // Start send
+       for (int n = 0; n < size; ++n) {
+         if (n != rank and srccount[n] > 0) {
++          MPI_Request req;
+           MPI_Isend
+             (&srcdata[vartypesize * srcoffset[n]], srccount[n], vardatatype,
+-             n, 0, comm, &requests[size + n]);
+-        } else {
+-          requests[size + n] = MPI_REQUEST_NULL;
++             n, 0, comm, &req);
++          requests.push_back (req);
+         }
+       }
+       // Self communication
+@@ -1500,7 +1747,7 @@
+                 dstcount[n] * vartypesize);
+       }
+       // Wait
+-      MPI_Waitall (2 * size, &requests.front(), MPI_STATUSES_IGNORE);
++      MPI_Waitall (requests.size(), &requests.front(), MPI_STATUSES_IGNORE);
+     }
+     
+     ifcheck {
+@@ -1524,116 +1771,36 @@
+     for (int n = 0; n < size; ++n) {
+       check (SLAB_MAXDIM == 3);
+       
+-      if (info[0].flip==0 and info[1].flip==0 and info[2].flip==0 and
+-          dstdetail[n*SLAB_MAXDIM  ].str==1 and
++      if (dstdetail[n*SLAB_MAXDIM  ].str==1 and
+           dstdetail[n*SLAB_MAXDIM+1].str==1 and
+           dstdetail[n*SLAB_MAXDIM+2].str==1 and
+           vartype == CCTK_VARIABLE_REAL)
+       {
+-        // Optimised version for a special case: no flipping
+-        
+-        copy_data_back<CCTK_REAL> (info, dstdetail, dstoffset, dstelems, dstdata, dstptrs, 
+-                              n, varis, nvaris);
+-        
+-      } else if (info[0].flip==1 and info[1].flip==0 and info[2].flip==0 and
+-                 dstdetail[n*SLAB_MAXDIM  ].str==1 and
+-                 dstdetail[n*SLAB_MAXDIM+1].str==1 and
+-                 dstdetail[n*SLAB_MAXDIM+2].str==1 and
+-                 vartype == CCTK_VARIABLE_REAL)
+-      {
+-        // Optimised version for a special case: flip in x direction
+-        
+-        copy_data_back<CCTK_REAL> (info, dstdetail, dstoffset, dstelems, dstdata, dstptrs, 
+-                              n, varis, nvaris, true);
+-        
+-      } else if (info[0].flip==0 and info[1].flip==1 and info[2].flip==0 and
+-                 dstdetail[n*SLAB_MAXDIM  ].str==1 and
+-                 dstdetail[n*SLAB_MAXDIM+1].str==1 and
+-                 dstdetail[n*SLAB_MAXDIM+2].str==1 and
+-                 vartype == CCTK_VARIABLE_REAL)
+-      {
+-        // Optimised version for a special case: flip in y direction
+-        
+-        copy_data_back<CCTK_REAL> (info, dstdetail, dstoffset, dstelems, dstdata, dstptrs, 
+-                              n, varis, nvaris, false, true);
+-        
+-      } else if (info[0].flip==1 and info[1].flip==1 and info[2].flip==0 and
+-                 dstdetail[n*SLAB_MAXDIM  ].str==1 and
+-                 dstdetail[n*SLAB_MAXDIM+1].str==1 and
+-                 dstdetail[n*SLAB_MAXDIM+2].str==1 and
+-                 vartype == CCTK_VARIABLE_REAL)
+-      {
+-        // Optimised version for a special case: flip in x and y direction
+-        
+-        copy_data_back<CCTK_REAL> (info, dstdetail, dstoffset, dstelems, dstdata, dstptrs, 
+-                              n, varis, nvaris, true, true);
+-        
++        // Optimised version for stride 1 and CCTK_REAL
++        copy_data_back<CCTK_REAL>
++          (info, dstdetail, dstoffset, dstelems, dstdata, dstptrs, 
++           n, varis, nvaris, info[0].flip, info[1].flip, info[2].flip);
+       } else if (dstdetail[n*SLAB_MAXDIM  ].str==1 and
+                  dstdetail[n*SLAB_MAXDIM+1].str==1 and
+                  dstdetail[n*SLAB_MAXDIM+2].str==1 and
+-                 vartype == CCTK_VARIABLE_REAL)
++                 vartype == CCTK_VARIABLE_COMPLEX)
+       {
+-        // Optimised version for CCTK_REAL and stride 1
+-        
+-        copy_data_back<CCTK_REAL> (info, dstdetail, dstoffset, dstelems, dstdata, dstptrs, 
+-                              n, varis, nvaris, info[0].flip==1, info[1].flip==1, info[2].flip==1);
+-        
+-      } else if (info[0].flip==0 and info[1].flip==0 and info[2].flip==0 and
+-                 dstdetail[n*SLAB_MAXDIM  ].str==1 and
+-                 dstdetail[n*SLAB_MAXDIM+1].str==1 and
+-                 dstdetail[n*SLAB_MAXDIM+2].str==1 and
+-                 vartype == CCTK_VARIABLE_INT)
+-      {
+-        // Optimised version for a special case: no flipping
+-        
+-        copy_data_back<CCTK_INT> (info, dstdetail, dstoffset, dstelems, dstdata, dstptrs, 
+-                              n, varis, nvaris);
+-        
+-      } else if (info[0].flip==1 and info[1].flip==0 and info[2].flip==0 and
+-                 dstdetail[n*SLAB_MAXDIM  ].str==1 and
+-                 dstdetail[n*SLAB_MAXDIM+1].str==1 and
+-                 dstdetail[n*SLAB_MAXDIM+2].str==1 and
+-                 vartype == CCTK_VARIABLE_INT)
+-      {
+-        // Optimised version for a special case: flip in x direction
+-        
+-        copy_data_back<CCTK_INT> (info, dstdetail, dstoffset, dstelems, dstdata, dstptrs, 
+-                              n, varis, nvaris, true);
+-        
+-      } else if (info[0].flip==0 and info[1].flip==1 and info[2].flip==0 and
+-                 dstdetail[n*SLAB_MAXDIM  ].str==1 and
+-                 dstdetail[n*SLAB_MAXDIM+1].str==1 and
+-                 dstdetail[n*SLAB_MAXDIM+2].str==1 and
+-                 vartype == CCTK_VARIABLE_INT)
+-      {
+-        // Optimised version for a special case: flip in y direction
+-        
+-        copy_data_back<CCTK_INT> (info, dstdetail, dstoffset, dstelems, dstdata, dstptrs, 
+-                              n, varis, nvaris, false, true);
+-        
+-      } else if (info[0].flip==1 and info[1].flip==1 and info[2].flip==0 and
+-                 dstdetail[n*SLAB_MAXDIM  ].str==1 and
+-                 dstdetail[n*SLAB_MAXDIM+1].str==1 and
+-                 dstdetail[n*SLAB_MAXDIM+2].str==1 and
+-                 vartype == CCTK_VARIABLE_INT)
+-      {
+-        // Optimised version for a special case: flip in x and y direction
+-        
+-        copy_data_back<CCTK_INT> (info, dstdetail, dstoffset, dstelems, dstdata, dstptrs, 
+-                              n, varis, nvaris, true, true);
+-        
++        // Optimised version for stride 1 and CCTK_COMPLEX
++        copy_data_back<CCTK_COMPLEX>
++          (info, dstdetail, dstoffset, dstelems, dstdata, dstptrs, 
++           n, varis, nvaris, info[0].flip, info[1].flip, info[2].flip);
+       } else if (dstdetail[n*SLAB_MAXDIM  ].str==1 and
+                  dstdetail[n*SLAB_MAXDIM+1].str==1 and
+                  dstdetail[n*SLAB_MAXDIM+2].str==1 and
+                  vartype == CCTK_VARIABLE_INT)
+       {
+-        // Optimised version for CCTK_INT and stride 1
+-        
+-        copy_data_back<CCTK_INT> (info, dstdetail, dstoffset, dstelems, dstdata, dstptrs, 
+-                              n, varis, nvaris, info[0].flip==1, info[1].flip==1, info[2].flip==1);
+-        
++        // Optimised version for stride 1 and CCTK_INT
++        copy_data_back<CCTK_INT>
++          (info, dstdetail, dstoffset, dstelems, dstdata, dstptrs, 
++           n, varis, nvaris, info[0].flip, info[1].flip, info[2].flip);
+       } else {
+         // Generic, unoptimised version
++        CCTK_TimerStartI (timer_copy_back_general);
+         
+         int const dstdetailleni = dstdetail[n*SLAB_MAXDIM+0].len;
+         int const dstdetaillenj = dstdetail[n*SLAB_MAXDIM+1].len;
+@@ -1684,6 +1851,7 @@
+           }
+           
+         } // for vari
++        CCTK_TimerStopI (timer_copy_back_general);
+         
+       }
+       
+@@ -1699,12 +1867,80 @@
+     MPI_Barrier (comm);
+   }
+   
++  CCTK_TimerStopI (timer_apply);
++  
+   return 0;
+ }
+ 
+ 
+ 
+ extern "C"
++int
++Slab_MultiTransfer_Finalize
++(cGH       const * restrict const cctkGH,
++ slabsetup       * restrict const slabsetup)
++{
++  DECLARE_CCTK_PARAMETERS;
++  
++  // Check arguments
++  check (cctkGH);
++  check (slabsetup);
++  
++  delete slabsetup;
++  
++  return 0;
++}
++
++
++
++// Interface for transferring a variable in one go
++extern "C"
++int
++Slab_MultiTransfer (cGH      const                  * restrict const cctkGH,
++                    int                                        const dim,
++                    xferinfo const                  * restrict const xferinfo,
++                    int                                        const options,
++                    int                                        const nvars,
++                    int      const                  * restrict const srctypes,
++                    void     const * restrict const * restrict const srcptrs,
++                    int      const                  * restrict const dsttypes,
++                    void           * restrict const * restrict const dstptrs)
++{
++  slabsetup * restrict const slabsetup =
++    Slab_MultiTransfer_Init (cctkGH, dim, xferinfo, options);
++  Slab_MultiTransfer_Apply (cctkGH, slabsetup,
++                            nvars, srctypes, srcptrs, dsttypes, dstptrs);
++  Slab_MultiTransfer_Finalize (cctkGH, slabsetup);
++  return 0;
++}
++
++
++
++// Old interface for transferring a single variable
++extern "C"
++int
++Slab_Transfer (cGH      const * restrict const cctkGH,
++               int                       const dim,
++               xferinfo const * restrict const xferinfo,
++               int                       const options,
++               int                       const srctype,
++               void     const * restrict const srcptr,
++               int                       const dsttype,
++               void           * restrict const dstptr)
++{
++  int const nvars = 1;
++  int const srctypes[] = { srctype };
++  void const * restrict const srcptrs[] = { srcptr };
++  int const dsttypes[] = { dsttype };
++  void * restrict const dstptrs[] = { dstptr };
++  return Slab_MultiTransfer (cctkGH, dim, xferinfo, options,
++                             nvars, srctypes, srcptrs, dsttypes, dstptrs);
++}
++
++
++
++// Fortran wrapper
++extern "C"
+ void CCTK_FCALL
+ CCTK_FNAME(Slab_Transfer) (int                * restrict const ierr,
+                            cGH  const * const * restrict const cctkGH,
+@@ -1765,25 +2001,3 @@
+   *ierr = Slab_Transfer (*cctkGH, *dim, &xferinfo.front(), *options,
+                          *srctype, srcptr, *dsttype, dstptr);
+ }
+-
+-
+-
+-extern "C"
+-int
+-Slab_Transfer (cGH      const * restrict const cctkGH,
+-               int                       const dim,
+-               xferinfo const * restrict const xferinfo,
+-               int                       const options,
+-               int                       const srctype,
+-               void     const * restrict const srcptr,
+-               int                       const dsttype,
+-               void           * restrict const dstptr)
+-{
+-  int const nvars = 1;
+-  int const srctypes[] = { srctype };
+-  void const * restrict const srcptrs[] = { srcptr };
+-  int const dsttypes[] = { dsttype };
+-  void * restrict const dstptrs[] = { dstptr };
+-  return Slab_MultiTransfer (cctkGH, dim, xferinfo, options,
+-                             nvars, srctypes, srcptrs, dsttypes, dstptrs);
+-}
+Index: src/slab.h
+===================================================================
+--- src/slab.h	(revision 75)
++++ src/slab.h	(working copy)
+@@ -1,5 +1,3 @@
+-/* $Header$ */
+-
+ #ifndef SLAB_H
+ #define SLAB_H
+ 
+@@ -100,27 +98,55 @@
+ print_xferinfo (FILE                  *               const out,
+                 struct xferinfo const * CCTK_RESTRICT const xferinfo);
+ 
++
++
++struct slabsetup;
++
++struct slabsetup *
++Slab_MultiTransfer_Init
++(cGH             const * CCTK_RESTRICT const cctkGH,
++ int                                   const dim,
++ struct xferinfo const * CCTK_RESTRICT const xferinfo,
++ int                                   const options);
++
+ int
+-Slab_Transfer (cGH             const * CCTK_RESTRICT const cctkGH,
+-               int                                   const dim,
+-               struct xferinfo const * CCTK_RESTRICT const xferinfo,
+-               int                                   const options,
+-               int                                   const srctype,
+-               void            const * CCTK_RESTRICT const srcptr,
+-               int                                   const dsttype,
+-               void                  * CCTK_RESTRICT const dstptr);
++Slab_MultiTransfer_Apply
++(cGH              const                       * CCTK_RESTRICT const cctkGH,
++ struct slabsetup const                       * CCTK_RESTRICT const slabsetup,
++ int                                                          const nvars,
++ int              const                       * CCTK_RESTRICT const srctypes,
++ void             const * CCTK_RESTRICT const * CCTK_RESTRICT const srcptrs,
++ int              const                       * CCTK_RESTRICT const dsttypes,
++ void                   * CCTK_RESTRICT const * CCTK_RESTRICT const dstptrs);
+ 
+ int
+-Slab_MultiTransfer (cGH             const                       * CCTK_RESTRICT const cctkGH,
+-                    int                                                         const dim,
+-                    struct xferinfo const                       * CCTK_RESTRICT const xferinfo,
+-                    int                                                         const options,
+-                    int                                                         const nvars,
+-                    int             const                       * CCTK_RESTRICT const srctypes,
+-                    void            const * CCTK_RESTRICT const * CCTK_RESTRICT const srcptrs,
+-                    int             const                       * CCTK_RESTRICT const dsttypes,
+-                    void                  * CCTK_RESTRICT const * CCTK_RESTRICT const dstptrs);
++Slab_MultiTransfer_Finalize
++(cGH              const * CCTK_RESTRICT const cctkGH,
++ struct slabsetup       * CCTK_RESTRICT const slabsetup);
+ 
++int
++Slab_MultiTransfer
++(cGH             const                       * CCTK_RESTRICT const cctkGH,
++ int                                                         const dim,
++ struct xferinfo const                       * CCTK_RESTRICT const xferinfo,
++ int                                                         const options,
++ int                                                         const nvars,
++ int             const                       * CCTK_RESTRICT const srctypes,
++ void            const * CCTK_RESTRICT const * CCTK_RESTRICT const srcptrs,
++ int             const                       * CCTK_RESTRICT const dsttypes,
++ void                  * CCTK_RESTRICT const * CCTK_RESTRICT const dstptrs);
++
++int
++Slab_Transfer
++(cGH             const * CCTK_RESTRICT const cctkGH,
++ int                                   const dim,
++ struct xferinfo const * CCTK_RESTRICT const xferinfo,
++ int                                   const options,
++ int                                   const srctype,
++ void            const * CCTK_RESTRICT const srcptr,
++ int                                   const dsttype,
++ void                  * CCTK_RESTRICT const dstptr);
++
+ #ifdef __cplusplus 
+ }
+ #endif
+Index: src/slab.inc
+===================================================================
+--- src/slab.inc	(revision 75)
++++ src/slab.inc	(working copy)
+@@ -1,5 +1,4 @@
+ ! -*-F90-*-
+-! $Header$
+ 
+ interface
+    subroutine Slab_Transfer (ierr, cctkGH, dim, &
+Index: configuration.ccl
+===================================================================
+--- configuration.ccl	(revision 75)
++++ configuration.ccl	(working copy)
+@@ -1,6 +1,9 @@
+ # Configuration definition for thorn Slab
+-# $Header$
+ 
+ PROVIDES Slab
+ {
+ }
++
++OPTIONAL LoopControl
++{
++}
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 75)
++++ schedule.ccl	(working copy)
+@@ -1,5 +1,4 @@
+ # Schedule definitions for thorn Slab
+-# $Header$
+ 
+ SCHEDULE Slab_InitMPIDatatypes AT startup after Driver_Startup
+ {
+Index: README
+===================================================================
+--- README	(revision 75)
++++ README	(working copy)
+@@ -1,5 +1,3 @@
+-CVS info   : $Header$
+-
+ Cactus Code Thorn Slab
+ Thorn Author(s)     : Erik Schnetter <schnetter@cct.lsu.edu>
+ Thorn Maintainer(s) : Erik Schnetter <schnetter@cct.lsu.edu>

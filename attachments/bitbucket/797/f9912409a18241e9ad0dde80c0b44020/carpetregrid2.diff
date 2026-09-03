@@ -1,0 +1,192 @@
+diff -r 4ded0850ead5 Carpet/CarpetRegrid2/src/property.cc
+--- a/Carpet/CarpetRegrid2/src/property.cc	Mon Jun 04 13:34:25 2012 -0400
++++ b/Carpet/CarpetRegrid2/src/property.cc	Wed Jun 06 15:29:09 2012 -0500
+@@ -183,14 +183,7 @@
+                     level_boundary const& bnd,
+                     vector<ibset> const& regions, int const rl)
+   {
+-    ibbox single;
+-    for (ibset::const_iterator
+-           ibb = regions.at(rl).begin(); ibb != regions.at(rl).end(); ++ ibb)
+-    {
+-      ibbox const& bb = *ibb;
+-      single = single.expanded_containing (bb);
+-    }
+-    return single;
++    return regions.at(rl).container();
+   }
+   
+   bool combine_regions::
+@@ -198,9 +191,20 @@
+              level_boundary const& bnd,
+              vector<ibset> const& regions, int const rl)
+   {
+-    // This should not be tested because it has to be applied
+-    // unconditionally and only once
+-    return true;
++    DECLARE_CCTK_PARAMETERS;
++    
++    if (min_fraction == 1.0) return true;
++    
++    ibbox const combined = combined_regions (hh, dd, bnd, regions, rl);
++    
++    CCTK_REAL const regions_size =
++      static_cast <CCTK_REAL> (regions.at(rl).size());
++    CCTK_REAL const combined_size =
++      static_cast <CCTK_REAL> (combined.size());
++    
++    // Would a single bbox be efficient enough?
++    // TODO: Check this also for pairs of regions
++    return min_fraction * combined_size <= regions_size;
+   }
+   
+   void combine_regions::
+@@ -214,18 +218,7 @@
+       cout << "Refinement level " << rl << ": combining regions...\n";
+     }
+     
+-    ibbox const combined = combined_regions (hh, dd, bnd, regions, rl);
+-    
+-    CCTK_REAL const regions_size =
+-      static_cast <CCTK_REAL> (regions.at(rl).size());
+-    CCTK_REAL const combined_size =
+-      static_cast <CCTK_REAL> (combined.size());
+-    
+-    // Would a single bbox be efficient enough?
+-    // TODO: Check this also for pairs of regions
+-    if (min_fraction * combined_size <= regions_size) {
+-      regions.at(rl) = combined;
+-    }
++    regions.at(rl) = combined_regions (hh, dd, bnd, regions, rl);
+     
+     if (veryverbose) {
+       cout << "   New regions are " << regions.at(rl) << "\n";
+@@ -250,37 +243,59 @@
+     ivect const reffact = cbase.stride() / base.stride();
+     i2vect const& buffers = dd.buffer_widths.at(rl);
+     
+-    ibset snapped;
++#if 0
++    // We want to align the current level (without its buffer zones)
++    // with the next coarser level. Conceptually, we therefore
++    // subtract the buffer zones, align, and add the buffer zones
++    // again.
+     
+-    for (ibset::const_iterator
+-           ibb = regions.at(rl).begin(); ibb != regions.at(rl).end(); ++ ibb)
+-    {
+-      ibbox const& bb = *ibb;
+-      
+-      // We want to align the current level (without its buffer zones)
+-      // with the next coarser level. Conceptually, we therefore
+-      // subtract the buffer zones, align, and add the buffer zones
+-      // again.
+-      
+-      // In detail, we first expand by reffact-1-N points, then expand
+-      // (contract???) to the next coarser grid, then expand back to
+-      // the current grid, and expand by N points again. This sequence
+-      // is correct for both vertex and cell centred grids, and N is
+-      // determined by the number of buffer zones.
+-      
+-      // N is the number of buffer zones modulo the refinement factor.
+-      // We cannot shrink the domain (since we cannot shrink
+-      // bboxsets). For alignment, only operations modulo the
+-      // refinement factor are relevant.
+-      
+-      snapped |= bb.
+-        expand(reffact-1 - buffers % reffact).
+-        contracted_for(cbase).
+-        expanded_for(base).
+-        expand(buffers % reffact);
+-    }
++    // In detail, we first expand by reffact-1-N points, then contract
++    // to the next coarser grid, then expand back to the current grid,
++    // and expand by N points again. This sequence is correct for both
++    // vertex and cell centred grids, and N is determined by the
++    // number of buffer zones.
+     
+-    return snapped;
++    // N is the number of buffer zones modulo the refinement factor.
++    // We cannot shrink the domain (since we cannot shrink bboxsets).
++    // For alignment, only operations modulo the refinement factor are
++    // relevant.
++    
++    return regions.at(rl).
++      expand(reffact-1 - buffers % reffact).
++      contracted_for(cbase).
++      expanded_for(base).
++      expand(buffers % reffact);
++#endif
++    
++    // We want to align the current level (without its buffer zones)
++    // with the next coarser level. Conceptually, we therefore
++    // subtract the buffer zones, align, and add the buffer zones
++    // again.
++    
++    // Subtracting buffer zones is more complex than it should be,
++    // because bboxset does not support a (working) shrink operation.
++    // We therefore first define a very large bbox "world" guaranteed
++    // to contain everything. We then calculate the complement (with
++    // respect to this world), enlarge it, and take the complement
++    // again. This corresponds to shrinking a region.
++    
++    // Guaranteed to contain everything
++    ibbox const world = base.expand(buffers+10);
++    
++    ibset const& original_region = regions.at(rl);
++    assert(original_region <= base);
++    ibset const region_without_buffers =
++      (world - (world - original_region).expand(buffers)) & base;
++    
++    ibset const snapped_region =
++      region_without_buffers.
++      expand(reffact-1).
++      contracted_for(cbase).
++      expanded_for(base).
++      expand(buffers);
++    
++    // We don't want to remove any points
++    return snapped_region | original_region;
+   }
+   
+   bool snap_coarse::
+@@ -336,6 +351,8 @@
+   symmetrised_regions (gh const& hh, dh const& dd, level_boundary const& bnd,
+                        vector<ibset> const& regions, int const rl)
+   {
++    // ibbox const& baseextent = hh.baseextent(0,rl);
++    
+     ibset symmetrised = regions.at(rl);
+     for (ibset::const_iterator
+            ibb = regions.at(rl).begin(); ibb != regions.at(rl).end(); ++ ibb)
+@@ -390,6 +407,7 @@
+           // Will be clipped later
+           // assert (new_bb.is_contained_in (baseextent));
+           
++          // symmetrised |= new_bb & baseextent;
+           symmetrised |= new_bb;
+         }
+       }
+@@ -507,6 +525,7 @@
+         // Will be clipped later
+         // assert (new_bb.is_contained_in (baseextent));
+         
++        // symmetrised |= new_bb & baseextent;
+         symmetrised |= new_bb;
+       }
+     }
+diff -r 4ded0850ead5 Carpet/CarpetRegrid2/src/regrid.cc
+--- a/Carpet/CarpetRegrid2/src/regrid.cc	Mon Jun 04 13:34:25 2012 -0400
++++ b/Carpet/CarpetRegrid2/src/regrid.cc	Wed Jun 06 15:29:09 2012 -0500
+@@ -326,10 +326,10 @@
+     vector<property*> once_properties;
+     once_properties.push_back (new proper_nesting());
+     once_properties.push_back (new add_buffers());
+-    once_properties.push_back (new combine_regions());
+     
+     // Properties to be enforced "until all is well"
+     vector<property*> properties;
++    properties.push_back (new combine_regions());
+     properties.push_back (new snap_coarse());
+     properties.push_back (new rotsym90());
+     properties.push_back (new rotsym180());

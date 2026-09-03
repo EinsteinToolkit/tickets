@@ -1,0 +1,13 @@
+Index: lib/sim-sync.py
+===================================================================
+--- lib/sim-sync.py	(revision 1747)
++++ lib/sim-sync.py	(working copy)
+@@ -140,7 +140,7 @@
+     mkdirpath = "%s%s%s" % (sourcebasedir, os.sep, local_suffix)
+     mkdircmd = "%s %s mkdir -p %s" % (sshcmd, mkdirssh, mkdirpath)
+ 
+-    cmd = "cd '%s' && { %s; } && %s && %s" % (local_sourcedir, localsshsetup, mkdircmd, cmd)
++    cmd = "cd '%s' && { %s; } && { %s || { %s && %s; } }" % (local_sourcedir, localsshsetup, cmd, mkdircmd, cmd)
+     
+     return cmd
+     

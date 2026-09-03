@@ -1,0 +1,335 @@
+Index: setup.cc
+===================================================================
+--- setup.cc	(revision 1571)
++++ setup.cc	(working copy)
+@@ -85,9 +85,136 @@
+ 			   fp origin_x, fp origin_y, fp origin_z);
+ 	  }
+ 
++void set_initial_guess_parameters(struct AH_data& AH_data, const int hn,
++                                  const fp ini_origin_x, const fp ini_origin_y, const fp ini_origin_z);
++
++
++
++
++
+ //******************************************************************************
+ 
+ //
++// This function is used to setup initial guesses either from 
++// the corresponding parameters, or from a custom ini_origin_*.
++// The latter is necessary when tracking with a grid scalar.
++//
++//
++
++void set_initial_guess_parameters(struct AH_data& AH_data, const int hn,
++                                  const fp ini_origin_x, const fp ini_origin_y, const fp ini_origin_z)
++{
++DECLARE_CCTK_PARAMETERS;
++
++                AH_data.initial_guess_info.method
++			= decode_initial_guess_method(initial_guess_method[hn]);
++                AH_data.initial_guess_info.reset_horizon_after_not_finding
++                        = reset_horizon_after_not_finding[hn];
++		// ... read from named file
++		AH_data.initial_guess_info.read_from_named_file_info.file_name
++			= initial_guess__read_from_named_file__file_name[hn];
++
++if (!track_origin_from_grid_scalar[hn]) {
++
++		// ... Kerr/Kerr
++		AH_data.initial_guess_info.Kerr_Kerr_info.x_posn
++			= initial_guess__Kerr_Kerr__x_posn[hn];
++		AH_data.initial_guess_info.Kerr_Kerr_info.y_posn
++			= initial_guess__Kerr_Kerr__y_posn[hn];
++		AH_data.initial_guess_info.Kerr_Kerr_info.z_posn
++			= initial_guess__Kerr_Kerr__z_posn[hn];
++		AH_data.initial_guess_info.Kerr_Kerr_info.mass
++			= initial_guess__Kerr_Kerr__mass[hn];
++		AH_data.initial_guess_info.Kerr_Kerr_info.spin
++			= initial_guess__Kerr_Kerr__spin[hn];
++		// ... Kerr/Kerr-Schild
++		AH_data.initial_guess_info.Kerr_KerrSchild_info.x_posn
++			= initial_guess__Kerr_KerrSchild__x_posn[hn];
++		AH_data.initial_guess_info.Kerr_KerrSchild_info.y_posn
++			= initial_guess__Kerr_KerrSchild__y_posn[hn];
++		AH_data.initial_guess_info.Kerr_KerrSchild_info.z_posn
++			= initial_guess__Kerr_KerrSchild__z_posn[hn];
++		AH_data.initial_guess_info.Kerr_KerrSchild_info.mass
++			= initial_guess__Kerr_KerrSchild__mass[hn];
++		AH_data.initial_guess_info.Kerr_KerrSchild_info.spin
++			= initial_guess__Kerr_KerrSchild__spin[hn];
++		// ... coordinate sphere
++		AH_data.initial_guess_info.coord_sphere_info.x_center
++			= initial_guess__coord_sphere__x_center[hn];
++		AH_data.initial_guess_info.coord_sphere_info.y_center
++			= initial_guess__coord_sphere__y_center[hn];
++		AH_data.initial_guess_info.coord_sphere_info.z_center
++			= initial_guess__coord_sphere__z_center[hn];
++		AH_data.initial_guess_info.coord_sphere_info.radius
++			= initial_guess__coord_sphere__radius[hn];
++		// ... coordinate ellipsoid
++		AH_data.initial_guess_info.coord_ellipsoid_info.x_center
++			= initial_guess__coord_ellipsoid__x_center[hn];
++		AH_data.initial_guess_info.coord_ellipsoid_info.y_center
++			= initial_guess__coord_ellipsoid__y_center[hn];
++		AH_data.initial_guess_info.coord_ellipsoid_info.z_center
++			= initial_guess__coord_ellipsoid__z_center[hn];
++		AH_data.initial_guess_info.coord_ellipsoid_info.x_radius
++			= initial_guess__coord_ellipsoid__x_radius[hn];
++		AH_data.initial_guess_info.coord_ellipsoid_info.y_radius
++			= initial_guess__coord_ellipsoid__y_radius[hn];
++		AH_data.initial_guess_info.coord_ellipsoid_info.z_radius
++			= initial_guess__coord_ellipsoid__z_radius[hn];
++
++} else {
++
++		// ... Kerr/Kerr
++		AH_data.initial_guess_info.Kerr_Kerr_info.x_posn
++			= ini_origin_x;
++		AH_data.initial_guess_info.Kerr_Kerr_info.y_posn
++			= ini_origin_y;
++		AH_data.initial_guess_info.Kerr_Kerr_info.z_posn
++			= ini_origin_z;
++		AH_data.initial_guess_info.Kerr_Kerr_info.mass
++			= initial_guess__Kerr_Kerr__mass[hn];
++		AH_data.initial_guess_info.Kerr_Kerr_info.spin
++			= initial_guess__Kerr_Kerr__spin[hn];
++		// ... Kerr/Kerr-Schild
++		AH_data.initial_guess_info.Kerr_KerrSchild_info.x_posn
++			= ini_origin_x;
++		AH_data.initial_guess_info.Kerr_KerrSchild_info.y_posn
++			= ini_origin_y;
++		AH_data.initial_guess_info.Kerr_KerrSchild_info.z_posn
++			= ini_origin_z;
++		AH_data.initial_guess_info.Kerr_KerrSchild_info.mass
++			= initial_guess__Kerr_KerrSchild__mass[hn];
++		AH_data.initial_guess_info.Kerr_KerrSchild_info.spin
++			= initial_guess__Kerr_KerrSchild__spin[hn];
++		// ... coordinate sphere
++		AH_data.initial_guess_info.coord_sphere_info.x_center
++			= ini_origin_x;
++		AH_data.initial_guess_info.coord_sphere_info.y_center
++			= ini_origin_y;
++		AH_data.initial_guess_info.coord_sphere_info.z_center
++			= ini_origin_z;
++		AH_data.initial_guess_info.coord_sphere_info.radius
++			= initial_guess__coord_sphere__radius[hn];
++		// ... coordinate ellipsoid
++		AH_data.initial_guess_info.coord_ellipsoid_info.x_center
++			= ini_origin_x;
++		AH_data.initial_guess_info.coord_ellipsoid_info.y_center
++			= ini_origin_y;
++		AH_data.initial_guess_info.coord_ellipsoid_info.z_center
++			= ini_origin_z;
++		AH_data.initial_guess_info.coord_ellipsoid_info.x_radius
++			= initial_guess__coord_ellipsoid__x_radius[hn];
++		AH_data.initial_guess_info.coord_ellipsoid_info.y_radius
++			= initial_guess__coord_ellipsoid__y_radius[hn];
++		AH_data.initial_guess_info.coord_ellipsoid_info.z_radius
++			= initial_guess__coord_ellipsoid__z_radius[hn];
++
++}
++
++}
++
++//******************************************************************************
++
++//
+ // ***** access to persistent data *****
+ //
+ extern struct state state;
+@@ -591,7 +718,7 @@
+ 		if (verbose_info.print_algorithm_details)
+ 		   then CCTK_VInfo(CCTK_THORNSTRING,
+ 			   "      setting initial guess parameters etc");
+-		AH_data.initial_guess_info.method
++		/*AH_data.initial_guess_info.method
+ 			= decode_initial_guess_method(initial_guess_method[hn]);
+                 AH_data.initial_guess_info.reset_horizon_after_not_finding
+                         = reset_horizon_after_not_finding[hn];
+@@ -641,7 +768,8 @@
+ 		AH_data.initial_guess_info.coord_ellipsoid_info.y_radius
+ 			= initial_guess__coord_ellipsoid__y_radius[hn];
+ 		AH_data.initial_guess_info.coord_ellipsoid_info.z_radius
+-			= initial_guess__coord_ellipsoid__z_radius[hn];
++			= initial_guess__coord_ellipsoid__z_radius[hn];*/
++		set_initial_guess_parameters(AH_data, hn, /* irrelevant here; leave at zero */0, 0, 0);
+ 		}
+ 
+ 	AH_data.search_flag = false;
+Index: Newton.cc
+===================================================================
+--- Newton.cc	(revision 1571)
++++ Newton.cc	(working copy)
+@@ -83,8 +83,51 @@
+ 		 const struct verbose_info& verbose_info);
+ 	  }
+ 
++void track_origin(const cGH* const cctkGH, patch_system& ps, 
++                  struct AH_data* const AH_data_ptr, 
++                  const int hn, const bool print_algorithm_highlights);
++
++
+ //******************************************************************************
++//
++// This function reads a coordinate origin from a grid scalar, 
++// and sets the patch system's origin to that new value
++//
++//
++void track_origin(const cGH* const cctkGH, patch_system& ps, 
++                  struct AH_data* const AH_data_ptr, 
++                  const int hn, const bool print_algorithm_highlights)
++{
++DECLARE_CCTK_ARGUMENTS;
++DECLARE_CCTK_PARAMETERS;
+ 
++if (AH_data_ptr->depends_on == 0) {
++        // move the origin as specified in the grid scalars
++        fp const * const ox =
++          static_cast<CCTK_REAL const *>
++          (CCTK_VarDataPtr (cctkGH, 0, track_origin_source_x[hn]));
++        assert (ox);
++        fp const * const oy =
++          static_cast<CCTK_REAL const *>
++          (CCTK_VarDataPtr (cctkGH, 0, track_origin_source_y[hn]));
++        assert (oy);
++        fp const * const oz =
++          static_cast<CCTK_REAL const *>
++          (CCTK_VarDataPtr (cctkGH, 0, track_origin_source_z[hn]));
++        assert (oz);
++        if (print_algorithm_highlights) {
++          std::cout << "AHF tracked position ox " << *ox << " oy " << *oy << " oz " << *oz << std::endl;
++        }
++        ps.origin_x (*ox);
++        ps.origin_y (*oy);
++        ps.origin_z (*oz);
++}
++
++}
++
++
++//******************************************************************************
++
+ //
+ // This function tries to finds each horizon assigned to this processor,
+ // by solving Theta(h) = 0 via Newton's method.  For each horizon found,
+@@ -331,7 +374,7 @@
+           ps.synchronize();
+         }
+       }
+-      if (track_origin_from_grid_scalar[hn] && AH_data_ptr->depends_on == 0) {
++      /*if (track_origin_from_grid_scalar[hn] && AH_data_ptr->depends_on == 0) {
+         // move the origin as specified in the grid scalars
+         fp const * const ox =
+           static_cast<CCTK_REAL const *>
+@@ -352,6 +395,9 @@
+         ps.origin_x (*ox);
+         ps.origin_y (*oy);
+         ps.origin_z (*oz);
++      }*/
++      if (track_origin_from_grid_scalar[hn]) {
++         track_origin(cctkGH, *ps_ptr, AH_data_ptr, hn, verbose_info.print_algorithm_highlights);
+       }
+       
+       // modify the initial guess
+Index: find_horizons.cc
+===================================================================
+--- find_horizons.cc	(revision 1571)
++++ find_horizons.cc	(working copy)
+@@ -10,6 +10,8 @@
+ /// do_test_expansion_Jacobian
+ ///
+ 
++#include <iostream>
++
+ #include <stdio.h>
+ #include <assert.h>
+ #include <math.h>
+@@ -255,8 +257,13 @@
+                         if (verbose_info.print_algorithm_highlights) {
+                           printf ("AHF find_horizons[%d] setup_initial_guess\n", hn);
+                         }
++                        if (track_origin_from_grid_scalar[hn] && state.method == method__find_horizons) {
++                           track_origin(cctkGH, ps, &AH_data, hn, verbose_info.print_algorithm_highlights);
++                           set_initial_guess_parameters(AH_data, hn, 
++                                                        ps.origin_x(), ps.origin_y(), ps.origin_z());
++                        }
+         		setup_initial_guess(ps,
+-        				    AH_data.initial_guess_info,
++        		          	    AH_data.initial_guess_info,
+         				    IO_info,
+         				    hn, N_horizons, verbose_info);
+         		if (active_flag && IO_info.output_initial_guess)
+Index: initial_guess.cc
+===================================================================
+--- initial_guess.cc	(revision 1571)
++++ initial_guess.cc	(working copy)
+@@ -318,11 +318,19 @@
+ "            the local origin point, or more generally that the initial\n"
+ "            guess surface isn't a Strahlkoerper (\"star-shaped region\")\n"
+ "            with respect to the local origin point\n"
++" (%g,%g,%g)\n"
++" (%g,%g,%g)\n"
++" (%g,%g,%g)\n"
++" (%g,%g,%g)\n"
+ 				   ,
+ 				   p.name(), irho, isigma,
+ 				   double(rho), double(sigma),
+ 				   double(xcos), double(ycos), double(zcos),
+-				   double(r_plus), double(r_minus));
++				   double(r_plus), double(r_minus),
++				   double(x_center), double(y_center), double(z_center),
++				   double(ps.origin_x()), double(ps.origin_y()), double(ps.origin_z()),
++				   double(AU), double(BV), double(CW),
++				   double(a), double(b), double(c));
+ 		   						/*NOTREACHED*/
+ 
+ 		// r = horizon radius at this grid point
+Index: driver.hh
+===================================================================
+--- driver.hh	(revision 1571)
++++ driver.hh	(working copy)
+@@ -431,6 +431,10 @@
+ enum initial_guess_method
+   decode_initial_guess_method(const char initial_guess_method_string[]);
+ 
++
++void set_initial_guess_parameters(struct AH_data& AH_data, const int hn,
++                                  const fp origin_x, const fp origin_y, const fp origin_z);
++
+ // Newton.cc
+ // returns true for success, false for failure to converge
+ void Newton(const cGH* GH,
+@@ -447,6 +451,11 @@
+ 	    const struct verbose_info& verbose_info,
+ 	    struct iteration_status_buffers& isb);
+ 
++// Tracks coordinate origin
++void track_origin(const cGH* const cctkGH, patch_system& ps, 
++                  struct AH_data* const AH_data_ptr, 
++                  const int hn, const bool print_algorithm_highlights);
++
+ // io.cc
+ void input_gridfn(patch_system& ps, int unknown_gfn,
+ 		  const struct IO_info& IO_info, const char base_file_name[],
+Index: BH_diagnostics.cc
+===================================================================
+--- BH_diagnostics.cc	(revision 1571)
++++ BH_diagnostics.cc	(working copy)
+@@ -834,9 +834,12 @@
+   struct AH_data& AH_data = *state.AH_data_array[horizon_number];
+   patch_system& ps = *AH_data.ps_ptr;
+   
+-  ps.origin_x(ah_origin_x[horizon_number-1]);
+-  ps.origin_y(ah_origin_y[horizon_number-1]);
+-  ps.origin_z(ah_origin_z[horizon_number-1]);
++  // only use stored origins if horizon had not yet been found!
++  if (ah_found_flag[horizon_number-1]) {
++    ps.origin_x(ah_origin_x[horizon_number-1]);
++    ps.origin_y(ah_origin_y[horizon_number-1]);
++    ps.origin_z(ah_origin_z[horizon_number-1]);
++  }
+   
+   for (int pn = 0; pn < ps.N_patches(); ++pn) {
+     assert (pn < 6);

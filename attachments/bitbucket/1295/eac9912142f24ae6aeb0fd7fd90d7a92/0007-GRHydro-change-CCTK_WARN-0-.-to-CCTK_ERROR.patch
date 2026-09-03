@@ -1,0 +1,280 @@
+From 5f5b0472456cb99e7bc888129ddf0ca581405361 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Sat, 9 Mar 2013 23:10:11 -0800
+Subject: [PATCH 07/11] GRHydro: change CCTK_WARN(0,...) to CCTK_ERROR
+
+this should tell the compiler that the function never returns and help
+optimizing the code by indicating eg slow branches of if statements
+---
+ src/GRHydro_HLLE.F90    |   20 ++++++++++----------
+ src/GRHydro_HLLEM.F90   |   18 +++++++++---------
+ src/GRHydro_HLLE_AM.F90 |   18 +++++++++---------
+ 3 files changed, 28 insertions(+), 28 deletions(-)
+
+diff --git a/src/GRHydro_HLLE.F90 b/src/GRHydro_HLLE.F90
+index bfe3cd0..deb37e3 100644
+--- a/src/GRHydro_HLLE.F90
++++ b/src/GRHydro_HLLE.F90
+@@ -216,7 +216,7 @@ subroutine GRHydro_HLLE(CCTK_ARGUMENTS)
+     call SpaceMask_GetStateBits(trivial, "Hydro_RiemannProblemZ", &
+          &"trivial")
+   else
+-    call CCTK_WARN(0, "Flux direction not x,y,z")
++    call CCTK_ERROR("Flux direction not x,y,z")
+   end if
+ 
+   if(evolve_temper.eq.1.and.reconstruct_temper.eq.1) then
+@@ -272,7 +272,7 @@ subroutine GRHydro_HLLE(CCTK_ARGUMENTS)
+            avg_beta = 0.5d0 * (beta3(i+xoffset,j+yoffset,k+zoffset) + &
+                beta3(i,j,k))
+         else
+-            call CCTK_WARN(0, "Flux direction not x,y,z")
++            call CCTK_ERROR("Flux direction not x,y,z")
+          end if
+ 
+         avg_alp = 0.5 * (alp(i,j,k) + alp(i+xoffset,j+yoffset,k+zoffset))
+@@ -311,7 +311,7 @@ subroutine GRHydro_HLLE(CCTK_ARGUMENTS)
+                  velzplus(i,j,k),pressplus(i,j,k),&
+                  avg_det,avg_alp,avg_beta)
+           else
+-            call CCTK_WARN(0, "Flux direction not x,y,z")
++            call CCTK_ERROR("Flux direction not x,y,z")
+           end if
+           
+         else !!! The end of this branch is right at the bottom of the routine
+@@ -327,7 +327,7 @@ subroutine GRHydro_HLLE(CCTK_ARGUMENTS)
+           else if (flux_direction == 3) then
+             usendh = uzzh
+           else
+-            call CCTK_WARN(0, "Flux direction not x,y,z")
++            call CCTK_ERROR("Flux direction not x,y,z")
+           end if
+           
+ !!$        Calculate the jumps in the conserved variables
+@@ -498,7 +498,7 @@ subroutine GRHydro_HLLE(CCTK_ARGUMENTS)
+                  pressminus(i+xoffset,j+yoffset,k+zoffset),&
+                  avg_det,avg_alp,avg_beta)
+           else
+-            call CCTK_WARN(0, "Flux direction not x,y,z")
++            call CCTK_ERROR("Flux direction not x,y,z")
+           end if
+ 
+ !!$        Compute H viscosity if requested
+@@ -536,7 +536,7 @@ subroutine GRHydro_HLLE(CCTK_ARGUMENTS)
+                            etaY(i,j-1,k, vup, eos_c),&
+                            etaY(i,j-1,k+1, vup, eos_c))
+             else
+-              call CCTK_WARN(0, "Flux direction not x,y,z")
++              call CCTK_ERROR("Flux direction not x,y,z")
+             end if
+             
+             ! modify eigenvalues of Roe's matrix by computed H viscosity
+@@ -678,7 +678,7 @@ subroutine GRHydro_HLLE_Tracer(CCTK_ARGUMENTS)
+     call SpaceMask_GetStateBits(trivial, "Hydro_RiemannProblemZ", &
+          &"trivial")
+   else
+-    call CCTK_WARN(0, "Flux direction not x,y,z")
++    call CCTK_ERROR("Flux direction not x,y,z")
+   end if
+ 
+   do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil
+@@ -714,7 +714,7 @@ subroutine GRHydro_HLLE_Tracer(CCTK_ARGUMENTS)
+            avg_beta = 0.5d0 * (beta3(i+xoffset,j+yoffset,k+zoffset) + &
+                beta3(i,j,k))
+         else
+-           call CCTK_WARN(0, "Flux direction not x,y,z")
++           call CCTK_ERROR("Flux direction not x,y,z")
+         end if
+ 
+         avg_alp = 0.5 * (alp(i,j,k) + alp(i+xoffset,j+yoffset,k+zoffset))
+@@ -740,7 +740,7 @@ subroutine GRHydro_HLLE_Tracer(CCTK_ARGUMENTS)
+         else if (flux_direction == 3) then
+           usendh = uzzh
+         else
+-          call CCTK_WARN(0, "Flux direction not x,y,z")
++          call CCTK_ERROR("Flux direction not x,y,z")
+         end if
+           
+ !!$        Calculate the jumps in the conserved variables
+@@ -813,7 +813,7 @@ subroutine GRHydro_HLLE_Tracer(CCTK_ARGUMENTS)
+           fminus(:) = (velzminus(i+xoffset,j+yoffset,k+zoffset) - avg_beta / avg_alp) * &
+                cons_tracerminus(i+xoffset,j+yoffset,k+zoffset,:)
+         else
+-          call CCTK_WARN(0, "Flux direction not x,y,z")
++          call CCTK_ERROR("Flux direction not x,y,z")
+         end if
+         
+ !!$        Find minimum and maximum wavespeeds
+diff --git a/src/GRHydro_HLLEM.F90 b/src/GRHydro_HLLEM.F90
+index 780367c..2b025b4 100644
+--- a/src/GRHydro_HLLEM.F90
++++ b/src/GRHydro_HLLEM.F90
+@@ -119,7 +119,7 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+     call SpaceMask_GetStateBits(trivial, "Hydro_RiemannProblemZ", &
+          &"trivial")
+   else
+-    call CCTK_WARN(0, "Flux direction not x,y,z")
++    call CCTK_ERROR("Flux direction not x,y,z")
+   end if
+ 
+   ! constraint transport needs to be able to average fluxes in the directions
+@@ -229,7 +229,7 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+         else if (flux_direction == 3) then
+            avg_beta=avg_betaz
+         else
+-           call CCTK_WARN(0, "Flux direction not x,y,z")
++           call CCTK_ERROR("Flux direction not x,y,z")
+         end if
+ 
+         avg_alp = 0.5 * (alp(i,j,k) + alp(i+xoffset,j+yoffset,k+zoffset))
+@@ -337,7 +337,7 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+             endif
+             
+           else
+-            call CCTK_WARN(0, "Flux direction not x,y,z")
++            call CCTK_ERROR("Flux direction not x,y,z")
+           end if
+           
+         else !!! The end of this branch is right at the bottom of the routine
+@@ -349,7 +349,7 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+           else if (flux_direction == 3) then
+             usendh = uzzh
+           else
+-            call CCTK_WARN(0, "Flux direction not x,y,z")
++            call CCTK_ERROR("Flux direction not x,y,z")
+           end if
+           
+ !!$        Calculate the jumps in the conserved variables
+@@ -541,7 +541,7 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+             endif
+ 
+           else
+-            call CCTK_WARN(0, "Flux direction not x,y,z")
++            call CCTK_ERROR("Flux direction not x,y,z")
+           end if
+        
+    
+@@ -779,7 +779,7 @@ subroutine GRHydro_HLLE_TracerM(CCTK_ARGUMENTS)
+     call SpaceMask_GetStateBits(trivial, "Hydro_RiemannProblemZ", &
+          &"trivial")
+   else
+-    call CCTK_WARN(0, "Flux direction not x,y,z")
++    call CCTK_ERROR("Flux direction not x,y,z")
+   end if
+ 
+   do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil
+@@ -840,7 +840,7 @@ subroutine GRHydro_HLLE_TracerM(CCTK_ARGUMENTS)
+            avg_beta = 0.5d0 * (beta3(i+xoffset,j+yoffset,k+zoffset) + &
+                beta3(i,j,k))
+         else
+-           call CCTK_WARN(0, "Flux direction not x,y,z")
++           call CCTK_ERROR("Flux direction not x,y,z")
+         end if
+ 
+         avg_alp = 0.5 * (alp(i,j,k) + alp(i+xoffset,j+yoffset,k+zoffset))
+@@ -865,7 +865,7 @@ subroutine GRHydro_HLLE_TracerM(CCTK_ARGUMENTS)
+         else if (flux_direction == 3) then
+           usendh = uzzh
+         else
+-          call CCTK_WARN(0, "Flux direction not x,y,z")
++          call CCTK_ERROR("Flux direction not x,y,z")
+         end if
+ 
+ !!$        b^2 = (1-v^2)B^2+(B dot v)^2 
+@@ -929,7 +929,7 @@ subroutine GRHydro_HLLE_TracerM(CCTK_ARGUMENTS)
+            fminus(:) = (velzminus(i+xoffset,j+yoffset,k+zoffset) - avg_beta / avg_alp) * &
+                 cons_tracerminus(i+xoffset,j+yoffset,k+zoffset,:)
+         else
+-           call CCTK_WARN(0, "Flux direction not x,y,z")
++           call CCTK_ERROR("Flux direction not x,y,z")
+         end if
+         
+ !!$        Find minimum and maximum wavespeeds
+diff --git a/src/GRHydro_HLLE_AM.F90 b/src/GRHydro_HLLE_AM.F90
+index fbde680..d13364d 100644
+--- a/src/GRHydro_HLLE_AM.F90
++++ b/src/GRHydro_HLLE_AM.F90
+@@ -117,7 +117,7 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+     call SpaceMask_GetStateBits(trivial, "Hydro_RiemannProblemZ", &
+          &"trivial")
+   else
+-    call CCTK_WARN(0, "Flux direction not x,y,z")
++    call CCTK_ERROR("Flux direction not x,y,z")
+   end if
+ 
+   ! constraint transport needs to be able to average fluxes in the directions
+@@ -217,7 +217,7 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+         else if (flux_direction == 3) then
+            avg_beta=avg_betaz
+         else
+-           call CCTK_WARN(0, "Flux direction not x,y,z")
++           call CCTK_ERROR("Flux direction not x,y,z")
+         end if
+ 
+         avg_alp = 0.5 * (alp(i,j,k) + alp(i+xoffset,j+yoffset,k+zoffset))
+@@ -316,7 +316,7 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+             endif
+             
+           else
+-            call CCTK_WARN(0, "Flux direction not x,y,z")
++            call CCTK_ERROR("Flux direction not x,y,z")
+           end if
+           
+         else !!! The end of this branch is right at the bottom of the routine
+@@ -328,7 +328,7 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+           else if (flux_direction == 3) then
+             usendh = uzzh
+           else
+-            call CCTK_WARN(0, "Flux direction not x,y,z")
++            call CCTK_ERROR("Flux direction not x,y,z")
+           end if
+           
+ !!$        Calculate the jumps in the conserved variables
+@@ -505,7 +505,7 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+             endif
+ 
+           else
+-            call CCTK_WARN(0, "Flux direction not x,y,z")
++            call CCTK_ERROR("Flux direction not x,y,z")
+           end if
+        
+    
+@@ -736,7 +736,7 @@ subroutine GRHydro_HLLE_TracerAM(CCTK_ARGUMENTS)
+     call SpaceMask_GetStateBits(trivial, "Hydro_RiemannProblemZ", &
+          &"trivial")
+   else
+-    call CCTK_WARN(0, "Flux direction not x,y,z")
++    call CCTK_ERROR("Flux direction not x,y,z")
+   end if
+ 
+   do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil
+@@ -797,7 +797,7 @@ subroutine GRHydro_HLLE_TracerAM(CCTK_ARGUMENTS)
+            avg_beta = 0.5d0 * (beta3(i+xoffset,j+yoffset,k+zoffset) + &
+                beta3(i,j,k))
+         else
+-           call CCTK_WARN(0, "Flux direction not x,y,z")
++           call CCTK_ERROR("Flux direction not x,y,z")
+         end if
+ 
+         avg_alp = 0.5 * (alp(i,j,k) + alp(i+xoffset,j+yoffset,k+zoffset))
+@@ -822,7 +822,7 @@ subroutine GRHydro_HLLE_TracerAM(CCTK_ARGUMENTS)
+         else if (flux_direction == 3) then
+           usendh = uzzh
+         else
+-          call CCTK_WARN(0, "Flux direction not x,y,z")
++          call CCTK_ERROR("Flux direction not x,y,z")
+         end if
+ 
+ !!$        b^2 = (1-v^2)B^2+(B dot v)^2 
+@@ -886,7 +886,7 @@ subroutine GRHydro_HLLE_TracerAM(CCTK_ARGUMENTS)
+            fminus(:) = (velzminus(i+xoffset,j+yoffset,k+zoffset) - avg_beta / avg_alp) * &
+                 cons_tracerminus(i+xoffset,j+yoffset,k+zoffset,:)
+         else
+-           call CCTK_WARN(0, "Flux direction not x,y,z")
++           call CCTK_ERROR("Flux direction not x,y,z")
+         end if
+         
+ !!$        Find minimum and maximum wavespeeds
+-- 
+1.7.10.4
+

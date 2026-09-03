@@ -1,0 +1,93 @@
+From 7444932eff13352e0f97d3118b0598ad2d390e46 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Tue, 25 Sep 2012 09:05:38 -0700
+Subject: [PATCH] GRHydro: remove usage of EOS_Module, poly_gamma_ini
+
+---
+ param.ccl                      |    8 ++++++++
+ src/GRHydro_EoSChangeGamma.F90 |   20 ++++++++------------
+ 2 files changed, 16 insertions(+), 12 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index 87add34..2d8b33b 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -64,6 +64,14 @@ shares: ADMMacros
+ 
+ USES INT spatial_order
+ 
++#########################################
++###  PARAMETRES SHARED FROM EOS_Omni  ###
++#########################################
++
++SHARES: EOS_Omni
++
++USES REAL poly_k
++
+ restricted:
+ 
+ BOOLEAN use_evolution_mask "Set this to 'true' to skip validity tests in regions where CarpetEvolutionMask::evolution_mask vanishes." STEERABLE=ALWAYS
+diff --git a/src/GRHydro_EoSChangeGamma.F90 b/src/GRHydro_EoSChangeGamma.F90
+index fb075e2..52c2d3d 100644
+--- a/src/GRHydro_EoSChangeGamma.F90
++++ b/src/GRHydro_EoSChangeGamma.F90
+@@ -39,8 +39,6 @@
+ 
+ subroutine GRHydro_EoSChangeGamma(CCTK_ARGUMENTS)
+ 
+-  USE EOS_Omni_Module, only: press_gf, inv_rho_gf, poly_k_cgs, rho_gf
+-
+   implicit none
+ 
+   ! save memory when MP is not used
+@@ -95,8 +93,8 @@ subroutine GRHydro_EoSChangeGamma(CCTK_ARGUMENTS)
+   end if
+   
+   local_Gamma = 1.0d0 + xpress/xeps
+-  press = press_gf * poly_k_cgs * &
+-       (rho * inv_rho_gf)**local_Gamma 
++  press = poly_k * &
++       rho**local_Gamma 
+   eps = press / (rho * (local_Gamma - 1.d0))
+ 
+ !!$  Change the pressure and specific internal energy
+@@ -277,8 +275,6 @@ end subroutine GRHydro_EoSChangeK
+ 
+ subroutine GRHydro_EoSChangeGammaK_Shibata(CCTK_ARGUMENTS)
+ 
+-  USE EOS_Omni_Module, only: press_gf, inv_rho_gf, poly_k_cgs, rho_gf
+-
+   implicit none
+ 
+   ! save memory when MP is not used
+@@ -293,7 +289,7 @@ subroutine GRHydro_EoSChangeGammaK_Shibata(CCTK_ARGUMENTS)
+   CCTK_INT :: i, j, k
+   CCTK_REAL :: det
+   
+-  CCTK_REAL :: local_Gamma, local_k, eos_k_initial_cgs
++  CCTK_REAL :: local_Gamma, local_k, eos_k_initial
+ 
+   CCTK_REAL, dimension(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)) :: Q
+ 
+@@ -340,13 +336,13 @@ subroutine GRHydro_EoSChangeGammaK_Shibata(CCTK_ARGUMENTS)
+   local_Gamma = 1.0d0 + xpress/xeps
+   local_K    = xpress
+ 
+-  eos_k_initial_cgs = initial_k * rho_gf**initial_Gamma / press_gf
++  eos_k_initial = initial_k
+ 
+-  press = (local_Gamma - 1.d0) / (initial_Gamma - 1.0d0 ) * press_gf * eos_k_initial_cgs * &
+-  	     (rho * rho_gf) ** initial_Gamma
++  press = (local_Gamma - 1.d0) / (initial_Gamma - 1.0d0 ) * eos_k_initial * &
++  	     rho ** initial_Gamma
+ 
+-  eps = press_gf * eos_k_initial_cgs * & 
+-     (rho * inv_rho_gf) ** initial_Gamma / &
++  eps = eos_k_initial * & 
++     rho ** initial_Gamma / &
+      (rho * (initial_Gamma - 1.0d0))
+ 
+   do k = 1, cctk_lsh(3)
+-- 
+1.7.10.4
+

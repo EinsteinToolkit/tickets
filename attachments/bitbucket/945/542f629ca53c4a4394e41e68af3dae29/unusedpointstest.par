@@ -1,0 +1,111 @@
+# $Header:$
+
+Cactus::cctk_initial_time = 0
+Cactus::cctk_itlast = 320
+
+
+
+ActiveThorns = "IOUtil Carpet CarpetLib CarpetRegrid2 CarpetInterp CarpetReduce CarpetSlab LocalReduce LocalInterp Formaline InitBase LoopControl GSL
+CarpetEvolutionMask
+CarpetIOHDF5"
+
+driver::ghost_size = 3
+
+Carpet::use_buffer_zones = yes
+Carpet::use_overlap_zones = yes
+Carpet::domain_from_coordbase = yes
+Carpet::max_refinement_levels = 3
+Carpet::prolongation_order_space = 3
+Carpet::prolongation_order_time = 2
+Carpet::init_each_timelevel = yes
+Carpet::use_unusedpoints_mask = yes
+Carpet::refinement_centering = "cell"
+CarpetLib::use_refluxing = no
+InitBase::initial_data_setup_method="init_single_level"
+Carpet::veryverbose = no
+carpetlib::use_cc_o3 = yes
+
+carpet::poison_new_timelevels = yes
+carpetlib::poison_new_memory = yes
+carpetlib::poison_value = 137
+
+ActiveThorns = "LocalInterp NaNChecker Slab"
+
+NaNChecker::check_every = 1
+NaNChecker::check_vars = "WaveToyMol::phi WaveToyMol::psi"
+NaNChecker::action_if_found = terminate
+
+ActiveThorns = "Boundary CoordBase SymBase CartGrid3D"
+
+grid::domain = full
+grid::type = coordbase
+CoordBase::xmin = -29
+CoordBase::ymin = -29
+CoordBase::zmin = -29
+CoordBase::xmax = 29
+CoordBase::ymax = 29
+CoordBase::zmax = 29
+CoordBase::dx = 1
+CoordBase::dy = 1
+CoordBase::dz = 1
+CoordBase::boundary_size_x_lower = Carpet::ghost_size
+CoordBase::boundary_size_y_lower = Carpet::ghost_size
+CoordBase::boundary_size_z_lower = Carpet::ghost_size
+CoordBase::boundary_size_x_upper = Carpet::ghost_size
+CoordBase::boundary_size_y_upper = Carpet::ghost_size
+CoordBase::boundary_size_z_upper = Carpet::ghost_size
+CoordBase::boundary_staggered_x_lower = yes
+CoordBase::boundary_staggered_y_lower = yes
+CoordBase::boundary_staggered_z_lower = yes
+CoordBase::boundary_staggered_x_upper = yes
+CoordBase::boundary_staggered_y_upper = yes
+CoordBase::boundary_staggered_z_upper = yes
+
+CarpetRegrid2::verbose = no
+CarpetRegrid2::regrid_every = 1
+CarpetRegrid2::num_centres = 1
+CarpetRegrid2::snap_to_coarse = yes
+CarpetRegrid2::min_distance = 0
+CarpetRegrid2::freeze_unaligned_levels = yes
+CarpetRegrid2::freeze_unaligned_parent_levels = yes
+
+CarpetEvolutionMask::verbose = yes
+#CarpetEvolutionMask::enlarge_evolved_region_by = 1 # to avoid issues with the weight=1/2 reduction point
+
+ActiveThorns = "Time MoL"
+
+Time::dtfac = 0.25
+
+MoL::ODE_Method = RK2
+MoL::MoL_Intermediate_Steps = 2
+MoL::MoL_Num_Scratch_Levels = 0
+
+ActiveThorns = "WaveToyMoL"
+WaveToyMoL::box_size[1] = (14+6+4+4)*CoordBase::dx/2
+WaveToyMoL::box_size[2] = (14+6+4+4)*CoordBase::dx/4
+WaveToyMoL::r_orbit = 5
+WaveToyMoL::omega_orbit = 1
+WaveToyMoL::test_restriction = 1
+
+ActiveThorns = "CarpetIOBasic CarpetIOScalar CarpetIOASCII"
+
+IO::out_dir = $parfile
+
+IOBasic::outInfo_every = 1
+IOBasic::outInfo_vars = "WaveToyMoL::phi WaveToyMoL::psi" #CarpetEvolutionMask::evolution_mask"
+ 
+CarpetIOScalar::outScalar_every = 1
+CarpetIOScalar::outScalar_reductions = "minimum maximum"
+CarpetIOScalar::outScalar_vars = "WaveToyMoL::scalarevolve" # CarpetEvolutionMask::evolution_mask"
+
+IOASCII::out1D_every = 1
+IOASCII::out1D_vars = "WaveToyMoL::scalarevolve CarpetReduce::weight" #  CarpetEvolutionMask::evolution_mask CarpetReduce::weight"
+
+IOASCII::out2D_every = 0
+IOASCII::out2D_vars = "WaveToyMoL::scalarevolve CarpetReduce::weight" # CarpetEvolutionMask::evolution_mask CarpetReduce::weight"
+
+IOASCII::out3D_every = 0
+IOASCII::out3D_vars = "WaveToyMoL::scalarevolve CarpetReduce::weight" # CarpetEvolutionMask::evolution_mask CarpetReduce::weight"
+
+IOHDF5::out2d_every = 8
+IOHDF5::out2d_vars = "WaveToyMoL::scalarevolve CarpetReduce::weight" # CarpetEvolutionMask::evolution_mask CarpetReduce::weight"

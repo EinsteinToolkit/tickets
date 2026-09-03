@@ -1,0 +1,47 @@
+ActiveThorns = "Carpet CarpetLib CarpetRegrid CarpetInterp CarpetReduce LoopControl GSL Boundary CoordBase InitBase SymBase CartGrid3D LocalInterp NaNChecker Slab Time MoL IOUtil CarpetIOBasic CarpetIOScalar HDF5 CarpetIOHDF5"
+
+
+Cactus::cctk_itlast = 0
+
+Carpet::global_nx  = 24
+Carpet::global_ny  = 5
+Carpet::global_nz  = 5
+Carpet::ghost_size = 2
+
+InitBase::initial_data_setup_method = "init_all_levels"
+
+Carpet::max_refinement_levels    = 3
+Carpet::prolongation_order_space = 3
+Carpet::prolongation_order_time  = 2
+
+CarpetRegrid::refinement_levels = 1
+CarpetRegrid::refined_regions   = "manual-gridpoint-list"
+CarpetRegrid::gridpoints        = "[[ ([28,4,4]:[68,12,12]:[2,2,2]) ]]"
+CarpetRegrid::outerbounds       = "[[ [[0,0],[1,1],[1,1]] ]]"
+
+Grid::domain = full
+Grid::type   = byrange
+Grid::xmin   = -0.1
+Grid::ymin   = -0.15
+Grid::zmin   = -0.15
+Grid::xmax   = +1.05
+Grid::ymax   = +0.15
+Grid::zmax   = +0.15
+
+IOScalar::outScalar_vars       = "grid::x"
+IOScalar::outScalar_reductions = "average count maximum minimum  norm1 norm2 norm_inf"
+IOScalar::outScalar_every = 1
+
+Time::dtfac = 0.25
+
+MoL::ODE_Method = "ICN"
+
+IO::out_dir       = "output"
+IO::out_fileinfo  = "all"
+
+# HDF5 output only for initial data
+IOHDF5::checkpoint  = yes
+IO::recover  = "autoprobe"
+IO::checkpoint_id = yes
+IO::checkpoint_dir = "output"
+IO::recover_dir = "output"

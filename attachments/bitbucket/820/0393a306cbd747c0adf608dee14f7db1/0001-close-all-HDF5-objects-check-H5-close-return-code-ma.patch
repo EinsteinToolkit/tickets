@@ -1,0 +1,46 @@
+From 37286aba5600af2fd80b1293599a153507599471 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Sat, 25 Feb 2012 02:03:08 -0800
+Subject: [PATCH 1/5] close all HDF5 objects, check H5?close() return code,
+ make file-local functions static
+
+---
+ src/nuc_eos/readtable.c |    8 ++++----
+ 1 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/nuc_eos/readtable.c b/src/nuc_eos/readtable.c
+index f63c4d4..5cdc229 100644
+--- a/src/nuc_eos/readtable.c
++++ b/src/nuc_eos/readtable.c
+@@ -23,8 +23,8 @@ void CCTK_FNAME(allocate_eosmodule)
+                   #fn_call, _error_code);                                \
+   } while (0)
+ 
+-int file_is_readable(const char* filename);
+-int file_is_readable(const char* filename)
++static int file_is_readable(const char* filename);
++static int file_is_readable(const char* filename)
+ {
+     FILE* fp = NULL;
+     fp = fopen(filename, "r");
+@@ -38,7 +38,6 @@ int file_is_readable(const char* filename)
+ 
+ // Cactus calls this function. It reads in the table and calls a fortran
+ // function to setup values for the fortran eos module
+-void EOS_OMNI_ReadTable(CCTK_ARGUMENTS);
+ void EOS_OMNI_ReadTable(CCTK_ARGUMENTS)
+ {
+   DECLARE_CCTK_PARAMETERS
+@@ -131,7 +130,8 @@ void EOS_OMNI_ReadTable(CCTK_ARGUMENTS)
+   READ_EOS_HDF5("ye",           ye,            H5T_NATIVE_DOUBLE, H5S_ALL);
+   READ_EOS_HDF5("energy_shift", &energy_shift, H5T_NATIVE_DOUBLE, H5S_ALL);
+ 
+-  H5Fclose(file);
++  HDF5_ERROR(H5Sclose(mem3));
++  HDF5_ERROR(H5Fclose(file));
+ 
+   // Give all values to fortran - which will copy them until I can find out how
+   // I can tell Fortran to use those pointers inside the module
+-- 
+1.7.8
+

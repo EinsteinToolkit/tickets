@@ -1,0 +1,317 @@
+Subject: Handle requirements recursively
+From: Erik Schnetter <eschnetter@perimeterinstitute.ca>
+Date: 2011-11-26
+
+[This patch includes CreateConfigurationBindings-cleanup.patch (#685):
+once CreateConfigurationBindings-cleanup.patch has been applied, the
+diffs in this patch will be much reduced in size.]
+
+Handle requirements recursively: If A requires B, and B requires C,
+then A also requires C. This is necessary e.g. for include
+directories: If A includes a file from B, which in turn includes a
+file from C, then C's include directory must be in the search path of
+A.
+
+Complete implementation of INCLUDE directives when parsing
+configuration.ccl scripts.
+
+Add more stringent checking of capability names: Only identifiers are
+allowed. This prevents the capability ":" from appearing when syntax
+errors in configuration.ccl files are not detected.
+
+
+Index: ConfigScriptParser.pl
+===================================================================
+--- ConfigScriptParser.pl	(revision 4747)
++++ ConfigScriptParser.pl	(working copy)
+@@ -57,6 +57,20 @@
+ 
+       }
+     }
++    elsif($line =~ m/^\s*BEGIN\s+INCLUDE\s*/i)
++    {
++      $line_number++;
++      $line = $data[$line_number];
++      chomp $line;
++      while($line !~ m/^\s*END\s+INCLUDE\s*/i)
++      {
++        $cfg->{"\U$thorn $provides\E INCLUDE"} .= $line . "\n";
++        $line_number++;
++        $line = $data[$line_number];
++        chomp $line;
++
++      }
++    }
+     elsif($line =~ m/^\s*BEGIN\s+ERROR\s*/i)
+     {
+       $line_number++;
+Index: CreateConfigurationBindings.pl
+===================================================================
+--- CreateConfigurationBindings.pl	(revision 4747)
++++ CreateConfigurationBindings.pl	(working copy)
+@@ -60,97 +60,125 @@
+   }
+ 
+ 
+-  # this string goes into the cactus executable directly
+-  $linkerflagdirs = '';
+-  $linkerflaglibs = '';
+-
+-  $providedcaplist = '';
+-  # here we put all the provided capabilities where they belong
+-  foreach $thorn (sort keys %thorns)
++  # Turn optional capabilities into required capabilities, if the
++  # capability is provided. This way we don't have to treat required
++  # and optional requirements differently.
++  my %providedcaps;
++  foreach my $thorn (sort keys %thorns)
+   {
+-    # we know that all the requirements have been satisfied
+-    # so all we need to do is put the provides where they belong
+-    # and make references to them from the requirements and optional
+-    # since we can have multiple provides, we make each capability
+-    # separate
+-    if ($cfg->{"\U$thorn\E PROVIDES"})
+-    {
+-      foreach $providedcap (split (' ', $cfg->{"\U$thorn\E PROVIDES"}))
++      if ($cfg->{"\U$thorn\E PROVIDES"})
+       {
+-        $providedcaplist .= "$providedcap ";
+-        $temp = '';
+-        # put include_dirs  and make.definition in one file: make.capability.defn
+-        if ($cfg->{"\U$thorn $providedcap\E INCLUDE_DIRECTORY"})
+-        {
+-          $temp .="INC_DIRS +=" . $cfg->{"\U$thorn $providedcap\E INCLUDE_DIRECTORY"} . "\n";
+-        }
++          foreach my $providedcap (split (' ', $cfg->{"\U$thorn\E PROVIDES"}))
++          {
++              $providedcaps{$providedcap} = 1;
++          }
++      }
++  }
++  foreach my $thorn (sort keys %thorns)
++  {
++      if ($cfg->{"\U$thorn\E OPTIONAL"})
++      {
++          foreach my $optionalcap (split (' ', $cfg->{"\U$thorn\E OPTIONAL"}))
++          {
++              if ($providedcaps{$optionalcap})
++              {
++                  $cfg->{"\U$thorn\E REQUIRES"} .= "$optionalcap ";
++              }
++          }
++      }
++  }
+ 
+-        if ($cfg->{"\U$thorn $providedcap\E MAKE_DEFINITION"})
+-        {
+-          $temp .= $cfg->{"\U$thorn $providedcap\E MAKE_DEFINITION"};
+-        }
+ 
+-        $temp .=  "HAVE_CAPABILITY_$providedcap = 1\n";
++  # These string go directly into the Cactus executable
++  my $linkerflagdirs = '';
++  my $linkerflaglibs = '';
+ 
+-        &WriteFile("Capabilities/make.\U$providedcap\E.defn",\$temp);
+-
+-        $temp = '';
+-        # put include and DEFINE in one file: capability.h
+-        if ($cfg->{"\U$thorn $providedcap\E INCLUDE"})
+-        {
+-          $temp .= $cfg->{"\U$thorn $providedcap\E INCLUDE"};
+-        }
+-
+-        if ($cfg->{"\U$thorn $providedcap\E DEFINE"})
+-        {
+-            my $lines = $cfg->{"\U$thorn $providedcap\E DEFINE"};
+-            $lines =~ s/^(.*)/#define $1/gm;
+-            $temp .=  $lines . "\n";
+-        }
+-
+-        $temp .=  "#define HAVE_CAPABILITY_$providedcap 1\n";
+-
+-        &WriteFile("Capabilities/cctki_\U$providedcap\E.h",\$temp);
+-        $temp = '';
+-
+-        # put make.capability.deps in one file: make.capabiltiy.deps
+-        if ($cfg->{"\U$thorn $providedcap\E MAKE_DEPENDENCY"})
+-        {
+-          $temp .= $cfg->{"\U$thorn $providedcap\E MAKE_DEPENDENCY"};
+-        }
+-
+-        &WriteFile("Capabilities/make.\U$providedcap\E.deps",\$temp);
+-
+-        if ( $cfg->{"\U$thorn $providedcap\E LIBRARY"} )
+-        {
+-          $linker_thorns{"$thorn"} = $thorn;
+-          $linker_cfg{"\U$thorn\E USES"} = $cfg->{"\U$thorn\E USES THORNS"};
+-        }
+-
+-        if ( $cfg->{"\U$thorn $providedcap\E LIBRARY_DIRECTORY"} )
+-        {
+-          $linker_thorns{"$thorn"} = $thorn;
+-          $linker_cfg{"\U$thorn\E USES"} = $cfg->{"\U$thorn\E USES THORNS"};
+-        }
+-      }
+-    }
+-  }
+-
+-  # turn optional capabilities into required capabilities, if the
+-  # capability is provided
+-  foreach $thorn (sort keys %thorns)
++  # Put all the provided capabilities where they belong
++  foreach my $thorn (sort keys %thorns)
+   {
+-    if ($cfg->{"\U$thorn\E OPTIONAL"})
+-    {
+-      foreach $cap (split (' ', $cfg->{"\U$thorn\E OPTIONAL"}))
++      # We know that all the requirements have been satisfied, so all
++      # we need to do is put the provides where they belong.
++      if ($cfg->{"\U$thorn\E PROVIDES"})
+       {
+-        # TODO: prevent matches of partial words
+-        if ($providedcaplist =~ m/$cap/i)
+-        {
+-          $cfg->{"\U$thorn\E REQUIRES"} .= "$cap ";
+-        }
++          foreach my $providedcap (split (' ', $cfg->{"\U$thorn\E PROVIDES"}))
++          {
++              die if $providedcap !~ m{^[A-Za-z0-9_.]+$};
++              
++              my $defs = '';
++              my $incs = '';
++              my $deps = '';
++              
++              # Add requirements recursively
++              foreach my $requiredcap (split (' ', $cfg->{"\U$thorn\E REQUIRES"}))
++              {
++                  next if $requiredcap eq $providedcap;
++                  $defs .= "include $bindings_dir/Configuration/Capabilities/make.\U$requiredcap\E.defn\n";
++                  $incs .= "#include \"cctki_\U$requiredcap\E.h\"\n";
++                  $deps .= "include $bindings_dir/Configuration/Capabilities/make.\U$requiredcap\E.deps\n";
++              }
++              
++              # Put include_dirs and make.definition in one file:
++              # make.capability.defn
++              my $incdir = $cfg->{"\U$thorn $providedcap\E INCLUDE_DIRECTORY"};
++              if ($incdir)
++              {
++                  $defs .= "INC_DIRS += $incdir\n";
++              }
++              
++              my $makedef = $cfg->{"\U$thorn $providedcap\E MAKE_DEFINITION"};
++              if ($makedef)
++              {
++                  $defs .= $makedef;
++              }
++              
++              $defs .= "HAVE_CAPABILITY_$providedcap = 1\n";
++              
++              # Put INCLUDE and DEFINE in one file: capability.h
++              my $inc = $cfg->{"\U$thorn $providedcap\E INCLUDE"};
++              if ($inc)
++              {
++                  # Prepend #include
++                  $inc =~ s/^(.*)/#include $1/gm;
++                  $incs .= $inc;
++              }
++              
++              my $def = $cfg->{"\U$thorn $providedcap\E DEFINE"};
++              if ($def)
++              {
++                  # Prepend #define
++                  $def =~ s/^(.*)/#define $1/gm;
++                  $incs .= $def;
++              }
++              
++              $incs .= "#define HAVE_CAPABILITY_$providedcap 1\n";
++              
++              # Put make.capability.deps in one file:
++              # make.capabiltiy.deps
++              my $makedep = $cfg->{"\U$thorn $providedcap\E MAKE_DEPENDENCY"};
++              if ($makedep)
++              {
++                  $deps .= $makedep;
++              }
++              
++              &WriteFile("Capabilities/make.\U$providedcap\E.defn",\$defs);
++              &WriteFile("Capabilities/cctki_\U$providedcap\E.h",\$incs);
++              &WriteFile("Capabilities/make.\U$providedcap\E.deps",\$deps);
++              
++              # ES 2011-11-25: I don't understand these lines, so I'm
++              # leaving them alone
++              if ($cfg->{"\U$thorn $providedcap\E LIBRARY"})
++              {
++                  $linker_thorns{"$thorn"} = $thorn;
++                  $linker_cfg{"\U$thorn\E USES"} = $cfg->{"\U$thorn\E USES THORNS"};
++              }
++              
++              if ($cfg->{"\U$thorn $providedcap\E LIBRARY_DIRECTORY"})
++              {
++                  $linker_thorns{"$thorn"} = $thorn;
++                  $linker_cfg{"\U$thorn\E USES"} = $cfg->{"\U$thorn\E USES THORNS"};
++              }
++          }
+       }
+-    }
+   }
+ 
+   # here we add the files to the thorns that require capabilities
+@@ -167,12 +195,12 @@
+ 
+     if ($cfg->{"\U$thorn\E REQUIRES"})
+     {
+-      foreach $providedcap (split (' ', $cfg->{"\U$thorn\E REQUIRES"}))
++      foreach $requiredcap (split (' ', $cfg->{"\U$thorn\E REQUIRES"}))
+       {
+         # put reference to provided capability
+-        $defs .= "include $bindings_dir/Configuration/Capabilities/make.\U$providedcap\E.defn\n";
+-        $incs .= "#include \"../Capabilities/cctki_\U$providedcap\E.h\"\n";
+-        $deps .= "include $bindings_dir/Configuration/Capabilities/make.\U$providedcap\E.deps\n";
++        $defs .= "include $bindings_dir/Configuration/Capabilities/make.\U$requiredcap\E.defn\n";
++        $incs .= "#include \"../Capabilities/cctki_\U$requiredcap\E.h\"\n";
++        $deps .= "include $bindings_dir/Configuration/Capabilities/make.\U$requiredcap\E.deps\n";
+       }
+     }
+ 
+Index: ConfigurationParser.pl
+===================================================================
+--- ConfigurationParser.pl	(revision 4747)
++++ ConfigurationParser.pl	(working copy)
+@@ -169,6 +169,15 @@
+     {
+       $lang = $script = '';
+       ($provides, $script, $lang, $options, $line_number) = &ParseProvidesBlock($line_number, \@data);
++      if ($provides !~ m{^[A-Za-z0-9_.]+$}) {
++        &CST_error (0, "Illegal provided capability '$provides' line '$line' in configure.ccl of thorn '$thorn'");
++      }
++      if ($script !~ m{^[A-Za-z0-9_.]*$}) {
++        &CST_error (0, "Illegal script name '$script' line '$line' in configure.ccl of thorn '$thorn'");
++      }
++      if ($lang !~ m{^[A-Za-z0-9_.]*$}) {
++        &CST_error (0, "Illegal script language '$lang' line '$line' in configure.ccl of thorn '$thorn'");
++      }
+       $cfg->{"\U$thorn\E PROVIDES"} .= "$provides ";
+       if($script)
+       {
+@@ -205,11 +214,18 @@
+     }
+     elsif($line =~ m/^\s*REQUIRES\s*(.*)/i)
+     {
+-      $cfg->{"\U$thorn\E REQUIRES"} .= "$1 ";
++      my $cap = $1;
++      if ($cap !~ m{^[A-Za-z0-9_. ]+$}) {
++        &CST_error (0, "Illegal required capability '$cap' line '$line' in configure.ccl of thorn '$thorn'");
++      }
++      $cfg->{"\U$thorn\E REQUIRES"} .= "$cap ";
+     }
+     elsif($line =~ m/^\s*OPTIONAL\s*/i)
+     {
+       ($optional, $define, $line_number) = &ParseOptionalBlock($filename, $line_number, \@data);
++      if ($optional !~ m{^[A-Za-z0-9_. ]+$}) {
++        &CST_error (0, "Illegal optional capability '$optional' line '$line' in configure.ccl of thorn '$thorn'");
++      }
+       $cfg->{"\U$thorn\E OPTIONAL"} .= "$optional ";
+       $cfg->{"\U$thorn\E OPTIONAL \U$optional\E DEFINE"} = $define;
+     }

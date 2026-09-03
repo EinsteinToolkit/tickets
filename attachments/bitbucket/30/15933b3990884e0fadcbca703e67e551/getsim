@@ -1,0 +1,52 @@
+#!/bin/bash
+set -e
+
+dir=simulations
+quick=no
+
+while getopts "d:q" flag
+do
+  case $flag in
+      "d")
+	  dir=$OPTARG
+	  ;;
+      "q")
+	  quick=yes
+	  ;;
+  esac
+done
+
+shift $(expr $OPTIND - 1)
+
+if [ $#  -eq 0 ]
+then
+    echo "Usage: $0 [-d dir] <cluster> <simulation>"
+    exit 1
+fi
+
+cluster=$1
+shift
+
+if [ $cluster = kraken ]; then
+    ssh="gsissh"
+else
+    ssh="ssh"
+fi
+
+exclude="--exclude=*.h5 --exclude=*.file_*.h5  --exclude=cactus_* --exclude=.*\..\.asc  --exclude=CCTK*.out --exclude=CCTK*.err --exclude=*.err --exclude=*.xy.asc --exclude=*.d.asc --exclude=.*h\..*\.gp --exclude=core --exclude=core.* --exclude=TimerReport.*.txt --exclude=carpet*-statistics*   --exclude=AllTimers.*.txt --exclude=**/SIMFACTORY/exe/* --exclude=*.x.asc --exclude=*.z.asc --exclude=*.y.asc --exclude=*.gz"
+
+if [ $quick = yes ]; then
+    exclude="$exclude --exclude=Qeven* --exclude=Qodd* --exclude=psiclops* --exclude=h.*.gp --exclude=*.gz"
+else
+    exclude="$exclude --include=psiclops::decomposed_vars.xy.asc --include=harmonicdecomposition::decomposed_vars.xy.asc "
+fi
+
+while [ $# -gt 0 ]; do
+    sim=$1
+    shift
+    command="rsync -avz --progress -e $ssh -x $exclude ${cluster}:$dir/${sim}  $HOME/Simulations/"
+    eval $command &
+done
+# --include='*/*/*.xy.h5'
+
+wait

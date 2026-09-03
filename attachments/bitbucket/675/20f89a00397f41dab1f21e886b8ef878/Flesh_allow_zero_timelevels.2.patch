@@ -1,0 +1,83 @@
+Index: doc/UsersGuide/ApplicationThorns.tex
+===================================================================
+--- doc/UsersGuide/ApplicationThorns.tex	(revision 4770)
++++ doc/UsersGuide/ApplicationThorns.tex	(working copy)
+@@ -523,7 +523,9 @@
+ Alternatively \var{timelevels} can be the name of a parameter accessible
+ to the thorn. The parameter name is the same as used in C routines of the
+ thorn, fully qualified parameter names of the form
+-\texttt{\var{thorn}::\var{parameter}} are not allowed.
++\texttt{\var{thorn}::\var{parameter}} are not allowed. In this case 0 (zero)
++\var{timelevels} can be requested, which is equivalent to the {\tt STORAGE}
++statement being absent.
+ 
+ \item[\texttt{TRIGGERS}] \texttt{TRIGGERS} is used when the routine is
+ registered at \texttt{ANALYSIS}.  This is a special time bin; a routine
+@@ -1504,7 +1506,10 @@
+ this number may be omitted. Alternatively \var{timelevels} can be the
+ name of a parameter accessible to the thorn. The parameter name is the
+ same as used in C routines of the thorn, fully qualified parameter names
+-of the form \texttt{\var{thorn}::\var{parameter}} are not allowed.
++of the form \texttt{\var{thorn}::\var{parameter}} are not allowed. In this
++case 0 (zero) \var{timelevels} can be requested, which is equivalent to
++the {\tt STORAGE} statement being absent.
++
+ \item[\texttt{TRIGGER}]
+ This is only used for items scheduled at timebin \texttt{CCTK\_ANALYSIS}.
+ The item will only be executed if output is due for at least one
+Index: doc/UsersGuide/Appendices.tex
+===================================================================
+--- doc/UsersGuide/Appendices.tex	(revision 4770)
++++ doc/UsersGuide/Appendices.tex	(working copy)
+@@ -840,7 +840,9 @@
+ number may be omitted. Alternatively \var{timelevels} can be the name of a
+ parameter accessible to the thorn. The parameter name is the same as used in C
+ routines of the thorn, fully qualified parameter names of the form
+-\texttt{\var{thorn}::\var{parameter}} are not allowed.
++\texttt{\var{thorn}::\var{parameter}} are not allowed. In this case 0 (zero)
++\var{timelevels} can be requested, which is equivalent to the {\tt STORAGE}
++statement being absent.
+ 
+ The behaviour of an assignment statement is independent of its
+ position in the schedule file (so long as it is outside a schedule
+@@ -919,7 +921,9 @@
+   this number may be omitted. Alternatively \var{timelevels} can be the
+   name of a parameter accessible to the thorn. The parameter name is the
+   same as used in C routines of the thorn, fully qualified parameter names
+-  of the form \texttt{\var{thorn}::\var{parameter}} are not allowed.
++  of the form \texttt{\var{thorn}::\var{parameter}} are not allowed. In this
++  case 0 (zero) \var{timelevels} can be requested, which is equivalent to
++  the {\tt STORAGE} statement being absent.
+ 
+   \item[{\tt TRIGGER}] List of grid variables or groups to be used as
+   triggers for causing an {\tt ANALYSIS} function or group to be
+Index: lib/sbin/CreateScheduleBindings.pl
+===================================================================
+--- lib/sbin/CreateScheduleBindings.pl	(revision 4770)
++++ lib/sbin/CreateScheduleBindings.pl	(working copy)
+@@ -569,10 +569,10 @@
+   # add check on number of timelevels in case we were using a parameter
+   for($i=0; $i < @$tlist; $i++)
+   {
+-    $buffer .= "    if(!($$tlist[$i] > 0 && $$tlist[$i]  <= CCTK_MaxTimeLevels(\"$$mem_groups[$i]\")))\n";
++    $buffer .= "    if(!($$tlist[$i] >= 0 && $$tlist[$i]  <= CCTK_MaxTimeLevels(\"$$mem_groups[$i]\")))\n";
+     $buffer .= "        CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,\n";
+     $buffer .= "                   \"Tried to schedule %d timelevels for group '%s' in schedule.ccl.\\n\"\n";
+-    $buffer .= "                   \"Value must be between 1 and %d (inclusive)\",\n";
++    $buffer .= "                   \"Value must be between 0 and %d (inclusive)\",\n";
+     $buffer .= "                   $$tlist[$i], \"$$mem_groups[$i]\", CCTK_MaxTimeLevels(\"$$mem_groups[$i]\"));\n";
+     $buffer .= "\n";
+   }
+@@ -703,10 +703,10 @@
+     # add check on number of timelevels in case we were using a parameter
+     for($i=0; $i < @$groups; $i++)
+     {
+-      $buffer .= "  if(!($$misc[$i] > 0 && $$misc[$i]  <= CCTK_MaxTimeLevels(\"$$groups[$i]\")))\n";
++      $buffer .= "  if(!($$misc[$i] >= 0 && $$misc[$i]  <= CCTK_MaxTimeLevels(\"$$groups[$i]\")))\n";
+       $buffer .= "      CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,\n";
+       $buffer .= "                 \"Tried to schedule %d timelevels for group '%s' in schedule.ccl.\\n\"\n";
+-      $buffer .= "                 \"Value must be between 1 and %d (inclusive)\",\n";
++      $buffer .= "                 \"Value must be between 0 and %d (inclusive)\",\n";
+       $buffer .= "                 $$misc[$i], \"$$groups[$i]\", CCTK_MaxTimeLevels(\"$$groups[$i]\"));\n";
+       $buffer .= "\n";
+     }

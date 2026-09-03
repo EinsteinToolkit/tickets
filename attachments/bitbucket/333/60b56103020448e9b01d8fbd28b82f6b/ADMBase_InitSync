@@ -1,0 +1,103 @@
+Index: interface.ccl
+===================================================================
+--- interface.ccl	(revision 58)
++++ interface.ccl	(working copy)
+@@ -40,3 +40,9 @@
+ {
+   dtbetax,dtbetay,dtbetaz
+ } "Time derivative of ADM shift function beta^i"
++
++#  Aliased function from thorn Boundary
++CCTK_INT FUNCTION Boundary_SelectGroupForBC(CCTK_POINTER_TO_CONST IN GH,   \
++  CCTK_INT IN faces, CCTK_INT IN boundary_width, CCTK_INT IN table_handle, \
++  CCTK_STRING IN group_name, CCTK_STRING IN bc_name)
++USES FUNCTION Boundary_SelectGroupForBC
+Index: src/InitSymBound.c
+===================================================================
+--- src/InitSymBound.c	(revision 58)
++++ src/InitSymBound.c	(working copy)
+@@ -9,6 +9,8 @@
+ 
+ #include "cctk.h"
+ #include "cctk_Arguments.h"
++#include "cctk_Parameters.h"
++#include "cctk_Functions.h"
+ 
+ #include "Symmetry.h"
+ 
+@@ -119,3 +121,37 @@
+ 
+   return;
+ }
++
++/* A macro for selecting boundary conditions and checking for errors */
++#define ADMBASE_BC(NAME)                                                             \
++    {if (Boundary_SelectGroupForBC(cctkGH, CCTK_ALL_FACES, 1, -1, NAME, "none") < 0) \
++        CCTK_WARN(0, "Failed to register BC for "NAME"!");}
++/* Select boundary conditions on ADMBase variables */
++void ADMBase_Boundaries(CCTK_ARGUMENTS)
++{
++  DECLARE_CCTK_ARGUMENTS;
++  DECLARE_CCTK_PARAMETERS;
++  
++  if (CCTK_EQUALS(evolution_method, "none"  ) ||
++      CCTK_EQUALS(evolution_method, "static")) 
++  {
++    ADMBASE_BC("ADMBase::metric");
++    ADMBASE_BC("ADMBase::curv");
++  }
++
++  if (CCTK_EQUALS(lapse_evolution_method, "static"))
++    ADMBASE_BC("ADMBase::lapse");
++
++  if (!CCTK_EQUALS(initial_dtlapse, "none") &&
++       CCTK_EQUALS(dtlapse_evolution_method, "static"))
++    ADMBASE_BC("ADMBase::dtlapse");
++
++  if (!CCTK_EQUALS(initial_shift, "none") &&
++       CCTK_EQUALS(shift_evolution_method, "static"))
++    ADMBASE_BC("ADMBase::shift");
++
++  if (!CCTK_EQUALS(initial_dtshift, "none") &&
++       CCTK_EQUALS(dtshift_evolution_method, "static"))
++    ADMBASE_BC("ADMBase::dtshift");
++}
++#undef ADMBase_BC
+Index: configuration.ccl
+===================================================================
+--- configuration.ccl	(revision 58)
++++ configuration.ccl	(working copy)
+@@ -1,4 +1,4 @@
+ # Configuration definition for thorn CactusEinstein/ADMBase
+ # $Header$
+ 
+-REQUIRES CartGrid3D
++REQUIRES CartGrid3D Boundary
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 58)
++++ schedule.ccl	(working copy)
+@@ -227,8 +227,22 @@
+   OPTIONS: global
+ } "Set up GF symmetries"
+ 
++# For Mesh Refinement it is possible (eg Cowling approximation) that ADMBase variables will need synchronization even when not evolved (eg when a new refined grid appears)
++if (CCTK_Equals(evolution_method, "static") || CCTK_Equals(evolution_method, "none") || CCTK_Equals(lapse_evolution_method, "static") || CCTK_Equals(shift_evolution_method, "static") || CCTK_Equals(dtlapse_evolution_method, "static") || CCTK_Equals(dtshift_evolution_method, "static") )
++{
++  SCHEDULE ADMBase_Boundaries IN MoL_PostStep BEFORE ADMBase_SetADMVars
++  {
++    LANG: C
++    OPTIONS: LEVEL
++    SYNC: lapse
++    SYNC: dtlapse
++    SYNC: shift
++    SYNC: dtshift
++    SYNC: metric
++    SYNC: curv
++  } "Select ADMBase boundary conditions - may be required for mesh refinement"
++}
+ 
+-
+ # TODO: Rename this group to "ADMBase_HaveBeenSet"?
+ SCHEDULE GROUP ADMBase_SetADMVars IN MoL_PostStep
+ {

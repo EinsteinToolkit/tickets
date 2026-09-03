@@ -1,0 +1,34 @@
+From 2ae24510d21cbb044a0ee35abc0e829baba3e0dc Mon Sep 17 00:00:00 2001
+From: Barry Wardell <barry.wardell@gmail.com>
+Date: Thu, 18 Aug 2011 08:34:50 +0200
+Subject: [PATCH] Don't ignore --optimise and print a message because
+ optimisation is being disabled for debug builds.
+
+---
+ lib/sim-build.py |    7 +++++--
+ 1 files changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/lib/sim-build.py b/lib/sim-build.py
+index 7589377..6402729 100755
+--- a/lib/sim-build.py
++++ b/lib/sim-build.py
+@@ -61,11 +61,14 @@ def PrepConfiguration(configName):
+     build_clean    = GetConfigValue(prop, "clean")
+ 
+     build_debug    = GetConfigValue(prop, "debug")
+-    #build_optimise = GetConfigValue(prop, "optimise")
+-    build_optimise = not build_debug
++    build_optimise = GetConfigValue(prop, "optimise")
+     build_unsafe   = GetConfigValue(prop, "unsafe")
+     build_profile  = GetConfigValue(prop, "profile")
+     
++    if build_debug:
++        display("Disabling optimisation because debug was selected")
++        build_optimise = False
++
+     # update our properties.ini
+     
+     prop.RemoveProperty("reconfig")
+-- 
+1.7.5.1
+

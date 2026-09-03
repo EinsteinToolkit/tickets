@@ -1,0 +1,16 @@
+Index: src/interpolate.c
+===================================================================
+--- src/interpolate.c	(revision 73)
++++ src/interpolate.c	(working copy)
+@@ -372,6 +372,11 @@
+                || CCTK_EQUALS (tensortypealias, "4dd_sym")) {
+       /* symmetric 4-tensor */
+       assert (numvars == (DIM+1)*(DIM+2)/2);
++    } else if (CCTK_EQUALS (tensortypealias, "weylscalars_real")) {
++      /* Weyl scalars, stored as 10 real values */
++      assert (numvars == 10);
++    } else if (CCTK_EQUALS (tensortypealias, "ManualCartesian")) {
++      /* No restriction */
+     } else {
+       char * groupname = CCTK_GroupName(gi);
+       assert (groupname);

@@ -1,0 +1,27 @@
+Index: Trigger/schedule.ccl
+===================================================================
+--- Trigger.orig/schedule.ccl	2014-04-02 17:16:57.264795843 -0700
++++ Trigger/schedule.ccl	2014-04-02 17:16:57.264795843 -0700
+@@ -15,7 +15,7 @@
+     # schedule global-early so that eg. output frequency parameters are taken
+     # into account for all grid functions
+     OPTIONS: global-early
++    # only used for reductions in this routine, not checkpointed
++    STORAGE: Trigger_Vars
+ }   "test"
+ 
+-STORAGE: Trigger_Vars
+-
+Index: Trigger/interface.ccl
+===================================================================
+--- Trigger.orig/interface.ccl	2014-04-02 17:16:48.868727784 -0700
++++ Trigger/interface.ccl	2014-04-02 17:17:33.333088236 -0700
+@@ -3,7 +3,7 @@
+ inherits: IO
+ implements: trigger
+ 
+-CCTK_REAL Trigger_Vars DISTRIB=CONSTANT
++CCTK_REAL Trigger_Vars DISTRIB=CONSTANT tags='checkpoint="no"'
+ {
+   trigger_cctk_iteration
+   trigger_cctk_time

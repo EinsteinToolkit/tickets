@@ -1,0 +1,50 @@
+From aedbc56ba9b1ac9ecaf2382e72f8a505fe3fc857 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Sun, 4 May 2014 16:21:36 -0700
+Subject: [PATCH 2/2] Carpet: fix handling of scalars after 3fe72d9
+
+scalars are seens as zero dimensional arrays, however they store their
+size (1) in cctk_lsh[0] as if they were 1d arrays with one element
+---
+ Carpet/Carpet/src/SetupGH.cc | 4 ++--
+ Carpet/Carpet/src/modes.cc   | 2 +-
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/Carpet/Carpet/src/SetupGH.cc b/Carpet/Carpet/src/SetupGH.cc
+index b626b6d..5284214 100644
+--- a/Carpet/Carpet/src/SetupGH.cc
++++ b/Carpet/Carpet/src/SetupGH.cc
+@@ -1258,7 +1258,7 @@ namespace Carpet {
+       break;
+     }
+     case CCTK_DISTRIB_CONSTANT: {
+-      int const d = min (dim-1, gdata.dim);
++      int const d = min (dim-1, gdata.dim==0 ? 1 : gdata.dim);
+       SplitRegions_AlongDir (cctkGH, superregs, regs, d);
+       break;
+     }
+@@ -2233,7 +2233,7 @@ namespace Carpet {
+       int const nprocs = CCTK_nProcs (cctkGH);
+       
+       // Find dimension which should be extended
+-      int const d = min(dim-1, gdata.dim);
++      int const d = min(dim-1, gdata.dim==0 ? 1 : gdata.dim);
+       // Extend group sizes
+       assert (sizes[d] < numeric_limits<int>::max() / nprocs);
+       sizes[d] *= nprocs;
+diff --git a/Carpet/Carpet/src/modes.cc b/Carpet/Carpet/src/modes.cc
+index 7a0d78c..b64a37e 100644
+--- a/Carpet/Carpet/src/modes.cc
++++ b/Carpet/Carpet/src/modes.cc
+@@ -147,7 +147,7 @@ namespace Carpet {
+         // dimension to nprocs elements. Here we undo this so that the user
+         // code does not see this trick.
+         if (gp.disttype == CCTK_DISTRIB_CONSTANT) {
+-          int const dir = min (dim-1, gp.dim);
++          int const dir = min (dim-1, gp.dim==0 ? 1 : gp.dim);
+           ivect & gsh = ivect_ref(info.gsh);
+           ivect & lbnd = ivect_ref(info.lbnd);
+           ivect & ubnd = ivect_ref(info.ubnd);
+-- 
+2.0.0.rc0
+

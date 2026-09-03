@@ -1,0 +1,64 @@
+From 5a6da05028e82abbfc06a751007f7ffbf2ddf595 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Sat, 27 Jul 2013 17:14:48 -0700
+Subject: [PATCH 08/19] GRHydro: avoid allocating large arrays on the stack
+
+---
+ src/GRHydro_Prim2Con.c |   12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/src/GRHydro_Prim2Con.c b/src/GRHydro_Prim2Con.c
+index 36578b0..2aaeb3f 100644
+--- a/src/GRHydro_Prim2Con.c
++++ b/src/GRHydro_Prim2Con.c
+@@ -70,7 +70,8 @@ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+    // EOS calls (now GF-wide)
+    if(!*evolve_temper) {
+      int n = cctk_lsh[0]*cctk_lsh[1]*cctk_lsh[2];
+-     int keyerr[n]; int anyerr = 0;
++     int *keyerr = malloc(sizeof(*keyerr)*n);
++     int anyerr = 0;
+      int keytemp = 0;
+ 
+      // don't need special error handling for analytic EOS
+@@ -80,12 +81,14 @@ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+      EOS_Omni_pressOMP(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,n,
+ 		    rhoplus,epsplus,NULL,NULL,pressplus,keyerr,&anyerr);
+      
++     free(keyerr);
+    } else {
+      if(reconstruct_temper) {
+        int n = cctk_lsh[0]*cctk_lsh[1]*cctk_lsh[2];
+        // Linux usually offers ~8MB of stack which is good for ~1M points.
+        // We should consider malloc() if we ever smash the stack.
+-       int keyerr[n]; int anyerr = 0;
++       int *keyerr = malloc(sizeof(*keyerr)*n);
++       int anyerr = 0;
+        int keytemp = 1;
+ 
+        // ensure Y_e and temperature within bounds
+@@ -140,10 +143,12 @@ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+ 	 CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+ 		    "Aborting!");
+        }
++       free(keyerr);
+      } else {
+        // ******************** EPS RECONSTRUCTION BRANCH ******************
+        int n = cctk_lsh[0]*cctk_lsh[1]*cctk_lsh[2];
+-       int keyerr[n]; int anyerr = 0;
++       int *keyerr = malloc(sizeof(*keyerr)*n);
++       int anyerr = 0;
+        int keytemp = 0;
+ 
+        // ensure Y_e and temperature within bounds
+@@ -236,6 +241,7 @@ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+ 	   }
+ 	 } // for i, i<n error checking
+        }
++       free(keyerr);
+      } // end branch for no temp reconsturction
+    } // end of evolve temper branch
+ 
+-- 
+1.7.10.4
+

@@ -1,0 +1,1079 @@
+From 2d059799b9386450862eb90a7345a3dd22b586ea Mon Sep 17 00:00:00 2001
+From: Christian Ott <cott@bethe.tapir.caltech.edu>
+Date: Fri, 7 Jun 2013 18:50:48 -0700
+Subject: [PATCH 20/24] GRHydro: re-implement prim2con routine in C
+
+* new experimental prim2con routine that is about twice as
+  fast as the old one.
+* Right now tested only for simple EOS.
+* Right now handles only prim2con call after reconstruction
+  and must be enabled by changing comments in GRHydro_Reconstruct.F90
+
+* remove duplicate code in all reconstruction *_drv.F90 routines
+  and just have the initialization of plus and minus variables
+  in the main GRHydro_Reconstruct.F90 routine
+---
+ src/GRHydro_Con2Prim.F90            |    2 +-
+ src/GRHydro_ENOReconstruct_drv.F90  |   64 +------
+ src/GRHydro_MP5Reconstruct_drv.F90  |   59 +------
+ src/GRHydro_PPMMReconstruct_drv.F90 |   56 +-----
+ src/GRHydro_PPMReconstruct_drv.F90  |   42 -----
+ src/GRHydro_Prim2Con.c              |  334 +++++++++++++++++++++++++++++++++++
+ src/GRHydro_Reconstruct.F90         |   81 +++++++--
+ src/GRHydro_ReconstructPoly.F90     |  122 +++++++------
+ src/GRHydro_TVDReconstruct_drv.F90  |   61 +------
+ src/GRHydro_WENOReconstruct_drv.F90 |   61 +------
+ src/make.code.defn                  |    4 +-
+ 11 files changed, 494 insertions(+), 392 deletions(-)
+ create mode 100644 src/GRHydro_Prim2Con.c
+
+diff --git a/src/GRHydro_Con2Prim.F90 b/src/GRHydro_Con2Prim.F90
+index 176ba77..64785b5 100644
+--- a/src/GRHydro_Con2Prim.F90
++++ b/src/GRHydro_Con2Prim.F90
+@@ -684,7 +684,7 @@ subroutine Con2Prim_pt(cctk_iteration,ii,jj,kk,&
+   IF_BELOW_ATMO(rho, GRHydro_rho_min, GRHydro_atmo_tolerance, r) then
+     SET_ATMO_MIN(rho, GRHydro_rho_min, r) !GRHydro_rho_min
+     udens = rho
+-    dens = isdetg * rho
++    dens = sdetg * rho
+ !    epsilon = (sqrt( (utau + pnew + udens)**2) - pnew -  udens)/udens
+     epsilon = epsmin
+     ! w_lorentz=1, so the expression for utau reduces to:
+diff --git a/src/GRHydro_ENOReconstruct_drv.F90 b/src/GRHydro_ENOReconstruct_drv.F90
+index 17a2494..0dfdde9 100644
+--- a/src/GRHydro_ENOReconstruct_drv.F90
++++ b/src/GRHydro_ENOReconstruct_drv.F90
+@@ -86,6 +86,8 @@ subroutine GRHydro_ENOReconstruct_drv(CCTK_ARGUMENTS)
+     call CCTK_WARN(0, "Allocation problems with trivial_rp")
+   end if
+   
++  
++  
+ !!$ The dum variables are used as dummies if MHD on but divergence cleaning off
+   allocate(dum(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),&
+        dump(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),&
+@@ -115,64 +117,12 @@ subroutine GRHydro_ENOReconstruct_drv(CCTK_ARGUMENTS)
+   ny = cctk_lsh(2)
+   nz = cctk_lsh(3)
+ 
+-!!$ Initialize variables that store reconstructed quantities:
+-
+-  !$OMP PARALLEL DO PRIVATE(i,j,k)
+-  do k=1,cctk_lsh(3)
+-     do j=1,cctk_lsh(2)
+-        do i=1,cctk_lsh(1)
++  !initialize trivial_rp to false
++  !$OMP PARALLEL DO
++  do k=1,nz
++     do j=1,ny
++        do i=1,nx
+            trivial_rp(i,j,k) = .false.
+-           rhoplus(i,j,k) = 0.0d0
+-           rhominus(i,j,k)= 0.0d0
+-           epsplus(i,j,k) = 0.0d0
+-           epsminus(i,j,k) = 0.0d0
+-           velxplus(i,j,k) = 0.0d0
+-           velxminus(i,j,k) = 0.0d0
+-           velyplus(i,j,k) = 0.0d0
+-           velyminus(i,j,k) = 0.0d0
+-           velzplus(i,j,k) = 0.0d0
+-           velzminus(i,j,k) = 0.0d0
+-
+-           if(evolve_mhd.ne.0) then
+-             Bvecxplus(i,j,k) = 0.0d0
+-             Bvecxminus(i,j,k) = 0.0d0
+-             Bvecyplus(i,j,k) = 0.0d0
+-             Bvecyminus(i,j,k) = 0.0d0
+-             Bveczplus(i,j,k) = 0.0d0
+-             Bveczminus(i,j,k) = 0.0d0
+-             if(clean_divergence.ne.0) then
+-                psidcplus(i,j,k) = 0.0d0
+-                psidcminus(i,j,k) = 0.0d0
+-             endif
+-           endif
+-
+-           if (evolve_entropy .ne. 0) then
+-              entropyplus(i,j,k) = 0.0d0
+-              entropyminus(i,j,k) = 0.0d0
+-           endif
+-
+-           if (evolve_tracer .ne. 0) then
+-              tracerplus(i,j,k,:) = 0.0d0
+-              tracerminus(i,j,k,:) = 0.0d0
+-           endif
+-
+-           if (evolve_Y_e .ne. 0) then
+-              ! set this to the cell center values
+-              ! to make sure we have good Y_e even in
+-              ! the boundary region (for full GF EOS calls)       
+-              Y_e_plus(i,j,k) = Y_e(i,j,k)
+-              Y_e_minus(i,j,k) = Y_e(i,j,k)
+-           endif
+-
+-           if (evolve_temper .ne. 0) then
+-              ! initialize with cell-center values
+-              ! to make sure we have safe initial
+-              ! guesses at interfaces even if
+-              ! temperature is not reconstructed
+-              tempplus(i,j,k) = temperature(i,j,k)
+-              tempminus(i,j,k) = temperature(i,j,k)
+-           endif
+-
+         enddo
+      enddo
+   enddo
+diff --git a/src/GRHydro_MP5Reconstruct_drv.F90 b/src/GRHydro_MP5Reconstruct_drv.F90
+index fc839c0..bb222dd 100644
+--- a/src/GRHydro_MP5Reconstruct_drv.F90
++++ b/src/GRHydro_MP5Reconstruct_drv.F90
+@@ -133,65 +133,18 @@ subroutine GRHydro_MP5Reconstruct_drv(CCTK_ARGUMENTS)
+   ny = cctk_lsh(2)
+   nz = cctk_lsh(3)
+ 
+-!!$ Initialize variables that store reconstructed quantities:
+-
+-  !$OMP PARALLEL DO PRIVATE(i,j,k)
+-  do k=1,cctk_lsh(3)
+-     do j=1,cctk_lsh(2)
+-        do i=1,cctk_lsh(1)
++  !initialize trivial_rp to false
++  !$OMP PARALLEL DO
++  do k=1,nz
++     do j=1,ny
++        do i=1,nx
+            trivial_rp(i,j,k) = .false.
+-           rhoplus(i,j,k) = 0.0d0
+-           rhominus(i,j,k)= 0.0d0
+-           epsplus(i,j,k) = 0.0d0
+-           epsminus(i,j,k) = 0.0d0
+-           velxplus(i,j,k) = 0.0d0
+-           velxminus(i,j,k) = 0.0d0
+-           velyplus(i,j,k) = 0.0d0
+-           velyminus(i,j,k) = 0.0d0
+-           velzplus(i,j,k) = 0.0d0
+-           velzminus(i,j,k) = 0.0d0
+-
+-           if(evolve_mhd.ne.0) then
+-             Bvecxplus(i,j,k) = 0.0d0
+-             Bvecxminus(i,j,k) = 0.0d0
+-             Bvecyplus(i,j,k) = 0.0d0
+-             Bvecyminus(i,j,k) = 0.0d0
+-             Bveczplus(i,j,k) = 0.0d0
+-             Bveczminus(i,j,k) = 0.0d0
+-             if(clean_divergence.ne.0) then
+-                psidcplus(i,j,k) = 0.0d0
+-                psidcminus(i,j,k) = 0.0d0
+-             endif
+-           endif
+-
+-           if (evolve_entropy .ne. 0) then
+-              entropyplus(i,j,k) = 0.0d0
+-              entropyminus(i,j,k) = 0.0d0
+-           endif
+-
+-           if (evolve_tracer .ne. 0) then
+-              tracerplus(i,j,k,:) = 0.0d0
+-              tracerminus(i,j,k,:) = 0.0d0
+-           endif
+-
+-           if (evolve_Y_e .ne. 0) then
+-              Y_e_plus(i,j,k) = 0.0d0
+-              Y_e_minus(i,j,k) = 0.0d0
+-           endif
+-
+-           if (evolve_temper .ne. 0) then
+-              ! set this to cell center value to have
+-              ! good initial guesses at interfaces
+-              ! in case we don't reconstruct temp
+-              tempplus(i,j,k) = temperature(i,j,k)
+-              tempminus(i,j,k) = temperature(i,j,k)
+-           endif
+-
+         enddo
+      enddo
+   enddo
+   !$OMP END PARALLEL DO
+ 
++
+ !!$ MP5 starts:
+      if (evolve_tracer .ne. 0) then
+         do itracer=1,number_of_tracers
+diff --git a/src/GRHydro_PPMMReconstruct_drv.F90 b/src/GRHydro_PPMMReconstruct_drv.F90
+index 370d764..f9ceaf7 100644
+--- a/src/GRHydro_PPMMReconstruct_drv.F90
++++ b/src/GRHydro_PPMMReconstruct_drv.F90
+@@ -135,60 +135,16 @@ subroutine GRHydro_PPMMReconstruct_drv(CCTK_ARGUMENTS)
+   ny = cctk_lsh(2)
+   nz = cctk_lsh(3)
+ 
+-!!$ Initialize variables that store reconstructed quantities:
+-
+-  !$OMP PARALLEL DO PRIVATE(i,j,k)
+-  do k=1,cctk_lsh(3)
+-     do j=1,cctk_lsh(2)
+-        do i=1,cctk_lsh(1)
++  !initialize trivial_rp to false                                               
++  !$OMP PARALLEL DO                                                             
++  do k=1,nz
++     do j=1,ny
++        do i=1,nx
+            trivial_rp(i,j,k) = .false.
+-           rhoplus(i,j,k) = 0.0d0
+-           rhominus(i,j,k)= 0.0d0
+-           epsplus(i,j,k) = 0.0d0
+-           epsminus(i,j,k) = 0.0d0
+-           velxplus(i,j,k) = 0.0d0
+-           velxminus(i,j,k) = 0.0d0
+-           velyplus(i,j,k) = 0.0d0
+-           velyminus(i,j,k) = 0.0d0
+-           velzplus(i,j,k) = 0.0d0
+-           velzminus(i,j,k) = 0.0d0
+-
+-           Bvecxplus(i,j,k) = 0.0d0
+-           Bvecxminus(i,j,k) = 0.0d0
+-           Bvecyplus(i,j,k) = 0.0d0
+-           Bvecyminus(i,j,k) = 0.0d0
+-           Bveczplus(i,j,k) = 0.0d0
+-           Bveczminus(i,j,k) = 0.0d0
+-           if(clean_divergence.ne.0) then
+-             psidcplus(i,j,k) = 0.0d0
+-             psidcminus(i,j,k) = 0.0d0
+-           endif
+-
+-           if (evolve_entropy .ne. 0) then
+-              entropyplus(i,j,k) = 0.0d0
+-              entropyminus(i,j,k) = 0.0d0
+-           endif
+-
+-           if (evolve_tracer .ne. 0) then
+-              tracerplus(i,j,k,:) = 0.0d0
+-              tracerminus(i,j,k,:) = 0.0d0
+-           endif
+-
+-           if (evolve_Y_e .ne. 0) then
+-              Y_e_plus(i,j,k) = Y_e(i,j,k)
+-              Y_e_minus(i,j,k) = Y_e(i,j,k)
+-           endif
+-
+-           if(evolve_temper .ne. 0) then
+-              tempplus(i,j,k) = temperature(i,j,k)
+-              tempminus(i,j,k) = temperature(i,j,k)
+-           endif
+-
+-
+         enddo
+      enddo
+   enddo
+-  !$OMP END PARALLEL DO
++  !$OMP END PARALLEL DO 
+ 
+ !!$ PPM starts:
+     if (flux_direction == 1) then
+diff --git a/src/GRHydro_PPMReconstruct_drv.F90 b/src/GRHydro_PPMReconstruct_drv.F90
+index da4d1cf..f8959a2 100644
+--- a/src/GRHydro_PPMReconstruct_drv.F90
++++ b/src/GRHydro_PPMReconstruct_drv.F90
+@@ -128,48 +128,6 @@ subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+      apply_enhanced_ppm = .false.
+   end if
+ 
+-!!$ Initialize variables that store reconstructed quantities:
+-
+-  !$OMP PARALLEL DO PRIVATE(i,j,k)
+-  do k=1,cctk_lsh(3)
+-     do j=1,cctk_lsh(2)
+-        do i=1,cctk_lsh(1)
+-           trivial_rp(i,j,k) = .false.
+-           rhoplus(i,j,k) = 0.0d0
+-           rhominus(i,j,k)= 0.0d0
+-           epsplus(i,j,k) = 0.0d0
+-           epsminus(i,j,k) = 0.0d0
+-           velxplus(i,j,k) = 0.0d0
+-           velxminus(i,j,k) = 0.0d0
+-           velyplus(i,j,k) = 0.0d0
+-           velyminus(i,j,k) = 0.0d0
+-           velzplus(i,j,k) = 0.0d0
+-           velzminus(i,j,k) = 0.0d0
+-
+-           if (evolve_tracer .ne. 0) then
+-              tracerplus(i,j,k,:) = 0.0d0
+-              tracerminus(i,j,k,:) = 0.0d0
+-           endif
+-
+-           if (evolve_Y_e .ne. 0) then
+-              ! set this to the cell center values
+-              ! to make sure we have good Y_e even in
+-              ! the boundary region (for full GF EOS calls)
+-              Y_e_plus(i,j,k) = Y_e(i,j,k)
+-              Y_e_minus(i,j,k) = Y_e(i,j,k)
+-           endif
+-
+-           if (evolve_temper .ne. 0) then
+-              ! set this to temperature (piecewise constant), because we won't
+-              ! set it if reconstruct_temper .eq. 0
+-              tempplus(i,j,k) = temperature(i,j,k)
+-              tempminus(i,j,k) = temperature(i,j,k)
+-           endif
+-
+-        enddo
+-     enddo
+-  enddo
+-  !$OMP END PARALLEL DO
+ 
+ !!$ PPM starts:
+     if (flux_direction == 1) then
+diff --git a/src/GRHydro_Prim2Con.c b/src/GRHydro_Prim2Con.c
+new file mode 100644
+index 0000000..36578b0
+--- /dev/null
++++ b/src/GRHydro_Prim2Con.c
+@@ -0,0 +1,334 @@
++#include <assert.h>
++#include <math.h>
++#include <stdio.h>
++#include <stdlib.h>
++
++#include "cctk.h"
++#include "cctk_Parameters.h"
++#include "cctk_Arguments.h"
++#include "cctk_Functions.h"
++#define MIN(a,b) (((a)<(b))?(a):(b))
++#define MAX(a,b) (((a)>(b))?(a):(b))
++
++
++// some prototypes
++CCTK_INT GRHydro_UseGeneralCoordinates(const cGH * cctkGH);
++static inline double SpatialDeterminantC(double gxx, double gxy,
++					double gxz, double gyy,
++					double gyz, double gzz);
++
++static inline __attribute__((always_inline)) void prim2conC(double *w, double *dens, double *sx, 
++			     double *sy, double *sz, double *tau, 
++			     const double gxx, const double gxy,
++			     const double gxz, const double gyy, const double gyz, 
++			     const double gzz, const double sdet, 
++			     const double rho, const double vx,
++			     const double vy, const double vz, 
++			     const double eps, const double press); 
++
++
++
++
++void Primitive2ConservativeC(CCTK_ARGUMENTS);
++
++CCTK_FCALL void CCTK_FNAME(Primitive2ConservativeCforF)(cGH ** p_cctkGH) {
++  Primitive2ConservativeC(*p_cctkGH);
++}
++
++
++void Primitive2ConservativeC(CCTK_ARGUMENTS)
++{
++   DECLARE_CCTK_ARGUMENTS;
++   DECLARE_CCTK_PARAMETERS;
++
++   // save memory when multipatch is not used
++   CCTK_REAL * restrict g11, * restrict g12, * restrict g13;
++   CCTK_REAL * restrict g22, * restrict g23, * restrict g33;
++    
++   if(GRHydro_UseGeneralCoordinates(cctkGH)) {
++     g11 = gaa;
++     g12 = gab;
++     g13 = gac;
++     g22 = gbb;
++     g23 = gbc;
++     g33 = gcc;
++   } else {
++     g11 = gxx;
++     g12 = gxy;
++     g13 = gxz;
++     g22 = gyy;
++     g23 = gyz;
++     g33 = gzz;
++   }
++
++   // if padding is used the the "extra" vector elements could contain junk
++   // which we do not know how to handle
++   assert(cctk_lsh[0] == cctk_ash[0]);
++   assert(cctk_lsh[1] == cctk_ash[1]);
++   assert(cctk_lsh[2] == cctk_ash[2]);
++
++   // EOS calls (now GF-wide)
++   if(!*evolve_temper) {
++     int n = cctk_lsh[0]*cctk_lsh[1]*cctk_lsh[2];
++     int keyerr[n]; int anyerr = 0;
++     int keytemp = 0;
++
++     // don't need special error handling for analytic EOS
++     EOS_Omni_pressOMP(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,n,
++		    rhominus,epsminus,NULL,NULL,pressminus,keyerr,&anyerr);
++
++     EOS_Omni_pressOMP(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,n,
++		    rhoplus,epsplus,NULL,NULL,pressplus,keyerr,&anyerr);
++     
++   } else {
++     if(reconstruct_temper) {
++       int n = cctk_lsh[0]*cctk_lsh[1]*cctk_lsh[2];
++       // Linux usually offers ~8MB of stack which is good for ~1M points.
++       // We should consider malloc() if we ever smash the stack.
++       int keyerr[n]; int anyerr = 0;
++       int keytemp = 1;
++
++       // ensure Y_e and temperature within bounds
++#pragma omp parallel for
++       for(int i=0;i<n;i++) {
++	 Y_e_minus[i] = MAX(MIN(Y_e_minus[i],GRHydro_Y_e_max),GRHydro_Y_e_min);
++	 Y_e_plus[i] = MAX(MIN(Y_e_plus[i],GRHydro_Y_e_max),GRHydro_Y_e_min);
++	 tempminus[i] = MIN(MAX(tempminus[i],GRHydro_hot_atmo_temp),GRHydro_max_temp);
++	 tempplus[i] = MIN(MAX(tempplus[i],GRHydro_hot_atmo_temp),GRHydro_max_temp);
++        }
++
++       EOS_Omni_pressOMP(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,n,
++		      rhominus,epsminus,tempminus,Y_e_minus,pressminus,keyerr,&anyerr);
++
++       if(anyerr!=0) {
++#pragma omp parallel for
++	 for(int i=0;i<n;i++) {
++	   if(keyerr[i] != 0) {
++#pragma omp critical
++	     {
++	       CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++			  "rl: %d i,x,y,z: %d %15.6E %15.6E %15.6E, keyerr: %d",
++			  *GRHydro_reflevel, i, x[i], y[i], z[i], keyerr[i]);
++	       CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++			  "rl: %d r,t,ye: %15.6E %15.6E %15.6E, keyerr: %d",
++			  *GRHydro_reflevel, rhominus[i], tempminus[i], Y_e_minus[i], keyerr[i]);
++	     }
++	   }
++	 } // for i, i<n
++	 CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++		    "Aborting!");
++       }
++
++       EOS_Omni_pressOMP(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,n,
++		      rhoplus,epsplus,tempplus,Y_e_plus,pressplus,keyerr,&anyerr);
++
++       if(anyerr!=0) {
++#pragma omp parallel for
++	 for(int i=0;i<n;i++) {
++	   if(keyerr[i] != 0) {
++#pragma omp critical
++	     {
++	       CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++			  "rl: %d i,x,y,z: %d %15.6E %15.6E %15.6E, keyerr: %d",
++			  *GRHydro_reflevel, i, x[i], y[i], z[i], keyerr[i]);
++	       CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++			  "rl: %d r,t,ye: %15.6E %15.6E %15.6E, keyerr: %d",
++			  *GRHydro_reflevel, rhoplus[i], tempplus[i], Y_e_plus[i], keyerr[i]);
++	     }
++	   }
++	 } // for i, i<n
++	 CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++		    "Aborting!");
++       }
++     } else {
++       // ******************** EPS RECONSTRUCTION BRANCH ******************
++       int n = cctk_lsh[0]*cctk_lsh[1]*cctk_lsh[2];
++       int keyerr[n]; int anyerr = 0;
++       int keytemp = 0;
++
++       // ensure Y_e and temperature within bounds
++#pragma omp parallel for
++       for(int i=0;i<n;i++) {
++	 Y_e_minus[i] = MAX(MIN(Y_e_minus[i],GRHydro_Y_e_max),GRHydro_Y_e_min);
++	 Y_e_plus[i] = MAX(MIN(Y_e_plus[i],GRHydro_Y_e_max),GRHydro_Y_e_min);
++	 tempminus[i] = MIN(MAX(tempminus[i],GRHydro_hot_atmo_temp),GRHydro_max_temp);
++	 tempplus[i] = MIN(MAX(tempplus[i],GRHydro_hot_atmo_temp),GRHydro_max_temp);
++	 temperature[i] = MIN(MAX(temperature[i],GRHydro_hot_atmo_temp),GRHydro_max_temp);
++        }
++
++       EOS_Omni_pressOMP(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,n,
++		      rhominus,epsminus,tempminus,Y_e_minus,pressminus,keyerr,&anyerr);
++
++       if(anyerr!=0) {
++#pragma omp parallel for
++	 for(int i=0;i<n;i++) {
++	   if(keyerr[i] != 0) {
++#pragma omp critical
++	     {
++	       CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++			  "rl: %d x,y,z: %15.6E %15.6E %15.6E, keyerr: %d",
++			  *GRHydro_reflevel, x[i], y[i], z[i], keyerr[i]);
++	       CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++			  "rl: %d r,t,ye: %15.6E %15.6E %15.6E, keyerr: %d",
++			  *GRHydro_reflevel, rhominus[i], tempminus[i], 
++			  Y_e_minus[i], keyerr[i]);
++	       if(keyerr[i] == 668) {
++		 // This means the temperature came back negative.
++		 // We'll try using piecewise constant for the temperature
++		 tempminus[i] = temperature[i];
++		 const int ln=1;
++		 int lkeyerr[1];
++		 int lanyerr = 0;
++		 int lkeytemp = 1;
++		 EOS_Omni_press(*GRHydro_eos_handle,lkeytemp,GRHydro_eos_rf_prec,ln,
++				&rhominus[i],&epsminus[i],&tempminus[i],
++				&Y_e_minus[i],&pressminus[i],lkeyerr,&lanyerr);
++		 if(lanyerr !=0) {
++		   CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++			      "Aborting! keyerr=%d, r=%15.6E, t=%15.6E, ye=%15.6E",
++			      lkeyerr[0],rhominus[i],tempminus[i],Y_e_minus[i]);
++		 }		 
++	       } else {
++		 CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++			    "Aborting!");
++	       }
++	     }
++	   }
++	 } // for i, i<n
++       }
++
++       EOS_Omni_pressOMP(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,n,
++		      rhoplus,epsplus,tempplus,Y_e_plus,pressplus,keyerr,&anyerr);
++
++       if(anyerr!=0) {
++#pragma omp parallel for
++	 for(int i=0;i<n;i++) {
++	   if(keyerr[i] != 0) {
++#pragma omp critical
++	     {
++	       CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++			  "rl: %d x,y,z: %15.6E %15.6E %15.6E, keyerr: %d",
++			  *GRHydro_reflevel, x[i], y[i], z[i], keyerr[i]);
++	       CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++			  "rl: %d r,t,ye: %15.6E %15.6E %15.6E, keyerr: %d",
++			  *GRHydro_reflevel, rhoplus[i], tempplus[i], Y_e_plus[i], keyerr[i]);
++	       if(keyerr[i] == 668) {
++		 // This means the temperature came back negative.
++		 // We'll try using piecewise constant for the temperature
++		 tempplus[i] = temperature[i];
++		 const int ln=1;
++		 int lkeyerr[1];
++		 int lanyerr = 0;
++		 int lkeytemp = 1;
++		 EOS_Omni_press(*GRHydro_eos_handle,lkeytemp,GRHydro_eos_rf_prec,ln,
++				&rhoplus[i],&epsplus[i],&tempplus[i],
++				&Y_e_plus[i],&pressplus[i],lkeyerr,&lanyerr);
++		 if(lanyerr !=0) {
++		   CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++			      "Aborting! keyerr=%d, r=%15.6E, t=%15.6E, ye=%15.6E",
++			      lkeyerr[0],rhoplus[i],tempplus[i],Y_e_plus[i]);
++		 }		 
++	       } else {
++		 CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
++			    "Aborting!");
++	       }
++	     } // end critical
++	   }
++	 } // for i, i<n error checking
++       }
++     } // end branch for no temp reconsturction
++   } // end of evolve temper branch
++
++
++#pragma omp parallel for
++     for(int k = GRHydro_stencil-1; k < cctk_lsh[2]-GRHydro_stencil+1; k++)
++       for(int j = GRHydro_stencil-1; j < cctk_lsh[1]-GRHydro_stencil+1; j++) 
++#pragma ivdep // force compiler to vectorize the goddamn loop
++	 for(int i = GRHydro_stencil-1; i < cctk_lsh[0]-GRHydro_stencil+1; i++) {
++
++	   const int idx = CCTK_GFINDEX3D(cctkGH,i,j,k);
++
++	   const int idxl = CCTK_GFINDEX3D(cctkGH,i-*xoffset,j-*yoffset,k-*zoffset);
++	   const int idxr = CCTK_GFINDEX3D(cctkGH,i+*xoffset,j+*yoffset,k+*zoffset);
++
++	   const double g11l = 0.5 * (g11[idx] + g11[idxl]);
++	   const double g12l = 0.5 * (g12[idx] + g12[idxl]);
++	   const double g13l = 0.5 * (g13[idx] + g13[idxl]);
++	   const double g22l = 0.5 * (g22[idx] + g22[idxl]);
++	   const double g23l = 0.5 * (g23[idx] + g23[idxl]);
++	   const double g33l = 0.5 * (g33[idx] + g33[idxl]);
++
++	   const double g11r = 0.5 * (g11[idx] + g11[idxr]);
++	   const double g12r = 0.5 * (g12[idx] + g12[idxr]);
++	   const double g13r = 0.5 * (g13[idx] + g13[idxr]);
++	   const double g22r = 0.5 * (g22[idx] + g22[idxr]);
++	   const double g23r = 0.5 * (g23[idx] + g23[idxr]);
++	   const double g33r = 0.5 * (g33[idx] + g33[idxr]);
++
++	   const double savg_detl = 
++	     sqrt(SpatialDeterminantC(g11l,g12l,g13l,g22l,g23l,g33l));
++	   const double savg_detr = 
++	     sqrt(SpatialDeterminantC(g11r,g12r,g13r,g22r,g23r,g33r));
++
++	   // minus call to p2c
++	   prim2conC(&w_lorentzminus[idx], &densminus[idx], &sxminus[idx],
++		     &syminus[idx], &szminus[idx], &tauminus[idx],
++		     g11l,g12l,g13l,g22l,g23l,g33l,
++		     savg_detl,rhominus[idx], velxminus[idx], velyminus[idx],
++		     velzminus[idx], epsminus[idx], pressminus[idx]);
++
++
++	   // plus call to p2c
++	   prim2conC(&w_lorentzplus[idx], &densplus[idx], &sxplus[idx],
++		     &syplus[idx], &szplus[idx], &tauplus[idx],
++		     g11r,g12r,g13r,g22r,g23r,g33r,
++		     savg_detr,rhoplus[idx], velxplus[idx], velyplus[idx],
++		     velzplus[idx], epsplus[idx], pressplus[idx]);
++	 }       
++
++} // end function Conservative2PrimitiveC
++
++static inline double SpatialDeterminantC(double gxx, double gxy,
++					 double gxz, double gyy,
++					 double gyz, double gzz) 
++{
++  return -gxz*gxz*gyy + 2.0*gxy*gxz*gyz - gxx*gyz*gyz 
++    - gxy*gxy*gzz + gxx*gyy*gzz;
++}
++
++
++static inline __attribute__((always_inline)) void prim2conC(double *w, double *dens, double *sx, 
++			     double *sy, double *sz, double *tau,
++			     const double gxx, const double gxy,
++			     const double gxz, const double gyy, 
++			     const double gyz, 
++			     const double gzz, const double sdet, 
++			     const double rho, const double vx,
++			     const double vy, const double vz, 
++			     const double eps, const double press)
++{
++
++  // local helpers
++  const double wtemp = 1.0 / sqrt(1.0 - (gxx*vx*vx + gyy*vy*vy + 
++				    gzz*vz*vz + 2.0*gxy*vx*vy 
++				    + 2.0*gxz*vx*vz + 2.0*gyz*vy*vz));
++
++  const double vlowx = gxx*vx + gxy*vy + gxz*vz;
++  const double vlowy = gxy*vx + gyy*vy + gyz*vz;
++  const double vlowz = gxz*vx + gyz*vy + gzz*vz;
++  
++  const double hrhow2 = (rho*(1.0+eps)+press)*(wtemp)*(wtemp);
++  const double denstemp = sdet*rho*(wtemp);
++
++  *w = wtemp;
++  *dens = denstemp;
++  *sx = sdet*hrhow2 * vlowx;
++  *sy = sdet*hrhow2 * vlowy;
++  *sz = sdet*hrhow2 * vlowz;
++  *tau = sdet*( hrhow2 - press) - denstemp;
++
++}
++
++
++
++
+diff --git a/src/GRHydro_Reconstruct.F90 b/src/GRHydro_Reconstruct.F90
+index 0fe2d37..cf6d103 100644
+--- a/src/GRHydro_Reconstruct.F90
++++ b/src/GRHydro_Reconstruct.F90
+@@ -15,22 +15,6 @@
+ #include "GRHydro_Macros.h"
+ #include "SpaceMask.h"
+ 
+- /*@@
+-   @routine    Reconstruction
+-   @date       Sat Jan 26 02:13:47 2002
+-   @author     Luca Baiotti, Ian Hawke, Christian D. Ott
+-   @desc 
+-   A wrapper routine to do reconstruction. Currently just does
+-   TVD on the primitive variables.
+-   @enddesc 
+-   @calls     
+-   @calledby   
+-   @history 
+- 
+-   @endhistory 
+-
+-@@*/
+-
+ subroutine Reconstruction(CCTK_ARGUMENTS)
+   
+   implicit none
+@@ -72,6 +56,68 @@ subroutine Reconstruction(CCTK_ARGUMENTS)
+     g33 => gzz
+     vup => vel
+   end if
++  
++  ! Initialize plus and minus states
++  !$OMP PARALLEL DO                                 
++  do k=1,cctk_lsh(3)
++     do j=1,cctk_lsh(2)
++        do i=1,cctk_lsh(1)
++           ! must initialize rho and eps plus minus
++           ! to cell average in order to have sane values
++           ! in the boundary zones for EOS call
++           rhoplus(i,j,k) = rho(i,j,k)
++           rhominus(i,j,k)= rho(i,j,k)
++           epsplus(i,j,k) = eps(i,j,k)
++           epsminus(i,j,k) = eps(i,j,k)
++           velxplus(i,j,k) = 0.0d0
++           velxminus(i,j,k) = 0.0d0
++           velyplus(i,j,k) = 0.0d0
++           velyminus(i,j,k) = 0.0d0
++           velzplus(i,j,k) = 0.0d0
++           velzminus(i,j,k) = 0.0d0
++
++           if(evolve_mhd.ne.0) then
++              Bvecxplus(i,j,k) = 0.0d0
++              Bvecxminus(i,j,k) = 0.0d0
++              Bvecyplus(i,j,k) = 0.0d0
++              Bvecyminus(i,j,k) = 0.0d0
++              Bveczplus(i,j,k) = 0.0d0
++              Bveczminus(i,j,k) = 0.0d0
++              if(clean_divergence.ne.0) then
++                 psidcplus(i,j,k) = 0.0d0
++                 psidcminus(i,j,k) = 0.0d0
++              endif
++           endif
++
++           if (evolve_entropy .ne. 0) then
++              entropyplus(i,j,k) = 0.0d0
++              entropyminus(i,j,k) = 0.0d0
++           endif
++
++           if (evolve_tracer .ne. 0) then
++              tracerplus(i,j,k,:) = 0.0d0
++              tracerminus(i,j,k,:) = 0.0d0
++           endif
++
++           if (evolve_Y_e .ne. 0) then
++              ! set this to the cell center values                              
++              ! to make sure we have good Y_e even in                           
++              ! the boundary region (for full GF EOS calls)                     
++              Y_e_plus(i,j,k) = Y_e(i,j,k)
++              Y_e_minus(i,j,k) = Y_e(i,j,k)
++           endif
++
++          if(evolve_temper .ne. 0) then
++              ! set this to cell center value to have                           
++              ! good initial guesses at interfaces                              
++              ! in case we don't reconstruct temp                               
++              tempplus(i,j,k) = temperature(i,j,k)
++              tempminus(i,j,k) = temperature(i,j,k)
++           endif
++        enddo
++     enddo
++  enddo
++  !$OMP END PARALLEL DO
+ 
+   if (CCTK_EQUALS(recon_method,"tvd")) then
+     ! this handles MHD and non-MHD
+@@ -225,14 +271,13 @@ subroutine Reconstruction(CCTK_ARGUMENTS)
+   enddo
+   !$OMP END PARALLEL DO
+   
+-
+-
+   if (CCTK_EQUALS(recon_vars,"primitive").or.&
+        CCTK_EQUALS(recon_method,"ppm")) then
+      if(evolve_mhd.ne.0) then
+         call primitive2conservativeM(CCTK_PASS_FTOF)
+      else
+         call primitive2conservative(CCTK_PASS_FTOF)
++!        call Primitive2ConservativeCforF(cctkGH)
+      endif
+   else if (CCTK_EQUALS(recon_vars,"conservative")) then
+      if(evolve_mhd.ne.0) then
+diff --git a/src/GRHydro_ReconstructPoly.F90 b/src/GRHydro_ReconstructPoly.F90
+index 1e3a5b8..826a49e 100644
+--- a/src/GRHydro_ReconstructPoly.F90
++++ b/src/GRHydro_ReconstructPoly.F90
+@@ -123,69 +123,75 @@ subroutine ReconstructionPolytype(CCTK_ARGUMENTS)
+   ny = cctk_lsh(2)
+   nz = cctk_lsh(3)
+ 
+-  !$OMP PARALLEL
+-  !$OMP WORKSHARE
+-  trivial_rp = .false.
+-  !$OMP END WORKSHARE NOWAIT
+-
+ !!$  Currently only option is reconstruction on primitive variables.
+ !!$  Should change this.
+ 
+-  !$OMP WORKSHARE
+-  psi4 = 1.0d0
+-  !$OMP END WORKSHARE NOWAIT
+-
+-  !$OMP WORKSHARE
+-  lbetax = betax
+-  lbetay = betay
+-  lbetaz = betaz
+-  !$OMP END WORKSHARE NOWAIT
+-
+-!!$ Initialize variables that store reconstructed quantities
+-
+-  !$OMP WORKSHARE
+-  rhoplus = 0.0d0
+-  rhominus = 0.0d0
+-  epsplus = 0.0d0
+-  epsminus = 0.0d0
+-  velxplus = 0.0d0
+-  velxminus = 0.0d0
+-  velyplus = 0.0d0
+-  velyminus = 0.0d0
+-  velzplus = 0.0d0
+-  velzminus = 0.0d0
+-  !$OMP END WORKSHARE NOWAIT
+-  if(evolve_mhd.ne.0) then
+-     !$OMP WORKSHARE
+-     Bvecxplus = 0.0d0
+-     Bvecxminus = 0.0d0
+-     Bvecyplus = 0.0d0
+-     Bvecyminus = 0.0d0
+-     Bveczplus = 0.0d0
+-     Bveczminus = 0.0d0
+-     !$OMP END WORKSHARE NOWAIT
+-     if(clean_divergence.ne.0) then
+-        !$OMP WORKSHARE
+-        psidcplus = 0.0d0
+-        psidcminus=0.0d0
+-        !$OMP END WORKSHARE NOWAIT
+-     endif
+-  endif
++  ! Initialize plus and minus states
++  !$OMP PARALLEL DO
++  do k=1,cctk_lsh(3)
++     do j=1,cctk_lsh(2)
++        do i=1,cctk_lsh(1)
++           psi4(i,j,k) = 1.0d0
++           lbetax(i,j,k) = betax(i,j,k)
++           lbetay(i,j,k) = betay(i,j,k)
++           lbetaz(i,j,k) = betaz(i,j,k)
++           trivial_rp(i,j,k) = .false.
++           ! must initialize rho and eps plus minus
++           ! to cell average in order to have sane values
++           ! in the boundary zones for EOS call
++           rhoplus(i,j,k) = rho(i,j,k)
++           rhominus(i,j,k)= rho(i,j,k)
++           epsplus(i,j,k) = eps(i,j,k)
++           epsminus(i,j,k) = eps(i,j,k)
++           velxplus(i,j,k) = 0.0d0
++           velxminus(i,j,k) = 0.0d0
++           velyplus(i,j,k) = 0.0d0
++           velyminus(i,j,k) = 0.0d0
++           velzplus(i,j,k) = 0.0d0
++           velzminus(i,j,k) = 0.0d0
++
++           if(evolve_mhd.ne.0) then
++              Bvecxplus(i,j,k) = 0.0d0
++              Bvecxminus(i,j,k) = 0.0d0
++              Bvecyplus(i,j,k) = 0.0d0
++              Bvecyminus(i,j,k) = 0.0d0
++              Bveczplus(i,j,k) = 0.0d0
++              Bveczminus(i,j,k) = 0.0d0
++              if(clean_divergence.ne.0) then
++                 psidcplus(i,j,k) = 0.0d0
++                 psidcminus(i,j,k) = 0.0d0
++              endif
++           endif
++           if (evolve_entropy .ne. 0) then
++              entropyplus(i,j,k) = 0.0d0
++              entropyminus(i,j,k) = 0.0d0
++           endif
++
++           if (evolve_tracer .ne. 0) then
++              tracerplus(i,j,k,:) = 0.0d0
++              tracerminus(i,j,k,:) = 0.0d0
++           endif
++
++           if (evolve_Y_e .ne. 0) then
++              ! set this to the cell center values
++              ! to make sure we have good Y_e even in
++              ! the boundary region (for full GF EOS calls)
++              Y_e_plus(i,j,k) = Y_e(i,j,k)
++              Y_e_minus(i,j,k) = Y_e(i,j,k)
++           endif
++          if(evolve_temper .ne. 0) then
++              ! set this to cell center value to have
++              ! good initial guesses at interfaces
++              ! in case we don't reconstruct temp
++              tempplus(i,j,k) = temperature(i,j,k)
++              tempminus(i,j,k) = temperature(i,j,k)
++           endif
++        enddo
++     enddo
++  enddo
++  !$OMP END PARALLEL DO             
+ 
+-  if (evolve_tracer .ne. 0) then
+-     !$OMP WORKSHARE
+-     tracerplus = 0.0d0
+-     tracerminus = 0.0d0
+-     !$OMP END WORKSHARE NOWAIT
+-  endif
+ 
+-  if (evolve_Y_e .ne. 0) then
+-     !$OMP WORKSHARE
+-     Y_e_plus = 0.0d0
+-     Y_e_minus = 0.0d0
+-     !$OMP END WORKSHARE NOWAIT
+-  endif
+-  !$OMP END PARALLEL
+ 
+   if (CCTK_EQUALS(recon_method,"tvd")) then
+ 
+diff --git a/src/GRHydro_TVDReconstruct_drv.F90 b/src/GRHydro_TVDReconstruct_drv.F90
+index eb633b2..6925132 100644
+--- a/src/GRHydro_TVDReconstruct_drv.F90
++++ b/src/GRHydro_TVDReconstruct_drv.F90
+@@ -147,63 +147,12 @@ subroutine GRHydro_TVDReconstruct_drv(CCTK_ARGUMENTS)
+   ny = cctk_lsh(2)
+   nz = cctk_lsh(3)
+ 
+-!!$ Initialize variables that store reconstructed quantities:
+-
+-  !$OMP PARALLEL DO PRIVATE(i,j,k)
+-  do k=1,cctk_lsh(3)
+-     do j=1,cctk_lsh(2)
+-        do i=1,cctk_lsh(1)
++  !initialize trivial_rp to false
++  !$OMP PARALLEL DO
++  do k=1,nz
++     do j=1,ny
++        do i=1,nx
+            trivial_rp(i,j,k) = .false.
+-           rhoplus(i,j,k) = 0.0d0
+-           rhominus(i,j,k)= 0.0d0
+-           epsplus(i,j,k) = 0.0d0
+-           epsminus(i,j,k) = 0.0d0
+-           velxplus(i,j,k) = 0.0d0
+-           velxminus(i,j,k) = 0.0d0
+-           velyplus(i,j,k) = 0.0d0
+-           velyminus(i,j,k) = 0.0d0
+-           velzplus(i,j,k) = 0.0d0
+-           velzminus(i,j,k) = 0.0d0
+-
+-           if(evolve_mhd.ne.0) then
+-             Bvecxplus(i,j,k) = 0.0d0
+-             Bvecxminus(i,j,k) = 0.0d0
+-             Bvecyplus(i,j,k) = 0.0d0
+-             Bvecyminus(i,j,k) = 0.0d0
+-             Bveczplus(i,j,k) = 0.0d0
+-             Bveczminus(i,j,k) = 0.0d0
+-             if(clean_divergence.ne.0) then
+-                psidcplus(i,j,k) = 0.0d0
+-                psidcminus(i,j,k) = 0.0d0
+-             endif
+-           endif
+-
+-           if (evolve_entropy .ne. 0) then
+-              entropyplus(i,j,k) = 0.0d0
+-              entropyminus(i,j,k) = 0.0d0
+-           endif
+-
+-           if (evolve_tracer .ne. 0) then
+-              tracerplus(i,j,k,:) = 0.0d0
+-              tracerminus(i,j,k,:) = 0.0d0
+-           endif
+-
+-           if (evolve_Y_e .ne. 0) then
+-              ! set this to the cell center values
+-              ! to make sure we have good Y_e even in
+-              ! the boundary region (for full GF EOS calls)
+-              Y_e_plus(i,j,k) = Y_e(i,j,k)
+-              Y_e_minus(i,j,k) = Y_e(i,j,k)
+-           endif
+-           
+-           if(evolve_temper .ne. 0) then
+-              ! set this to cell center value to have
+-              ! good initial guesses at interfaces 
+-              ! in case we don't reconstruct temp
+-              tempplus(i,j,k) = temperature(i,j,k)
+-              tempminus(i,j,k) = temperature(i,j,k)
+-           endif
+-
+         enddo
+      enddo
+   enddo
+diff --git a/src/GRHydro_WENOReconstruct_drv.F90 b/src/GRHydro_WENOReconstruct_drv.F90
+index ae3bd01..396c54d 100644
+--- a/src/GRHydro_WENOReconstruct_drv.F90
++++ b/src/GRHydro_WENOReconstruct_drv.F90
+@@ -192,63 +192,12 @@ subroutine GRHydro_WENOReconstruct_drv(CCTK_ARGUMENTS)
+   ny = cctk_lsh(2)
+   nz = cctk_lsh(3)
+ 
+-!!$ Initialize variables that store reconstructed quantities:
+-
+-  !$OMP PARALLEL DO PRIVATE(i,j,k)
+-  do k=1,cctk_lsh(3)
+-     do j=1,cctk_lsh(2)
+-        do i=1,cctk_lsh(1)
++  !initialize trivial_rp to false
++  !$OMP PARALLEL DO
++  do k=1,nz
++     do j=1,ny
++        do i=1,nx
+            trivial_rp(i,j,k) = .false.
+-           rhoplus(i,j,k) = 0.0d0
+-           rhominus(i,j,k)= 0.0d0
+-           epsplus(i,j,k) = 0.0d0
+-           epsminus(i,j,k) = 0.0d0
+-           velxplus(i,j,k) = 0.0d0
+-           velxminus(i,j,k) = 0.0d0
+-           velyplus(i,j,k) = 0.0d0
+-           velyminus(i,j,k) = 0.0d0
+-           velzplus(i,j,k) = 0.0d0
+-           velzminus(i,j,k) = 0.0d0
+-
+-           if(evolve_mhd.ne.0) then
+-             Bvecxplus(i,j,k) = 0.0d0
+-             Bvecxminus(i,j,k) = 0.0d0
+-             Bvecyplus(i,j,k) = 0.0d0
+-             Bvecyminus(i,j,k) = 0.0d0
+-             Bveczplus(i,j,k) = 0.0d0
+-             Bveczminus(i,j,k) = 0.0d0
+-             if(clean_divergence.ne.0) then
+-                psidcplus(i,j,k) = 0.0d0
+-                psidcminus(i,j,k) = 0.0d0
+-             endif
+-           endif
+-
+-           if (evolve_entropy .ne. 0) then
+-              entropyplus(i,j,k) = 0.0d0
+-              entropyminus(i,j,k) = 0.0d0
+-           endif
+-
+-           if (evolve_tracer .ne. 0) then
+-              tracerplus(i,j,k,:) = 0.0d0
+-              tracerminus(i,j,k,:) = 0.0d0
+-           endif
+-
+-           if (evolve_Y_e .ne. 0) then
+-              ! set this to the cell center values
+-              ! to make sure we have good Y_e even in 
+-              ! the boundary region (for full GF EOS calls)
+-              Y_e_plus(i,j,k) = Y_e(i,j,k)
+-              Y_e_minus(i,j,k) = Y_e(i,j,k)
+-           endif
+-
+-           if (evolve_temper .ne. 0) then
+-              ! set this to cell center value to have
+-              ! good initial guesses at interfaces
+-              ! in case we don't reconstruct temp
+-              tempplus(i,j,k) = temperature(i,j,k)
+-              tempminus(i,j,k) = temperature(i,j,k)
+-           endif
+-
+         enddo
+      enddo
+   enddo
+diff --git a/src/make.code.defn b/src/make.code.defn
+index b55a089..1fce82b 100644
+--- a/src/make.code.defn
++++ b/src/make.code.defn
+@@ -81,7 +81,9 @@ SRCS = 	Utils.F90 \
+ 	GRHydro_WENOScalars.F90 \
+ 	GRHydro_MP5Reconstruct.F90 \
+         Con2Prim_fortran_interfaces.F90 \
+-        Con2PrimM_fortran_interfaces.F90
++        Con2PrimM_fortran_interfaces.F90 \
++        GRHydro_Prim2Con.c
++	
+ 
+ # Subdirectories containing source files
+ SUBDIRS = 
+-- 
+1.7.10.4
+

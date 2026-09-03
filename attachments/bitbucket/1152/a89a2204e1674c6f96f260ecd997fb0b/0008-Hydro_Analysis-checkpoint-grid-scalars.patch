@@ -1,0 +1,50 @@
+From c3e835df9de8223ea91c79f29efccf94dfd53c13 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Wed, 14 Mar 2012 22:34:40 -0700
+Subject: [PATCH 08/12] Hydro_Analysis: checkpoint grid scalars
+
+they are very cheap to checkpoint and if they are not checkpointed then
+the first time that Hydro_Analysis wants to compute the separation after
+a recovery it has to hope that there previous LocationSearch actually
+succeeded (it might not at this time).
+---
+ interface.ccl |   14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/interface.ccl b/interface.ccl
+index 7d0baa8..6e93430 100644
+--- a/interface.ccl
++++ b/interface.ccl
+@@ -6,22 +6,22 @@ inherits: Grid, HydroBase
+ 
+ public:
+ 
+-CCTK_REAL Hydro_Analysis_rho_max type = SCALAR tags='checkpoint="no"' "value of the maximum of rho"
++CCTK_REAL Hydro_Analysis_rho_max type = SCALAR "value of the maximum of rho"
+ 
+-CCTK_REAL Hydro_Analysis_rho_sum type = SCALAR tags='checkpoint="no"' "value of the sum of rho"
++CCTK_REAL Hydro_Analysis_rho_sum type = SCALAR "value of the sum of rho"
+ 
+-CCTK_REAL Hydro_Analysis_rho_max_loc[3] type = SCALAR tags='checkpoint="no"' "coordinate location of the maximum of rho"
++CCTK_REAL Hydro_Analysis_rho_max_loc[3] type = SCALAR "coordinate location of the maximum of rho"
+ 
+ CCTK_REAL Hydro_Analysis_rho_center_volume_weighted_gf[3] type = GF Timelevels = 3 tags='checkpoint="no" tensortypealias="u"' "temporary GF to obtain the coordinate location of the volume weighted center of mass via a reduction"
+ 
+-CCTK_REAL Hydro_Analysis_rho_center_volume_weighted[3] type = SCALAR tags='checkpoint="no"' "coordinate location of the volume weightes center of mass"
++CCTK_REAL Hydro_Analysis_rho_center_volume_weighted[3] type = SCALAR "coordinate location of the volume weightes center of mass"
+ 
+-CCTK_REAL Hydro_Analysis_rho_max_origin_distance  type = SCALAR tags='checkpoint="no"' "proper distance between the maximum of the density and the origin (along a straight coordinate line)"
++CCTK_REAL Hydro_Analysis_rho_max_origin_distance  type = SCALAR "proper distance between the maximum of the density and the origin (along a straight coordinate line)"
+ 
+ # core center of mass
+-CCTK_REAL Hydro_Analysis_rho_core_sum type = SCALAR tags='checkpoint="no"' "value of the sum of rho in the core region"
++CCTK_REAL Hydro_Analysis_rho_core_sum type = SCALAR "value of the sum of rho in the core region"
+ 
+ # rho*x,rho*y,rho*z,rho
+ CCTK_REAL Hydro_Analysis_rho_core_center_volume_weighted_gf[4] type = GF Timelevels = 3 tags='checkpoint="no" tensortypealias="u"' "temporary GF to obtain the coordinate location of the volume weighted center of mass of the core region via a reduction"
+ 
+-CCTK_REAL Hydro_Analysis_rho_core_center_volume_weighted[3] type = SCALAR tags='checkpoint="no"' "coordinate location of the volume weightes center of mass of the core region"
++CCTK_REAL Hydro_Analysis_rho_core_center_volume_weighted[3] type = SCALAR "coordinate location of the volume weightes center of mass of the core region"
+-- 
+1.7.10.4
+

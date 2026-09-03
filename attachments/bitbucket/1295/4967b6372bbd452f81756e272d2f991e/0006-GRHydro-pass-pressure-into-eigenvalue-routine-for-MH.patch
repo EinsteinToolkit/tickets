@@ -1,0 +1,413 @@
+From a1b6720fc153cc37de326553a2e3feacad8d7b7e Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Sat, 9 Mar 2013 23:06:45 -0800
+Subject: [PATCH 06/11] GRHydro: pass pressure into eigenvalue routine for MHD
+
+bugfix for hot eos case, just more efficient for cold eos
+---
+ src/GRHydro_EigenproblemM.F90 |   37 ++++++++++++---------------
+ src/GRHydro_HLLEM.F90         |   56 ++++++++++++++++++++---------------------
+ src/GRHydro_HLLE_AM.F90       |   56 ++++++++++++++++++++---------------------
+ src/GRHydro_PPMM.F90          |    2 +-
+ 4 files changed, 73 insertions(+), 78 deletions(-)
+
+diff --git a/src/GRHydro_EigenproblemM.F90 b/src/GRHydro_EigenproblemM.F90
+index dbd90be..f708126 100644
+--- a/src/GRHydro_EigenproblemM.F90
++++ b/src/GRHydro_EigenproblemM.F90
+@@ -41,22 +41,22 @@ module GRHydro_EigenproblemM
+ 
+ CONTAINS
+ 
+-subroutine eigenvaluesM(handle,rho,velx,vely,velz,eps,w_lorentz,&
++subroutine eigenvaluesM(handle,rho,velx,vely,velz,eps,press,w_lorentz,&
+      Bvcx,Bvcy,Bvcz,lam,gxx,gxy,gxz,gyy,gyz,gzz,u,alp,beta)
+   implicit none
+ 
+   DECLARE_CCTK_PARAMETERS
+ 
+-  CCTK_REAL rho,velx,vely,velz,eps,w_lorentz
+-  CCTK_REAL Bvcx,Bvcy,Bvcz
+-  CCTK_REAL lam(5)
+-  CCTK_REAL gxx,gxy,gxz,gyy,gyz,gzz
+-  CCTK_REAL alp,beta,u
++  CCTK_REAL, intent(in) :: rho,velx,vely,velz,eps,w_lorentz
++  CCTK_REAL, intent(in) :: Bvcx,Bvcy,Bvcz
++  CCTK_REAL, intent(out) :: lam(5)
++  CCTK_REAL, intent(in) :: gxx,gxy,gxz,gyy,gyz,gzz
++  CCTK_REAL, intent(in) :: alp,beta,u
+ 
+   CCTK_REAL cs2,one,two,U2
+   CCTK_REAL vlowx,vlowy,vlowz,v2,w
+   CCTK_REAL lam1,lam2,lam3,lamm,lamp,lamm_nobeta,lamp_nobeta
+-  CCTK_INT handle
++  CCTK_INT, intent(in) :: handle
+   CCTK_REAL dpdrho,dpdeps,press
+ 
+   CCTK_REAL Bvcxlow,Bvcylow,Bvczlow,Bvc2,rhohstar,va2
+@@ -75,11 +75,6 @@ subroutine eigenvaluesM(handle,rho,velx,vely,velz,eps,w_lorentz,&
+ !!$  Set required fluid quantities
+ 
+ 
+-!  call EOS_Omni_cs2(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-!       rho,eps,xtemp,xye,cs2,keyerr,anyerr)
+-  call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+-       rho,eps,xtemp,xye,press,keyerr,anyerr)
+-
+   call EOS_Omni_DPressByDEps(handle,keytemp,GRHydro_eos_rf_prec,n,&
+        rho,eps,xtemp,xye,dpdeps,keyerr,anyerr)
+ 
+@@ -138,24 +133,24 @@ subroutine eigenvaluesM(handle,rho,velx,vely,velz,eps,w_lorentz,&
+ 
+ end subroutine eigenvaluesM
+ 
+-subroutine eigenvaluesM_hot(handle,ii,jj,kk,rho,velx,vely,velz,eps,w_lorentz,&
++subroutine eigenvaluesM_hot(handle,ii,jj,kk,rho,velx,vely,velz,eps,press,w_lorentz,&
+                              Bvcx,Bvcy,Bvcz,temp,ye,lam,gxx,gxy,gxz,gyy,gyz,gzz,u,alp,beta)
+   implicit none
+ 
+   DECLARE_CCTK_PARAMETERS
+ 
+-  CCTK_REAL rho,velx,vely,velz,eps,w_lorentz
+-  CCTK_REAL Bvcx,Bvcy,Bvcz
+-  CCTK_REAL lam(5)
+-  CCTK_REAL gxx,gxy,gxz,gyy,gyz,gzz
+-  CCTK_REAL alp,beta,u
+-  CCTK_REAL temp,ye
++  CCTK_REAL, intent(in) :: rho,velx,vely,velz,eps,w_lorentz
++  CCTK_REAL, intent(in) :: Bvcx,Bvcy,Bvcz
++  CCTK_REAL, intent(out) :: lam(5)
++  CCTK_REAL, intent(in) :: gxx,gxy,gxz,gyy,gyz,gzz
++  CCTK_REAL, intent(in) :: alp,beta,u
++  CCTK_REAL, intent(in) :: temp,ye
++  CCTK_REAL, intent(in) :: press
+ 
+   CCTK_REAL cs2,one,two,U2
+   CCTK_REAL vlowx,vlowy,vlowz,v2,w
+   CCTK_REAL lam1,lam2,lam3,lamm,lamp,lamm_nobeta,lamp_nobeta
+-  CCTK_INT handle, ii,jj,kk
+-  CCTK_REAL press
++  CCTK_INT, intent(in) :: handle, ii,jj,kk
+ 
+   CCTK_REAL Bvcxlow,Bvcylow,Bvczlow,Bvc2,rhohstar,va2
+   CCTK_REAL Bdotv,b2
+diff --git a/src/GRHydro_HLLEM.F90 b/src/GRHydro_HLLEM.F90
+index b503922..780367c 100644
+--- a/src/GRHydro_HLLEM.F90
++++ b/src/GRHydro_HLLEM.F90
+@@ -375,26 +375,26 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+           if (flux_direction == 1) then
+             if(evolve_temper.ne.1) then
+               call eigenvaluesM(GRHydro_eos_handle,&
+-                   prim_m(1),prim_m(2),prim_m(3),prim_m(4),prim_m(5),prim_m(7), &
++                   prim_m(1),prim_m(2),prim_m(3),prim_m(4),prim_m(5),prim_m(6),prim_m(7), &
+                    prim_m(8),prim_m(9),prim_m(10),&
+                    lamminus,gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,&
+-                   usendh,avg_alp,avg_beta)
++                   usendh,avg_alp,avg_beta)                                    
+               call eigenvaluesM(GRHydro_eos_handle, &
+-                   prim_p(1),prim_p(2),prim_p(3),prim_p(4),prim_p(5),prim_p(7), &
++                   prim_p(1),prim_p(2),prim_p(3),prim_p(4),prim_p(5),prim_p(6),prim_p(7), &
+                    prim_p(8),prim_p(9),prim_p(10),&
+                    lamplus,gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,&
+                    usendh,avg_alp,avg_beta)
+             else
+               xtemp = temperature(i,j,k)
+               call eigenvaluesM_hot(GRHydro_eos_handle,i,j,k,&
+-                   prim_m(1),prim_m(2),prim_m(3),prim_m(4),prim_m(5),prim_m(7), &
++                   prim_m(1),prim_m(2),prim_m(3),prim_m(4),prim_m(5),prim_m(6),prim_m(7), &
+                    prim_m(8),prim_m(9),prim_m(10),&
+                    xtemp,y_e_minus(i+xoffset,j+yoffset,k+zoffset),&
+                    lamminus,gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,&
+                    usendh,avg_alp,avg_beta)
+               xtemp = temperature(i,j,k)
+               call eigenvaluesM_hot(GRHydro_eos_handle,i,j,k,&
+-                   prim_p(1),prim_p(2),prim_p(3),prim_p(4),prim_p(5),prim_p(7), &
++                   prim_p(1),prim_p(2),prim_p(3),prim_p(4),prim_p(5),prim_p(6),prim_p(7), &
+                    prim_p(8),prim_p(9),prim_p(10),&
+                    xtemp,y_e_plus(i,j,k),&
+                    lamplus,gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,&
+@@ -431,26 +431,26 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+           else if (flux_direction == 2) then
+             if(evolve_temper.ne.1) then
+               call eigenvaluesM(GRHydro_eos_handle,&
+-                   prim_m(1),prim_m(3),prim_m(4),prim_m(2),prim_m(5),prim_m(7), &
++                   prim_m(1),prim_m(3),prim_m(4),prim_m(2),prim_m(5),prim_m(6),prim_m(7), &
+                    prim_m(9),prim_m(10),prim_m(8),&
+                    lamminus,gyyh,gyzh,gxyh,gzzh,gxzh,gxxh,&
+-                   usendh,avg_alp,avg_beta)
++                   usendh,avg_alp,avg_beta)                                    
+               call eigenvaluesM(GRHydro_eos_handle, &
+-                   prim_p(1),prim_p(3),prim_p(4),prim_p(2),prim_p(5),prim_p(7), &
++                   prim_p(1),prim_p(3),prim_p(4),prim_p(2),prim_p(5),prim_p(6),prim_p(7), &
+                    prim_p(9),prim_p(10),prim_p(8),&
+                    lamplus,gyyh,gyzh,gxyh,gzzh,gxzh,gxxh,&
+                    usendh,avg_alp,avg_beta)
+             else
+               xtemp = temperature(i,j,k)
+               call eigenvaluesM_hot(GRHydro_eos_handle,i,j,k,&
+-                   prim_m(1),prim_m(3),prim_m(4),prim_m(2),prim_m(5),prim_m(7), &
++                   prim_m(1),prim_m(3),prim_m(4),prim_m(2),prim_m(5),prim_m(6),prim_m(7), &
+                    prim_m(9),prim_m(10),prim_m(8),&
+                    xtemp,y_e_minus(i+xoffset,j+yoffset,k+zoffset),&
+                    lamminus,gyyh,gyzh,gxyh,gzzh,gxzh,gxxh,&
+-                   usendh,avg_alp,avg_beta)
+-              xtemp = temperature(i,j,k)
++                   usendh,avg_alp,avg_beta)                                    
++              xtemp = temperature(i,j,k)                                       
+               call eigenvaluesM_hot(GRHydro_eos_handle,i,j,k,&
+-                   prim_p(1),prim_p(3),prim_p(4),prim_p(2),prim_p(5),prim_p(7), &
++                   prim_p(1),prim_p(3),prim_p(4),prim_p(2),prim_p(5),prim_p(6),prim_p(7), &
+                    prim_p(9),prim_p(10),prim_p(8),&
+                    xtemp,y_e_plus(i,j,k),&
+                    lamplus,gyyh,gyzh,gxyh,gzzh,gxzh,gxxh,&
+@@ -487,26 +487,26 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+           else if (flux_direction == 3) then
+             if(evolve_temper.ne.1) then
+               call eigenvaluesM(GRHydro_eos_handle,&
+-                   prim_m(1),prim_m(4),prim_m(2),prim_m(3),prim_m(5),prim_m(7), &
++                   prim_m(1),prim_m(4),prim_m(2),prim_m(3),prim_m(5),prim_m(6),prim_m(7), &
+                    prim_m(10),prim_m(8),prim_m(9),&
+                    lamminus,gzzh,gxzh,gyzh,gxxh,gxyh,gyyh,&
+-                   usendh,avg_alp,avg_beta)
++                   usendh,avg_alp,avg_beta)                                    
+               call eigenvaluesM(GRHydro_eos_handle, &
+-                   prim_p(1),prim_p(4),prim_p(2),prim_p(3),prim_p(5),prim_p(7), &
++                   prim_p(1),prim_p(4),prim_p(2),prim_p(3),prim_p(5),prim_p(6),prim_p(7), &
+                    prim_p(10),prim_p(8),prim_p(9),&
+                    lamplus,gzzh,gxzh,gyzh,gxxh,gxyh,gyyh,&
+                    usendh,avg_alp,avg_beta)
+             else
+               xtemp = temperature(i,j,k)
+               call eigenvaluesM_hot(GRHydro_eos_handle,i,j,k,&
+-                   prim_m(1),prim_m(4),prim_m(2),prim_m(3),prim_m(5),prim_m(7), &
++                   prim_m(1),prim_m(4),prim_m(2),prim_m(3),prim_m(5),prim_m(6),prim_m(7), &
+                    prim_m(10),prim_m(8),prim_m(9),&
+                    xtemp,y_e_minus(i+xoffset,j+yoffset,k+zoffset),&
+                    lamminus,gzzh,gxzh,gyzh,gxxh,gxyh,gyyh,&
+-                   usendh,avg_alp,avg_beta)
+-              xtemp = temperature(i,j,k)
++                   usendh,avg_alp,avg_beta)                                    
++              xtemp = temperature(i,j,k)                                       
+               call eigenvaluesM_hot(GRHydro_eos_handle,i,j,k,&
+-                   prim_p(1),prim_p(4),prim_p(2),prim_p(3),prim_p(5),prim_p(7), &
++                   prim_p(1),prim_p(4),prim_p(2),prim_p(3),prim_p(5),prim_p(6),prim_p(7), &
+                    prim_p(10),prim_p(8),prim_p(9),&
+                    xtemp,y_e_plus(i,j,k),&
+                    lamplus,gzzh,gxzh,gyzh,gxxh,gxyh,gyyh,&
+@@ -885,12 +885,12 @@ subroutine GRHydro_HLLE_TracerM(CCTK_ARGUMENTS)
+           
+         if (flux_direction == 1) then
+            call eigenvaluesM(GRHydro_eos_handle,&
+-                prim_m(1),prim_m(2),prim_m(3),prim_m(4),prim_m(5),prim_m(7), &
++                prim_m(1),prim_m(2),prim_m(3),prim_m(4),prim_m(5),prim_m(6),prim_m(7), &
+                 mag_m(1),mag_m(2),mag_m(3),&
+                 lamminus,gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,&
+-                usendh,avg_alp,avg_beta)
++                usendh,avg_alp,avg_beta)                                    
+            call eigenvaluesM(GRHydro_eos_handle, &
+-                prim_p(1),prim_p(2),prim_p(3),prim_p(4),prim_p(5),prim_p(7), &
++                prim_p(1),prim_p(2),prim_p(3),prim_p(4),prim_p(5),prim_p(6),prim_p(7), &
+                 mag_p(1),mag_p(2),mag_p(3),&
+                 lamplus,gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,&
+                 usendh,avg_alp,avg_beta)
+@@ -900,12 +900,12 @@ subroutine GRHydro_HLLE_TracerM(CCTK_ARGUMENTS)
+                 cons_tracerminus(i+xoffset,j+yoffset,k+zoffset,:)
+         else if (flux_direction == 2) then
+            call eigenvaluesM(GRHydro_eos_handle,&
+-                prim_m(1),prim_m(3),prim_m(4),prim_m(2),prim_m(5),prim_m(7), &
++                prim_m(1),prim_m(3),prim_m(4),prim_m(2),prim_m(5),prim_m(6),prim_m(7), &
+                 mag_m(2),mag_m(3),mag_m(1),&
+                 lamminus,gyyh,gyzh,gxyh,gzzh,gxzh,gxxh,&
+-                usendh,avg_alp,avg_beta)
++                usendh,avg_alp,avg_beta)                                    
+            call eigenvaluesM(GRHydro_eos_handle, &
+-                prim_p(1),prim_p(3),prim_p(4),prim_p(2),prim_p(5),prim_p(7), &
++                prim_p(1),prim_p(3),prim_p(4),prim_p(2),prim_p(5),prim_p(6),prim_p(7), &
+                 mag_p(2),mag_p(3),mag_p(1),&
+                 lamplus,gyyh,gyzh,gxyh,gzzh,gxzh,gxxh,&
+                 usendh,avg_alp,avg_beta)
+@@ -915,12 +915,12 @@ subroutine GRHydro_HLLE_TracerM(CCTK_ARGUMENTS)
+                 cons_tracerminus(i+xoffset,j+yoffset,k+zoffset,:)
+         else if (flux_direction == 3) then
+            call eigenvaluesM(GRHydro_eos_handle,&
+-                prim_m(1),prim_m(4),prim_m(2),prim_m(3),prim_m(5),prim_m(7), &
++                prim_m(1),prim_m(4),prim_m(2),prim_m(3),prim_m(5),prim_m(6),prim_m(7), &
+                 mag_m(3),mag_m(1),mag_m(2),&
+                 lamminus,gzzh,gxzh,gyzh,gxxh,gxyh,gyyh,&
+-                usendh,avg_alp,avg_beta)
++                usendh,avg_alp,avg_beta)                                    
+            call eigenvaluesM(GRHydro_eos_handle,&
+-                prim_p(1),prim_p(4),prim_p(2),prim_p(3),prim_p(5),prim_p(7), &
++                prim_p(1),prim_p(4),prim_p(2),prim_p(3),prim_p(5),prim_p(6),prim_p(7), &
+                 mag_p(3),mag_p(1),mag_p(2),&
+                 lamplus,gzzh,gxzh,gyzh,gxxh,gxyh,gyyh,&
+                 usendh,avg_alp,avg_beta)
+diff --git a/src/GRHydro_HLLE_AM.F90 b/src/GRHydro_HLLE_AM.F90
+index 319d946..fbde680 100644
+--- a/src/GRHydro_HLLE_AM.F90
++++ b/src/GRHydro_HLLE_AM.F90
+@@ -351,26 +351,26 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+           if (flux_direction == 1) then
+             if(evolve_temper.ne.1) then
+               call eigenvaluesM(GRHydro_eos_handle,&
+-                   prim_m(1),prim_m(2),prim_m(3),prim_m(4),prim_m(5),prim_m(7), &
++                   prim_m(1),prim_m(2),prim_m(3),prim_m(4),prim_m(5),prim_m(6),prim_m(7), &
+                    prim_m(8),prim_m(9),prim_m(10),&
+                    lamminus,gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,&
+-                   usendh,avg_alp,avg_beta)
++                   usendh,avg_alp,avg_beta)                                    
+               call eigenvaluesM(GRHydro_eos_handle, &
+-                   prim_p(1),prim_p(2),prim_p(3),prim_p(4),prim_p(5),prim_p(7), &
++                   prim_p(1),prim_p(2),prim_p(3),prim_p(4),prim_p(5),prim_p(6),prim_p(7), &
+                    prim_p(8),prim_p(9),prim_p(10),&
+                    lamplus,gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,&
+                    usendh,avg_alp,avg_beta)
+             else
+               xtemp = temperature(i,j,k)
+               call eigenvaluesM_hot(GRHydro_eos_handle,i,j,k,&
+-                   prim_m(1),prim_m(2),prim_m(3),prim_m(4),prim_m(5),prim_m(7), &
++                   prim_m(1),prim_m(2),prim_m(3),prim_m(4),prim_m(5),prim_m(6),prim_m(7), &
+                    prim_m(8),prim_m(9),prim_m(10),&
+                    xtemp,y_e_minus(i+xoffset,j+yoffset,k+zoffset),&
+                    lamminus,gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,&
+                    usendh,avg_alp,avg_beta)
+               xtemp = temperature(i,j,k)
+               call eigenvaluesM_hot(GRHydro_eos_handle,i,j,k,&
+-                   prim_p(1),prim_p(2),prim_p(3),prim_p(4),prim_p(5),prim_p(7), &
++                   prim_p(1),prim_p(2),prim_p(3),prim_p(4),prim_p(5),prim_p(6),prim_p(7), &
+                    prim_p(8),prim_p(9),prim_p(10),&
+                    xtemp,y_e_plus(i,j,k),&
+                    lamplus,gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,&
+@@ -403,26 +403,26 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+           else if (flux_direction == 2) then
+             if(evolve_temper.ne.1) then
+               call eigenvaluesM(GRHydro_eos_handle,&
+-                   prim_m(1),prim_m(3),prim_m(4),prim_m(2),prim_m(5),prim_m(7), &
++                   prim_m(1),prim_m(3),prim_m(4),prim_m(2),prim_m(5),prim_m(6),prim_m(7), &
+                    prim_m(9),prim_m(10),prim_m(8),&
+                    lamminus,gyyh,gyzh,gxyh,gzzh,gxzh,gxxh,&
+-                   usendh,avg_alp,avg_beta)
++                   usendh,avg_alp,avg_beta)                                    
+               call eigenvaluesM(GRHydro_eos_handle, &
+-                   prim_p(1),prim_p(3),prim_p(4),prim_p(2),prim_p(5),prim_p(7), &
++                   prim_p(1),prim_p(3),prim_p(4),prim_p(2),prim_p(5),prim_p(6),prim_p(7), &
+                    prim_p(9),prim_p(10),prim_p(8),&
+                    lamplus,gyyh,gyzh,gxyh,gzzh,gxzh,gxxh,&
+                    usendh,avg_alp,avg_beta)
+             else
+               xtemp = temperature(i,j,k)
+               call eigenvaluesM_hot(GRHydro_eos_handle,i,j,k,&
+-                   prim_m(1),prim_m(3),prim_m(4),prim_m(2),prim_m(5),prim_m(7), &
++                   prim_m(1),prim_m(3),prim_m(4),prim_m(2),prim_m(5),prim_m(6),prim_m(7), &
+                    prim_m(9),prim_m(10),prim_m(8),&
+                    xtemp,y_e_minus(i+xoffset,j+yoffset,k+zoffset),&
+                    lamminus,gyyh,gyzh,gxyh,gzzh,gxzh,gxxh,&
+-                   usendh,avg_alp,avg_beta)
+-              xtemp = temperature(i,j,k)
++                   usendh,avg_alp,avg_beta)                                    
++              xtemp = temperature(i,j,k)                                       
+               call eigenvaluesM_hot(GRHydro_eos_handle,i,j,k,&
+-                   prim_p(1),prim_p(3),prim_p(4),prim_p(2),prim_p(5),prim_p(7), &
++                   prim_p(1),prim_p(3),prim_p(4),prim_p(2),prim_p(5),prim_p(6),prim_p(7), &
+                    prim_p(9),prim_p(10),prim_p(8),&
+                    xtemp,y_e_plus(i,j,k),&
+                    lamplus,gyyh,gyzh,gxyh,gzzh,gxzh,gxxh,&
+@@ -455,26 +455,26 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+           else if (flux_direction == 3) then
+             if(evolve_temper.ne.1) then
+               call eigenvaluesM(GRHydro_eos_handle,&
+-                   prim_m(1),prim_m(4),prim_m(2),prim_m(3),prim_m(5),prim_m(7), &
++                   prim_m(1),prim_m(4),prim_m(2),prim_m(3),prim_m(5),prim_m(6),prim_m(7), &
+                    prim_m(10),prim_m(8),prim_m(9),&
+                    lamminus,gzzh,gxzh,gyzh,gxxh,gxyh,gyyh,&
+-                   usendh,avg_alp,avg_beta)
++                   usendh,avg_alp,avg_beta)                                    
+               call eigenvaluesM(GRHydro_eos_handle, &
+-                   prim_p(1),prim_p(4),prim_p(2),prim_p(3),prim_p(5),prim_p(7), &
++                   prim_p(1),prim_p(4),prim_p(2),prim_p(3),prim_p(5),prim_p(6),prim_p(7), &
+                    prim_p(10),prim_p(8),prim_p(9),&
+                    lamplus,gzzh,gxzh,gyzh,gxxh,gxyh,gyyh,&
+                    usendh,avg_alp,avg_beta)
+             else
+               xtemp = temperature(i,j,k)
+               call eigenvaluesM_hot(GRHydro_eos_handle,i,j,k,&
+-                   prim_m(1),prim_m(4),prim_m(2),prim_m(3),prim_m(5),prim_m(7), &
++                   prim_m(1),prim_m(4),prim_m(2),prim_m(3),prim_m(5),prim_m(6),prim_m(7), &
+                    prim_m(10),prim_m(8),prim_m(9),&
+                    xtemp,y_e_minus(i+xoffset,j+yoffset,k+zoffset),&
+                    lamminus,gzzh,gxzh,gyzh,gxxh,gxyh,gyyh,&
+-                   usendh,avg_alp,avg_beta)
+-              xtemp = temperature(i,j,k)
++                   usendh,avg_alp,avg_beta)                                    
++              xtemp = temperature(i,j,k)                                       
+               call eigenvaluesM_hot(GRHydro_eos_handle,i,j,k,&
+-                   prim_p(1),prim_p(4),prim_p(2),prim_p(3),prim_p(5),prim_p(7), &
++                   prim_p(1),prim_p(4),prim_p(2),prim_p(3),prim_p(5),prim_p(6),prim_p(7), &
+                    prim_p(10),prim_p(8),prim_p(9),&
+                    xtemp,y_e_plus(i,j,k),&
+                    lamplus,gzzh,gxzh,gyzh,gxxh,gxyh,gyyh,&
+@@ -842,12 +842,12 @@ subroutine GRHydro_HLLE_TracerAM(CCTK_ARGUMENTS)
+           
+         if (flux_direction == 1) then
+            call eigenvaluesM(GRHydro_eos_handle,&
+-                prim_m(1),prim_m(2),prim_m(3),prim_m(4),prim_m(5),prim_m(7), &
++                prim_m(1),prim_m(2),prim_m(3),prim_m(4),prim_m(5),prim_m(6),prim_m(7), &
+                 mag_m(1),mag_m(2),mag_m(3),&
+                 lamminus,gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,&
+-                usendh,avg_alp,avg_beta)
++                usendh,avg_alp,avg_beta)                                    
+            call eigenvaluesM(GRHydro_eos_handle, &
+-                prim_p(1),prim_p(2),prim_p(3),prim_p(4),prim_p(5),prim_p(7), &
++                prim_p(1),prim_p(2),prim_p(3),prim_p(4),prim_p(5),prim_p(6),prim_p(7), &
+                 mag_p(1),mag_p(2),mag_p(3),&
+                 lamplus,gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,&
+                 usendh,avg_alp,avg_beta)
+@@ -857,12 +857,12 @@ subroutine GRHydro_HLLE_TracerAM(CCTK_ARGUMENTS)
+                 cons_tracerminus(i+xoffset,j+yoffset,k+zoffset,:)
+         else if (flux_direction == 2) then
+            call eigenvaluesM(GRHydro_eos_handle,&
+-                prim_m(1),prim_m(3),prim_m(4),prim_m(2),prim_m(5),prim_m(7), &
++                prim_m(1),prim_m(3),prim_m(4),prim_m(2),prim_m(5),prim_m(6),prim_m(7), &
+                 mag_m(2),mag_m(3),mag_m(1),&
+                 lamminus,gyyh,gyzh,gxyh,gzzh,gxzh,gxxh,&
+-                usendh,avg_alp,avg_beta)
++                usendh,avg_alp,avg_beta)                                    
+            call eigenvaluesM(GRHydro_eos_handle, &
+-                prim_p(1),prim_p(3),prim_p(4),prim_p(2),prim_p(5),prim_p(7), &
++                prim_p(1),prim_p(3),prim_p(4),prim_p(2),prim_p(5),prim_p(6),prim_p(7), &
+                 mag_p(2),mag_p(3),mag_p(1),&
+                 lamplus,gyyh,gyzh,gxyh,gzzh,gxzh,gxxh,&
+                 usendh,avg_alp,avg_beta)
+@@ -872,12 +872,12 @@ subroutine GRHydro_HLLE_TracerAM(CCTK_ARGUMENTS)
+                 cons_tracerminus(i+xoffset,j+yoffset,k+zoffset,:)
+         else if (flux_direction == 3) then
+            call eigenvaluesM(GRHydro_eos_handle,&
+-                prim_m(1),prim_m(4),prim_m(2),prim_m(3),prim_m(5),prim_m(7), &
++                prim_m(1),prim_m(4),prim_m(2),prim_m(3),prim_m(5),prim_m(6),prim_m(7), &
+                 mag_m(3),mag_m(1),mag_m(2),&
+                 lamminus,gzzh,gxzh,gyzh,gxxh,gxyh,gyyh,&
+-                usendh,avg_alp,avg_beta)
++                usendh,avg_alp,avg_beta)                                    
+            call eigenvaluesM(GRHydro_eos_handle,&
+-                prim_p(1),prim_p(4),prim_p(2),prim_p(3),prim_p(5),prim_p(7), &
++                prim_p(1),prim_p(4),prim_p(2),prim_p(3),prim_p(5),prim_p(6),prim_p(7), &
+                 mag_p(3),mag_p(1),mag_p(2),&
+                 lamplus,gzzh,gxzh,gyzh,gxxh,gxyh,gyyh,&
+                 usendh,avg_alp,avg_beta)
+diff --git a/src/GRHydro_PPMM.F90 b/src/GRHydro_PPMM.F90
+index 017f472..8005137 100644
+--- a/src/GRHydro_PPMM.F90
++++ b/src/GRHydro_PPMM.F90
+@@ -247,7 +247,7 @@ trivial_rp = .true.
+                         det, agxx, agxy, agxz, agyy, agyz, agzz)
+       call eigenvaluesM(handle,&
+                  D_UPW(rho), D_UPW(velx), D_UPW(vely), D_UPW(velz), &
+-                 D_UPW(eps), D_UPW(w_lorentz),&
++                 D_UPW(eps), D_UPW(press), D_UPW(w_lorentz),&
+                  D_UPW(Bvcx), D_UPW(Bvcy), D_UPW(Bvcz), lam, &
+                  agxx, agxy, agxz, agyy, agyz, agzz, &
+                  uxx, D_UPW(alp), D_UPW(beta))
+-- 
+1.7.10.4
+

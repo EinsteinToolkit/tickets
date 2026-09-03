@@ -1,0 +1,41 @@
+diff -r 5e24c2216c10 Carpet/Carpet/param.ccl
+--- a/Carpet/Carpet/param.ccl	Thu Mar 08 13:34:56 2012 -0800
++++ b/Carpet/Carpet/param.ccl	Thu Mar 15 23:24:02 2012 -0700
+@@ -497,6 +497,10 @@
+   1:* :: "use this many threads"
+ } -1
+ 
++BOOLEAN cray_thread_affinity_hack "unfix threads from single core on Cray machines (Hopper/Kraken)"
++{
++} "no"
++
+ 
+ 
+ STRING grid_structure_filename "File name to output grid structure to (empty = no output)" STEERABLE=recover
+diff -r 5e24c2216c10 Carpet/Carpet/src/SetupGH.cc
+--- a/Carpet/Carpet/src/SetupGH.cc	Thu Mar 08 13:34:56 2012 -0800
++++ b/Carpet/Carpet/src/SetupGH.cc	Thu Mar 15 23:24:02 2012 -0700
+@@ -258,6 +258,23 @@
+                   "There are %g threads per process",
+                   1.0 * nthreads_total / nprocs);
+ #  endif
++      // hack to spread threads around
++#pragma omp parallel
++      if(cray_thread_affinity_hack)
++      { 
++      cpu_set_t mask;
++      sched_getaffinity(0, sizeof(mask), &mask);
++      for(int c = 0 ; c < CPU_SETSIZE ; c++) {
++        if(CPU_ISSET(c,&mask)) {
++          for(int d = 1 ; d < omp_get_num_threads() ; d++) {
++            CPU_SET(c+d,&mask);
++          }
++          break;
++        }
++      }
++      sched_setaffinity(0, sizeof(mask), &mask);
++      }
++
+ #else
+       CCTK_VInfo (CCTK_THORNSTRING,
+                   "OpenMP is disabled");

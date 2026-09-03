@@ -1,0 +1,72 @@
+From 0840db84834beb136ddfa4baf0c59853a260d3e6 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Tue, 29 May 2012 10:19:53 -0700
+Subject: [PATCH 02/11] CarpetLib: add self-copy logic to classes with pointer
+ members
+
+right now disabled by an assert
+---
+ Carpet/CarpetLib/src/bintree.cc                  |    3 +++
+ Carpet/CarpetLib/src/fulltree.cc                 |    3 +++
+ Carpet/CarpetLib/src/prolongate_3d_real8_eno.F90 |    2 +-
+ Carpet/CarpetLib/src/region.cc                   |    3 +++
+ 4 files changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/Carpet/CarpetLib/src/bintree.cc b/Carpet/CarpetLib/src/bintree.cc
+index db3b27e..59c1e0a 100644
+--- a/Carpet/CarpetLib/src/bintree.cc
++++ b/Carpet/CarpetLib/src/bintree.cc
+@@ -75,6 +75,9 @@ template <typename T, int D, typename P>
+ bintree<T,D,P> &
+ bintree<T,D,P>::operator= (bintree const & t)
+ {
++  assert (&t != this); // subtree delet handling is currently incorrect in this case
++  if (&t == this) return *this; // nothing to do
++
+   assert (invariant());
+   if (is_branch()) {
+     for (int i=0; i<2; ++i) {
+diff --git a/Carpet/CarpetLib/src/fulltree.cc b/Carpet/CarpetLib/src/fulltree.cc
+index d482691..202d59b 100644
+--- a/Carpet/CarpetLib/src/fulltree.cc
++++ b/Carpet/CarpetLib/src/fulltree.cc
+@@ -77,6 +77,9 @@ template <typename T, int D, typename P>
+ fulltree<T,D,P> &
+ fulltree<T,D,P>::operator= (fulltree const & t)
+ {
++  assert (&t != this); // subtree delet handling is currently incorrect in this case
++  if (&t == this) return *this; // nothing to do
++
+   assert (invariant());
+   if (is_branch()) {
+     for (size_t i=0; i<subtrees.size(); ++i) {
+diff --git a/Carpet/CarpetLib/src/prolongate_3d_real8_eno.F90 b/Carpet/CarpetLib/src/prolongate_3d_real8_eno.F90
+index d803ec2..fbff861 100644
+--- a/Carpet/CarpetLib/src/prolongate_3d_real8_eno.F90
++++ b/Carpet/CarpetLib/src/prolongate_3d_real8_eno.F90
+@@ -25,7 +25,7 @@ function eno1d(q)
+   implicit none
+ 
+   CCTK_REAL8 :: eno1d
+-  CCTK_REAL8 :: q(4)
++  CCTK_REAL8, INTENT(IN) :: q(4)
+   CCTK_REAL8 :: zero, one, two, three, six, half, eighth
+   parameter (zero = 0)
+   parameter (two = 2)
+diff --git a/Carpet/CarpetLib/src/region.cc b/Carpet/CarpetLib/src/region.cc
+index ea8572b..a709364 100644
+--- a/Carpet/CarpetLib/src/region.cc
++++ b/Carpet/CarpetLib/src/region.cc
+@@ -35,6 +35,9 @@ region_t::region_t (region_t const & a)
+ region_t &
+ region_t::operator= (region_t const & a)
+ {
++  assert(&a != this); // was not correctly handled before, see if it was actually used
++  if (&a == this) return *this; // nothing to do
++
+   assert (invariant());
+   if (processors != NULL) {
+     delete processors;
+-- 
+1.7.10.4
+

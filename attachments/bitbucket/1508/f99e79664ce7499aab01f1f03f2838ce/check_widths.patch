@@ -1,0 +1,199 @@
+Index: src/Boundary.h
+===================================================================
+--- src/Boundary.h	(revision 320)
++++ src/Boundary.h	(working copy)
+@@ -25,6 +25,11 @@
+                                    const CCTK_INT *, const CCTK_INT *);
+ 
+ 
++/* check boundary withd and abort if unlikely large (>100 points) */
++void BndSanityCheckWidths(const cGH *GH, CCTK_INT varindex,
++                          CCTK_INT dim, const CCTK_INT *boundary_widths,
++                          const char *bcname);
++
+ /* prototype for routine registed as providing 'None' boundary condition */
+ CCTK_INT BndNone(const cGH *GH, CCTK_INT num_vars, CCTK_INT *var_indicies, 
+                  CCTK_INT *faces, CCTK_INT *boundary_widths, CCTK_INT *table_handle);
+Index: src/Check.c
+===================================================================
+--- src/Check.c	(revision 320)
++++ src/Check.c	(working copy)
+@@ -17,6 +17,9 @@
+ #include "cctk.h"
+ #include "cctk_Arguments.h"
+ 
++#include <assert.h>
++#include <stdlib.h>
++
+ /* the rcs ID and its dummy function to use it */
+ static const char *rcsid = "$Header$";
+ CCTK_FILEVERSION(CactusBase_Boundary_Check_c);
+@@ -26,12 +29,6 @@
+ #define MAX_DIM 15
+ 
+ /********************************************************************
+- ********************    Prototypes   *******************************
+- ********************************************************************/
+-
+-void Boundary_Check(CCTK_ARGUMENTS);
+-
+-/********************************************************************
+  ********************    Scheduled Routines   ***********************
+  ********************************************************************/
+ 
+@@ -73,3 +70,71 @@
+                "these variable groups.");
+   }
+ }
++
++/********************************************************************
++ ********************* Externally visible helpers *******************
++ ********************************************************************/
++
++ /*@@
++   @routine    BndSanityCheckWidths
++   @date       Wed Dec 11 17:54:25 PST 2013
++   @author     Roland Haas
++   @desc
++               Checks that boundary width is less then 100 grid points. Aborts
++               if this is not the case since this likely points to a user
++               error.
++   @enddesc
++   @calls
++   @history
++   @endhistory
++   @var        GH
++   @vdesc      cctkGH *
++   @vtype      CCTK_POINTER_TO_CONST
++   @vio        in
++   @endvar
++   @var        varindex
++   @vdesc      Cactus variable to which symmetry is applid
++   @vtype      CCTK_INT
++   @vio        in
++   @endvar
++   @var        dim
++   @vdesc      Dimensionality of variable, there are 2*dim faces.
++   @vtype      CCTK_INT
++   @vio        int
++   @endvar
++   @var        boundary_widths
++   @vdesc      width of boundary at each face
++   @vtype      const CCTK_INT *
++   @vio        in
++   @endvar
++   @var        bcname
++   @vdesc      user readable name of Boundary condition
++   @vtype      const char *
++   @vio        in
++   @endvar
++   @returntype none
++   @returndesc
++               aborts on error
++   @endreturndesc
++@@*/
++void BndSanityCheckWidths(const cGH *GH,
++                          CCTK_INT varindex,
++                          CCTK_INT dim,
++                          const CCTK_INT *boundary_widths,
++                          const char *bcname)
++{
++  for (int i = 0; i < 2 * dim; i++)
++  {
++    if (boundary_widths[i] > 100)
++    {
++      char *fullname = CCTK_FullName (varindex);
++      const char dims[3] = "xyz";
++      assert (dim < sizeof(dims));
++      CCTK_VError (__LINE__, __FILE__, CCTK_THORNSTRING,
++                   "Tried to register a physical boundary condition \"%s\" for variable \"%s\" with a boundary zone width >100 in the %c direction -- this looks like an error.",
++                   bcname, fullname, dims[dim]);
++      free (fullname);
++    }
++  }
++}
++
+Index: src/CopyBoundary.c
+===================================================================
+--- src/CopyBoundary.c	(revision 320)
++++ src/CopyBoundary.c	(working copy)
+@@ -1142,6 +1142,9 @@
+     return (-3);
+   }
+ 
++  /* sanity check on width of boundary,  */
++  BndSanityCheckWidths(GH, first_var_to, gdim, widths, "Copy");
++
+   /* initialize arrays for variables with less dimensions than MAXDIM
+      so that we can use the INDEX_3D macro later on */
+   for (i = gdim; i < MAXDIM; i++)
+Index: src/FlatBoundary.c
+===================================================================
+--- src/FlatBoundary.c	(revision 320)
++++ src/FlatBoundary.c	(working copy)
+@@ -992,6 +992,9 @@
+     is_physical[i] = symbnd[i] < 0;
+   }
+ 
++  /* sanity check on width of boundary,  */
++  BndSanityCheckWidths(GH, first_var, gdim, widths, "Flat");
++
+   /* now loop over all variables */
+   for (var = first_var; var < first_var + num_vars; var++)
+   {
+Index: src/RadiationBoundary.c
+===================================================================
+--- src/RadiationBoundary.c	(revision 320)
++++ src/RadiationBoundary.c	(working copy)
+@@ -1502,6 +1502,9 @@
+     return (-3);
+   }
+ 
++  /* sanity check on width of boundary,  */
++  BndSanityCheckWidths(GH, first_var_to, gdim, widths, "Radiative");
++
+   /* Use next time level, if available */
+   timelvl_from = 0;
+   if (CCTK_MaxTimeLevelsVI(first_var_from) > 1)
+Index: src/RobinBoundary.c
+===================================================================
+--- src/RobinBoundary.c	(revision 320)
++++ src/RobinBoundary.c	(working copy)
+@@ -914,6 +914,9 @@
+     }
+   }
+ 
++  /* sanity check on width of boundary,  */
++  BndSanityCheckWidths(GH, first_var, gdim, in_widths, "Robin");
++
+   /* Robin boundaries need the underlying grid coordinates */
+   sprintf (coord_system_name, "cart%dd", gdim);
+   if (CCTK_CoordSystemHandle (coord_system_name) < 0)
+Index: src/ScalarBoundary.c
+===================================================================
+--- src/ScalarBoundary.c	(revision 320)
++++ src/ScalarBoundary.c	(working copy)
+@@ -1107,6 +1107,9 @@
+     return (-3);
+   }
+ 
++  /* sanity check on width of boundary,  */
++  BndSanityCheckWidths(GH, first_var, gdim, widths, "Scalar");
++
+   /* initialize arrays for variables with less dimensions than MAXDIM
+      so that we can use the INDEX_3D macro later on */
+   for (i = gdim; i < MAXDIM; i++)
+Index: src/StaticBoundary.c
+===================================================================
+--- src/StaticBoundary.c	(revision 320)
++++ src/StaticBoundary.c	(working copy)
+@@ -987,6 +987,9 @@
+     return (-3);
+   }
+ 
++  /* sanity check on width of boundary,  */
++  BndSanityCheckWidths(GH, first_var, gdim, widths, "Static");
++
+   /* initialize arrays for variables with less dimensions than MAXDIM
+      so that we can use the INDEX_3D macro later on */
+   for (i = gdim; i < MAXDIM; i++)

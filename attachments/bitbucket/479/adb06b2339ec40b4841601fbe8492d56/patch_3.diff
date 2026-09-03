@@ -1,0 +1,171 @@
+Mon May 23 12:02:27 EDT 2011  "Roland Haas" <roland.haas@physics.gatech.edu>
+  * visitCarpetHDF5: speed up metadata server
+  
+    speed up sorting of datasets by using a binary tree to translate from cycle
+    and variable name to timestep number and variable index. Gives about a factor
+    of 2 speedup for large files.
+diff -rN -u old-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C new-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C
+--- old-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C	2011-07-12 09:18:51.000000000 -0400
++++ new-tools/visitCarpetHDF5/avtCarpetHDF5FileFormat.C	2011-07-12 09:18:51.000000000 -0400
+@@ -42,6 +42,8 @@
+ #include <avtCarpetHDF5FileFormat.h>
+ 
+ #include <string>
++#include <map>
++#include <set>
+ #include <cassert>
+ #include <cstdlib>
+ 
+@@ -863,23 +865,16 @@
+    }
+       
+    // get number of times and cycles by browsing all available datasets of ALL files
++   std::set<int> cycle_seen;
+    for (int i=0; i < dsetnames.size(); i++)
+    {
+-      string str(dsetnames[i].name());
+-      
+-      // check if cycle has already been registered or not
+-      bool found = false;
+-      for (int j=0; j < cycles.size(); j++)
+-         if (dsetnames[i].cycle() == cycles[j])
+-         {
+-            found = true;
+-            break;
+-         }
++      bool found = cycle_seen.count(dsetnames[i].cycle());
+          
+       if (!found)
+       {
+          cycles.push_back(dsetnames[i].cycle());
+          times.push_back(dsetnames[i].time());
++         cycle_seen.insert(dsetnames[i].cycle());
+       }
+    }
+    n_timesteps = cycles.size();
+@@ -889,27 +884,16 @@
+    sort(times.begin(), times.end());
+    
+    // get varnames
++   std::set<string> varname_seen;
+    for (int i=0; i < dsetnames.size(); i++)
+    {
+-      string str(dsetnames[i].name());
+-      
+-      bool found = false;
+-      for (int j=0; j < varnames.size(); j++)
+-      {
+-         if (str.find(varnames[j]) != string::npos)
+-         {
+-            found = true;
+-            break;
+-         }
+-      }
++      // replacable by varnames.assign(varname_seen.begin(), varname_end())
++      bool found = varname_seen.count(dsetnames[i].varname());
+       if (!found)
+       {
+-         DataSet dataset = files[dsetnames[i].file_id()]->file->openDataSet(str.c_str());
+-         attrib = dataset.openAttribute("name");
+-         char tmp[1000];
+-         attrib.read(StrType(PredType::C_S1, str.size()), &tmp);
+-         varnames.push_back(tmp);
++         varnames.push_back(dsetnames[i].varname());
+          //varnames.back().replace(varnames.back().find("::"), 2, "--");
++         varname_seen.insert(dsetnames[i].varname());
+       }
+    }
+    
+@@ -925,25 +909,34 @@
+    // appropriate way
+    timesteps.resize(n_timesteps);
+    
++   // we could probably also replace these with some binary searches, but the
++   // maps are simpler to use and fulfill the same purpose
++   map<string,int> varmap;
++   map<int,int> cyclemap;
++   // for very large files, using dataset_entry* might be required
++   vector<vector<vector<dataset_entry> > > dsets_per_timestep_per_variable(timesteps.size());
++   for (int j=0; j < varnames.size(); j++)
++   {
++     varmap[varnames[j]] = j;
++   }
++   for (int it=0; it < cycles.size(); it++)
++   {
++     cyclemap[cycles[it]] = it;
++     dsets_per_timestep_per_variable[it].resize(varnames.size());
++   }
++   
++   for (int i=0; i < files.size(); i++)
++   {
++     for (int c=0; c < files[i]->dsetnames.size(); c++)
++     {
++       const int it = cyclemap[files[i]->dsetnames[c].cycle()];
++       const int j = varmap[files[i]->dsetnames[c].varname()];
++       dsets_per_timestep_per_variable[it][j].push_back(files[i]->dsetnames[c]);
++     }
++   }
+    for (int it=0; it < timesteps.size(); it++)
+    {
+-      vector<vector<dataset_entry> > dsets_per_timestep;
+-      
+-      dsets_per_timestep.resize(varnames.size());
+-      
+-      for (int i=0; i < files.size(); i++)
+-      {
+-         for (int j=0; j < varnames.size(); j++)
+-         {
+-            for (int c=0; c < files[i]->dsetnames.size(); c++)
+-            {
+-               if (files[i]->dsetnames[c].cycle() == cycles[it] &&
+-                   files[i]->dsetnames[c].varname() == varnames[j])
+-                   dsets_per_timestep[j].push_back(files[i]->dsetnames[c]);
+-            }
+-         }
+-      }
+-      timesteps[it] = timestep_t(dsets_per_timestep);
++      timesteps[it] = timestep_t(dsets_per_timestep_per_variable[it]);
+    }
+ }
+ 
+@@ -1175,24 +1168,26 @@
+    
+    for (int i=0; i < variables.size(); i++)
+       variables[i].resize(cycles.size());
++
++   // we could probably also replace these with some binary searches, but the
++   // maps are simpler to use and fulfill the same purpose
++   map<string,int> varmap;
++   map<int,int> cyclemap;
++   for (int j=0; j < varnames.size(); j++)
++   {
++     varmap[varnames[j]] = j;
++   }
++   for (int it=0; it < cycles.size(); it++)
++   {
++     cyclemap[cycles[it]] = it;
++   }
+    
+    // extract datasets
+    for (int i=0; i < dsetnames.size(); i++)
+    {
+-      string str(dsetnames[i].name());
+-      
+-      for (int j=0; j < varnames.size(); j++)
+-      {
+-         if (str.find(varnames[j]) != string::npos)
+-         {
+-            // put variable in the correct timestep "slot"
+-            for (int c=0; c < cycles.size(); ++c)
+-            {
+-               if (cycles[c] == dsetnames[i].cycle())
+-                  variables[j][c] = dsetnames[i];
+-            }
+-         }
+-      }
++      const int j = varmap[dsetnames[i].name()];
++      const int c = cyclemap[dsetnames[i].cycle()];
++      variables[j][c] = dsetnames[i];
+    }
+ }
+ 

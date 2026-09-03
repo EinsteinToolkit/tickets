@@ -1,0 +1,23 @@
+Index: src/make.configuration.defn
+===================================================================
+--- src/make.configuration.defn	(revision 123)
++++ src/make.configuration.defn	(working copy)
+@@ -2,4 +2,5 @@
+ 
+ # Define the relevant OpenMPI utilities
+ STD_MPI_UTILS = mpirun ompi-clean ompi-iof ompi-probe ompi-profiler ompi-ps ompi-server ompi-top ompi_info
+-ALL_UTILS += $(shell cd $(MPI_DIR)/bin 2>/dev/null && ls $(STD_MPI_UTILS:%=%*) 2>/dev/null)
++MPI_UTILS = $(shell cd $(MPI_DIR)/bin 2>/dev/null && ls $(STD_MPI_UTILS:%=%*) 2>/dev/null)
++ALL_UTILS += $(MPI_UTILS)
+Index: src/make.configuration.deps
+===================================================================
+--- src/make.configuration.deps	(revision 123)
++++ src/make.configuration.deps	(working copy)
+@@ -1,6 +1,6 @@
+ # make.configuration.deps file for thorn MPI
+ 
+-$(UTIL_DIR)/%: $(MPI_DIR)/bin/%
++$(patsubst %,$(UTIL_DIR)/%,$(MPI_UTILS)): $(UTIL_DIR)/% : $(MPI_DIR)/bin/%
+ 	@echo "Copying $* from $< to $(UTIL_DIR)"
+ 	-$(MKDIR) $(MKDIRFLAGS) $(UTIL_DIR) 2> /dev/null
+ 	cp $< $@

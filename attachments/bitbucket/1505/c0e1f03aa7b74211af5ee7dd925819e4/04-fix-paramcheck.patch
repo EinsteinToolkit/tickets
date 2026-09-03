@@ -1,0 +1,57 @@
+Index: MoL/src/ParamCheck.c
+===================================================================
+--- MoL.orig/src/ParamCheck.c	2014-02-12 22:09:03.067165254 -0800
++++ MoL/src/ParamCheck.c	2014-02-12 23:52:15.239393525 -0800
+@@ -143,7 +143,7 @@
+   }
+ 
+   if ( (CCTK_Equals(ODE_Method, "RK45") || CCTK_Equals(ODE_Method, "RK45CK")) &&
+-       ( !((MoL_Intermediate_Steps == 6)||(MoL_Num_Scratch_Levels > 5)) ) )
++       ( !((MoL_Intermediate_Steps == 6)&&(MoL_Num_Scratch_Levels > 5)) ) )
+   {
+     CCTK_PARAMWARN("When using the RK45 or RK45CK evolver, the "
+                    "number of intermediate steps must be 6 " 
+@@ -151,7 +151,7 @@
+   }
+ 
+   if ( (CCTK_Equals(ODE_Method, "RK65")) &&
+-       ( !((MoL_Intermediate_Steps == 8)||(MoL_Num_Scratch_Levels > 7)) ) )
++       ( !((MoL_Intermediate_Steps == 8)&&(MoL_Num_Scratch_Levels > 7)) ) )
+   {
+     CCTK_PARAMWARN("When using the RK65 evolver the "
+                    "number of intermediate steps must be 8 " 
+@@ -159,7 +159,7 @@
+   }
+ 
+   if ( (CCTK_Equals(ODE_Method, "RK87")) &&
+-       ( !((MoL_Intermediate_Steps == 13)||(MoL_Num_Scratch_Levels > 12)) ) )
++       ( !((MoL_Intermediate_Steps == 13)&&(MoL_Num_Scratch_Levels > 12)) ) )
+   {
+     CCTK_PARAMWARN("When using the RK87 evolver the "
+                    "number of intermediate steps must be 13 " 
+@@ -172,19 +172,22 @@
+                    "number of intermediate steps must be 1");
+   }
+ 
+-  if ( (CCTK_Equals(ODE_Method, "RK2-MR-2:1"))&&( !((MoL_Intermediate_Steps == 5) || (MoL_Num_Scratch_Levels > 4))) )
++  if ( (CCTK_Equals(ODE_Method, "RK2-MR-2:1"))&&
++       ( !((MoL_Intermediate_Steps == 5) && (MoL_Num_Scratch_Levels > 4))) )
+   {
+     CCTK_PARAMWARN("When using the multirate 2-1 RK2 evolver the "
+                    "number of intermediate steps must be 5 and the number of scratch levels at least 5");
+   }
+ 
+-  if ( (CCTK_Equals(ODE_Method, "RK4-MR-2:1"))&&( !((MoL_Intermediate_Steps == 10) || (MoL_Num_Scratch_Levels > 9))) )
++  if ( (CCTK_Equals(ODE_Method, "RK4-MR-2:1"))&&
++       ( !((MoL_Intermediate_Steps == 10) && (MoL_Num_Scratch_Levels > 9))) )
+   {
+     CCTK_PARAMWARN("When using the multirate 2-1 RK4 evolver the "
+                    "number of intermediate steps must be 10 and the number of scratch levels at least 10");
+   }
+ 
+-  if ( (CCTK_Equals(ODE_Method, "RK4-RK2"))&&( !((MoL_Intermediate_Steps == 4) || (MoL_Num_Scratch_Levels > 0))) )
++  if ( (CCTK_Equals(ODE_Method, "RK4-RK2"))&&
++       ( !((MoL_Intermediate_Steps == 4) && (MoL_Num_Scratch_Levels > 0))) )
+   {
+     CCTK_PARAMWARN("When using the multirate RK4-RK2 evolver the "
+                    "number of intermediate steps must be 4 and the number of scratch levels at least 1");

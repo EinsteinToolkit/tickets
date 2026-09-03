@@ -1,0 +1,22 @@
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 419)
++++ schedule.ccl	(working copy)
+@@ -1339,7 +1339,7 @@
+ 
+ if (CCTK_Equals(Bvec_evolution_method,"GRHydro"))
+ {
+-  schedule GRHydro_TmunuM IN AddToTmunu
++  schedule GRHydro_TmunuM IN AddToTmunu IF TmunuBase::stress_energy_state
+   {
+     LANG: Fortran
+   } "Compute the energy-momentum tensor - MHD version"
+@@ -1354,7 +1354,7 @@
+   }
+ 
+ } else {
+-  schedule GRHydro_Tmunu IN AddToTmunu 
++  schedule GRHydro_Tmunu IN AddToTmunu IF TmunuBase::stress_energy_state
+   {
+     LANG: Fortran
+  } "Compute the energy-momentum tensor"

@@ -1,0 +1,33 @@
+From 8d958f61276158594a978d3577dc34ccd68e3f66 Mon Sep 17 00:00:00 2001
+From: Christian David Ott <cott@zwicky.(none)>
+Date: Sat, 11 May 2013 23:16:58 -0700
+Subject: [PATCH 13/24] GRHydro: small cosmetic change to Con2PrimHot
+
+---
+ src/GRHydro_Con2PrimHot.F90 |    6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/src/GRHydro_Con2PrimHot.F90 b/src/GRHydro_Con2PrimHot.F90
+index 0d7015d..5725e18 100644
+--- a/src/GRHydro_Con2PrimHot.F90
++++ b/src/GRHydro_Con2PrimHot.F90
+@@ -229,11 +229,15 @@ subroutine Conservative2PrimitiveHot(CCTK_ARGUMENTS)
+              ! Now reset this point to minimum temperature.
+              GRHydro_C2P_failed(i,j,k) = 0
+              !$OMP CRITICAL
+-             write(warnline,"(A10,i7,4i3,1P10E15.6)") "reset T:",&
++             write(warnline,"(A10,i7,4i5,1P10E15.6)") "reset T:",&
+                   cctk_iteration,GRHydro_Reflevel,&
+                   i,j,k,rho(i,j,k),&
+                   eps(i,j,k),temperature(i,j,k),y_e(i,j,k)
+              call CCTK_WARN(1,warnline)
++             write(warnline,"(A10,i7,4i5,1P10E15.6)") "reset T:",&
++                  cctk_iteration,GRHydro_Reflevel,&
++                  i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),r(i,j,k)
++             call CCTK_WARN(1,warnline)
+              !$OMP END CRITICAL
+              temperature(i,j,k) = GRHydro_hot_atmo_temp
+              keytemp = 1
+-- 
+1.7.10.4
+

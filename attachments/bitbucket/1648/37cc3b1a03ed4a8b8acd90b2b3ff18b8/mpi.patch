@@ -1,0 +1,580 @@
+Index: configuration.ccl
+===================================================================
+--- configuration.ccl	(revision 41)
++++ configuration.ccl	(working copy)
+@@ -2,7 +2,7 @@
+ 
+ PROVIDES MPI
+ {
+-  SCRIPT configure.sh
+-  LANG bash
+-  OPTIONS MPI MPI_DIR MPI_INC_DIRS MPI_LIB_DIRS MPI_LIBS MPI_INSTALL_DIR
++  SCRIPT configure.pl
++  LANG perl
++  OPTIONS MPI MPI_DIR MPI_INC_DIRS MPI_LIB_DIRS MPI_LIBS MPI_INSTALL_DIR CACTUS_EXT_INSTALL_DIR
+ }
+Index: configure.pl
+===================================================================
+--- configure.pl	(revision 0)
++++ configure.pl	(working copy)
+@@ -0,0 +1,306 @@
++#!/usr/bin/perl
++use Carp;
++use strict;
++use FileHandle;
++use Cwd;
++$/ = undef;
++
++# Used by pushd/popd
++my @push_dirs = ();
++
++# Used by begin/end message
++my @messages = ();
++
++# Used by sys()
++my $aborted = 0;
++
++################################################################################
++# Prepare
++################################################################################
++
++# Set up shell
++my $verbose = 0;
++$verbose = 1 if($ENV{VERBOSE} =~ /^yes$/i);
++
++################################################################################
++# Check for old mechanism
++################################################################################
++
++if(defined($ENV{MPI})) {
++    begin_message("ERROR");
++    print "Setting the option \"MPI\" is incompatible with the MPI thorn. Please remove the option MPI=$ENV{MPI}.\n";
++    end_message();
++    exit 2;
++}
++
++my $info = undef;
++my $mpi_found = 0;
++my $mpi_dir = undef;
++my $mpi_cmd = undef;
++
++################################################################################
++# Build
++################################################################################
++
++if($ENV{MPI_DIR} eq "BUILD") {
++
++# check for required tools. Do this here so that we don't require them when
++# using the system library
++  unless(defined($ENV{TAR}) and $ENV{TAR} =~ /\S/ and -x which($ENV{TAR})) {
++    begin_message("ERROR");
++    print "ENV{TAR}=$ENV{TAR}\n";
++    print "Could not find tar command. Please make sure that (gnu) tar is present\n";
++    print "and that the TAR variable is set to its location.\n";
++    end_message();
++    exit 3;
++  }
++  unless(defined($ENV{PATCH}) and $ENV{PATCH} =~ /\S/ and -x which($ENV{PATCH})) {
++    begin_message("ERROR");
++    print "Could not find patch command. Please make sure that (gnu) patch is present\n";
++    print "and that the PATCH variable is set to its location.\n";
++    end_message();
++    exit 4;
++  }
++
++# Set locations
++  my $THORN="MPI";
++  my $NAME="openmpi-1.6.5";
++  #my $NAME=openmpi-1.7.1
++  my $INSTALL_DIR = undef;
++  my $BUILD_DIR = undef;
++  my $SRCDIR = $0;
++  $SRCDIR =~ s{(.*)/.*}{$1};
++  ${BUILD_DIR}=$ENV{SCRATCH_BUILD}."/build/".${THORN};
++  if($ENV{MPI_INSTALL_DIR} eq "CONFIGS") {
++    $INSTALL_DIR = "$ENV{SCRATCH_BUILD}/external/${THORN}";
++  } elsif(defined($ENV{MPI_INSTALL_DIR}) and $ENV{MPI_INSTALL_DIR} =~ /\S/) {
++    $INSTALL_DIR = "$ENV{MPI_INSTALL_DIR}/${THORN}";
++  } elsif(defined($ENV{CACTUS_EXT_INSTALL_DIR}) and $ENV{CACTUS_EXT_INSTALL_DIR} =~ /\S/) {
++    $INSTALL_DIR = "$ENV{CACTUS_EXT_INSTALL_DIR}/${THORN}";
++  } else {
++    begin_message("ERROR");
++    print "You specified MPI_DIR=BUILD, but did not specify MPI_INSTALL_DIR\n";
++    print "or CACTUS_EXT_INSTALL_DIR. If you really wish to build under the configs\n";
++    print "directory. Please specify MPI_INSTALL_DIR=CONFIGS.\n";
++    end_message();
++    exit 7;
++  }
++  $INSTALL_DIR =~ s/^\~\//$ENV{HOME}\//g;
++  $INSTALL_DIR =~ s/\$(?:{(\w+)}|(\w+))/$ENV{$1.$2}/ge;
++  message("Installing MPI into ${INSTALL_DIR}");
++  my $DONE_FILE=${INSTALL_DIR}."/done_".${THORN};
++  $mpi_dir=${INSTALL_DIR};
++
++  # Setting $mpi_cmd enables the generic
++  # search method below to configure the
++  # various MPI variables.
++  $mpi_cmd=$mpi_dir."/bin/mpicc";
++
++  if(-r ${DONE_FILE}) {
++    message("MPI has already been built; doing nothing");
++  } else {
++    message("Building MPI");
++    message("Using bundled MPI...");
++
++    chdir($ENV{SCRATCH_BUILD});
++
++# Set up environment
++# Disable ccache: remove "ccache" and all options that follow
++# Note: we can use only basic sed regexps here
++#export CC=$(echo '' ${CC} '' |
++#    sed -e 's/ ccache  *\(-[^ ]*  *\)*/ /g;s/^ //;s/ $//')
++#export CXX=$(echo '' ${CXX} '' |
++#    sed -e 's/ ccache  *\(-[^ ]*  *\)*/ /g;s/^ //;s/ $//')
++    $ENV{CC} =~ s/ ccache .*//;
++    $ENV{CXX} =~ s/ ccache .*//;
++    if($ENV{F90} =~ /none/) {
++      message("No Fortran 90 compiler available. Building MPI library without Fortran support.");
++      $ENV{FC}=undef;
++      $ENV{FCFLAGS}=undef;
++    } else {
++      $ENV{FC} = $ENV{F90};
++      $ENV{FCFLAGS} = $ENV{F90FLAGS};
++    }
++    $ENV{LIBS}=undef;
++    $ENV{RPATH}=undef;
++    if($ENV{ARFLAGS} =~ /64/) {
++      $ENV{OBJECT_MODE}="64";
++    }
++
++    message("MPI: Preparing directory structure...");
++    mkdir("external");
++    mkdir("done");
++    sys("rm -rf ${BUILD_DIR} ${INSTALL_DIR}");
++    mkdir(${BUILD_DIR});
++    mkdir(${INSTALL_DIR});
++    $mpi_dir = $ENV{MPI_DIR} = ${INSTALL_DIR};
++
++    message("MPI: Unpacking archive...");
++    pushd(${BUILD_DIR});
++    sys("$ENV{TAR} xzf ${SRCDIR}/dist/${NAME}.tar.gz");
++    sys("$ENV{PATCH} -p0 < ${SRCDIR}/dist/default_outfile-1.6.5.patch");
++    chdir(${NAME});
++    sys("$ENV{PATCH} -p0 < ${SRCDIR}/dist/cuda_build_fix__svn29754");
++
++    message("MPI: Configuring...");
++# Cannot have a memory manager with a static library on some
++# systems (e.g. Linux); see
++# <http://www.open-mpi.org/faq/?category=mpi-apps#static-mpi-apps>
++    sys("./configure --prefix=$ENV{MPI_DIR} --without-memory-manager --without-libnuma --enable-shared=no --enable-static=yes");
++
++    message("MPI: Building...");
++    sys("$ENV{MAKE}");
++
++    message("MPI: Installing...");
++    sys("$ENV{MAKE} install");
++    popd();
++
++    message("MPI: Cleaning up...");
++    sys("rm -rf ${BUILD_DIR}");
++
++    sys("date > ${DONE_FILE}");
++    message("MPI: Done.");
++  }
++}
++
++################################################################################
++# Search
++################################################################################
++if(!defined($mpi_dir)) {
++  message("MPI selected, but MPI_DIR is not correctly set. Computing settings...");
++  $mpi_cmd = which("mpicc");
++  if(defined($mpi_cmd)) {
++    $mpi_dir = $mpi_cmd;
++    $mpi_dir =~ s{/mpicc$}{};
++    $mpi_dir =~ s{/bin$}{};
++    message("Found mpicc at $mpi_cmd!");
++  }
++}
++
++if($ENV{MPI_DIR} eq "NONE") {
++  message("MPI is disabled by explicit request");
++  exit 0;
++} elsif(defined($mpi_dir)) {
++  if(defined($mpi_cmd)) {
++    my $fd = new FileHandle;
++    open($fd,"$mpi_cmd -compile_info 2>/dev/null|");
++    $info = <$fd>;
++    close($fd);
++    if($info eq "") {
++      open($fd,"$mpi_cmd --showme 2>/dev/null|");
++      $info = <$fd>;
++      close($fd);
++    }
++    if($info eq "") {
++      open($fd,"sh -x $mpi_cmd /dev/null 2>/dev/null|");
++      my $contents = <$fd>;
++      if($contents =~ /\w+cc.*-I\/.*-lmpi.*/) {
++        $info = $&;
++      }
++    }
++    if($info =~ /^\s*$/) {
++      $mpi_found = 0;
++    } else {
++      $mpi_found = 1;
++    }
++  }
++}
++
++if($mpi_found) {
++  my @libdirs = ();
++  my @incdirs = ();
++  my @libs = ();
++  while($info =~ /\s-L\s*(\S+)/g) {
++    push @libdirs, $1;
++  }
++  while($info =~ /\s-I\s*(\S+)/g) {
++    push @incdirs, $1;
++  }
++  while($info =~ /\s-l(\w+)/g) {
++    push @libs, $1;
++  }
++
++  $ENV{MPI_DIR}=$mpi_dir;
++  $ENV{MPI_INC_DIRS}=join(" ",@incdirs);
++  $ENV{MPI_LIB_DIRS}=join(" ",@libdirs);
++  $ENV{MPI_LIBS}=join(" ",@libs);
++
++  message("Successfully configured MPI.");
++} else {
++  message("MPI could not be configured.");
++}
++
++################################################################################
++# Configure Cactus
++################################################################################
++
++# Pass options to Cactus
++
++begin_message("DEFINE");
++print "CCTK_MPI 1\n";
++print "HAVE_MPI 1\n";
++end_message();
++
++begin_message("MAKE_DEFINITION");
++print "CCTK_MPI     = 1\n";
++print "HAVE_MPI     = 1\n";
++print "MPI_DIR      = $ENV{MPI_DIR}\n";
++print "MPI_INC_DIRS = $ENV{MPI_INC_DIRS}\n";
++print "MPI_LIB_DIRS = $ENV{MPI_LIB_DIRS}\n";
++print "MPI_LIBS     = $ENV{MPI_LIBS}\n";
++end_message();
++
++# These must be magic
++print "INCLUDE_DIRECTORY \$(MPI_INC_DIRS)\n";
++print "LIBRARY_DIRECTORY \$(MPI_LIB_DIRS)\n";
++print "LIBRARY           \$(MPI_LIBS)\n";
++
++################################################################################
++# Functions
++################################################################################
++
++sub pushd {
++  push @push_dirs, Cwd::getcwd();
++  chdir(shift);
++}
++sub popd {
++  chdir(shift @push_dirs);
++}
++sub which {
++  my $cmd = shift;
++  for my $path (split(/:/,$ENV{PATH})) {
++    my $full_cmd = $path."/".$cmd;
++    if(-x $full_cmd) {
++      return $full_cmd;
++    }
++  }
++  return undef;
++}
++
++sub sys {
++  my $cmd = shift;
++  return unless($aborted == 0);
++  $aborted = system("$cmd 1>&2");
++}
++
++sub message {
++  my $msg = shift;
++  $msg =~ s/\n$//;
++  begin_message();
++  print $msg,"\n";
++  end_message();
++}
++sub begin_message {
++  my $msg = shift;
++  $msg = "MESSAGE" unless(defined($msg));
++  Carp::carp() unless(defined($msg));
++  Carp::carp() unless(length($msg)>3);
++  push @messages, $msg;
++  print "BEGIN $msg\n" if($#messages == 0);
++}
++sub end_message {
++  my $msg = pop @messages;
++  Carp::carp() unless(defined($msg));
++  Carp::carp() unless(length($msg)>3);
++  print "END $msg\n" if($#messages < 0);
++}
+Index: configure.sh
+===================================================================
+--- configure.sh	(revision 41)
++++ configure.sh	(working copy)
+@@ -1,249 +0,0 @@
+-#! /bin/bash
+-
+-################################################################################
+-# Prepare
+-################################################################################
+-
+-# Set up shell
+-if [ "$(echo ${VERBOSE} | tr '[:upper:]' '[:lower:]')" = 'yes' ]; then
+-    set -x                      # Output commands
+-fi
+-set -e                          # Abort on errors
+-
+-
+-
+-################################################################################
+-# Check for old mechanism
+-################################################################################
+-
+-if [ -n "${MPI}" ]; then
+-    echo 'BEGIN ERROR'
+-    echo "Setting the option \"MPI\" is incompatible with the MPI thorn. Please remove the option MPI=${MPI}."
+-    echo 'END ERROR'
+-    exit 1
+-fi
+-
+-
+-
+-################################################################################
+-# Search
+-################################################################################
+-
+-if [ -z "${MPI_DIR}" ]; then
+-    echo "BEGIN MESSAGE"
+-    echo "MPI selected, but MPI_DIR not set. Checking some places..."
+-    echo "END MESSAGE"
+-    
+-    FILES="include/mpi.h lib/libmpi.a"
+-    DIRS="/usr /usr/local /usr/local/mpi /usr/local/packages/mpi /usr/local/apps/mpi /opt/local /usr/lib/openmpi ${HOME} ${HOME}/mpi c:/packages/mpi"
+-    for dir in $DIRS; do
+-        MPI_DIR="$dir"
+-        for file in $FILES; do
+-            if [ ! -r "$dir/$file" ]; then
+-                unset MPI_DIR
+-                break
+-            fi
+-        done
+-        if [ -n "$MPI_DIR" ]; then
+-            break
+-        fi
+-    done
+-    
+-    if [ -z "${MPI_DIR}" -a -z "${MPI_INC_DIRS}" ]; then
+-        # MacPorts OpenMPI
+-        if [ -r /opt/local/include/openmpi/mpi.h -a     \
+-             -r /opt/local/lib/libmpi.dylib -a          \
+-             -r /opt/local/lib/libmpi_cxx.dylib ];      \
+-        then
+-            MPI_DIR=/opt/local
+-            MPI_INC_DIRS=/opt/local/include/openmpi
+-            MPI_LIB_DIRS=/opt/local/lib
+-        fi
+-    fi
+-
+-    if [ -z "$MPI_DIR" ]; then
+-        echo "BEGIN MESSAGE"
+-        echo "MPI not found"
+-        echo "END MESSAGE"
+-    else
+-        echo "BEGIN MESSAGE"
+-        echo "Found MPI in ${MPI_DIR}"
+-        echo "END MESSAGE"
+-    fi
+-fi
+-
+-
+-
+-################################################################################
+-# Build
+-################################################################################
+-
+-if [ -z "${MPI_DIR}"                                            \
+-     -o "$(echo "${MPI_DIR}" | tr '[a-z]' '[A-Z]')" = 'BUILD' ]
+-then
+-    echo "BEGIN MESSAGE"
+-    echo "Using bundled MPI..."
+-    echo "END MESSAGE"
+-    
+-    # check for required tools. Do this here so that we don't require them when
+-    # using the system library
+-    if [ x$TAR = x ] ; then
+-      echo 'BEGIN ERROR'
+-      echo 'Could not find tar command. Please make sure that (gnu) tar is present'
+-      echo 'and that the TAR variable is set to its location.'
+-      echo 'END ERROR'
+-      exit 1
+-    fi
+-    if [ x$PATCH = x ] ; then
+-      echo 'BEGIN ERROR'
+-      echo 'Could not find patch command. Please make sure that (gnu) tar is present'
+-      echo 'and that the PATCH variable is set to its location.'
+-      echo 'END ERROR'
+-      exit 1
+-    fi
+-
+-    # Set locations
+-    THORN=MPI
+-    NAME=openmpi-1.6.5
+-    #NAME=openmpi-1.7.1
+-    SRCDIR=$(dirname $0)
+-    BUILD_DIR=${SCRATCH_BUILD}/build/${THORN}
+-    if [ -z "${MPI_INSTALL_DIR}"]; then
+-        INSTALL_DIR=${SCRATCH_BUILD}/external/${THORN}
+-    else
+-        echo "BEGIN MESSAGE"
+-        echo "Installing MPI into ${MPI_INSTALL_DIR} "
+-        echo "END MESSAGE"
+-        INSTALL_DIR=${MPI_INSTALL_DIR}
+-    fi
+-    DONE_FILE=${SCRATCH_BUILD}/done/${THORN}
+-    MPI_DIR=${INSTALL_DIR}
+-    
+-    if [ -e ${DONE_FILE} -a ${DONE_FILE} -nt ${SRCDIR}/dist/${NAME}.tar.gz \
+-                         -a ${DONE_FILE} -nt ${SRCDIR}/configure.sh ]
+-    then
+-        echo "BEGIN MESSAGE"
+-        echo "MPI has already been built; doing nothing"
+-        echo "END MESSAGE"
+-    else
+-        echo "BEGIN MESSAGE"
+-        echo "Building MPI"
+-        echo "END MESSAGE"
+-        
+-        # Build in a subshell
+-        (
+-        exec >&2                # Redirect stdout to stderr
+-        if [ "$(echo ${VERBOSE} | tr '[:upper:]' '[:lower:]')" = 'yes' ]; then
+-            set -x              # Output commands
+-        fi
+-        set -e                  # Abort on errors
+-        cd ${SCRATCH_BUILD}
+-        
+-        # Set up environment
+-        # Disable ccache: remove "ccache" and all options that follow
+-        # Note: we can use only basic sed regexps here
+-        export CC=$(echo '' ${CC} '' |
+-            sed -e 's/ ccache  *\(-[^ ]*  *\)*/ /g;s/^ //;s/ $//')
+-        export CXX=$(echo '' ${CXX} '' |
+-            sed -e 's/ ccache  *\(-[^ ]*  *\)*/ /g;s/^ //;s/ $//')
+-        if [ "${F90}" = "none" ]; then
+-            echo 'BEGIN MESSAGE'
+-            echo 'No Fortran 90 compiler available. Building MPI library without Fortran support.'
+-            echo 'END MESSAGE'
+-            unset FC
+-            unset FCFLAGS
+-        else
+-            export FC="${F90}"
+-            export FCFLAGS="${F90FLAGS}"
+-        fi
+-        export LDFLAGS
+-        unset LIBS
+-        unset RPATH
+-        if echo '' ${ARFLAGS} | grep 64 > /dev/null 2>&1; then
+-            export OBJECT_MODE=64
+-        fi
+-        
+-        echo "MPI: Preparing directory structure..."
+-        mkdir build external done 2> /dev/null || true
+-        rm -rf ${BUILD_DIR} ${INSTALL_DIR}
+-        mkdir ${BUILD_DIR} ${INSTALL_DIR}
+-        
+-        echo "MPI: Unpacking archive..."
+-        pushd ${BUILD_DIR}
+-        ${TAR?} xzf ${SRCDIR}/dist/${NAME}.tar.gz
+-        ${PATCH?} -p0 < ${SRCDIR}/dist/default_outfile-1.6.5.patch
+-        cd ${NAME}
+-        ${PATCH?} -p0 < ${SRCDIR}/dist/cuda_build_fix__svn29754
+-        
+-        echo "MPI: Configuring..."
+-        # Cannot have a memory manager with a static library on some
+-        # systems (e.g. Linux); see
+-        # <http://www.open-mpi.org/faq/?category=mpi-apps#static-mpi-apps>
+-        ./configure --prefix=${MPI_DIR} --without-memory-manager --without-libnuma --enable-shared=no --enable-static=yes
+-        
+-        echo "MPI: Building..."
+-        ${MAKE}
+-        
+-        echo "MPI: Installing..."
+-        ${MAKE} install
+-        popd
+-        
+-        echo "MPI: Cleaning up..."
+-        rm -rf ${BUILD_DIR}
+-        
+-        date > ${DONE_FILE}
+-        echo "MPI: Done."
+-        )
+-        
+-        if (( $? )); then
+-            echo 'BEGIN ERROR'
+-            echo 'Error while building MPI. Aborting.'
+-            echo 'END ERROR'
+-            exit 1
+-        fi
+-    fi
+-    
+-fi
+-
+-
+-
+-################################################################################
+-# Configure Cactus
+-################################################################################
+-
+-# Set options
+-
+-# use mpic++ if available
+-if [ -x ${MPI_DIR}/bin/mpic++ ]; then
+-    if ${MPI_DIR}/bin/mpic++ --showme:libs > /dev/null 2>&1; then
+-        : ${MPI_INC_DIRS="$(echo '' $(${MPI_DIR}/bin/mpic++ --showme:incdirs) '' | sed -e 's+\( \|^\)/include\( \|$\)++g;s+\( \|^\)/use/include\( \|$\)+ +g;s+\( \|^\)/usr/local/include\( \|$\)+ +g')"}
+-        : ${MPI_LIB_DIRS="$(echo '' $(${MPI_DIR}/bin/mpic++ --showme:libdirs) '' | sed -e 's+\( \|^\)/lib\( \|$\)+ +g;s+\( \|^\)/lib64\( \|$\)+ +g;s+\( \|^\)/usr/lib\( \|$\)+ +g;s+\( \|^\)/usr/lib64\( \|$\)+ +g;s+\( \|^\)/usr/local/lib\( \|$\)+ +g;s+\( \|^\)/usr/local/lib64\( \|$\)+ +g')"}
+-        : ${MPI_LIBS="$(echo '' $(${MPI_DIR}/bin/mpic++ --showme:libs) '')"}
+-    fi
+-fi
+-
+-if [ "${MPI_DIR}" != '/usr' -a "${MPI_DIR}" != '/usr/local' ]; then
+-    : ${MPI_INC_DIRS="${MPI_DIR}/include"}
+-    : ${MPI_LIB_DIRS="${MPI_DIR}/lib"}
+-fi
+-: ${MPI_LIBS='mpi mpi_cxx'}
+-
+-# Pass options to Cactus
+-
+-echo "BEGIN DEFINE"
+-echo "CCTK_MPI 1"
+-echo "HAVE_MPI 1"
+-echo "END DEFINE"
+-
+-echo "BEGIN MAKE_DEFINITION"
+-echo "CCTK_MPI     = 1"
+-echo "HAVE_MPI     = 1"
+-echo "MPI_DIR      = ${MPI_DIR}"
+-echo "MPI_INC_DIRS = ${MPI_INC_DIRS}"
+-echo "MPI_LIB_DIRS = ${MPI_LIB_DIRS}"
+-echo "MPI_LIBS     = ${MPI_LIBS}"
+-echo "END MAKE_DEFINITION"
+-
+-echo 'INCLUDE_DIRECTORY $(MPI_INC_DIRS)'
+-echo 'LIBRARY_DIRECTORY $(MPI_LIB_DIRS)'
+-echo 'LIBRARY           $(MPI_LIBS)'

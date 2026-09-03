@@ -1,0 +1,133 @@
+From 8269e38bd912a9c9337761bd75b21e3eb1db444c Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Fri, 27 Jan 2012 17:30:04 -0800
+Subject: [PATCH 01/12] Hydro_Analysis: add option to average the location of
+ multiple identical maxima this is useful for cell
+ centering where intially there might be several
+ points with precisely the same density around the
+ center of a star
+
+---
+ param.ccl            |    7 +++++++
+ src/Hydro_Analysis.c |   51 ++++++++++++++++++++++++++++++++++++++++----------
+ 2 files changed, 48 insertions(+), 10 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index b30d7e8..42c9573 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -4,6 +4,13 @@ BOOLEAN Hydro_Analysis_comp_rho_max "Look for the value and location of the maxi
+ {
+ } "false"
+ 
++# the following is useful eg. when using cell-centering where there might not
++# be a grid point at the centre of the star and initially several equally valid
++# maxima might be clustered around it.
++BOOLEAN Hydro_Analysis_average_multiple_maxima_locations "when finding more than one global maximum location, average position and use result" STEERABLE = always
++{
++} "false"
++
+ BOOLEAN Hydro_Analysis_rho_max_loc_only_positive_x "Restrict location search for density maximum to positive values of x"
+ {
+ } "false"
+diff --git a/src/Hydro_Analysis.c b/src/Hydro_Analysis.c
+index adb2e99..bcd3430 100644
+--- a/src/Hydro_Analysis.c
++++ b/src/Hydro_Analysis.c
+@@ -1,3 +1,5 @@
++#include <math.h>
++
+ #include <cctk.h>
+ #include <cctk_Arguments.h>
+ #include <cctk_Parameters.h>
+@@ -81,11 +83,15 @@ void Hydro_Analysis_Reduction(CCTK_ARGUMENTS)
+ }
+ 
+ /* Look for the location of the density maximum */
++/* RH: this is scheduled global loop-local but does MPI calls. It will hang if
++ * some processors have more components than others. */
+ void Hydro_Analysis_LocationSearch(CCTK_ARGUMENTS)
+ {
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+ 
++  int set_maximum_location;
++
+   /* Initialized MPI-local quantities */
+   CCTK_REAL local_rho_max_loc[4], level_rho_max_loc[4];
+   local_rho_max_loc[0] = 0.0;
+@@ -109,10 +115,10 @@ void Hydro_Analysis_LocationSearch(CCTK_ARGUMENTS)
+       {
+         #pragma omp critical
+         {
+-          local_rho_max_loc[0] = x[i3D];
+-          local_rho_max_loc[1] = y[i3D];
+-          local_rho_max_loc[2] = z[i3D];
+-          local_rho_max_loc[3] = 1.;
++          local_rho_max_loc[0] += x[i3D];
++          local_rho_max_loc[1] += y[i3D];
++          local_rho_max_loc[2] += z[i3D];
++          local_rho_max_loc[3] += 1.;
+         }
+       }
+     }
+@@ -122,25 +128,50 @@ void Hydro_Analysis_LocationSearch(CCTK_ARGUMENTS)
+    * The others should have a value of 0.0, so that the sum reduction
+    * gives the value on each MPI process. This however is not true sometimes
+    * and this is the point where the algorithm can fail. */
++  /* RH: this assumption is false if a processor owns more than a single patch
++   * */
+   CCTK_INT handle_sum = CCTK_LocalArrayReductionHandle("sum");
+   if (handle_sum < 0)
+      CCTK_WARN(0, "Unable to get reduction handle 'sum'.");
+   if (CCTK_ReduceLocArrayToArray1D(cctkGH, -1, handle_sum, &local_rho_max_loc,
+                                    level_rho_max_loc, 4, CCTK_VARIABLE_REAL))
+     CCTK_WARN(0, "Error while reducing local_rho_max_loc");
+-  if (fabs(level_rho_max_loc[3]) > 1.e-14) {
+-    if (fabs(level_rho_max_loc[3]-1.) < 1.e-14)
++  if (round(level_rho_max_loc[3]) > 0.) {
++    if (round(level_rho_max_loc[3]) == 1.)
+     {
++      set_maximum_location = 1;
++    } else {
++      if (Hydro_Analysis_average_multiple_maxima_locations)
++      {
++        static int have_warned_about_multiple_maxima = 0;
++
++        level_rho_max_loc[0] /= level_rho_max_loc[3];
++        level_rho_max_loc[1] /= level_rho_max_loc[3];
++        level_rho_max_loc[2] /= level_rho_max_loc[3];
++
++        set_maximum_location = 1;
++      } else {
++        CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
++                   "Found more than one (%d) identical maximum, not setting anything.",
++                   (int)round(level_rho_max_loc[3]));
++        }
++        set_maximum_location = 0;
++      }
++    }
++
++  } else {
++    set_maximum_location = 0;
++  }
++
++
++  if (set_maximum_location)
++  {
+       Hydro_Analysis_rho_max_loc[0] = level_rho_max_loc[0];
+       Hydro_Analysis_rho_max_loc[1] = level_rho_max_loc[1];
+       Hydro_Analysis_rho_max_loc[2] = level_rho_max_loc[2];
+-    } else
+-      CCTK_WARN(1, "Found more than one identical maximum, not setting anything.");
+-
+   }
+ /*  CCTK_VInfo(CCTK_THORNSTRING, "New location: %g,%g,%g",
+     Hydro_Analysis_rho_max_loc[0],
+     Hydro_Analysis_rho_max_loc[1],
+     Hydro_Analysis_rho_max_loc[2]); */
+ }
+-
+-- 
+1.7.10.4
+

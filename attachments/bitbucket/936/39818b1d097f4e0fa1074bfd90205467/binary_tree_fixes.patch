@@ -1,0 +1,42 @@
+Index: src/util/BinaryTree.c
+===================================================================
+--- src/util/BinaryTree.c	(revision 4808)
++++ src/util/BinaryTree.c	(working copy)
+@@ -110,7 +110,7 @@
+   else
+   {
+     /* Go down left or right branch. */
+-    if((order = compare(data, root->data)) < 0)
++    if((order = compare(data, subtree->data)) < 0)
+     {
+       subtree = Util_BinTreeStoreData(subtree, subtree->left, data, compare);
+     }
+@@ -417,14 +417,14 @@
+ {
+   int order;
+ 
+-  uBinTree *node;
++  uBinTree *node = NULL;
+ 
+   /* Go down left or right branch. */
+-  if((order = compare(data, root->data)) < 0)
++  if((order = compare(data, root->data)) < 0 && root->left)
+   {
+     node = Util_BinTreeFindNode(root->left, data, compare);
+   }
+-  else if(order > 0) 
++  else if(order > 0 && root->right) 
+   {
+     node = Util_BinTreeFindNode(root->right, data, compare);
+   }
+@@ -433,10 +433,6 @@
+     /* Found it. */
+     node = root;
+   }
+-  else
+-  {
+-    node = NULL;
+-  }
+ 
+   return node;
+ }  

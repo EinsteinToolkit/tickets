@@ -1,0 +1,749 @@
+From 2d91820101fb3e3d8dfe7b2f1e3aeaf6b683befd Mon Sep 17 00:00:00 2001
+From: Christian Ott <cott@tapir.caltech.edu>
+Date: Sun, 16 Jun 2013 17:55:26 -0700
+Subject: [PATCH 24/24] GRHydro: reimplement PPM in C
+
+* add prototype of a re-implementation of PPM in C. So far
+  we can do old PPM without and with temperature/Y_e reconstruction.
+* also add a version of the reconstruction driver that is optimized
+  for the use of the new PPM routine.
+* no change to standard code version; one needs to manually replace
+  source files to get the new stuff.
+
+* new version is factor 3 faster than old version (based on preliminary
+  measurements).
+---
+ src/GRHydro_PPM.c                      |  437 ++++++++++++++++++++++++++++++++
+ src/GRHydro_PPM.h                      |   56 ++++
+ src/GRHydro_PPMReconstruct_drv_opt.F90 |  212 ++++++++++++++++
+ 3 files changed, 705 insertions(+)
+ create mode 100644 src/GRHydro_PPM.c
+ create mode 100644 src/GRHydro_PPM.h
+ create mode 100644 src/GRHydro_PPMReconstruct_drv_opt.F90
+
+diff --git a/src/GRHydro_PPM.c b/src/GRHydro_PPM.c
+new file mode 100644
+index 0000000..cfa57b1
+--- /dev/null
++++ b/src/GRHydro_PPM.c
+@@ -0,0 +1,437 @@
++#include <assert.h>
++#include <math.h>
++#include <stdio.h>
++#include <stdlib.h>
++
++#if 1
++#include "cctk.h"
++#include "cctk_Parameters.h"
++#include "cctk_Arguments.h"
++#include "cctk_Functions.h"
++#endif
++
++#include "GRHydro_PPM.h"
++
++
++void SimplePPM_1d_c(int* restrict nx, 
++		    double* restrict dx, 
++		    double* restrict rho, 
++		    double* restrict velx,
++		    double* restrict vely, 
++		    double* restrict velz, 
++		    double* restrict eps, 
++		    double* restrict press,
++		    double* restrict rhominus, 
++		    double* restrict velxminus, 
++		    double* restrict velyminus,
++		    double* restrict velzminus, 
++		    double* restrict epsminus, 
++		    double* restrict rhoplus, 
++		    double* restrict velxplus, 
++		    double* restrict velyplus,
++		    double* restrict velzplus, 
++		    double* restrict epsplus)
++
++{
++  double drho[*nx], dpress[*nx], deps[*nx], d2rho[*nx]; 
++  double dmrho[*nx], dmpress[*nx], dmeps[*nx];
++  double dvelx[*nx], dvely[*nx], dvelz[*nx];
++  double dmvelx[*nx], dmvely[*nx], dmvelz[*nx];
++  double tilde_flatten[*nx];
++
++  const double onesixth = 1.0/6.0;
++
++  for(int i=1;i < *nx-1;i++) {
++    drho[i]   = 0.5 * (rho[i+1]-rho[i-1]);
++    d2rho[i]  = rho[i+1] - 2.0 * rho[i] + rho[i-1];
++    dpress[i] = (press[i+1]-press[i-1]);
++    deps[i]   = 0.5 * (eps[i+1]-eps[i-1]);
++    dvelx[i]  = 0.5 * (velx[i+1]-velx[i-1]);
++    dvely[i]  = 0.5 * (vely[i+1]-vely[i-1]);
++    dvelz[i]  = 0.5 * (velz[i+1]-velz[i-1]);
++  }
++
++  for(int i=1;i<*nx-1;i++) {
++    steep(rho,drho,dmrho,i);
++    steep(eps,deps,dmeps,i);
++    steep(velx,dvelx,dmvelx,i);
++    steep(vely,dvely,dmvely,i);
++    steep(velz,dvelz,dmvelz,i);
++  }
++
++  for(int i=1;i<*nx-1;i++) {
++    rhoplus[i] = 0.5 * (rho[i] + rho[i+1]) + 
++      (dmrho[i] - dmrho[i+1]) * onesixth;
++    epsplus[i] = 0.5 * (eps[i] + eps[i+1]) + 
++      (dmeps[i] - dmeps[i+1]) * onesixth;
++    velxplus[i] = 0.5 * (velx[i] + velx[i+1]) + 
++      (dmvelx[i] - dmvelx[i+1]) * onesixth;
++    velyplus[i] = 0.5 * (vely[i] + vely[i+1]) + 
++      (dmvely[i] - dmvely[i+1]) * onesixth;
++    velzplus[i] = 0.5 * (velz[i] + velz[i+1]) + 
++      (dmvelz[i] - dmvelz[i+1]) * onesixth;
++  }
++
++  for(int i=1;i<*nx-2;i++) {
++    rhoplus[i] = approx_at_cell_interface(rho,i);
++    epsplus[i] = approx_at_cell_interface(eps,i);
++    velxplus[i] = approx_at_cell_interface(velx,i);
++    velyplus[i] = approx_at_cell_interface(vely,i);
++    velzplus[i] = approx_at_cell_interface(velz,i);
++  }
++
++  for(int i=1;i<*nx-2;i++) {
++    rhominus[i+1] = rhoplus[i];
++    epsminus[i+1] = epsplus[i];
++    velxminus[i+1] = velxplus[i];
++    velyminus[i+1] = velyplus[i];
++    velzminus[i+1] = velzplus[i];
++  }
++
++  const double ppm_epsilon_shock = 0.01;
++  const double ppm_eta1 = 20.0;
++  const double ppm_eta2 = 0.05;
++  const double ppm_k0 = 0.2;
++  const double ppm_epsilon = 0.33;
++  const double ppm_omega1 = 0.75;
++  const double ppm_omega2 = 10.0;
++  const double ppm_small = 1.0e-7;
++
++  // steepening
++  for(int i=2;i<*nx-2;i++) {
++    double etatilde = 0.0;
++    if ( d2rho[i+1]*d2rho[i-1] < 0.0 
++	 && ( fabs(rho[i+1]-rho[i-1]) - ppm_epsilon_shock 
++	      * MIN(fabs(rho[i+1]), 
++		    fabs(rho[i-1])) > 0.0) )
++      {
++	etatilde = (rho[i-2] - rho[i+2] + 4.0 * drho[i]) / (drho[i] * 12.0);
++      }
++    double eta = MAX(0.0, MIN(1.0, ppm_eta1 * (etatilde - ppm_eta2)));
++    if (ppm_k0 * fabs(drho[i]) * MIN(press[i-1],press[i+1]) 
++	< fabs(dpress[i]) * MIN(rho[i-1], rho[i+1])) 
++      {
++	eta = 0.0;
++      }
++    rhominus[i] = rhominus[i] * (1.0 - eta) + 
++      (rho[i-1] + 0.5 * dmrho[i-1]) * eta;
++    rhoplus[i] = rhoplus[i] * (1.0 - eta) + 
++      (rho[i+1] - 0.5 * dmrho[i+1]) * eta;
++  }
++
++  // flattening
++  for(int i=2;i<*nx-2;i++) {
++    double dpress2 = press[i+2] - press[i-2];
++    double dvel = velx[i+1] - velx[i-1];
++    double w=0.0;
++    if ( (fabs(dpress[i]) >  ppm_epsilon * MIN(press[i-1],press[i+1])) 
++	 && (dvel < 0.0) ) 
++      {
++	w = 1.0;
++      } 
++    if (fabs(dpress2) < ppm_small) 
++      {
++	tilde_flatten[i] = 1.0;
++      } 
++    else
++      {
++	tilde_flatten[i] = MAX(0.0, 1.0 - w * MAX(0.0, 
++			   ppm_omega2 * (dpress[i] / dpress2 - ppm_omega1)));
++      }
++  } 
++
++  for(int i=2;i<*nx-2;i++) {
++    double flatten = tilde_flatten[i];
++    rhoplus[i] = flatten * rhoplus[i] + (1.0 - flatten) * rho[i];
++    rhominus[i] = flatten * rhominus[i] + (1.0 - flatten) * rho[i];
++    epsplus[i] = flatten * epsplus[i] + (1.0 - flatten) * eps[i];
++    epsminus[i] = flatten * epsminus[i] + (1.0 - flatten) * eps[i];
++    velxplus[i] = flatten * velxplus[i] + (1.0 - flatten) * velx[i];
++    velxminus[i] = flatten * velxminus[i] + (1.0 - flatten) * velx[i];
++    velyplus[i] = flatten * velyplus[i] + (1.0 - flatten) * vely[i];
++    velyminus[i] = flatten * velyminus[i] + (1.0 - flatten) * vely[i];
++    velzplus[i] = flatten * velzplus[i] + (1.0 - flatten) * velz[i];
++    velzminus[i] = flatten * velzminus[i] + (1.0 - flatten) * velz[i];
++  } // flattening
++
++  for(int i=2;i<*nx-2;i++) {
++    monotonize(rhominus,rho,rhoplus,i);
++    monotonize(epsminus,eps,epsplus,i);
++    monotonize(velxminus,velx,velxplus,i);
++    monotonize(velyminus,vely,velyplus,i);
++    monotonize(velzminus,velz,velzplus,i);
++  }
++
++  return;
++}
++		    
++CCTK_FCALL void CCTK_FNAME(PPMc)(int* restrict nx, 
++				 double* restrict dx, 
++				 double* restrict rho, 
++				 double* restrict velx,
++				 double* restrict vely, 
++				 double* restrict velz, 
++				 double* restrict eps, 
++				 double* restrict press,
++				 double* restrict rhominus, 
++				 double* restrict velxminus, 
++				 double* restrict velyminus,
++				 double* restrict velzminus, 
++				 double* restrict epsminus, 
++				 double* restrict rhoplus, 
++				 double* restrict velxplus, 
++				 double* restrict velyplus,
++				 double* restrict velzplus, 
++				 double* restrict epsplus) {
++
++void SimplePPM_1d_c(nx, dx, 
++		    rho, 
++		    velx,
++		    vely, 
++		    velz, 
++		    eps, 
++		    press,
++		    rhominus, 
++		    velxminus, 
++		    velyminus,
++		    velzminus, 
++		    epsminus, 
++		    rhoplus, 
++		    velxplus, 
++		    velyplus,
++		    velzplus, 
++		    epsplus);
++
++}
++
++
++void SimplePPM_1d_tyc(int* restrict nx, 
++		       double* restrict dx, 
++		       double* restrict rho, 
++		       double* restrict velx,
++		       double* restrict vely, 
++		       double* restrict velz, 
++		       double* restrict eps, 
++		       double* restrict temp, 
++		       double* restrict ye, 
++		       double* restrict press,
++		       double* restrict rhominus, 
++		       double* restrict velxminus, 
++		       double* restrict velyminus,
++		       double* restrict velzminus, 
++		       double* restrict epsminus, 
++		       double * restrict tempminus,
++		       double * restrict yeminus,
++		       double* restrict rhoplus, 
++		       double* restrict velxplus, 
++		       double* restrict velyplus,
++		       double* restrict velzplus, 
++		       double* restrict epsplus,
++		       double* restrict tempplus,
++		       double* restrict yeplus)
++
++{
++  double drho[*nx], dpress[*nx], deps[*nx], d2rho[*nx]; 
++  double dtemp[*nx], dye[*nx];
++  double dmrho[*nx], dmpress[*nx], dmeps[*nx];
++  double dmtemp[*nx], dmye[*nx];
++  double dvelx[*nx], dvely[*nx], dvelz[*nx];
++  double dmvelx[*nx], dmvely[*nx], dmvelz[*nx];
++  double tilde_flatten[*nx];
++
++  const double onesixth = 1.0/6.0;
++
++  for(int i=1;i < *nx-1;i++) {
++    drho[i]   = 0.5 * (rho[i+1]-rho[i-1]);
++    d2rho[i]  = rho[i+1] - 2.0 * rho[i] + rho[i-1];
++    dpress[i] = (press[i+1]-press[i-1]);
++    deps[i]   = 0.5 * (eps[i+1]-eps[i-1]);
++    dtemp[i]  = 0.5 * (temp[i+1]-temp[i-1]);
++    dye[i]    = 0.5 * (ye[i+1]-ye[i-1]);
++    dvelx[i]  = 0.5 * (velx[i+1]-velx[i-1]);
++    dvely[i]  = 0.5 * (vely[i+1]-vely[i-1]);
++    dvelz[i]  = 0.5 * (velz[i+1]-velz[i-1]);
++  }
++
++  for(int i=1;i<*nx-1;i++) {
++    steep(rho,drho,dmrho,i);
++    steep(eps,deps,dmeps,i);
++    steep(temp,dtemp,dmtemp,i);
++    steep(ye,dye,dmye,i);
++    steep(velx,dvelx,dmvelx,i);
++    steep(vely,dvely,dmvely,i);
++    steep(velz,dvelz,dmvelz,i);
++  }
++
++  for(int i=1;i<*nx-1;i++) {
++    rhoplus[i] = 0.5 * (rho[i] + rho[i+1]) + 
++      (dmrho[i] - dmrho[i+1]) * onesixth;
++    epsplus[i] = 0.5 * (eps[i] + eps[i+1]) + 
++      (dmeps[i] - dmeps[i+1]) * onesixth;
++    tempplus[i] = 0.5 * (temp[i] + temp[i+1]) + 
++      (dmtemp[i] - dmtemp[i+1]) * onesixth;
++    yeplus[i] = 0.5 * (ye[i] + ye[i+1]) + 
++      (dmye[i] - dmye[i+1]) * onesixth;
++    velxplus[i] = 0.5 * (velx[i] + velx[i+1]) + 
++      (dmvelx[i] - dmvelx[i+1]) * onesixth;
++    velyplus[i] = 0.5 * (vely[i] + vely[i+1]) + 
++      (dmvely[i] - dmvely[i+1]) * onesixth;
++    velzplus[i] = 0.5 * (velz[i] + velz[i+1]) + 
++      (dmvelz[i] - dmvelz[i+1]) * onesixth;
++  }
++
++  for(int i=1;i<*nx-2;i++) {
++    rhoplus[i] = approx_at_cell_interface(rho,i);
++    epsplus[i] = approx_at_cell_interface(eps,i);
++    tempplus[i] = approx_at_cell_interface(temp,i);
++    yeplus[i] = approx_at_cell_interface(ye,i);
++    velxplus[i] = approx_at_cell_interface(velx,i);
++    velyplus[i] = approx_at_cell_interface(vely,i);
++    velzplus[i] = approx_at_cell_interface(velz,i);
++  }
++
++  for(int i=1;i<*nx-2;i++) {
++    rhominus[i+1] = rhoplus[i];
++    epsminus[i+1] = epsplus[i];
++    tempminus[i+1] = tempplus[i];
++    yeminus[i+1] = yeplus[i];
++    velxminus[i+1] = velxplus[i];
++    velyminus[i+1] = velyplus[i];
++    velzminus[i+1] = velzplus[i];
++  }
++
++  const double ppm_epsilon_shock = 0.01;
++  const double ppm_eta1 = 20.0;
++  const double ppm_eta2 = 0.05;
++  const double ppm_k0 = 0.2;
++  const double ppm_epsilon = 0.33;
++  const double ppm_omega1 = 0.75;
++  const double ppm_omega2 = 10.0;
++  const double ppm_small = 1.0e-7;
++
++  // steepening
++  for(int i=2;i<*nx-2;i++) {
++    double etatilde = 0.0;
++    if ( d2rho[i+1]*d2rho[i-1] < 0.0 
++	 && ( fabs(rho[i+1]-rho[i-1]) - ppm_epsilon_shock 
++	      * MIN(fabs(rho[i+1]), 
++		    fabs(rho[i-1])) > 0.0) )
++      {
++	etatilde = (rho[i-2] - rho[i+2] + 4.0 * drho[i]) / (drho[i] * 12.0);
++      }
++    double eta = MAX(0.0, MIN(1.0, ppm_eta1 * (etatilde - ppm_eta2)));
++    if (ppm_k0 * fabs(drho[i]) * MIN(press[i-1],press[i+1]) 
++	< fabs(dpress[i]) * MIN(rho[i-1], rho[i+1])) 
++      {
++	eta = 0.0;
++      }
++    rhominus[i] = rhominus[i] * (1.0 - eta) + 
++      (rho[i-1] + 0.5 * dmrho[i-1]) * eta;
++    rhoplus[i] = rhoplus[i] * (1.0 - eta) + 
++      (rho[i+1] - 0.5 * dmrho[i+1]) * eta;
++  }
++
++  // flattening
++  for(int i=2;i<*nx-2;i++) {
++    double dpress2 = press[i+2] - press[i-2];
++    double dvel = velx[i+1] - velx[i-1];
++    double w=0.0;
++    if ( (fabs(dpress[i]) >  ppm_epsilon * MIN(press[i-1],press[i+1])) 
++	 && (dvel < 0.0) ) 
++      {
++	w = 1.0;
++      } 
++    if (fabs(dpress2) < ppm_small) 
++      {
++	tilde_flatten[i] = 1.0;
++      } 
++    else
++      {
++	tilde_flatten[i] = MAX(0.0, 1.0 - w * MAX(0.0, 
++			   ppm_omega2 * (dpress[i] / dpress2 - ppm_omega1)));
++      }
++  } 
++
++  for(int i=2;i<*nx-2;i++) {
++    double flatten = tilde_flatten[i];
++    rhoplus[i] = flatten * rhoplus[i] + (1.0 - flatten) * rho[i];
++    rhominus[i] = flatten * rhominus[i] + (1.0 - flatten) * rho[i];
++    epsplus[i] = flatten * epsplus[i] + (1.0 - flatten) * eps[i];
++    epsminus[i] = flatten * epsminus[i] + (1.0 - flatten) * eps[i];
++    tempplus[i] = flatten * tempplus[i] + (1.0 - flatten) * temp[i];
++    tempminus[i] = flatten * tempminus[i] + (1.0 - flatten) * temp[i];
++    yeplus[i] = flatten * yeplus[i] + (1.0 - flatten) * ye[i];
++    yeminus[i] = flatten * yeminus[i] + (1.0 - flatten) * ye[i];
++    velxplus[i] = flatten * velxplus[i] + (1.0 - flatten) * velx[i];
++    velxminus[i] = flatten * velxminus[i] + (1.0 - flatten) * velx[i];
++    velyplus[i] = flatten * velyplus[i] + (1.0 - flatten) * vely[i];
++    velyminus[i] = flatten * velyminus[i] + (1.0 - flatten) * vely[i];
++    velzplus[i] = flatten * velzplus[i] + (1.0 - flatten) * velz[i];
++    velzminus[i] = flatten * velzminus[i] + (1.0 - flatten) * velz[i];
++  } // flattening
++
++  for(int i=2;i<*nx-2;i++) {
++    monotonize(rhominus,rho,rhoplus,i);
++    monotonize(epsminus,eps,epsplus,i);
++    monotonize(tempminus,temp,tempplus,i);
++    monotonize(yeminus,ye,yeplus,i);
++    monotonize(velxminus,velx,velxplus,i);
++    monotonize(velyminus,vely,velyplus,i);
++    monotonize(velzminus,velz,velzplus,i);
++  }
++
++  return;
++}
++
++
++		    
++CCTK_FCALL void CCTK_FNAME(PPMtyc)(int* restrict nx, 
++				    double* restrict dx, 
++				    double* restrict rho, 
++				    double* restrict velx,
++				    double* restrict vely, 
++				    double* restrict velz, 
++				    double* restrict eps, 
++				    double* restrict temp, 
++				    double* restrict ye, 
++				    double* restrict press,
++				    double* restrict rhominus, 
++				    double* restrict velxminus, 
++				    double* restrict velyminus,
++				    double* restrict velzminus, 
++				    double* restrict epsminus, 
++				    double* restrict tempminus, 
++				    double* restrict yeminus, 
++				    double* restrict rhoplus, 
++				    double* restrict velxplus, 
++				    double* restrict velyplus,
++				    double* restrict velzplus, 
++				    double* restrict epsplus,
++				    double* restrict tempplus,
++				    double* restrict yeplus) {
++
++void SimplePPM_1d_tyc(nx, dx, 
++		      rho, 
++		      velx,
++		      vely, 
++		      velz, 
++		      eps, 
++		      temp,
++		      ye,
++		      press,
++		      rhominus, 
++		      velxminus, 
++		      velyminus,
++		      velzminus, 
++		      epsminus, 
++		      tempminus,
++		      yeminus,
++		      rhoplus, 
++		      velxplus, 
++		      velyplus,
++		      velzplus, 
++		      epsplus,
++		      tempplus,
++		      yeplus);
++}
++
+diff --git a/src/GRHydro_PPM.h b/src/GRHydro_PPM.h
+new file mode 100644
+index 0000000..dcc63ad
+--- /dev/null
++++ b/src/GRHydro_PPM.h
+@@ -0,0 +1,56 @@
++#include <assert.h>
++#include <math.h>
++#include <stdio.h>
++#include <stdlib.h>
++
++#if 1
++#include "cctk.h"
++#include "cctk_Parameters.h"
++#include "cctk_Arguments.h"
++#include "cctk_Functions.h"
++#endif
++
++#define MIN(a,b) (((a)<(b))?(a):(b))
++#define MAX(a,b) (((a)>(b))?(a):(b))
++
++static inline void steep(double *x, double *dx, double* dmx, const int i) {
++  if ( (x[i+1] - x[i]) * (x[i]-x[i-1]) > 0.0 ) {
++    dmx[i] = copysign(1.0,dx[i]) * MIN(fabs(dx[i]),
++					MIN(2.0*fabs(x[i]-x[i-1]),
++					     2.0*fabs(x[i+1]-x[i])));
++  } else {
++    dmx[i] = 0.0;
++  }
++}
++
++static inline double approx_at_cell_interface(double* a, const int i) {
++  return 7.0/12.0*(a[i]+a[i+1]) - 1.0/12.0*(a[i-1]+a[i+2]);
++}
++
++static inline void monotonize(double* restrict xminus,
++			      double* restrict x,
++			      double* restrict xplus,
++			      const int i) {
++
++  if (  !(xplus[i]==x[i] && x[i]==xminus[i]) 
++	&& ( (xplus[i]-x[i])*(x[i]-xminus[i]) <= 0.0 ) ) 
++    {
++      xminus[i] = x[i];
++      xplus[i] = x[i];
++    }  else if( 6.0 * (xplus[i]-xminus[i]) * 
++		(x[i]-0.5*(xplus[i]+xminus[i])) >
++		(xplus[i]-xminus[i])*(xplus[i]-xminus[i]) )
++    {
++      xminus[i] = 3.0*x[i]-2.0*xplus[i]; 
++    } else if( 6.0 * (xplus[i]-xminus[i]) * 
++	       (x[i]-0.5*(xplus[i]+xminus[i])) <
++	       -(xplus[i]-xminus[i])*(xplus[i]-xminus[i]) ) 
++    {
++      xplus[i] = 3.0*x[i]-2.0*xminus[i]; 
++    }
++  
++  return;
++}	     	    
++
++
++
+diff --git a/src/GRHydro_PPMReconstruct_drv_opt.F90 b/src/GRHydro_PPMReconstruct_drv_opt.F90
+new file mode 100644
+index 0000000..4222965
+--- /dev/null
++++ b/src/GRHydro_PPMReconstruct_drv_opt.F90
+@@ -0,0 +1,212 @@
++ /*@@
++   @file      GRHydro_PPMReconstruct_drv.F90
++   @date      Tue Jul 19 13:22:03 EDT 2011
++   @author    Bruno C. Mundim, Joshua Faber, Christian D. Ott
++   @desc 
++   Driver routine to perform the PPM reconstructions.
++   @enddesc 
++ @@*/
++
++#include "cctk.h"
++#include "cctk_Arguments.h"
++#include "cctk_Parameters.h"
++#include "cctk_Functions.h"
++
++#include "SpaceMask.h"
++
++#define velx(i,j,k) vup(i,j,k,1)
++#define vely(i,j,k) vup(i,j,k,2)
++#define velz(i,j,k) vup(i,j,k,3)
++#define sx(i,j,k) scon(i,j,k,1)
++#define sy(i,j,k) scon(i,j,k,2)
++#define sz(i,j,k) scon(i,j,k,3)
++
++
++ /*@@
++   @routine    GRHydro_PPMReconstruct_drv
++   @date       Tue Jul 19 13:24:34 EDT 2011
++   @author     Luca Baiotti, Ian Hawke, Bruno C. Mundim, Joshua Faber, Christian D. Ott
++   @desc 
++   A driver routine to do PPM reconstructions. 
++   @enddesc 
++   @calls     
++   @calledby   
++   @history 
++ 
++   @endhistory 
++
++@@*/
++
++subroutine GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
++  
++  implicit none
++  
++  ! save memory when MP is not used
++  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
++  TARGET gaa, gab, gac, gbb, gbc, gcc
++  TARGET gxx, gxy, gxz, gyy, gyz, gzz
++  TARGET betaa, betab, betac
++  TARGET betax, betay, betaz
++  TARGET lvel, vel
++
++  DECLARE_CCTK_ARGUMENTS
++  DECLARE_CCTK_PARAMETERS
++  DECLARE_CCTK_FUNCTIONS
++
++  integer :: nx, ny, nz, i, j, k
++
++  logical, dimension(:,:,:), allocatable :: trivial_rp
++
++  CCTK_INT :: type_bitsx, trivialx, not_trivialx, &
++       &type_bitsy, trivialy, not_trivialy, &
++       &type_bitsz, trivialz, not_trivialz
++
++  CCTK_INT :: ierr
++
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: beta1, beta2, beta3
++  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
++
++  logical :: apply_enhanced_ppm
++
++  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++    g11 => gaa
++    g12 => gab
++    g13 => gac
++    g22 => gbb
++    g23 => gbc
++    g33 => gcc
++    beta1 => betaa
++    beta2 => betab
++    beta3 => betac
++    vup => lvel
++  else
++    g11 => gxx
++    g12 => gxy
++    g13 => gxz
++    g22 => gyy
++    g23 => gyz
++    g33 => gzz
++    beta1 => betax
++    beta2 => betay
++    beta3 => betaz
++    vup => vel
++  end if
++
++  allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
++  if (ierr .ne. 0) then
++    call CCTK_WARN(0, "Allocation problems with trivial_rp")
++  end if
++    
++  call SpaceMask_GetTypeBits(type_bitsx, "Hydro_RiemannProblemX")
++  call SpaceMask_GetStateBits(trivialx, "Hydro_RiemannProblemX", &
++       &"trivial")
++  call SpaceMask_GetStateBits(not_trivialx, "Hydro_RiemannProblemX", &
++       &"not_trivial")
++  call SpaceMask_GetTypeBits(type_bitsy, "Hydro_RiemannProblemY")
++  call SpaceMask_GetStateBits(trivialy, "Hydro_RiemannProblemY", &
++       &"trivial")
++  call SpaceMask_GetStateBits(not_trivialy, "Hydro_RiemannProblemY", &
++       &"not_trivial")
++  call SpaceMask_GetTypeBits(type_bitsz, "Hydro_RiemannProblemZ")
++  call SpaceMask_GetStateBits(trivialz, "Hydro_RiemannProblemZ", &
++       &"trivial")
++  call SpaceMask_GetStateBits(not_trivialz, "Hydro_RiemannProblemZ", &
++       &"not_trivial")
++
++  nx = cctk_lsh(1)
++  ny = cctk_lsh(2)
++  nz = cctk_lsh(3)
++
++  ! if use_enhanced_ppm, allow old PPM on one level
++  if (GRHydro_oppm_reflevel .eq. (-1) .or. &
++       GRHydro_reflevel .ne. GRHydro_oppm_reflevel) then
++     apply_enhanced_ppm = use_enhanced_ppm .ne. 0
++  else
++     apply_enhanced_ppm = .false.
++  end if
++
++
++
++!!$ PPM starts:
++    if (flux_direction == 1) then
++         !$OMP PARALLEL DO PRIVATE(i, j, k)
++         do k = GRHydro_stencil, nz - GRHydro_stencil + 1
++           do j = GRHydro_stencil, ny - GRHydro_stencil + 1
++
++           trivial_rp(:,j,k) = .false.
++           call PPMtyc(nx,CCTK_DELTA_SPACE(1),rho(:,j,k),velx(:,j,k),&
++                vely(:,j,k),velz(:,j,k),eps(:,j,k),temperature(:,j,k),Y_e(:,j,k),&
++                press(:,j,k),rhominus(:,j,k),&
++                velxminus(:,j,k),velyminus(:,j,k),velzminus(:,j,k),&
++                epsminus(:,j,k),tempminus(:,j,k), y_e_minus(:,j,k),&
++                rhoplus(:,j,k),&
++                velxplus(:,j,k),velyplus(:,j,k),velzplus(:,j,k),&
++                epsplus(:,j,k),tempplus(:,j,k),y_e_plus(:,j,k))
++             do i = 1, nx
++                if (trivial_rp(i,j,k)) then
++                  SpaceMask_SetStateBitsF90(space_mask, i, j, k, type_bitsx, trivialx)
++                else
++                  SpaceMask_SetStateBitsF90(space_mask, i, j, k, type_bitsx, not_trivialx)
++                end if
++             end do
++           end do
++         end do
++         !$OMP END PARALLEL DO
++      else if (flux_direction == 2) then
++        !$OMP PARALLEL DO PRIVATE(i, j, k)
++        do k = GRHydro_stencil, nz - GRHydro_stencil + 1
++          do j = GRHydro_stencil, nx - GRHydro_stencil + 1
++           trivial_rp(j,:,k) = .false.
++           call PPMtyc(ny,CCTK_DELTA_SPACE(2),rho(j,:,k),&
++                vely(j,:,k),velz(j,:,k),velx(j,:,k),&
++                eps(j,:,k),temperature(j,:,k),Y_e(j,:,k), &
++                press(j,:,k),rhominus(j,:,k),&
++                velyminus(j,:,k),velzminus(j,:,k),velxminus(j,:,k),&
++                epsminus(j,:,k),tempminus(j,:,k), y_e_minus(j,:,k),rhoplus(j,:,k),&
++                velyplus(j,:,k),velzplus(j,:,k),velxplus(j,:,k),&
++                epsplus(j,:,k),tempplus(j,:,k),y_e_plus(j,:,k))
++            do i = 1, ny
++              if (trivial_rp(j,i,k)) then
++                 SpaceMask_SetStateBitsF90(space_mask, j, i, k, type_bitsy, trivialy)
++              else
++                 SpaceMask_SetStateBitsF90(space_mask, j, i, k, type_bitsy, not_trivialy)
++              end if
++            end do
++          end do
++        end do
++        !$OMP END PARALLEL DO
++
++    else if (flux_direction == 3) then
++        !$OMP PARALLEL DO PRIVATE(i, j, k)
++        do k = GRHydro_stencil, ny - GRHydro_stencil + 1
++          do j = GRHydro_stencil, nx - GRHydro_stencil + 1
++           trivial_rp(j,k,:) = .false.
++           call PPMtyc(nz,CCTK_DELTA_SPACE(3),rho(j,k,:),&
++                velz(j,k,:),velx(j,k,:),vely(j,k,:),&
++                eps(j,k,:),temperature(j,k,:),Y_e(j,k,:), press(j,k,:),rhominus(j,k,:),&
++                velzminus(j,k,:),velxminus(j,k,:),velyminus(j,k,:),&
++                epsminus(j,k,:),tempminus(j,k,:),y_e_minus(j,k,:),rhoplus(j,k,:),&
++                velzplus(j,k,:),velxplus(j,k,:),velyplus(j,k,:),&
++                epsplus(j,k,:),tempplus(j,k,:),y_e_plus(j,k,:))
++            do i = 1, nz
++              if (trivial_rp(j,k,i)) then
++                SpaceMask_SetStateBitsF90(space_mask, j, k, i, type_bitsz, trivialz)
++              else
++                SpaceMask_SetStateBitsF90(space_mask, j, k, i, type_bitsz, not_trivialz)
++              end if
++            end do
++          end do
++        end do
++        !$OMP END PARALLEL DO
++    else
++      call CCTK_WARN(0, "Flux direction not x,y,z")
++    end if
++!!$ PPM ends.
++
++  deallocate(trivial_rp)
++
++end subroutine GRHydro_PPMReconstruct_drv
++
+-- 
+1.7.10.4
+

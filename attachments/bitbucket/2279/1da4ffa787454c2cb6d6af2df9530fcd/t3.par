@@ -1,0 +1,119 @@
+ActiveThorns = "time"
+
+#ActiveThorns = "SystemTopology hwloc"
+ 
+ActiveThorns = "Carpet CarpetLib CarpetReduce CarpetIOBasic"
+ActiveThorns = "CartGrid3D CoordBase SymBase ioutil carpetioascii CarpetIOScalar CarpetIOHDF5 LocalReduce"
+ActiveThorns = "NaNChecker"
+
+
+NaNChecker::check_every = 1 #16384 #2^number of refinement levels
+NaNChecker::action_if_found = "terminate" #, "just warn", "abort"
+NaNChecker::check_vars = "
+grid::x
+ "
+NaNChecker::verbose = "all"
+NaNChecker::out_NaNmask = "yes"
+
+################################################################################
+# Time stepping
+################################################################################
+
+
+# grid parameters
+CartGrid3D::type         = "coordbase"
+CartGrid3D::domain       = "full"
+
+CoordBase::xmin = -1
+CoordBase::ymin = -1
+CoordBase::zmin = -1
+
+CoordBase::xmax = 1
+CoordBase::ymax = 1
+CoordBase::zmax = 1
+
+CoordBase::domainsize = "minmax"
+CoordBase::spacing = "numcells"
+
+CoordBase::ncells_x = 200
+CoordBase::ncells_y = 12
+CoordBase::ncells_z = 12
+
+CoordBase::boundary_size_x_lower      = 3
+CoordBase::boundary_size_y_lower      = 3
+CoordBase::boundary_size_z_lower      = 3
+
+CoordBase::boundary_size_x_upper      = 3
+CoordBase::boundary_size_y_upper      = 3
+CoordBase::boundary_size_z_upper      = 3
+
+
+Carpet::max_refinement_levels    = 1
+driver::ghost_size               = 3
+
+#
+Carpet::domain_from_coordbase = "yes"
+
+Carpet::enable_all_storage       = no
+
+
+Carpet::poison_new_timelevels    = "yes"
+Carpet::poison_value             = 255
+
+Carpet::init_3_timelevels        = "no"
+Carpet::init_fill_timelevels     = "yes"
+
+CarpetLib::poison_new_memory = "yes"
+CarpetLib::poison_value      = 255
+
+Carpet::refinement_centering            = vertex
+Carpet::use_tapered_grids               = no
+
+Carpet::prolongation_order_space        = 5
+Carpet::prolongation_order_time         = 2
+
+Carpet::max_timelevels = 3
+Carpet::verbose = no
+Carpet::veryverbose = no
+
+#Carpet::processor_topology       = "manual"
+#Carpet::processor_topology_3d_x  = 8
+#Carpet::processor_topology_3d_y  = 1
+#Carpet::processor_topology_3d_z  = 1
+
+
+IOBasic::outInfo_every              = 2
+IOBasic::outInfo_vars               = 	"grid::x"
+
+IO::out_fileinfo = "all"
+
+
+
+IOScalar::outScalar_every = 128
+IOScalar::one_file_per_group = yes
+IOScalar::outScalar_vars  = "
+Grid::x
+"
+
+
+
+IO::out_dir      = $parfile
+
+
+################################################################################
+# Checkpointing and recovery
+################################################################################
+
+CarpetIOHDF5::checkpoint                    = yes
+IO::checkpoint_ID                           = no
+IO::recover                                 = "autoprobe"
+IO::checkpoint_every_walltime_hours         = 12
+#IO::out_proc_every                          = 2
+IO::checkpoint_keep                         = 3
+IO::checkpoint_on_terminate                 = yes
+IO::checkpoint_dir                          = "checkpoints"
+IO::recover_dir                             = "checkpoints"
+IO::abort_on_io_errors                      = yes
+CarpetIOHDF5::open_one_input_file_at_a_time = yes
+
+cactus::cctk_itlast                             = 2

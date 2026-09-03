@@ -1,0 +1,917 @@
+# HG changeset patch
+# User roland.haas@physics.gatech.edu
+# Date 1330747565 28800
+# Node ID d3d01afdc28548dc5d7638d6073b45cf425a69ac
+# Parent  ce1d11de19ed9f83349b3663d07b57518d9260b9
+CarpetIOScalar: cache output and write in chunks of io_chunk_size bytes
+
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/param.ccl
+--- a/Carpet/CarpetIOScalar/param.ccl	Sat Feb 25 11:48:36 2012 -0500
++++ b/Carpet/CarpetIOScalar/param.ccl	Fri Mar 02 20:06:05 2012 -0800
+@@ -24,6 +24,11 @@
+ {
+ } "no"
+ 
++CCTK_INT io_chunk_size "Clear IO cache in sizes of this many bytes"
++{
++  1:* :: "any positive number"
++} 66666
++
+ 
+ 
+ CCTK_STRING outScalar_dir "Name of scalar output directory, overrides out_dir" STEERABLE = ALWAYS
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/schedule.ccl
+--- a/Carpet/CarpetIOScalar/schedule.ccl	Sat Feb 25 11:48:36 2012 -0500
++++ b/Carpet/CarpetIOScalar/schedule.ccl	Fri Mar 02 20:06:05 2012 -0800
+@@ -13,3 +13,15 @@
+   LANG: C
+   OPTIONS: global
+ } "Initialisation routine"
++
++schedule CarpetIOScalar_FlushCaches at TERMINATE
++{
++  LANG: C
++  OPTIONS: global
++} "Flush file caches to disk"
++
++schedule CarpetIOScalar_FlushCaches at CHECKPOINT
++{
++  LANG: C
++  OPTIONS: global
++} "Flush file caches to disk"
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/src/ioscalar.cc
+--- a/Carpet/CarpetIOScalar/src/ioscalar.cc	Sat Feb 25 11:48:36 2012 -0500
++++ b/Carpet/CarpetIOScalar/src/ioscalar.cc	Fri Mar 02 20:06:05 2012 -0800
+@@ -8,6 +8,7 @@
+ #include <sstream>
+ #include <string>
+ #include <vector>
++#include <map>
+ 
+ #include "cctk.h"
+ #include "cctk_Arguments.h"
+@@ -65,6 +66,7 @@
+   static void SetFlag (int index, const char* optstring, void* arg);
+ #endif
+   static void CheckSteerableParameters (const cGH *const cctkGH);
++  static void InternalFlushCaches(const cGH * const cctkGH, bool force);
+ 
+ 
+ 
+@@ -85,7 +87,23 @@
+     ioRequest **requests;
+   } IOparameters;
+ 
++  // cache structures for IO
++  // capture the state of the IO system at construction
++  struct cached_stream {
++    cached_stream(const string & fn, const string & vn, bool t) : do_truncate(t), varname(vn), filename(fn) { };
++    ~cached_stream() { };
++    
++    // data members
++    ostringstream cache_buf;
++    bool do_truncate;
++    string varname, filename;
+ 
++    private:
++    cached_stream();                                    // forbid default constructor
++    cached_stream & operator=(const cached_stream & s); // forbid assignment
++    cached_stream(const cached_stream & s);             // forbid copying
++  };
++  std::map<string,cached_stream*> cached_streams;
+ 
+   extern "C" int
+   CarpetIOScalarStartup ()
+@@ -280,35 +298,17 @@
+       {
+         string const reduction = ireduction->reduction;
+ 
+-        fstream file;
+-        BeginTimingIO (cctkGH);
+-        CCTK_REAL io_files = 0;
+-        CCTK_REAL io_bytes_begin = 0, io_bytes_end = 0;
++        // Invent a file name
++        ostringstream filenamebuf;
++        filenamebuf << myoutdir << "/" << alias << "." << reduction
++                    << ".asc";
++        string filenamestr = filenamebuf.str();
++        if (cached_streams.count(filenamestr) == 0)
++          cached_streams[filenamestr] = new cached_stream(filenamestr, varname, do_truncate.at(n));
++        ostringstream& file =  cached_streams[filenamestr]->cache_buf;
++
+         if (CCTK_MyProc(cctkGH)==0) {
+ 
+-          // Invent a file name
+-          ostringstream filenamebuf;
+-          filenamebuf << myoutdir << "/" << alias << "." << reduction
+-                      << ".asc";
+-          // we need a persistent temporary here
+-          string filenamestr = filenamebuf.str();
+-          const char* const filename = filenamestr.c_str();
+-
+-          if (do_truncate.at(n) and IO_TruncateOutputFiles (cctkGH)) {
+-            file.open (filename, ios::out | ios::trunc);
+-          } else {
+-            file.open (filename, ios::out | ios::app);
+-          }
+-          if (not file.good()) {
+-            CCTK_VWarn (0, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                        "Could not open output file \"%s\" for variable \"%s\"",
+-                        filename, varname);
+-          }
+-          assert (file.is_open());
+-
+-          io_files += 1;
+-          io_bytes_begin = file.tellg();
+-
+           // If this is the first time, then write a nice header
+           if (do_truncate.at(n)) {
+             bool want_labels = false;
+@@ -444,16 +444,9 @@
+         if (CCTK_MyProc(cctkGH)==0) {
+           file << eol;
+           assert (file.good());
+-
+-          io_bytes_end = file.tellg();
+-          file.close();
+-          assert (file.good());
+         }
+ 
+-        assert (not file.is_open());
+-
+-        CCTK_REAL const io_bytes = io_bytes_end - io_bytes_begin;
+-        EndTimingIO (cctkGH, io_files, io_bytes, false);
++        InternalFlushCaches(cctkGH, false);
+ 
+       } // for reductions
+ 
+@@ -467,6 +460,68 @@
+     return 0;
+   }
+ 
++  extern "C" void
++  CarpetIOScalar_FlushCaches (CCTK_ARGUMENTS)
++  {
++    DECLARE_CCTK_ARGUMENTS;
++
++    InternalFlushCaches(cctkGH, true);
++  }
++
++  static void
++  InternalFlushCaches(const cGH * const cctkGH, bool force)
++  {
++    DECLARE_CCTK_PARAMETERS;
++
++    CCTK_REAL io_files = 0;
++
++    for (std::map<string, cached_stream*>::const_iterator it = cached_streams.begin() ;
++         it != cached_streams.end() ;
++         ++it)
++    {
++      cached_stream * cs = it->second;
++      const string & filenamestr = cs->filename;
++      const bool do_truncate = cs->do_truncate;
++      ostringstream & file = cs->cache_buf;
++      const string & varname = cs->varname;
++
++      if (CCTK_MyProc(cctkGH)==0 && (file.tellp() > io_chunk_size || force)) {
++        BeginTimingIO (cctkGH);
++        CCTK_REAL io_bytes_begin = 0, io_bytes_end = 0;
++
++        io_files += 1;
++
++        fstream fileondisk;
++        const char* const filename = filenamestr.c_str();
++        if (do_truncate and IO_TruncateOutputFiles (cctkGH)) {
++          fileondisk.open (filename, ios::out | ios::trunc);
++        } else {
++          fileondisk.open (filename, ios::out | ios::app);
++        }
++        if (not fileondisk.good()) {
++          CCTK_VWarn (0, __LINE__, __FILE__, CCTK_THORNSTRING,
++                      "Could not open output file \"%s\" for variable \"%s\"",
++                      filenamestr.c_str(), varname.c_str());
++        }
++        assert (fileondisk.is_open());
++        io_bytes_begin = fileondisk.tellg();
++
++        fileondisk << file.str();
++        assert (fileondisk.good());
++
++        file.str().clear();
++
++        io_bytes_end = fileondisk.tellg();
++        fileondisk.close();
++        assert (fileondisk.good());
++
++        assert (not fileondisk.is_open());
++
++        CCTK_REAL const io_bytes = io_bytes_end - io_bytes_begin;
++        EndTimingIO (cctkGH, io_files, io_bytes, false);
++      }
++    }
++  }
+ 
+ 
+   int
+@@ -676,6 +731,10 @@
+ 
+     // re-parse the 'IOScalar::outScalar_vars' parameter if it has changed
+     if (strcmp (outScalar_vars, IOparameters.out_vars)) {
++      // flush caches before changing any settings
++      InternalFlushCaches(cctkGH, true);
++      cached_streams.clear();
++
+ #ifdef IOUTIL_PARSER_HAS_OUT_DT
+       IOUtil_ParseVarsForOutput (cctkGH, CCTK_THORNSTRING,
+                                  "IOScalar::outScalar_vars",
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords.par
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords.par	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,50 @@
++ActiveThorns = "
++   AEILocalInterp
++   Carpet
++   CarpetInterp
++   CarpetIOScalar
++   CarpetLib
++   CarpetReduce
++   CartGrid3D
++   CoordBase
++   InterpToArray
++   IOUtil
++   LoopControl
++   SymBase
++"
++
++IO::out_dir = $parfile
++
++Carpet::global_nx = 7
++Carpet::global_ny = 8
++Carpet::global_nz = 9
++
++InterpToArray::nscalars          = 1
++InterpToArray::scalar_vars[0]    = "grid::r"
++InterpToArray::narrays1d         = 1
++InterpToArray::array1d_vars[0]   = "grid::r"
++InterpToArray::array1d_npoints_i = 8
++InterpToArray::narrays2d         = 1
++InterpToArray::array2d_vars[0]   = "grid::r"
++InterpToArray::array2d_npoints_i = 7
++InterpToArray::array2d_npoints_j = 6
++InterpToArray::narrays3d         = 1
++InterpToArray::array3d_vars[0]   = "grid::r"
++InterpToArray::array3d_npoints_i = 5
++InterpToArray::array3d_npoints_j = 4
++InterpToArray::array3d_npoints_k = 3
++
++Cactus::cctk_itlast = 3
++
++IO::out_every = 1
++IOScalar::io_chunk_size = 42
++
++IOScalar::outScalar_reductions = "average iaverage norm_inf inorm1 inorm2 maximum minimum norm1 norm2" 
++
++IOScalar::outScalar_vars = "
++   InterpToArray::scalars
++   InterpToArray::arrays1d
++   InterpToArray::arrays2d
++   InterpToArray::arrays3d
++   grid::r
++"
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays1d[0].average.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays1d[0].average.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays1d[0] (arrays1d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays1d[0].iaverage.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays1d[0].iaverage.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays1d[0] (arrays1d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays1d[0].inorm1.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays1d[0].inorm1.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays1d[0] (arrays1d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays1d[0].inorm2.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays1d[0].inorm2.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays1d[0] (arrays1d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays1d[0].maximum.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays1d[0].maximum.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays1d[0] (arrays1d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays1d[0].minimum.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays1d[0].minimum.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays1d[0] (arrays1d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays1d[0].norm1.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays1d[0].norm1.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays1d[0] (arrays1d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays1d[0].norm2.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays1d[0].norm2.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays1d[0] (arrays1d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays1d[0].norm_inf.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays1d[0].norm_inf.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays1d[0] (arrays1d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays2d[0].average.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays2d[0].average.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays2d[0] (arrays2d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays2d[0].iaverage.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays2d[0].iaverage.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays2d[0] (arrays2d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays2d[0].inorm1.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays2d[0].inorm1.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays2d[0] (arrays2d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays2d[0].inorm2.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays2d[0].inorm2.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays2d[0] (arrays2d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays2d[0].maximum.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays2d[0].maximum.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays2d[0] (arrays2d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays2d[0].minimum.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays2d[0].minimum.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays2d[0] (arrays2d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays2d[0].norm1.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays2d[0].norm1.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays2d[0] (arrays2d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays2d[0].norm2.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays2d[0].norm2.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays2d[0] (arrays2d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays2d[0].norm_inf.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays2d[0].norm_inf.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays2d[0] (arrays2d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays3d[0].average.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays3d[0].average.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays3d[0] (arrays3d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714285
++1 1 0.0535714285714285
++2 2 0.0535714285714285
++3 3 0.0535714285714285
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays3d[0].iaverage.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays3d[0].iaverage.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays3d[0] (arrays3d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714285
++1 1 0.0535714285714285
++2 2 0.0535714285714285
++3 3 0.0535714285714285
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays3d[0].inorm1.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays3d[0].inorm1.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays3d[0] (arrays3d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714285
++1 1 0.0535714285714285
++2 2 0.0535714285714285
++3 3 0.0535714285714285
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays3d[0].inorm2.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays3d[0].inorm2.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays3d[0] (arrays3d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays3d[0].maximum.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays3d[0].maximum.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays3d[0] (arrays3d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays3d[0].minimum.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays3d[0].minimum.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays3d[0] (arrays3d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays3d[0].norm1.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays3d[0].norm1.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays3d[0] (arrays3d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714285
++1 1 0.0535714285714285
++2 2 0.0535714285714285
++3 3 0.0535714285714285
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays3d[0].norm2.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays3d[0].norm2.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays3d[0] (arrays3d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/arrays3d[0].norm_inf.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/arrays3d[0].norm_inf.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::arrays3d[0] (arrays3d[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/r.average.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/r.average.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# GRID::r (r)
++# 1:iteration 2:time 3:data
++0 0 0.488709669281446
++1 1 0.488709669281446
++2 2 0.488709669281446
++3 3 0.488709669281446
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/r.iaverage.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/r.iaverage.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# GRID::r (r)
++# 1:iteration 2:time 3:data
++0 0 0.488709669281446
++1 1 0.488709669281446
++2 2 0.488709669281446
++3 3 0.488709669281446
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/r.inorm1.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/r.inorm1.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# GRID::r (r)
++# 1:iteration 2:time 3:data
++0 0 0.488709669281446
++1 1 0.488709669281446
++2 2 0.488709669281446
++3 3 0.488709669281446
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/r.inorm2.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/r.inorm2.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# GRID::r (r)
++# 1:iteration 2:time 3:data
++0 0 0.510524393972035
++1 1 0.510524393972035
++2 2 0.510524393972035
++3 3 0.510524393972035
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/r.maximum.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/r.maximum.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# GRID::r (r)
++# 1:iteration 2:time 3:data
++0 0 0.866025403784439
++1 1 0.866025403784439
++2 2 0.866025403784439
++3 3 0.866025403784439
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/r.minimum.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/r.minimum.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# GRID::r (r)
++# 1:iteration 2:time 3:data
++0 0 0.0714285714285714
++1 1 0.0714285714285714
++2 2 0.0714285714285714
++3 3 0.0714285714285714
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/r.norm1.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/r.norm1.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# GRID::r (r)
++# 1:iteration 2:time 3:data
++0 0 0.488709669281446
++1 1 0.488709669281446
++2 2 0.488709669281446
++3 3 0.488709669281446
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/r.norm2.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/r.norm2.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# GRID::r (r)
++# 1:iteration 2:time 3:data
++0 0 0.510524393972035
++1 1 0.510524393972035
++2 2 0.510524393972035
++3 3 0.510524393972035
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/r.norm_inf.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/r.norm_inf.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# GRID::r (r)
++# 1:iteration 2:time 3:data
++0 0 0.866025403784439
++1 1 0.866025403784439
++2 2 0.866025403784439
++3 3 0.866025403784439
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/scalars[0].average.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/scalars[0].average.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::scalars[0] (scalars[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/scalars[0].iaverage.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/scalars[0].iaverage.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::scalars[0] (scalars[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/scalars[0].inorm1.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/scalars[0].inorm1.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::scalars[0] (scalars[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/scalars[0].inorm2.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/scalars[0].inorm2.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::scalars[0] (scalars[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/scalars[0].maximum.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/scalars[0].maximum.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::scalars[0] (scalars[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/scalars[0].minimum.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/scalars[0].minimum.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::scalars[0] (scalars[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/scalars[0].norm1.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/scalars[0].norm1.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::scalars[0] (scalars[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/scalars[0].norm2.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/scalars[0].norm2.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::scalars[0] (scalars[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/coords/scalars[0].norm_inf.asc
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/Carpet/CarpetIOScalar/test/coords/scalars[0].norm_inf.asc	Fri Mar 02 20:06:05 2012 -0800
+@@ -0,0 +1,10 @@
++# Scalar ASCII output created by CarpetIOScalar
++# created on fdea4908 by roland on Mar 02 2012 at 20:35:57-0800
++# parameter filename: "coords.par"
++#
++# INTERPTOARRAY::scalars[0] (scalars[0])
++# 1:iteration 2:time 3:data
++0 0 0.0535714285714286
++1 1 0.0535714285714286
++2 2 0.0535714285714286
++3 3 0.0535714285714286
+diff -r ce1d11de19ed -r d3d01afdc285 Carpet/CarpetIOScalar/test/test.ccl
+--- a/Carpet/CarpetIOScalar/test/test.ccl	Sat Feb 25 11:48:36 2012 -0500
++++ b/Carpet/CarpetIOScalar/test/test.ccl	Fri Mar 02 20:06:05 2012 -0800
+@@ -1,1 +1,1 @@
+-EXTENSIONS xg
++EXTENSIONS asc

@@ -1,0 +1,28 @@
+diff --git a/Carpet/CarpetLib/src/mem.cc b/Carpet/CarpetLib/src/mem.cc
+index 89d8fb2..e4eae7b 100644
+--- a/Carpet/CarpetLib/src/mem.cc
++++ b/Carpet/CarpetLib/src/mem.cc
+@@ -105,6 +105,7 @@ mem (size_t const vectorlength, size_t const nelems,
+       size_t const max_cache_linesize = get_max_cache_linesize();
+       size_t const vector_size = CCTK_REAL_VEC_SIZE * sizeof(T);
+       size_t const alignment = align_up(max_cache_linesize, vector_size);
++      assert(alignment >= 1);
+       // Safety check
+       assert(alignment <= 1024);
+       // Assume optimistically that operator new returns well-aligned
+@@ -123,9 +124,14 @@ mem (size_t const vectorlength, size_t const nelems,
+       } else {
+       allocate_with_alignment:
+         // Operator new needs manual alignment
+-        size_t const max_padding = alignment / sizeof(T) - 1;
++        size_t const max_padding = div_up(alignment, sizeof(T)) - 1;
++        assert((ptrdiff_t)max_padding >= 0);
+         storage_base_ = new T [vectorlength * nelems + max_padding];
+         storage_ = (T*) (size_t(storage_base_ + max_padding) & ~(alignment-1));
++	std::cerr << "size_t(storage_)" << " " << "size_t(storage_base_)" << " " << "size_t(storage_)" << " " << "size_t(storage_base_ + max_padding)" << "\n";
++	std::cerr << size_t(storage_) << " " << size_t(storage_base_) << " " << size_t(storage_) << " " << size_t(storage_base_ + max_padding) << "\n";
++        std::cerr << "max_padding"  << " " << "alignment" << " " << "sizeof(T)" << "\n";
++        std::cerr << max_padding  << " " << alignment << " " << sizeof(T) << "\n";
+         assert(size_t(storage_) >= size_t(storage_base_              ) and
+                size_t(storage_) <= size_t(storage_base_ + max_padding));
+       }

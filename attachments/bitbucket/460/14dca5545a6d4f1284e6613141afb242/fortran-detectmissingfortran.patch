@@ -1,0 +1,29 @@
+From ef14cf0c05c58496aaaa31bf93c5d9fff7b547e0 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Tue, 28 Jun 2011 16:14:01 +0200
+Subject: [PATCH] Abort on missing Fortran compiler
+
+---
+ fortran.sh |    7 +++++++
+ 1 files changed, 7 insertions(+), 0 deletions(-)
+
+diff --git a/fortran.sh b/fortran.sh
+index 38546b7..f8e2191 100644
+--- a/fortran.sh
++++ b/fortran.sh
+@@ -1,5 +1,12 @@
+ #! /bin/sh
+ 
++if [[ "${F77}" = "none" && "${F90}" = "none" ]]; then
++    echo 'BEGIN ERROR'
++    echo "Fortran thorn requires that a Fortran compiler is defined, but F77 = '$F77' and F90 = '$F90'.  Aborting."
++    echo 'END ERROR'
++    exit 1
++fi
++
+ # Try to use ## for token concatenation.
+ # If this works, we likely have an ANSI cpp.
+ 
+-- 
+1.7.5.4
+

@@ -1,0 +1,212 @@
+From: Erik Schnetter <eschnetter@perimeterinstitute.ca>
+Date: 2012-05-07
+Subject: Define GetBoundarySizesAndTypes
+
+Define an aliased function GetBoundarySizesAndTypes that determines
+which boundaries have what type (ghost, symmetry, physical), and what
+their boundary sizes are. This is equivalent to Kranc's
+GenericFD_GetBoundaryInfo.
+
+
+Index: src/Domain.c
+===================================================================
+--- src/Domain.c	(revision 51)
++++ src/Domain.c	(working copy)
+@@ -1,12 +1,9 @@
+-/* $Header$ */
++#include <cctk.h>
++#include <cctk_Parameters.h>
++#include <util_Table.h>
+ 
+ 
+ 
+-#include "cctk.h"
+-#include "cctk_Parameters.h"
+-
+-
+-
+ CCTK_INT CoordBase_GetBoundarySpecification
+   (CCTK_INT const size,
+    CCTK_INT * const nboundaryzones,
+@@ -380,3 +377,115 @@
+   
+   return 0;
+ }
++
++
++
++CCTK_INT CoordBase_GetBoundarySizesAndTypes
++  (CCTK_POINTER_TO_CONST const cctkGH_,
++   CCTK_INT const size,
++   CCTK_INT * restrict const bndsize,
++   CCTK_INT * restrict const is_ghostbnd,
++   CCTK_INT * restrict const is_symbnd, 
++   CCTK_INT * restrict const is_physbnd)
++{
++  cGH const * restrict const cctkGH = cctkGH_;
++  
++  /* Check arguments */
++  int const dim = cctkGH->cctk_dim;
++  if (size != 2*dim) {
++    CCTK_WARN(CCTK_WARN_ABORT, "Inconsistent size argument");
++  }
++  
++  /* Obtain multi-patch bbox information, specifying which boundaries
++     are set by a multi-patch system (bbox=1) and which by a physical
++     boundary condition (bbox=0) */
++  CCTK_INT mp_bbox[2*dim];
++  if (CCTK_IsFunctionAliased("MultiPatch_GetBbox")) {
++    int const ierr = MultiPatch_GetBbox(cctkGH, 2*dim, mp_bbox);
++    if (ierr != 0) {
++      CCTK_WARN(CCTK_WARN_ABORT,
++                "Could not obtain multi-patch bbox specification");
++    }
++  } else {
++    for (int d=0; d<2*dim; ++d) {
++      mp_bbox[d] = 0;
++    }
++  }
++  
++  /* Obtain boundary information */
++  CCTK_INT nboundaryzones[2*dim];
++  CCTK_INT is_internal[2*dim];
++  CCTK_INT is_staggered[2*dim];
++  CCTK_INT shiftout[2*dim];
++  if (CCTK_IsFunctionAliased("MultiPatch_GetBoundarySpecification")) {
++    /* We are using a multi-patch system */
++    int const map = MultiPatch_GetMap(cctkGH);
++    if (map < 0) {
++      CCTK_WARN(CCTK_WARN_ABORT, "Could not determine current map (need to be called in local mode)");
++    }
++    int const ierr = MultiPatch_GetBoundarySpecification
++      (map, 2*dim, nboundaryzones, is_internal, is_staggered, shiftout);
++    if (ierr != 0) {
++      CCTK_WARN(CCTK_WARN_ABORT, "Could not obtain boundary specification");
++    }
++  } else if (CCTK_IsFunctionAliased("GetBoundarySpecification")) {
++    /* We are not using a multi-patch system */
++    int const ierr = GetBoundarySpecification
++      (2*dim, nboundaryzones, is_internal, is_staggered, shiftout);
++    if (ierr != 0) {
++      CCTK_WARN(CCTK_WARN_ABORT, "Could not obtain boundary specification");
++    }
++  } else {
++    CCTK_WARN(CCTK_WARN_ABORT, "Could not obtain boundary specification");
++  }
++  
++  /* Obtain symmetry information */
++  int const symtable = SymmetryTableHandleForGrid(cctkGH);
++  if (symtable < 0) {
++    CCTK_WARN(CCTK_WARN_ABORT, "Could not obtain symmetry table");
++  }
++  CCTK_INT symbnd[2*dim];
++  int const iret =
++    Util_TableGetIntArray(symtable, 2*dim, symbnd, "symmetry_handle");
++  if (iret != 2*dim) {
++    CCTK_WARN(CCTK_WARN_ABORT, "Could not obtain symmetry information");
++  }
++  
++  /* Determine boundary types */
++  for (int d=0; d<2*dim; ++d) {
++    /* Ghost boundaries (inter-process or mesh refinement boundaries)
++       have cctk_bbox=0 */
++    is_ghostbnd[d] = !cctkGH->cctk_bbox[d];
++    /* Symmetry boundaries are not ghost boundaries, are described as
++       symmetry boundaries, and are not multi-patch outer
++       boundaries */
++    is_symbnd [d] = !is_ghostbnd[d] && symbnd[d]>=0 && !mp_bbox[d];
++    /* Physical (outer) boundaries are all other boundaries */
++    is_physbnd[d] = !is_ghostbnd[d] && !is_symbnd[d];
++  }
++  
++  /* Determine boundary sizes */
++  for (int dir=0; dir<dim; ++dir) {
++    for (int face=0; face<2; ++face) {
++      
++      if (is_ghostbnd[2*dir+face]) {
++	/* Ghost boundary */
++	bndsize[2*dir+face] = cctkGH->cctk_nghostzones[dir];
++      } else  {
++	/* Symmetry or physical boundary */
++	bndsize[2*dir+face] = nboundaryzones[2*dir+face];
++        
++	if (is_symbnd[2*dir+face]) {
++	  /* Ensure that the number of symmetry zones is the same as
++	     the number of ghost zones */
++	  if (bndsize[2*dir+face] != cctkGH->cctk_nghostzones[dir]) {
++	    CCTK_WARN(CCTK_WARN_ALERT,
++                      "The number of symmetry points is different from the number of ghost points; this is probably an error");
++	  }
++	}
++      }
++    }
++  }
++  
++  return 0;
++}
+Index: interface.ccl
+===================================================================
+--- interface.ccl	(revision 51)
++++ interface.ccl	(working copy)
+@@ -7,6 +7,8 @@
+ 
+ include header: CoordBase.h in CoordBase.h
+ 
++
++
+ # Exported functions
+ 
+ CCTK_INT FUNCTION Coord_SystemRegister  \
+@@ -63,6 +65,7 @@
+   LANGUAGE C
+ 
+ 
++
+ # The location of the boundary points
+ 
+ CCTK_INT FUNCTION GetBoundarySpecification \
+@@ -135,3 +138,44 @@
+    WITH CoordBase_ConvertFromExteriorBoundary \
+    LANGUAGE C
+ 
++
++
++# Convenient way to determine boundary sizes
++CCTK_INT FUNCTION GetBoundarySizesAndTypes \
++  (CCTK_POINTER_TO_CONST IN cctkGH, \
++   CCTK_INT IN size, \
++   CCTK_INT OUT ARRAY bndsize, \
++   CCTK_INT OUT ARRAY is_ghostbnd, \
++   CCTK_INT OUT ARRAY is_symbnd, \
++   CCTK_INT OUT ARRAY is_physbnd)
++PROVIDES FUNCTION GetBoundarySizesAndTypes \
++   WITH CoordBase_GetBoundarySizesAndTypes \
++   LANGUAGE C
++
++
++
++CCTK_INT FUNCTION SymmetryTableHandleForGrid \
++  (CCTK_POINTER_TO_CONST IN cctkGH)
++USES FUNCTION SymmetryTableHandleForGrid
++
++# Current map
++CCTK_INT FUNCTION MultiPatch_GetMap \
++  (CCTK_POINTER_TO_CONST IN cctkGH)
++USES FUNCTION MultiPatch_GetMap
++
++# Multi-patch bbox, specifying outer boundaries
++CCTK_INT FUNCTION MultiPatch_GetBbox \
++  (CCTK_POINTER_TO_CONST IN cctkGH, \
++   CCTK_INT IN size, \
++   CCTK_INT OUT ARRAY bbox)
++USES FUNCTION MultiPatch_GetBbox
++
++# The location of the boundary points
++CCTK_INT FUNCTION MultiPatch_GetBoundarySpecification \
++  (CCTK_INT IN map, \
++   CCTK_INT IN size, \
++   CCTK_INT OUT ARRAY nboundaryzones, \
++   CCTK_INT OUT ARRAY is_internal, \
++   CCTK_INT OUT ARRAY is_staggered, \
++   CCTK_INT OUT ARRAY shiftout)
++USES FUNCTION MultiPatch_GetBoundarySpecification

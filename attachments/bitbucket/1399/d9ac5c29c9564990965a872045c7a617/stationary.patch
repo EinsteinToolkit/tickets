@@ -1,0 +1,103 @@
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 73)
++++ schedule.ccl	(working copy)
+@@ -196,7 +196,8 @@
+ 
+ 
+ 
+-if (CCTK_Equals(lapse_evolution_method, "static"))
++if (CCTK_Equals(lapse_evolution_method, "static") ||
++    CCTK_Equals(lapse_evolution_method, "stationary"))
+ {
+   SCHEDULE ADMBase_LapseStatic in CCTK_PRESTEP
+   {
+@@ -204,7 +205,8 @@
+   } "Copy the lapse to the current time level"
+ }
+ 
+-if (CCTK_Equals(shift_evolution_method, "static"))
++if (CCTK_Equals(shift_evolution_method, "static") ||
++    CCTK_Equals(shift_evolution_method, "stationary"))
+ {
+   SCHEDULE ADMBase_ShiftStatic in CCTK_PRESTEP
+   {
+@@ -212,7 +214,9 @@
+   } "Copy the shift to the current time level"
+ }
+ 
+-if (CCTK_Equals(evolution_method, "static") || CCTK_Equals(evolution_method, "none"))
++if (CCTK_Equals(evolution_method, "static") ||
++    CCTK_Equals(evolution_method, "none") ||
++    CCTK_Equals(evolution_method, "stationary"))
+ {
+   SCHEDULE ADMBase_Static in CCTK_PRESTEP
+   {
+@@ -248,6 +252,23 @@
+ 
+ }
+ 
++if (CCTK_Equals(evolution_method, "stationary"))
++{
++  SCHEDULE group ADMBase_InitialData at CCTK_POSTREGRID
++  {
++  } "Schedule group for calculating ADM initial data"
++}
++
++if (CCTK_Equals(lapse_evolution_method, "stationary") ||
++    CCTK_Equals(shift_evolution_method, "stationary") ||
++    CCTK_Equals(dtlapse_evolution_method, "stationary") ||
++    CCTK_Equals(dtshift_evolution_method, "stationary"))
++{
++  SCHEDULE group ADMBase_InitialGauge at CCTK_POSTREGRID after ADMBase_InitialData BEFORE MoL_PostStep
++  {
++  } "Schedule group for the ADM initial gauge condition"
++}
++
+ # TODO: Rename this group to "ADMBase_HaveBeenSet"?
+ SCHEDULE GROUP ADMBase_SetADMVars IN MoL_PostStep
+ {
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 73)
++++ param.ccl	(working copy)
+@@ -35,28 +35,33 @@
+ 
+ KEYWORD evolution_method "The metric an extrinsic curvature evolution method"
+ {
+-  "none"   :: "The metric and extrinsic curvature are not evolved"
+-  "static" :: "The metric and extrinsic curvature are not evolved"
++  "none"       :: "The metric and extrinsic curvature are not evolved"
++  "static"     :: "The metric and extrinsic curvature are not evolved"
++  "stationary" :: "The metric and extrinsic curvature are not evolved and initial data is used to fill in new grid points after regridding"
+ } "static"
+ 
+ KEYWORD lapse_evolution_method "The lapse evolution method"
+ {
+-  "static" :: "lapse is not evolved"
++  "static"     :: "lapse is not evolved"
++  "stationary" :: "lapse is not evolved and initial data is used to fill in new grid points after regridding"
+ } "static"
+ 
+ KEYWORD shift_evolution_method "The shift evolution method"
+ { 
+-  "static" :: "shift is not evolved"
++  "static"     :: "shift is not evolved"
++  "stationary" :: "shift is not evolved and initial data is used to fill in new grid points after regridding"
+ } "static"
+ 
+ KEYWORD dtlapse_evolution_method "The dtlapse evolution method"
+ {
+-  "static" :: "dtlapse is not evolved"
++  "static"     :: "dtlapse is not evolved"
++  "stationary" :: "dtlapse is not evolved and initial data is used to fill in new grid points after regridding"
+ } "static"
+ 
+ KEYWORD dtshift_evolution_method "The dtshift evolution method"
+ { 
+-  "static" :: "shift is not evolved"
++  "static"     :: "shift is not evolved"
++  "stationary" :: "dtshift is not evolved and initial data is used to fill in new grid points after regridding"
+ } "static"
+ 
+ 

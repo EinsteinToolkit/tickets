@@ -1,0 +1,188 @@
+From 33536143498b954d26a4b99960c3461d6a846ca1 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Sat, 14 Jul 2012 16:09:25 -0700
+Subject: [PATCH 1/3] GRHydro: add routines to access
+ CarpetEvolutionMask::evolution_mask
+
+based on runtime parameters, ie. CCTK_VarDataPtr for Fortran
+---
+ GRHydro/param.ccl                     |    4 ++
+ GRHydro/src/GRHydro_Con2Prim.F90      |   15 ++++++
+ GRHydro/src/GRHydro_EvolutionMask.F90 |   88 +++++++++++++++++++++++++++++++++
+ GRHydro/src/make.code.defn            |    3 +-
+ 4 files changed, 109 insertions(+), 1 deletion(-)
+ create mode 100644 GRHydro/src/GRHydro_EvolutionMask.F90
+
+diff --git a/GRHydro/param.ccl b/GRHydro/param.ccl
+index 5b05378..5760fb1 100644
+--- a/GRHydro/param.ccl
++++ b/GRHydro/param.ccl
+@@ -66,6 +66,10 @@ USES INT spatial_order
+ 
+ restricted:
+ 
++BOOLEAN use_evolution_mask "Set this to 'true' to skip validity tests in regions where CarpetEvolutionMask::evolution_mask vanishes." STEERABLE=ALWAYS
++{
++} "false"
++
+ BOOLEAN GRHydro_enable_internal_excision "Set this to 'false' to disable the thorn-internal excision." STEERABLE=ALWAYS
+ {
+ } "true"
+diff --git a/GRHydro/src/GRHydro_Con2Prim.F90 b/GRHydro/src/GRHydro_Con2Prim.F90
+index bc10d06..7cdf8b0 100644
+--- a/GRHydro/src/GRHydro_Con2Prim.F90
++++ b/GRHydro/src/GRHydro_Con2Prim.F90
+@@ -2216,6 +2216,7 @@ end subroutine sync_GRHydro_C2P_failed
+ subroutine check_GRHydro_C2P_failed(CCTK_ARGUMENTS)
+   
+   use Con2Prim_fortran_interfaces
++  use GRHydro_EvolutionMask
+ 
+   implicit none
+   
+@@ -2229,6 +2230,11 @@ subroutine check_GRHydro_C2P_failed(CCTK_ARGUMENTS)
+   integer :: i, j, k, nx, ny, nz
+   character(len=100) warnline
+ 
++  ! we skip points where evolution_mask vanishes
++  CCTK_REAL, DIMENSION(cctk_ash1,cctk_ash2,cctk_ash3) :: evolution_mask
++  CCTK_POINTER_TO_CONST :: evolution_mask_ptr
++  pointer (evolution_mask_ptr, evolution_mask)
++
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+   CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup
+@@ -2239,6 +2245,8 @@ subroutine check_GRHydro_C2P_failed(CCTK_ARGUMENTS)
+     vup => vel
+   end if
+ 
++  call GRHydro_DeclareEvolutionMask(cctkGH, evolution_mask_ptr)
++
+ !  call CCTK_INFO("Checking the C2P failure mask.")
+ 
+   nx = cctk_lsh(1)
+@@ -2266,6 +2274,13 @@ subroutine check_GRHydro_C2P_failed(CCTK_ARGUMENTS)
+                cycle
+            end if 
+ 
++          ! do not collapse conditions since Fortran does not guarantee an order
++          if (use_evolution_mask.ne.0) then
++            if (evolution_mask(i,j,k).eq.0d0) then 
++              cycle
++            end if
++          end if
++
+           !$OMP CRITICAL
+           call CCTK_WARN(1,'Con2Prim failed; stopping the code.')
+           call CCTK_WARN(1,'Even with mesh refinement, this point is not restricted from a finer level, so this is really an error')
+diff --git a/GRHydro/src/GRHydro_EvolutionMask.F90 b/GRHydro/src/GRHydro_EvolutionMask.F90
+new file mode 100644
+index 0000000..9378309
+--- /dev/null
++++ b/GRHydro/src/GRHydro_EvolutionMask.F90
+@@ -0,0 +1,88 @@
++/*@@
++   @file      GRHydro_EvolutionMask.F90
++   @date      Sat Jul 14 15:38:02 PDT 2012
++   @author    Roland Haas
++   @desc 
++   User level module and Fortran glue code to get access to
++   CarpetEvolutionMask::evolution_mask based on runtime parameters.
++   @enddesc 
++ @@*/
++#include "cctk.h"
++#include "cctk_Parameters.h"
++#include "cctk_Functions.h"
++
++ /*@@
++   @routine    GRHydro_EvolutionMask
++   @date       Sat Jul 14 15:39:37 PDT 2012
++   @author     Roland Haas
++   @desc
++   User level module to get access to CarpetEvolutionMask::evolution_mask based
++   on runtime parameters.
++   @history
++
++   @endhistory
++
++@@*/
++module GRHydro_EvolutionMask
++
++      implicit none
++
++CONTAINS
++       /*@@
++         @routine    GRHydro_DeclareEvolutionMask
++         @date       Sat Jul 14 15:39:37 PDT 2012
++         @author     Roland Haas
++         @desc
++         Stores a pointer to CarpetEvolutionMask::evoltuion_mask in its
++         argument. This function is not thread safe.
++         @enddesc
++         @calls     
++         @calledby
++         @history
++      
++         @endhistory
++
++         @var     cctkGH
++         @vdesc   Cactus grid hierarchy
++         @vtype   cGH *
++         @vio     in
++         @vcomment
++         @endvar
++
++         @var     evolution_mask
++         @vdesc   Cray pointer
++         @vtype   CCTK_POINTER
++         @vio     out
++         @vcomment
++         @endvar
++      
++         @returntype none
++         @returndesc
++         @endreturndesc
++      @@*/
++      subroutine GRHydro_DeclareEvolutionMask(cctkGH, evolution_mask)
++
++        implicit none
++
++        DECLARE_CCTK_PARAMETERS
++        DECLARE_CCTK_FUNCTIONS
++
++        CCTK_POINTER_TO_CONST :: cctkGH
++        CCTK_POINTER :: evolution_mask
++        integer, save :: evolution_mask_idx = -1
++
++        if (use_evolution_mask.ne.0) then
++          if (evolution_mask_idx .eq. -1) then
++            call CCTK_VarIndex(evolution_mask_idx,&
++                               "CarpetEvolutionMask::evolution_mask")
++          end if
++          call CCTK_VarDataPtrI(evolution_mask, cctkGH, 0, evolution_mask_idx)
++          if (evolution_mask .eq. CCTK_NullPointer()) then
++            call CCTK_Warn(CCTK_WARN_ABORT, "Could not get pointer to evolution_mask. Is CarpetEvolutionMask active?")
++          end if
++        else
++          evolution_mask = CCTK_NullPointer()
++        end if
++
++      end subroutine
++end module
+diff --git a/GRHydro/src/make.code.defn b/GRHydro/src/make.code.defn
+index b1042c7..5a5f6a4 100644
+--- a/GRHydro/src/make.code.defn
++++ b/GRHydro/src/make.code.defn
+@@ -63,7 +63,8 @@ SRCS = 	Utils.F90 \
+ 	GRHydro_ENOReconstruct_drv.F90\
+ 	GRHydro_PPMReconstruct_drv.F90\
+ 	GRHydro_LastMoLPostStep.c\
+-	GRHydro_TVDReconstruct_drv.F90
++	GRHydro_TVDReconstruct_drv.F90\
++	GRHydro_EvolutionMask.F90\
+ 
+ 
+ 
+-- 
+1.7.10.4
+

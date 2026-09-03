@@ -1,0 +1,39 @@
+From 0674a15e9ebec3cf62759cd4a79460a27217b23c Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Sat, 11 Aug 2012 18:12:03 +0200
+Subject: [PATCH 2/3] Add simple Riemann symmetries
+
+This cuts Krancing time by approximately a factor of 2.  Needs Kranc
+commit 4707e0c3f03cc52d82f88735e602c52cf74f0cbe.
+---
+ m/WeylScal4.m |   14 ++++++++++++++
+ 1 files changed, 14 insertions(+), 0 deletions(-)
+
+diff --git a/m/WeylScal4.m b/m/WeylScal4.m
+index 053b123..338c708 100644
+--- a/m/WeylScal4.m
++++ b/m/WeylScal4.m
+@@ -59,6 +59,20 @@ Map[AssertSymmetricDecreasing,
+ 
+ AssertSymmetricDecreasing[gamma[ua,lb,lc], lb, lc];
+ 
++Tensor[R, i_, j_, k_, l_] /; i > j := -R[j, i, k, l];
++Tensor[R, i_, j_, k_, l_] /; i == j := 0;
++Tensor[R, i_, j_, k_, l_] /; k > l := -R[i, j, l, k];
++Tensor[R, i_, j_, k_, l_] /; k == l := 0;
++Tensor[R, i_, j_, k_, l_] /; i > k := R[k, l, i, j];
++Tensor[R, i_, j_, k_, l_] /; i == k && j > l := R[k, l, i, j];
++
++Tensor[R4p, i_, j_, k_, l_] /; i > j := -R4p[j, i, k, l];
++Tensor[R4p, i_, j_, k_, l_] /; i == j := 0;
++Tensor[R4p, i_, j_, k_, l_] /; k > l := -R4p[i, j, l, k];
++Tensor[R4p, i_, j_, k_, l_] /; k == l := 0;
++Tensor[R4p, i_, j_, k_, l_] /; i > k := R4p[k, l, i, j];
++Tensor[R4p, i_, j_, k_, l_] /; i == k && j > l := R4p[k, l, i, j];
++
+ (* Determinants of the metrics in terms of their components
+    (Mathematica symbolic expressions) *)
+ gDet = Det[MatrixOfComponents[g[la,lb]]];
+-- 
+1.7.5.4
+

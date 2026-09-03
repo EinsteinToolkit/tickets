@@ -1,0 +1,22 @@
+Index: lib/make/make.config.rules.in
+===================================================================
+--- lib/make/make.config.rules.in	(revision 4842)
++++ lib/make/make.config.rules.in	(working copy)
+@@ -62,13 +62,13 @@
+ # Define how to do dependencies
+ ifeq ($(strip $(PERL_BACKUP_NECESSARY)),)
+ define DEPENDENCY_FIXER
+-	#$(PERL) -pi -e "s,([^:]*),$(basename $@).o $(basename $@).d, if(m/: /);\
+-	 s:\s+\S*[/\\\]($(DEP_EXCLUDE_FILES))\b::g" $@
++	$(PERL) -pi -e "s,([^:]*),$(basename $@).o $(basename $@).d, if(m/: /);\
++	 $(if $(DEP_EXCLUDE_FILES),s:\s+\S*[/\\\]($(DEP_EXCLUDE_FILES))\b::g)" $@
+ endef
+ else
+ define DEPENDENCY_FIXER
+-	#$(PERL) -pi.bak -e "s,([^:]*),$(basename $@).o $(basename $@).d, if(m/: /);\
+-	 s:\s+\S*[/\\\]($(DEP_EXCLUDE_FILES))\b::g" $@
++	$(PERL) -pi.bak -e "s,([^:]*),$(basename $@).o $(basename $@).d, if(m/: /);\
++	 $(if $(DEP_EXCLUDE_FILES),s:\s+\S*[/\\\]($(DEP_EXCLUDE_FILES))\b::g)" $@
+ 	rm $@.bak
+ endef
+ endif

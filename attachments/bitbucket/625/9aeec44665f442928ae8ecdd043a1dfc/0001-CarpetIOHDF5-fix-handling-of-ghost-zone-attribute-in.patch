@@ -1,0 +1,63 @@
+From b5a24f04af6865621a30846921e4bfe14940d3cb Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Fri, 8 Jun 2012 14:29:29 -0700
+Subject: [PATCH] CarpetIOHDF5: fix handling of ghost zone attribute in sliced
+ output
+
+The reader now takes the ghost zone attribute into account, so that we
+have to set it to zero when not outputting ghost zones. On the other
+hand if we do output ghost zones, we should re-add them to the active
+region before output.
+---
+ Carpet/CarpetIOHDF5/src/OutputSlice.cc |   28 +++++++++++++++++++++++++++-
+ 1 file changed, 27 insertions(+), 1 deletion(-)
+
+diff --git a/Carpet/CarpetIOHDF5/src/OutputSlice.cc b/Carpet/CarpetIOHDF5/src/OutputSlice.cc
+index a74c865..8b24bfd 100644
+--- a/Carpet/CarpetIOHDF5/src/OutputSlice.cc
++++ b/Carpet/CarpetIOHDF5/src/OutputSlice.cc
+@@ -1069,6 +1069,32 @@ namespace CarpetIOHDF5 {
+     // do grid arrays have buffer zones?
+     if (not output_buffer_points) {
+       exts &= allactive;
++      ivect loghosts(0);
++      ivect highosts(0);
++      // possibly re-add ghost points and symmetry points 
++      // TODO: come up with a nicer way to do this
++      for (int d=0; d<groupdim; ++d) {
++        bool const output_lower_ghosts =
++          obnds[0][d]
++          ? (is_symbnd[2*d]
++             ? output_symmetry_points
++             : (output_boundary_points and out3D_outer_ghosts))
++          : (output_ghost_points and out3D_ghosts);
++        bool const output_upper_ghosts =
++          obnds[1][d]
++          ? (is_symbnd[2*d+1]
++             ? output_symmetry_points
++             : (output_boundary_points and out3D_outer_ghosts))
++          : (output_ghost_points and out3D_ghosts);
++
++        if (output_lower_ghosts) {
++          loghosts[d] = ghost_width[0][d];
++        }
++        if (output_upper_ghosts) {
++          highosts[d] = ghost_width[1][d];
++        }
++      }
++      exts.expand(loghosts, highosts);
+     }
+ 
+     return exts;
+@@ -1404,7 +1430,7 @@ namespace CarpetIOHDF5 {
+         const b2vect obnds       = vhh.at(m)->outer_boundaries(rl,c);
+         const i2vect ghost_width = arrdata.at(gi).at(m).dd->ghost_widths.AT(rl);
+         for (int d = 0; d < outdim; d++) {
+-          nghostzones[d] = ghost_width[0][dirs[d]];
++          nghostzones[d] = output_ghost_points ? ghost_width[0][dirs[d]] : 0;
+           assert (all (ghost_width[0] == ghost_width[1]));
+ 
+           bbox[2*d] = obnds[0][dirs[d]];
+-- 
+1.7.10
+

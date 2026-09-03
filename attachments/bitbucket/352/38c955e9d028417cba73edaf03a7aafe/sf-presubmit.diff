@@ -1,0 +1,79 @@
+Index: mdb/machines/numrel02.ini
+===================================================================
+--- mdb/machines/numrel02.ini	(revision 1291)
++++ mdb/machines/numrel02.ini	(working copy)
+@@ -43,7 +43,7 @@
+ nodes           = 1
+ min-ppn         = 1
+ queue           = NOQUEUE       # don't want this entry
+-submit          = sh @SCRIPTFILE@ < /dev/null > /dev/null 2> /dev/null & echo $!
++submit          = exec @SCRIPTFILE@ < /dev/null > /dev/null 2> /dev/null & echo $!
+ run             = /usr/local/packages/numrel/mpich-1.2.7p1/bin/mpirun -np @NUM_PROCS@ -machinefile localhost ./RunCmd
+ run2            = exec /bin/env OMP_NUM_THREADS=@NUM_THREADS@ nice -19 @RUNDIR@/@EXECUTABLE@ $*
+ getstatus       = ps @JOB_ID@
+Index: mdb/submitscripts/bethe.sub
+===================================================================
+--- mdb/submitscripts/bethe.sub	(revision 1291)
++++ mdb/submitscripts/bethe.sub	(working copy)
+@@ -1,3 +1,9 @@
+ #! /bin/bash
+ cd @SOURCEDIR@
++CHAINED_JOB_ID='@CHAINED_JOB_ID@'
++if [ "${CHAINED_JOB_ID}" != '' ]; then
++    while ps "${CHAINED_JOB_ID}" >/dev/null; do
++        sleep 60
++    done
++done
+ exec @SIMFACTORY@ run @SIMULATION_NAME@ --machine=@MACHINE@ --restart-id=@RESTART_ID@ @FROM_RESTART_COMMAND@ < /dev/null > @RUNDIR@/@SIMULATION_NAME@.out 2> @RUNDIR@/@SIMULATION_NAME@.err
+Index: mdb/submitscripts/generic.sub
+===================================================================
+--- mdb/submitscripts/generic.sub	(revision 1291)
++++ mdb/submitscripts/generic.sub	(working copy)
+@@ -1,3 +1,9 @@
+ #! /bin/bash
+ cd @SOURCEDIR@
++CHAINED_JOB_ID='@CHAINED_JOB_ID@'
++if [ "${CHAINED_JOB_ID}" != '' ]; then
++    while ps "${CHAINED_JOB_ID}" >/dev/null; do
++        sleep 60
++    done
++done
+ exec @SIMFACTORY@ run @SIMULATION_NAME@ --machine=@MACHINE@ --restart-id=@RESTART_ID@ @FROM_RESTART_COMMAND@ < /dev/null > @RUNDIR@/@SIMULATION_NAME@.out 2> @RUNDIR@/@SIMULATION_NAME@.err
+Index: mdb/submitscripts/philip-mpich.sub
+===================================================================
+--- mdb/submitscripts/philip-mpich.sub	(revision 1291)
++++ mdb/submitscripts/philip-mpich.sub	(working copy)
+@@ -4,6 +4,7 @@
+ #PBS -r n
+ #PBS -l walltime=@WALLTIME@
+ #PBS -l nodes=@NODES@:ppn=@PPN@
++#PBS @('@CHAINED_JOB_ID@' ne '' ? '-W depend=afterany:@CHAINED_JOB_ID@' : '')@
+ #PBS -V
+ #PBS -N @SHORT_SIMULATION_NAME@
+ #PBS -m abe
+Index: mdb/submitscripts/numrel-intel.sub
+===================================================================
+--- mdb/submitscripts/numrel-intel.sub	(revision 1291)
++++ mdb/submitscripts/numrel-intel.sub	(working copy)
+@@ -1,3 +1,9 @@
+ #! /bin/bash
+ cd @SOURCEDIR@
++CHAINED_JOB_ID='@CHAINED_JOB_ID@'
++if [ "${CHAINED_JOB_ID}" != '' ]; then
++    while ps "${CHAINED_JOB_ID}" >/dev/null; do
++        sleep 60
++    done
++done
+ exec @SIMFACTORY@ run @SIMULATION_NAME@ --machine=@MACHINE@ --restart-id=@RESTART_ID@ @FROM_RESTART_COMMAND@ < /dev/null > @RUNDIR@/@SIMULATION_NAME@.out 2> @RUNDIR@/@SIMULATION_NAME@.err
+Index: mdb/submitscripts/hopper2.sub
+===================================================================
+--- mdb/submitscripts/hopper2.sub	(revision 1291)
++++ mdb/submitscripts/hopper2.sub	(working copy)
+@@ -4,6 +4,7 @@
+ #PBS -r n
+ #PBS -l walltime=@WALLTIME@
+ #PBS -l mppwidth=@PROCS_REQUESTED@
++#PBS @('@CHAINED_JOB_ID@' ne '' ? '-W depend=afterany:@CHAINED_JOB_ID@' : '')@
+ #PBS -N @SIMULATION_NAME@
+ #PBS -m abe
+ #PBS -o @RUNDIR@/@SIMULATION_NAME@.out

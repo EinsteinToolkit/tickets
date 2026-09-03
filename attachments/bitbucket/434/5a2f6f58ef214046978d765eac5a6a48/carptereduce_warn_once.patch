@@ -1,0 +1,35 @@
+# HG changeset patch
+# User Roland Haas <rhaas@caltech.edu>
+# Date 1317444718 25200
+# Node ID 418572ade1f1406df5ebd24f185d8bb339a111d0
+# Parent  c82c8535c3e7b1abd948f2664d206104b9f97180
+CarpetReduce: warn only once about missmatching volumes
+
+diff -r c82c8535c3e7 -r 418572ade1f1 Carpet/CarpetReduce/src/mask_test.c
+--- a/Carpet/CarpetReduce/src/mask_test.c	Fri Sep 30 08:32:21 2011 -0700
++++ b/Carpet/CarpetReduce/src/mask_test.c	Fri Sep 30 21:51:58 2011 -0700
+@@ -107,10 +107,12 @@
+                   "Simulation domain volume: %.17g", (double)domain_volume);
+     }
+     
++    static int there_was_a_problem = 0;
+     int const there_is_a_problem =
+       fabs(sum_weight - domain_volume) > 1.0e-12 * (sum_weight + domain_volume);
+     
+-    if (there_is_a_problem) {
++    /* warn once whenever the sums begin to differ/aggree */
++    if (there_is_a_problem != there_was_a_problem) {
+       if (!verbose) {
+         CCTK_VInfo (CCTK_THORNSTRING,
+                     "Simulation domain volume: %.15g", (double)domain_volume);
+@@ -118,7 +120,9 @@
+                     "Reduction weight sum:     %.15g", (double)sum_weight);
+       }
+       CCTK_VWarn (CCTK_WARN_ALERT, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                  "Simulation domain volume and reduction weight sum differ");
++                  "Simulation domain volume and reduction weight sum %sdiffer",
++                  there_is_a_problem ? "" : "no longer ");
++      there_was_a_problem = there_is_a_problem;
+     }
+     
+   }

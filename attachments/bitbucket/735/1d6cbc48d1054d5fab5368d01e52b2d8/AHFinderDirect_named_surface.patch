@@ -1,0 +1,77 @@
+Index: test/misner1.2-025.par
+===================================================================
+--- test/misner1.2-025.par	(revision 1561)
++++ test/misner1.2-025.par	(working copy)
+@@ -86,6 +86,7 @@
+ SphericalSurface::nghostsphi  [0] = 2
+ 
+ # individual AH
++SphericalSurface::name        [1] = "SphericalSurface1"
+ SphericalSurface::ntheta      [1] = 22
+ SphericalSurface::nphi        [1] = 22
+ SphericalSurface::nghoststheta[1] = 2
+@@ -115,7 +116,7 @@
+ AHFinderDirect::max_N_zones_per_right_angle = 20
+ 
+ # individual AH
+-AHFinderDirect::which_surface_to_store_info[1] = 1
++AHFinderDirect::which_surface_to_store_info_by_name[1] = "SphericalSurface1"
+ AHFinderDirect::N_zones_per_right_angle[1] = 20
+ AHFinderDirect::origin_x[1] = 0.0
+ AHFinderDirect::origin_y[1] = 0.0
+Index: interface.ccl
+===================================================================
+--- interface.ccl	(revision 1561)
++++ interface.ccl	(working copy)
+@@ -138,3 +138,10 @@
+ USES FUNCTION IO_TruncateOutputFiles
+ 
+ ################################################################################
++
++# translate SphericalSurface name into ID
++CCTK_INT \
++FUNCTION sf_IdFromName (CCTK_INT IN id, CCTK_POINTER_TO_CONST IN name)
++USES FUNCTION sf_IdFromName
++
++################################################################################
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 1561)
++++ param.ccl	(working copy)
+@@ -189,6 +189,14 @@
+ 0:* :: "store info into the corresponding surface"
+ } -1
+ 
++string which_surface_to_store_info_by_name[101] \
++  "into which surface should we store the info?" \
++  STEERABLE=recover
++{
++""   :: "use which_surface_to_store_info"
++".*" :: "any string"
++} ""
++
+ #
+ # This parameter controls how verbose this thorn is in printing
+ # informational (non-error) messages describing what it's doing.
+Index: src/driver/announce.cc
+===================================================================
+--- src/driver/announce.cc	(revision 1561)
++++ src/driver/announce.cc	(working copy)
+@@ -13,6 +13,7 @@
+ #include "cctk.h"
+ #include "cctk_Arguments.h"
+ #include "cctk_Parameters.h"
++#include "cctk_Functions.h"
+ 
+ #include "config.h"
+ #include "stdc.h"
+@@ -124,7 +125,8 @@
+   {
+ 
+   // Store in spherical surface
+-  const int sn = which_surface_to_store_info[hn];
++  const int sn = sf_IdFromName(which_surface_to_store_info[hn], 
++                               which_surface_to_store_info_by_name[hn]);
+   if (sn == -1)
+     then continue;
+ 

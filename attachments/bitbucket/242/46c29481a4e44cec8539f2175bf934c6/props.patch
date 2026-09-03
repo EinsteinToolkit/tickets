@@ -1,0 +1,27 @@
+Index: sim-build.py
+===================================================================
+--- sim-build.py	(revision 1234)
++++ sim-build.py	(working copy)
+@@ -37,6 +37,8 @@
+     
+     configBase = simlib.BuildPath(simenv.CONFIGS_PATH, configName)
+     
++    propertiesFile = simlib.BuildPath(configBase, "properties.ini")
++
+     if not os.path.exists(configBase):
+         
+         try:
+@@ -48,10 +50,10 @@
+         for sub in subfolders:
+             sf = simlib.BuildPath(configBase, sub)
+             simlib.ExecuteCommand("mkdir %s" % sf)
++    else: # The config dir exists already
++        if not os.path.exists(propertiesFile):
++            fatal("Configuration %s has no properties.ini file.  Either this is not a SimFactory configuration, or the configuration has become corrupted.  Please delete the configuration and run the sim build command again." % (configName))
+ 
+-
+-    propertiesFile = simlib.BuildPath(configBase, "properties.ini")
+-
+     prop = simproperties.SimProperties()
+     prop.init(propertiesFile)
+     

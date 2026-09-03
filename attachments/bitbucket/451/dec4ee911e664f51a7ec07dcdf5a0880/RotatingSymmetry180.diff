@@ -1,0 +1,54 @@
+Index: src/interpolate.c
+===================================================================
+--- src/interpolate.c	(revision 62)
++++ src/interpolate.c	(working copy)
+@@ -86,6 +86,11 @@
+                || CCTK_EQUALS (tensortypealias, "dd_sym")) {
+       /* symmetric tensor */
+       assert (numvars == 6);
++    } else if (CCTK_EQUALS (tensortypealias, "uu")
++               || CCTK_EQUALS (tensortypealias, "du")
++               || CCTK_EQUALS (tensortypealias, "dd")) {
++      /* tensor */
++      assert (numvars == 9);
+     } else if (CCTK_EQUALS (tensortypealias, "ddd_sym")) {
+       /* 3rd rank tensor, symmetric in last 2 indices */
+       assert (numvars == 18);
+@@ -335,6 +340,16 @@
+         case 5: break;
+         default: assert(0);
+         }
++      } else if (CCTK_EQUALS (tensortypealias, "uu")
++                 || CCTK_EQUALS (tensortypealias, "ud")
++                 || CCTK_EQUALS (tensortypealias, "du")
++                 || CCTK_EQUALS (tensortypealias, "dd")) {
++        assert (numvars == 9);
++        parities[0] = parities[1] = parities[2] = +1;
++        int const d1 = index % 3;
++        int const d2 = index / 3;
++        parities[d1] *= -1;
++        parities[d2] *= -1;
+       } else if (CCTK_EQUALS (tensortypealias, "ddd_sym")) {
+         assert (numvars == 18);
+         parities[0] = parities[1] = parities[2] = +1;
+Index: src/rotatingsymmetry180.c
+===================================================================
+--- src/rotatingsymmetry180.c	(revision 62)
++++ src/rotatingsymmetry180.c	(working copy)
+@@ -189,6 +189,16 @@
+       case 5: break;
+       default: assert(0);
+       }
++    } else if (CCTK_EQUALS (tensortypealias, "uu")
++               || CCTK_EQUALS (tensortypealias, "ud")
++               || CCTK_EQUALS (tensortypealias, "du")
++               || CCTK_EQUALS (tensortypealias, "dd")) {
++      assert (numvars == 9);
++      paritiess[var][0] = paritiess[var][1] = paritiess[var][2] = +1;
++      int const d1 = index % 3;
++      int const d2 = index / 3;
++      paritiess[var][d1] *= -1;
++      paritiess[var][d2] *= -1;
+     } else if (CCTK_EQUALS (tensortypealias, "ddd_sym")) {
+       assert (numvars == 12);
+       paritiess[var][0] = paritiess[var][1] = paritiess[var][2] = +1;

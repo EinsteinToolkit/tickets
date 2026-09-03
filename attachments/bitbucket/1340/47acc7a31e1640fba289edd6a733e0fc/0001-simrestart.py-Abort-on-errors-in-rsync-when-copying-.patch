@@ -1,0 +1,28 @@
+From 41380826d2aab03d89d549aac43777e3f2962d0e Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Mon, 29 Apr 2013 11:22:46 +0200
+Subject: [PATCH] simrestart.py: Abort on errors in rsync when copying test
+ data to simulation
+
+---
+ lib/simrestart.py | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/lib/simrestart.py b/lib/simrestart.py
+index 3054c74..31bd517 100644
+--- a/lib/simrestart.py
++++ b/lib/simrestart.py
+@@ -519,7 +519,9 @@ class SimRestart:
+                            "%s/" % testsuitedir])
+             cmd = "%s %s %s %s" % (rsynccmd, rsyncopts,
+                                    ' '.join(rsyncoptions), ' '.join(rsyncfiles))
+-            simlib.ExecuteCommand(cmd)
++            if simlib.ExecuteCommand(cmd) != 0:
++                fatal("Rsync of test data for simulation failed")
++
+             
+     def submit(self, submitScript, chainedJobId=None, chainedRestartId=None):
+         """Low-level job submission function."""
+-- 
+1.8.1.3
+

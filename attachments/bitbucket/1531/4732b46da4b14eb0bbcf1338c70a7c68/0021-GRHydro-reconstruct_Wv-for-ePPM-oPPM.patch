@@ -1,0 +1,169 @@
+From c600179700e3e4e38076725828819e681e3d8792 Mon Sep 17 00:00:00 2001
+From: Christian Reisswig <reisswig@tapir.caltech.edu>
+Date: Sat, 21 Dec 2013 12:50:36 -0800
+Subject: [PATCH 21/36] GRHydro: reconstruct_Wv for ePPM/oPPM.
+
+---
+ src/GRHydro_PPMReconstruct_drv_opt.cc | 84 ++++++++++++++++++++++++++++++-----
+ 1 file changed, 73 insertions(+), 11 deletions(-)
+
+diff --git a/src/GRHydro_PPMReconstruct_drv_opt.cc b/src/GRHydro_PPMReconstruct_drv_opt.cc
+index 01b3b47..90206c7 100644
+--- a/src/GRHydro_PPMReconstruct_drv_opt.cc
++++ b/src/GRHydro_PPMReconstruct_drv_opt.cc
+@@ -10,6 +10,11 @@
+ 
+ #include "SpaceMask.h"
+ #include "GRHydro_PPM_opt.h"
++#include "GRHydro_Reconstruct_drv_cxx.hh" 
++
++#undef velx
++#undef vely
++#undef velz
+ 
+ using namespace std;
+ 
+@@ -49,12 +54,25 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+   //Multipatch related pointers
+   const CCTK_REAL * restrict vup;
+   const CCTK_REAL * restrict Bprim;
++  const CCTK_REAL * restrict g11;
++  const CCTK_REAL * restrict g12;
++  const CCTK_REAL * restrict g13;
++  const CCTK_REAL * restrict g22;
++  const CCTK_REAL * restrict g23;
++  const CCTK_REAL * restrict g33;
++  
+   if(GRHydro_UseGeneralCoordinates(cctkGH)) {
+     vup=lvel;
+     Bprim=lBvec;
++    g11=gaa; g12=gab; g13=gac;
++    g22=gbb; g23=gbc;
++    g33=gcc;
+   } else {
+     vup=vel;
+     Bprim=Bvec;
++    g11=gxx; g12=gxy; g13=gxz;
++    g22=gyy; g23=gyz;
++    g33=gzz;
+   }
+ 
+   const int nx=cctk_ash[0];
+@@ -217,6 +235,18 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+ 
+   //index = i + j*nx + k*nx*ny;
+ 
++  vector<CCTK_REAL> Wvup(0);
++  // allocate temp memory for Wv reconstruction
++  if (reconstruct_Wv) {
++     Wvup.resize(3*nxyz, 0);
++     #pragma omp parallel for
++     for (int i=0; i < nxyz; ++i) {
++        Wvup[i]        = w_lorentz[i]*vup[i];
++        Wvup[i+nxyz]   = w_lorentz[i]*vup[i+nxyz];
++        Wvup[i+2*nxyz] = w_lorentz[i]*vup[i+2*nxyz];
++     }
++  }
++  
+ // PPM starts:
+   if (*flux_direction == 1) {
+     #pragma omp parallel
+@@ -257,10 +287,16 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+         
+         oned_slice(nx,nstart,1,rho,rho1d);
+         
+-        oned_slice(nx,nstart,       1,vup,velx1d);
+-        oned_slice(nx,nstart+nxyz,  1,vup,vely1d);
+-        oned_slice(nx,nstart+2*nxyz,1,vup,velz1d);
+-        
++        // TODO: reconstruct_Wv is not yet templated!
++        if (!reconstruct_Wv) {
++          oned_slice(nx,nstart,       1,vup,velx1d);
++          oned_slice(nx,nstart+nxyz,  1,vup,vely1d);
++          oned_slice(nx,nstart+2*nxyz,1,vup,velz1d);
++        } else {
++          oned_slice(nx,nstart,       1,&Wvup.front(),velx1d);
++          oned_slice(nx,nstart+nxyz,  1,&Wvup.front(),vely1d);
++          oned_slice(nx,nstart+2*nxyz,1,&Wvup.front(),velz1d);
++        }
+         oned_slice(nx,nstart,1,eps,eps1d);
+         oned_slice(nx,nstart,1,press,press1d);
+         
+@@ -300,6 +336,11 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+         oned_unslice(nx,nstart,1,velx1d_plus,velxplus);
+         oned_unslice(nx,nstart,1,vely1d_plus,velyplus);
+         oned_unslice(nx,nstart,1,velz1d_plus,velzplus);
++        if (reconstruct_Wv)
++           undo_Wv<0>(nx, velxminus, velyminus, velzminus,
++                          velxplus, velyplus, velzplus,
++                          g11, g12, g13, g22, g23, g33,
++                          cctkGH, j, k); 
+         
+         oned_unslice(nx,nstart,1,eps1d_minus,epsminus);
+         oned_unslice(nx,nstart,1,eps1d_plus,epsplus);
+@@ -368,10 +409,15 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+         
+         oned_slice(ny,nstart,nx,rho,rho1d);
+         
+-        oned_slice(ny,nstart,       nx,vup,velx1d);
+-        oned_slice(ny,nstart+nxyz,  nx,vup,vely1d);
+-        oned_slice(ny,nstart+2*nxyz,nx,vup,velz1d);
+-        
++        if (!reconstruct_Wv) {
++          oned_slice(ny,nstart,       nx,vup,velx1d);
++          oned_slice(ny,nstart+nxyz,  nx,vup,vely1d);
++          oned_slice(ny,nstart+2*nxyz,nx,vup,velz1d);
++        } else {
++          oned_slice(ny,nstart,       nx,&Wvup.front(),velx1d);
++          oned_slice(ny,nstart+nxyz,  nx,&Wvup.front(),vely1d);
++          oned_slice(ny,nstart+2*nxyz,nx,&Wvup.front(),velz1d);
++        }
+         oned_slice(ny,nstart,nx,eps,eps1d);
+         oned_slice(ny,nstart,nx,press,press1d);
+         
+@@ -412,6 +458,11 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+         oned_unslice(ny,nstart,nx,velx1d_plus,velxplus);
+         oned_unslice(ny,nstart,nx,vely1d_plus,velyplus);
+         oned_unslice(ny,nstart,nx,velz1d_plus,velzplus);
++        if (reconstruct_Wv)
++           undo_Wv<1>(ny, velyminus, velzminus, velxminus,
++                          velyplus, velzplus, velxplus,
++                          g22, g23, g12, g33, g13, g11,
++                          cctkGH, j, k);
+         
+         oned_unslice(ny,nstart,nx,eps1d_minus,epsminus);
+         oned_unslice(ny,nstart,nx,eps1d_plus,epsplus);
+@@ -481,9 +532,15 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+ 
+         oned_slice(nz,nstart,nxy,rho,rho1d);
+         
+-        oned_slice(nz,nstart,       nxy,vup,velx1d);
+-        oned_slice(nz,nstart+nxyz,  nxy,vup,vely1d);
+-        oned_slice(nz,nstart+2*nxyz,nxy,vup,velz1d);
++        if (!reconstruct_Wv) {
++          oned_slice(nz,nstart,       nxy,vup,velx1d);
++          oned_slice(nz,nstart+nxyz,  nxy,vup,vely1d);
++          oned_slice(nz,nstart+2*nxyz,nxy,vup,velz1d);
++        } else {
++          oned_slice(nz,nstart,       nxy,&Wvup.front(),velx1d);
++          oned_slice(nz,nstart+nxyz,  nxy,&Wvup.front(),vely1d);
++          oned_slice(nz,nstart+2*nxyz,nxy,&Wvup.front(),velz1d);
++        }
+         
+         oned_slice(nz,nstart,nxy,eps,eps1d);
+         oned_slice(nz,nstart,nxy,press,press1d);
+@@ -525,6 +582,11 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+         oned_unslice(nz,nstart,nxy,velx1d_plus,velxplus);
+         oned_unslice(nz,nstart,nxy,vely1d_plus,velyplus);
+         oned_unslice(nz,nstart,nxy,velz1d_plus,velzplus);
++        if (reconstruct_Wv)
++           undo_Wv<2>(nz, velzminus, velxminus, velyminus,
++                          velzplus, velxplus, velyplus,
++                          g33, g13, g23, g11, g12, g22,
++                          cctkGH, j, k);
+         
+         oned_unslice(nz,nstart,nxy,eps1d_minus,epsminus);
+         oned_unslice(nz,nstart,nxy,eps1d_plus,epsplus);
+-- 
+1.9.0
+

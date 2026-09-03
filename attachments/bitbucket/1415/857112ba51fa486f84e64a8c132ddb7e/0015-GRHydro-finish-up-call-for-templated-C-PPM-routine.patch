@@ -1,0 +1,290 @@
+From 7d2bb3de00b064e8a648ca658d3228adc772e72c Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Sun, 28 Jul 2013 16:21:16 -0700
+Subject: [PATCH 15/19] GRHydro: finish up call for templated C++ PPM routine
+
+activated by paramater use_optimized_PPM
+---
+ param.ccl                             |    4 ++
+ src/GRHydro_PPM.cc                    |    4 +-
+ src/GRHydro_PPMReconstruct_drv_opt.cc |  124 +++++++++++++++++++++++++--------
+ src/GRHydro_PPM_opt.h                 |    2 +-
+ src/GRHydro_Reconstruct.F90           |   14 ++--
+ src/make.code.defn                    |    1 +
+ 6 files changed, 112 insertions(+), 37 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index b56cea2..b063098 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -173,6 +173,10 @@ real myfloor "A minimum number for the TVD reconstruction routine"
+   0.0:		:: "Must be positive"
+ } 1.e-10
+ 
++boolean use_optimized_ppm "use C++ templated version of PPM. Experimental"
++{
++} "no"
++
+ boolean ppm_detect "Should the PPM solver use shock detection?"
+ {
+ } "no"
+diff --git a/src/GRHydro_PPM.cc b/src/GRHydro_PPM.cc
+index e1f426f..fe6c265 100644
+--- a/src/GRHydro_PPM.cc
++++ b/src/GRHydro_PPM.cc
+@@ -69,7 +69,7 @@ static inline void monotonize(double* restrict xminus,
+ 
+ template<bool do_temp, bool do_ye, bool do_mhd, 
+ 	 bool dc_flag, bool do_ppm_detect>
+-static void ppm1d_cxx(const int nx, 
++void GRHydro_ppm1d_cxx(const int nx, 
+ 		      const double dx, 
+ 		      const double* restrict rho, 
+ 		      const double* restrict velx,
+@@ -343,7 +343,7 @@ static void ppm1d_cxx(const int nx,
+ 
+ //template template<bool do_temp, bool do_ye, bool do_mhd, bool dc_flag, bool do_ppm_detect>
+ #define INSTANTIATE(do_temp,do_ye,do_mhd,dc_flag,do_ppm_detect)			\
+-template static void ppm1d_cxx<do_temp,do_ye,do_mhd,dc_flag,do_ppm_detect>(const int nx, \
++template void GRHydro_ppm1d_cxx<do_temp,do_ye,do_mhd,dc_flag,do_ppm_detect>(const int nx, \
+ 		      const double dx,					\
+ 		      const double* restrict rho,			\
+ 		      const double* restrict velx,			\
+diff --git a/src/GRHydro_PPMReconstruct_drv_opt.cc b/src/GRHydro_PPMReconstruct_drv_opt.cc
+index 43df1b6..9b70d2c 100644
+--- a/src/GRHydro_PPMReconstruct_drv_opt.cc
++++ b/src/GRHydro_PPMReconstruct_drv_opt.cc
+@@ -22,14 +22,14 @@ using namespace std;
+ 
+ extern "C" CCTK_INT GRHydro_UseGeneralCoordinates(const cGH * cctkGH);
+ 
+-void oned_slice(int npt,int nstart,int nstride,CCTK_REAL* vec3d,vector<CCTK_REAL> vec1d)
++static void oned_slice(int npt,int nstart,int nstride,CCTK_REAL* vec3d,vector<CCTK_REAL> vec1d)
+ {
+   int i;
+   for (i=0; i<npt; i++)vec1d[i] = vec3d[nstart+i*nstride];
+   return;
+ }
+ 
+-void oned_unslice(int npt,int nstart,int nstride,vector<CCTK_REAL> vec1d,CCTK_REAL* vec3d)
++static void oned_unslice(int npt,int nstart,int nstride,vector<CCTK_REAL> vec1d,CCTK_REAL* vec3d)
+ {
+   int i;
+   for (i=0; i<npt; i++)vec3d[nstart+i*nstride]=vec1d[i];
+@@ -49,38 +49,18 @@ void oned_unslice(int npt,int nstart,int nstride,vector<CCTK_REAL> vec1d,CCTK_RE
+   * with or without divergence cleaning
+  */
+ 
+-void GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
++extern "C"
++void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & restrict cctkGH)
+ {
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+ 
+-  CCTK_REAL * restrict g11, * restrict g12, *restrict g13;
+-  CCTK_REAL * restrict g22, * restrict g23, *restrict g33;
+-  CCTK_REAL * restrict beta1, * restrict beta2, * restrict beta3;
+   CCTK_REAL * restrict vup;
+ 
+   //Multipatch related pointers
+   if(GRHydro_UseGeneralCoordinates(cctkGH)) {
+-    g11=gaa;
+-    g12=gab;
+-    g13=gac;
+-    g22=gbb;
+-    g23=gbc;
+-    g33=gcc;
+-    beta1=betaa;
+-    beta2=betab;
+-    beta3=betac;
+     vup=lvel;
+   } else {
+-    g11=gxx;
+-    g12=gxy;
+-    g13=gxz;
+-    g22=gyy;
+-    g23=gyz;
+-    g33=gzz;
+-    beta1=betax;
+-    beta2=betay;
+-    beta3=betaz;
+     vup=vel;
+   }
+ 
+@@ -159,7 +139,94 @@ void GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+   vector<CCTK_REAL> Bvcz1d_minus(nmax_xyz);
+   vector<CCTK_REAL> psidc1d_minus(nmax_xyz);
+ 
+-  int npt,nstart,nstride;
++  int nstart;
++
++  typedef
++  void (*ppm1d_cxx_ptr_t)(const int nx, \
++                    const double dx,              \
++                    const double* restrict rho,   \
++                    const double* restrict velx,  \
++                    const double* restrict vely,  \
++                    const double* restrict velz,  \
++                    const double* restrict eps,   \
++                    const double* restrict press, \
++                    const double* restrict temp,  \
++                    const double* restrict ye,    \
++                    const double* restrict Bvcx,  \
++                    const double* restrict Bvcy,  \
++                    const double* restrict Bvcz,  \
++                    const double* restrict psidc, \
++                    double* restrict rhominus,    \
++                    double* restrict velxminus,   \
++                    double* restrict velyminus,   \
++                    double* restrict velzminus,   \
++                    double* restrict epsminus,    \
++                    double* restrict tempminus,   \
++                    double* restrict yeminus,     \
++                    double* restrict Bvcxminus,   \
++                    double* restrict Bvcyminus,   \
++                    double* restrict Bvczminus,   \
++                    double* restrict psidcminus,  \
++                    double* restrict rhoplus,     \
++                    double* restrict velxplus,    \
++                    double* restrict velyplus,    \
++                    double* restrict velzplus,    \
++                    double* restrict epsplus,     \
++                    double* restrict tempplus,    \
++                    double* restrict yeplus,      \
++                    double* restrict Bvcxplus,    \
++                    double* restrict Bvcyplus,    \
++                    double* restrict Bvczplus,    \
++                    double* restrict psidcplus);
++  static ppm1d_cxx_ptr_t ppm1d_cxx_funcs[32];
++  ppm1d_cxx_ptr_t ppm1d_cxx_func;
++
++  #define MKINDEX(do_temp,do_ye,do_mhd,dc_flag,do_ppm_detect) ((do_temp<<4)|(do_ye<<3)|(do_mhd<<2)|(dc_flag<<1)|(do_ppm_detect))
++  #define SETPOINTER(do_temp,do_ye,do_mhd,dc_flag,do_ppm_detect) \
++                     ppm1d_cxx_funcs[MKINDEX(do_temp,do_ye,do_mhd,dc_flag,do_ppm_detect)] = \
++                     GRHydro_ppm1d_cxx<do_temp,do_ye,do_mhd,dc_flag,do_ppm_detect>
++
++  // first stuff without MHD
++  SETPOINTER(false,false,false,false,false);
++  SETPOINTER(false,false,false,false,true);
++  // do_temp can only be true of do_ye is also true
++  SETPOINTER(true,true,false,false,false);
++  SETPOINTER(true,true,false,false,true);
++  // but do_ye can be true and do_temp can be false
++  SETPOINTER(false,true,false,false,false);
++  SETPOINTER(false,true,false,false,true);
++
++  // with MHD, but dc_flag false
++  SETPOINTER(false,false,true,false,false);
++  SETPOINTER(false,false,true,false,true);
++  // do_temp can only be true of do_ye is also true
++  SETPOINTER(true,true,true,false,false);
++  SETPOINTER(true,true,true,false,true);
++  // but do_ye can be true and do_temp can be false
++  SETPOINTER(false,true,true,false,false);
++  SETPOINTER(false,true,true,false,true);
++
++  // with MHD, dc_flag true
++  SETPOINTER(false,false,true,true,false);
++  SETPOINTER(false,false,true,true,true);
++  // do_temp can only be true of do_ye is also true
++  SETPOINTER(true,true,true,true,false);
++  SETPOINTER(true,true,true,true,true);
++  // but do_ye can be true and do_temp can be false
++  SETPOINTER(false,true,true,true,false);
++  SETPOINTER(false,true,true,true,true);
++
++  const bool do_temp = *evolve_temper;
++  const bool do_ye = *evolve_Y_e;
++  const bool do_mhd = *evolve_MHD;
++  const bool dc_flag = clean_divergence;
++  const bool do_ppm_detect = ppm_detect;
++  ppm1d_cxx_func = ppm1d_cxx_funcs[MKINDEX(do_temp,do_ye,do_mhd,dc_flag,do_ppm_detect)];
++  if(ppm1d_cxx_func == NULL) {
++    CCTK_VError(__LINE__, __FILE__, CCTK_THORNSTRING,
++                "Combination do_temp = %d do_ye = %d do_mhd = %d dc_flag = %d do_ppm_detect = %d is not supported for PPM. Please instatate the respective template",
++                do_temp, do_ye, do_mhd, dc_flag, do_ppm_detect);
++  }
+ 
+   //index = i + j*nx + k*nx*ny;
+ 
+@@ -205,8 +272,7 @@ void GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+         //WE'll need booleans arguments corresponding to the following 
+         //ppm1d_cxx<do_temp,do_ye,do_mhd,clean_divergence,ppm_detect>
+         
+-        ppm1d_cxx<true,true,true,true,true>
+-          (nx,CCTK_DELTA_SPACE(0),
++        ppm1d_cxx_func(nx,CCTK_DELTA_SPACE(0),
+            &rho1d[0],&velx1d[0],&vely1d[0],&velz1d[0],&eps1d[0],&press1d[0],&temp1d[0],
+            &ye1d[0],&Bvcx1d[0],&Bvcy1d[0],&Bvcz1d[0],&psidc1d[0],
+            &rho1d_minus[0],&velx1d_minus[0],&vely1d_minus[0],&velz1d_minus[0],&eps1d_minus[0],&temp1d_minus[0],
+@@ -296,7 +362,7 @@ void GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+         //WE'll need booleans arguments corresponding to the following 
+         //ppm1d_cxx<do_temp,do_ye,do_mhd,clean_divergence,ppm_detect>
+         
+-        ppm1d_cxx<true,true,true,true,true>
++        ppm1d_cxx_func
+           (ny,CCTK_DELTA_SPACE(1),
+            &rho1d[0],&vely1d[0],&velz1d[0],&velx1d[0],&eps1d[0],&press1d[0],&temp1d[0],
+            &ye1d[0],&Bvcy1d[0],&Bvcz1d[0],&Bvcx1d[0],&psidc1d[0],
+@@ -388,7 +454,7 @@ void GRHydro_PPMReconstruct_drv(CCTK_ARGUMENTS)
+         //WE'll need booleans arguments corresponding to the following 
+         //ppm1d_cxx<do_temp,do_ye,do_mhd,clean_divergence,ppm_detect>
+         
+-        ppm1d_cxx<true,true,true,true,true>
++        ppm1d_cxx_func
+           (ny,CCTK_DELTA_SPACE(1),
+            &rho1d[0],&velz1d[0],&velx1d[0],&vely1d[0],&eps1d[0],&press1d[0],&temp1d[0],
+            &ye1d[0],&Bvcz1d[0],&Bvcx1d[0],&Bvcy1d[0],&psidc1d[0],
+diff --git a/src/GRHydro_PPM_opt.h b/src/GRHydro_PPM_opt.h
+index 9f3f51b..5107723 100644
+--- a/src/GRHydro_PPM_opt.h
++++ b/src/GRHydro_PPM_opt.h
+@@ -1,6 +1,6 @@
+ template<bool do_temp, bool do_ye, bool do_mhd, 
+ 	 bool dc_flag, bool do_ppm_detect>
+-static void ppm1d_cxx(const int nx, 
++void GRHydro_ppm1d_cxx(const int nx, 
+ 		      const double dx, 
+ 		      const double* restrict rho, 
+ 		      const double* restrict velx,
+diff --git a/src/GRHydro_Reconstruct.F90 b/src/GRHydro_Reconstruct.F90
+index 14a5f31..8139488 100644
+--- a/src/GRHydro_Reconstruct.F90
++++ b/src/GRHydro_Reconstruct.F90
+@@ -125,11 +125,15 @@ subroutine Reconstruction(CCTK_ARGUMENTS)
+ 
+   else if (CCTK_EQUALS(recon_method,"ppm")) then
+ 
+-    if(evolve_mhd.ne.0) then
+-      call GRHydro_PPMMReconstruct_drv(CCTK_PASS_FTOF)
+-    else
+-      call GRHydro_PPMReconstruct_drv(CCTK_PASS_FTOF)
+-    end if 
++    if(use_optimized_ppm.eq.0) then
++      if(evolve_mhd.ne.0) then
++        call GRHydro_PPMMReconstruct_drv(CCTK_PASS_FTOF)
++      else
++        call GRHydro_PPMReconstruct_drv(CCTK_PASS_FTOF)
++      end if 
++    else 
++      call GRHydro_PPMReconstruct_drv_opt(cctkGH)
++    end if
+ 
+   else if (CCTK_EQUALS(recon_method,"eno")) then
+     ! this handles MHD and non-MHD
+diff --git a/src/make.code.defn b/src/make.code.defn
+index 21181df..f786a94 100644
+--- a/src/make.code.defn
++++ b/src/make.code.defn
+@@ -83,6 +83,7 @@ SRCS = 	Utils.F90 \
+         Con2PrimM_fortran_interfaces.F90 \
+         GRHydro_Prim2Con.c \
+ 	GRHydro_PPM.cc \
++        GRHydro_PPMReconstruct_drv_opt.cc \
+         GRHydro_Wrappers.F90
+ 	
+ # Subdirectories containing source files
+-- 
+1.7.10.4
+

@@ -1,0 +1,32 @@
+--- HyperArch.py.orig	2014-01-26 19:47:25.595624524 -0800
++++ HyperArch.py	2014-01-26 19:46:40.815623971 -0800
+@@ -621,6 +621,20 @@
+         except AttributeError:
+             pass
+ 
++    def get_unique_id(self):
++        """return a unique ID consisting of only [a-zA-Z0-9-] constructed
++        from either the Message-ID or the sequence number"""
++        retval = "%06i" % (self.sequence,)
++        try:
++            if self.msgid and self.msgid != 'n/a':
++                m = re.match('([a-zA-Z0-9-]+)', self.msgid)
++                if m:
++                    retval = m.group(1)
++        except AttributeError:
++            pass
++        return retval  
++        
++
+ 
+ class HyperArchive(pipermail.T):
+     __super_init = pipermail.T.__init__
+@@ -902,7 +916,7 @@
+         self.DropArchLock()
+ 
+     def get_filename(self, article):
+-        return '%06i.html' % (article.sequence,)
++        return '%s.html' % (article.get_unique_id(),)
+ 
+     def get_archives(self, article):
+         """Return a list of indexes where the article should be filed.

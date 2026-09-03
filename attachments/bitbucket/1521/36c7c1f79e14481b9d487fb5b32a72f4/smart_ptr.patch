@@ -1,0 +1,22 @@
+Index: smart_ptr.hpp
+===================================================================
+--- smart_ptr.hpp	(revision 5065)
++++ smart_ptr.hpp	(working copy)
+@@ -135,6 +135,8 @@
+     }
+     void operator=(const smart_ptr<T>& s) {
+         assert(this != NULL);
++        if(s.guts == guts)
++            return;
+         clean();
+         guts = s.guts;
+         if(guts != NULL)
+@@ -162,7 +164,7 @@
+     bool valid() const {
+         return guts != NULL && guts->ptr != NULL;
+     }
+-    int ref_count() {
++    int ref_count() const {
+         assert(guts != NULL);
+         return guts->ref_count_();
+     }

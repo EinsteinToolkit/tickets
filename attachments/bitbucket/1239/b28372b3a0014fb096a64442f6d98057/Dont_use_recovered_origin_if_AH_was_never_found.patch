@@ -1,0 +1,29 @@
+Index: BH_diagnostics.cc
+===================================================================
+--- BH_diagnostics.cc	(revision 1571)
++++ BH_diagnostics.cc	(working copy)
+@@ -834,10 +834,21 @@
+   struct AH_data& AH_data = *state.AH_data_array[horizon_number];
+   patch_system& ps = *AH_data.ps_ptr;
+   
+-  ps.origin_x(ah_origin_x[horizon_number-1]);
+-  ps.origin_y(ah_origin_y[horizon_number-1]);
+-  ps.origin_z(ah_origin_z[horizon_number-1]);
++  // only use stored origins if horizon had not yet been found!
++  if (ah_found_flag[horizon_number-1]) {
++    ps.origin_x(ah_origin_x[horizon_number-1]);
++    ps.origin_y(ah_origin_y[horizon_number-1]);
++    ps.origin_z(ah_origin_z[horizon_number-1]);
++  } else {
++    if (ah_really_initial_find_flag[horizon_number-1] /*|| AH_data.initial_guess_info.reset_horizon_after_not_finding */) {
++      // use origin_x parameters!
++      ps.origin_x(origin_x[horizon_number]);
++      ps.origin_y(origin_y[horizon_number]);
++      ps.origin_z(origin_z[horizon_number]);
++    }
++  }
+   
++  
+   for (int pn = 0; pn < ps.N_patches(); ++pn) {
+     assert (pn < 6);
+     patch& p = ps.ith_patch(pn);

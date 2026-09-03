@@ -1,0 +1,49 @@
+Index: cctk_Config.h.in
+===================================================================
+--- cctk_Config.h.in	(revision 4910)
++++ cctk_Config.h.in	(working copy)
+@@ -337,6 +337,14 @@
+ #  define CCTK_BUILTIN_EXPECT(x,y) (x)
+ #endif
+ 
++/* OpenMP collapse clause */
++#if defined __INTEL_COMPILER && __INTEL_COMPILER_BUILD_DATE < 20100801
++/* see http://software.intel.com/en-us/articles/intel-professional-edition-compilers-111-fixes-list/ */
++#  define collapse(N)
++#else
++#  undef collapse
++#endif
++
+ #endif /* ! defined __cplusplus */
+ /****************************************************************************/
+ 
+@@ -510,6 +518,14 @@
+ #  define CCTK_RESTRICT restrict
+ #endif
+ 
++/* OpenMP collapse clause */
++#if defined __INTEL_COMPILER && __INTEL_COMPILER_BUILD_DATE < 20100801
++/* see http://software.intel.com/en-us/articles/intel-professional-edition-compilers-111-fixes-list/ */
++#  define collapse(N)
++#else
++#  undef collapse
++#endif
++
+ #endif /* __cplusplus */
+ 
+ /****************************************************************************/
+@@ -526,6 +542,14 @@
+ #undef HAVE_CCTK_FORTRAN_COMPLEX16
+ #undef HAVE_CCTK_FORTRAN_COMPLEX32
+ 
++/* OpenMP collapse clause */
++#if defined __INTEL_COMPILER && __INTEL_COMPILER_BUILD_DATE < 20100801
++/* see http://software.intel.com/en-us/articles/intel-professional-edition-compilers-111-fixes-list/ */
++#  define collapse(N)
++#else
++#  undef collapse
++#endif
++
+ #endif /* FCODE */
+ 
+ /* Now include the code to pick an appropriate precison for reals and ints */

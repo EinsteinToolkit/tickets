@@ -1,0 +1,47 @@
+--- EOS_Omni_Module.F90	2012-09-29 15:12:20.360306937 -0700
++++ EOS_Omni_Module-roland.F90	2012-09-29 15:12:15.256271891 -0700
+@@ -4,26 +4,30 @@
+ 
+   ! Magic numbers in convenient units, calculated by someone whom we
+   ! trust to have worked very carefully
++  ! Roland Haas verified them on Sat Sep 29 12:05:26 PDT 2012 
++  ! Numbers quoted match those of
++  ! http://asa.usno.navy.mil/SecK/2013/Astronomical_Constants_2013.pdf
++  ! G = 6.67428d−11
+ 
+-  real*8,parameter :: rho_gf = 1.61620075314614d-18
+-  real*8,parameter :: press_gf = 1.7982953469278d-39
+-  real*8,parameter :: eps_gf = 1.11265006d-21
+-  real*8,parameter :: time_gf = 2.03001708d+05
+-  real*8,parameter :: mass_gf = 5.02765209d-34
+-  real*8,parameter :: length_gf = 6.77140812d-06
++  real*8,parameter :: rho_gf = 1.61918532154693d-18
++  real*8,parameter :: press_gf = 1.80158663878039d-39
++  real*8,parameter :: eps_gf = 1.11265005605362d-21
++  real*8,parameter :: time_gf = 203027.062959625
++  real*8,parameter :: mass_gf = 5.02916918125126d-34
++  real*8,parameter :: length_gf = 6.77225385568657d-06
+   
+   ! Inverses of the numbers above, calculated manually instead of by
+   ! the compiler
+   
+-  real*8,parameter :: inv_rho_gf = 6.18735016707159d17
+-  real*8,parameter :: inv_press_gf = 5.56082181777535d38
+-  real*8,parameter :: inv_eps_gf = 8.98755175549085d20
+-  real*8,parameter :: inv_time_gf = 4.92606692747629d-6
+-  real*8,parameter :: inv_mass_gf = 1.98899999860571d33
+-  real*8,parameter :: inv_length_gf = 147679.77092481d0
++  real*8,parameter :: inv_rho_gf = 6.17594531455252d+17   ! M_sun/(M_sun*G/c**2)**3 = M_sun / [length]
++  real*8,parameter :: inv_press_gf = 5.55066283504946d+38 ! c^8/M_sun^2/G^3 = [eps] [rho]
++  real*8,parameter :: inv_eps_gf = 8.98755178736818d+20   ! c^2
++  real*8,parameter :: inv_time_gf = 4.92545173743101d-06  ! M_sun * G/c^3 
++  real*8,parameter :: inv_mass_gf = 1.9884d33             ! solar mass
++  real*8,parameter :: inv_length_gf = 147661.328312481    ! M_sun * G/c^2
+ 
+-  real*8,parameter :: clite = 2.99792458d10
+-  real*8,parameter :: cliteinv2 = 1.11265005605362d-21
++  real*8,parameter :: clite = 2.99792458d10               ! speed of light
++  real*8,parameter :: cliteinv2 = 1.11265005605362d-21    ! 1/c^2
+ 
+   ! These values are set by EOS_Omni_Startup
+ 

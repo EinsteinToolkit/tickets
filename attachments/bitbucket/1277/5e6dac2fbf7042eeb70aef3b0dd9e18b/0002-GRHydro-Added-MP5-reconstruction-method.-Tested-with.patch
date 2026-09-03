@@ -1,0 +1,808 @@
+From 5ade3f7ffb5d2db811b508178ff449c1d4a6d84a Mon Sep 17 00:00:00 2001
+From: Christian Reisswig <reisswig@scriwalker.(none)>
+Date: Tue, 26 Feb 2013 12:36:26 -0800
+Subject: [PATCH 2/5] GRHydro: Added MP5 reconstruction method. Tested with
+ TOV and shocktube.
+
+---
+ param.ccl                          |   11 +
+ src/GRHydro_MP5Reconstruct.F90     |  145 +++++++++
+ src/GRHydro_MP5Reconstruct_drv.F90 |  567 ++++++++++++++++++++++++++++++++++++
+ src/GRHydro_Reconstruct.F90        |    4 +
+ src/make.code.defn                 |    6 +-
+ 5 files changed, 732 insertions(+), 1 deletion(-)
+ create mode 100644 src/GRHydro_MP5Reconstruct.F90
+ create mode 100644 src/GRHydro_MP5Reconstruct_drv.F90
+
+diff --git a/param.ccl b/param.ccl
+index 9f5c3eb..7074529 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -140,6 +140,7 @@ keyword recon_method "Which reconstruction method to use"
+   "ppm"  :: "PPM reconstruction"
+   "eno"  :: "ENO reconstruction"
+   "weno" :: "WENO reconstruction"
++  "mp5"  :: "MP5 reconstruction"
+ } "tvd"
+ 
+ keyword method_type "Which type of method to use"
+@@ -236,6 +237,16 @@ int ppm_mppm_debug_eigenvalues "write eigenvalues into debug grid variables"
+   0:1 :: "0 (off, default) or 1 (on)" 
+ } 0
+ 
++real mp5_alpha "alpha parameter for MP5 reconstruction"
++{
++  0:* :: "positive"
++} 4.0
++
++real mp5_eps "epsilon parameter for MP5 reconstruction"
++{
++  0:* :: "0.0 or very small and positive. 1e-10 is suggested by Suresh&Huynh. TOV star requires 0.0"
++} 0.0
++
+ 
+ boolean use_enhanced_ppm "Use the enhanced ppm reconstruction method proposed by Colella & Sekora 2008 and McCorquodale & Colella 2011" STEERABLE=RECOVER
+ {
+diff --git a/src/GRHydro_MP5Reconstruct.F90 b/src/GRHydro_MP5Reconstruct.F90
+new file mode 100644
+index 0000000..51eb67f
+--- /dev/null
++++ b/src/GRHydro_MP5Reconstruct.F90
+@@ -0,0 +1,145 @@
++ /*@@
++   @file      GRHydro_MP5Reconstruct.F90
++   @date      Fri Jan 3 2013
++   @author    Ian Hawke, Christian Reisswig
++   @desc 
++   Routines to set up the coefficient array and to perform one dimensional 
++   M5 reconstruction of arbitrary order.
++   @enddesc 
++ @@*/
++
++#include "cctk.h"
++#include "cctk_Parameters.h"
++#include "cctk_Arguments.h"
++
++
++
++
++ /*@@
++   @routine    GRHydro_MP5Reconstruct1d
++   @date       Fri Jan 3 2013
++   @author     Christian Reisswig
++   @desc 
++   Perform a one dimensional reconstruction of a given array using M5.
++   @enddesc 
++   @calls     
++   @calledby   
++   @history 
++ 
++   @endhistory 
++
++@@*/
++
++#define SpaceMask_CheckStateBitsF90_1D(mask,i,type_bits,state_bits) \
++  (iand(mask((i)),(type_bits)).eq.(state_bits))
++
++subroutine GRHydro_MP5Reconstruct1d(nx, v, vminus, vplus, trivial_rp, &
++     hydro_excision_mask)
++
++  implicit none
++
++  DECLARE_CCTK_PARAMETERS
++
++  CCTK_INT :: nx, i, j, k, r
++  CCTK_REAL, dimension(nx) :: v, vplus, vminus
++
++  CCTK_INT, dimension(nx) :: hydro_excision_mask
++  logical, dimension(nx) :: trivial_rp
++  logical, dimension(nx) :: excise
++  logical :: normal_m5
++
++  CCTK_REAL :: vl, vmp, djm1, dj, djp1, dm4jph, dm4jmh, vul, vav, vmd, vlc, vmin, vmax
++
++  ! sign requires its arguments to be of identical KIND
++  CCTK_REAL, parameter :: one = 1d0
++  
++  vminus = 0.d0
++  vplus = 0.d0
++
++  excise = .false.
++  trivial_rp = .false.
++
++!!$    Initialize excision
++  do i = 1, nx
++    if (GRHydro_enable_internal_excision /= 0 .and. (hydro_excision_mask(i) .ne. 0)) then
++      trivial_rp(i) = .true.
++      excise(i) = .true.
++      if (i > 1) then
++        trivial_rp(i-1) = .true.
++      end if
++    end if
++  end do
++
++  do i = 3, nx-2
++!!$    Handle excision
++    normal_m5 = .true.
++    if (i < nx) then
++     if (excise(i+1)) then
++      vminus(i) = v(i)
++      vplus(i) = v(i)
++      normal_m5 = .false.
++     end if
++    end if
++    if (i > 1) then
++     if (excise(i-1)) then
++      vminus(i) = v(i)
++      vplus(i) = v(i)
++      normal_m5 = .false.
++     end if
++    end if
++
++    if (normal_m5) then
++#define MINMOD(x,y)  \
++     0.5d0*(sign(one,x) + sign(one,y)) * min(abs(x), abs(y))
++
++#define MINMOD4(w,x,y,z) \
++     0.125d0*( sign(one,w)+sign(one,x) )*abs( (sign(one,w)+sign(one,y)) * (sign(one,w)+sign(one,z)) )*min(abs(w), abs(x), abs(y), abs(z))
++
++#define MP5(am2, am1, a, ap1, ap2, arecon) \    
++      vl = (2.0d0*am2 - 13.0d0*am1 + 47.0d0*a + 27.0d0*ap1 - 3.0d0*ap2)/60.0d0  &&\
++      vmp = a + MINMOD( ap1-a, mp5_alpha*(a-am1) )  &&\
++      if ((vl-a)*(vl-vmp) .le. mp5_eps) then &&\
++	 arecon = vl &&\
++      else &&\
++        djm1 = am2 -2.0d0*am1 + a &&\
++        dj   = am1 -2.0d0*a + ap1 &&\
++        djp1 = a -2.d0*ap1 + ap2 &&\
++        dm4jph = MINMOD4(4.0d0*dj-djp1, 4.0d0*djp1-dj, dj, djp1) &&\
++        dm4jmh = MINMOD4(4.0d0*dj-djm1, 4.0d0*djm1-dj, dj, djm1) &&\
++        vul = a + mp5_alpha*(a-am1) &&\
++        vav = 0.5d0*(a+ap1) &&\
++        vmd = vav - 0.5d0*dm4jph &&\
++        vlc = a + 0.5d0*(a-am1) + 4.0d0/3.0d0*dm4jmh &&\
++        vmin = max(min(a,ap1,vmd), min(a,vul,vlc)) &&\
++        vmax = min(max(a,ap1,vmd), max(a,vul,vlc)) &&\
++        arecon = vl + MINMOD(vmin-vl, vmax-vl) &&\
++      endif
++      
++      MP5(v(i-2), v(i-1), v(i), v(i+1), v(i+2), vplus(i))
++      MP5(v(i+2), v(i+1), v(i), v(i-1), v(i-2), vminus(i))
++      
++    end if
++  end do
++
++  do i = 1, nx
++    if (excise(i)) then
++      if (i > 1) then
++        if (.not. excise(i-1)) then
++          vminus(i) = vplus(i-1)
++        end if
++      end if
++      vplus(i) = vminus(i)
++    end if
++  end do
++  do i = nx, 1, -1
++    if (excise(i)) then
++      if (i < nx) then
++        if (.not. excise(i+1)) then
++          vplus(i) = vminus(i+1)
++        end if
++      end if
++      vminus(i) = vplus(i)
++    end if
++  end do
++
++end subroutine GRHydro_MP5Reconstruct1d
+diff --git a/src/GRHydro_MP5Reconstruct_drv.F90 b/src/GRHydro_MP5Reconstruct_drv.F90
+new file mode 100644
+index 0000000..02bfc2d
+--- /dev/null
++++ b/src/GRHydro_MP5Reconstruct_drv.F90
+@@ -0,0 +1,567 @@
++ /*@@
++   @file      GRHydro_MP5Reconstruct_drv.F90
++   @date      Fri Jan 3 2013
++   @author    Christian Reisswig, Bruno C. Mundim, Joshua Faber, Christian D. Ott
++   @desc 
++   Driver routine to perform the MP5 reconstruction.
++   @enddesc 
++ @@*/
++
++#include "cctk.h"
++#include "cctk_Arguments.h"
++#include "cctk_Parameters.h"
++#include "cctk_Functions.h"
++
++#include "SpaceMask.h"
++
++#define velx(i,j,k) vup(i,j,k,1)
++#define vely(i,j,k) vup(i,j,k,2)
++#define velz(i,j,k) vup(i,j,k,3)
++#define sx(i,j,k) scon(i,j,k,1)
++#define sy(i,j,k) scon(i,j,k,2)
++#define sz(i,j,k) scon(i,j,k,3)
++#define Bvecx(i,j,k) Bprim(i,j,k,1)
++#define Bvecy(i,j,k) Bprim(i,j,k,2)
++#define Bvecz(i,j,k) Bprim(i,j,k,3)
++#define Bconsx(i,j,k) Bcons(i,j,k,1)
++#define Bconsy(i,j,k) Bcons(i,j,k,2)
++#define Bconsz(i,j,k) Bcons(i,j,k,3)
++
++
++
++  
++
++ /*@@
++   @routine    GRHydro_MP5Reconstruct_drv
++   @date       Fri Jan 3 2013
++   @author     Christian Reisswig, Luca Baiotti, Ian Hawke, Bruno C. Mundim, Joshua Faber, Christian D. Ott
++   @desc 
++   A driver routine to do MP5 reconstruction. 
++   @enddesc 
++   @calls     
++   @calledby   
++   @history 
++ 
++   @endhistory 
++
++@@*/
++
++subroutine GRHydro_MP5Reconstruct_drv(CCTK_ARGUMENTS)
++  
++  implicit none
++  
++  ! save memory when MP is not used
++  ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
++  TARGET gaa, gab, gac, gbb, gbc, gcc
++  TARGET gxx, gxy, gxz, gyy, gyz, gzz
++  TARGET vel, lvel
++  TARGET Bvec, lBvec
++
++  DECLARE_CCTK_ARGUMENTS
++  DECLARE_CCTK_PARAMETERS
++  DECLARE_CCTK_FUNCTIONS
++
++  integer :: nx, ny, nz, i, j, k, itracer
++
++  logical, dimension(:,:,:), allocatable :: trivial_rp
++
++  CCTK_INT :: type_bitsx, trivialx, not_trivialx, &
++       &type_bitsy, trivialy, not_trivialy, &
++       &type_bitsz, trivialz, not_trivialz
++
++  CCTK_REAL, dimension(:,:,:),allocatable :: &
++       &dum, dump, dumm
++
++  CCTK_INT :: ierr
++  
++  ! save memory when MP is not used
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
++
++  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++    g11 => gaa
++    g12 => gab
++    g13 => gac
++    g22 => gbb
++    g23 => gbc
++    g33 => gcc
++    vup => lvel
++    Bprim => lBvec
++  else
++    g11 => gxx
++    g12 => gxy
++    g13 => gxz
++    g22 => gyy
++    g23 => gyz
++    g33 => gzz
++    vup => vel
++    Bprim => Bvec
++  end if
++
++  allocate(trivial_rp(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
++  if (ierr .ne. 0) then
++    call CCTK_WARN(0, "Allocation problems with trivial_rp")
++  end if
++  
++!!$ The dum variables are used as dummies if MHD on but divergence cleaning off
++  allocate(dum(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),&
++       dump(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),&
++       dumm(cctk_lsh(1),cctk_lsh(2),cctk_lsh(3)),STAT=ierr)
++
++  if (ierr .ne. 0) then
++    call CCTK_WARN(0, "Allocation problems with dum dump dumm")
++  end if
++  
++  call SpaceMask_GetTypeBits(type_bitsx, "Hydro_RiemannProblemX")
++  call SpaceMask_GetStateBits(trivialx, "Hydro_RiemannProblemX", &
++       &"trivial")
++  call SpaceMask_GetStateBits(not_trivialx, "Hydro_RiemannProblemX", &
++       &"not_trivial")
++  call SpaceMask_GetTypeBits(type_bitsy, "Hydro_RiemannProblemY")
++  call SpaceMask_GetStateBits(trivialy, "Hydro_RiemannProblemY", &
++       &"trivial")
++  call SpaceMask_GetStateBits(not_trivialy, "Hydro_RiemannProblemY", &
++       &"not_trivial")
++  call SpaceMask_GetTypeBits(type_bitsz, "Hydro_RiemannProblemZ")
++  call SpaceMask_GetStateBits(trivialz, "Hydro_RiemannProblemZ", &
++       &"trivial")
++  call SpaceMask_GetStateBits(not_trivialz, "Hydro_RiemannProblemZ", &
++       &"not_trivial")
++
++  nx = cctk_lsh(1)
++  ny = cctk_lsh(2)
++  nz = cctk_lsh(3)
++
++!!$ Initialize variables that store reconstructed quantities:
++
++  !$OMP PARALLEL DO PRIVATE(i,j,k)
++  do k=1,cctk_lsh(3)
++     do j=1,cctk_lsh(2)
++        do i=1,cctk_lsh(1)
++           trivial_rp(i,j,k) = .false.
++           rhoplus(i,j,k) = 0.0d0
++           rhominus(i,j,k)= 0.0d0
++           epsplus(i,j,k) = 0.0d0
++           epsminus(i,j,k) = 0.0d0
++           velxplus(i,j,k) = 0.0d0
++           velxminus(i,j,k) = 0.0d0
++           velyplus(i,j,k) = 0.0d0
++           velyminus(i,j,k) = 0.0d0
++           velzplus(i,j,k) = 0.0d0
++           velzminus(i,j,k) = 0.0d0
++
++           if(evolve_mhd.ne.0) then
++             Bvecxplus(i,j,k) = 0.0d0
++             Bvecxminus(i,j,k) = 0.0d0
++             Bvecyplus(i,j,k) = 0.0d0
++             Bvecyminus(i,j,k) = 0.0d0
++             Bveczplus(i,j,k) = 0.0d0
++             Bveczminus(i,j,k) = 0.0d0
++             if(clean_divergence.ne.0) then
++                psidcplus(i,j,k) = 0.0d0
++                psidcminus(i,j,k) = 0.0d0
++             endif
++           endif
++
++           if (evolve_entropy .ne. 0) then
++              entropyplus(i,j,k) = 0.0d0
++              entropyminus(i,j,k) = 0.0d0
++           endif
++
++           if (evolve_tracer .ne. 0) then
++              tracerplus(i,j,k,:) = 0.0d0
++              tracerminus(i,j,k,:) = 0.0d0
++           endif
++
++           if (evolve_Y_e .ne. 0) then
++              Y_e_plus(i,j,k) = 0.0d0
++              Y_e_minus(i,j,k) = 0.0d0
++           endif
++
++           if (evolve_temper .ne. 0) then
++              ! set this to cell center value to have
++              ! good initial guesses at interfaces
++              ! in case we don't reconstruct temp
++              tempplus(i,j,k) = temperature(i,j,k)
++              tempminus(i,j,k) = temperature(i,j,k)
++           endif
++
++        enddo
++     enddo
++  enddo
++  !$OMP END PARALLEL DO
++
++!!$ MP5 starts:
++     if (evolve_tracer .ne. 0) then
++        do itracer=1,number_of_tracers
++           call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
++                tracer(:,:,:,itracer), tracerplus(:,:,:,itracer), &
++                tracerminus(:,:,:,itracer), trivial_rp, &
++                hydro_excision_mask)
++        enddo
++     end if
++
++    if (flux_direction == 1) then
++      ! constraint transport needs to be able to average fluxes in the directions
++      ! other that flux_direction, which in turn need the primitives on interfaces
++      !$OMP PARALLEL DO PRIVATE(i, j, k)
++      do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil + 1 + transport_constraints
++        do j = GRHydro_stencil, cctk_lsh(2) - GRHydro_stencil + 1 + transport_constraints
++          if (CCTK_EQUALS(recon_vars,"primitive")) then
++            call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                 rho(:,j,k),rhominus(:,j,k),rhoplus(:,j,k),&
++                 trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            if (reconstruct_Wv.eq.0) then
++	       call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++		  velx(:,j,k),velxminus(:,j,k),velxplus(:,j,k),&
++		  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++	       call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++		  vely(:,j,k),velyminus(:,j,k),velyplus(:,j,k),&
++		  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++	       call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++		  velz(:,j,k),velzminus(:,j,k),velzplus(:,j,k),&
++		  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            else
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++		  w_lorentz(:,j,k)*velx(:,j,k),velxminus(:,j,k),velxplus(:,j,k),&
++		  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++	       call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++		  w_lorentz(:,j,k)*vely(:,j,k),velyminus(:,j,k),velyplus(:,j,k),&
++		  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++	       call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++		  w_lorentz(:,j,k)*velz(:,j,k),velzminus(:,j,k),velzplus(:,j,k),&
++		  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++               call undo_Wv(nx, velxminus(:,j,k), velyminus(:,j,k), velzminus(:,j,k),&
++	                        velxplus(:,j,k),velyplus(:,j,k),velzplus(:,j,k),&
++	                        g11(:,j,k),g12(:,j,k),g13(:,j,k),g22(:,j,k),g23(:,j,k),g33(:,j,k))
++            endif
++            call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                 eps(:,j,k),epsminus(:,j,k),epsplus(:,j,k),&
++                 trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            if(evolve_Y_e.ne.0) then
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                    Y_e(:,j,k),Y_e_minus(:,j,k),Y_e_plus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            endif
++            if(evolve_temper.ne.0.and.reconstruct_temper.ne.0) then 
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                    temperature(:,j,k),tempminus(:,j,k),tempplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            endif
++            if(evolve_mhd.ne.0) then
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                    Bvecx(:,j,k),Bvecxminus(:,j,k),Bvecxplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                    Bvecy(:,j,k),Bvecyminus(:,j,k),Bvecyplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                    Bvecz(:,j,k),Bveczminus(:,j,k),Bveczplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            endif
++            if (evolve_entropy .ne. 0) then
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                    entropy(:,j,k),entropyminus(:,j,k),entropyplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            endif
++          else if (CCTK_EQUALS(recon_vars,"conservative")) then
++            call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                 dens(:,j,k),densminus(:,j,k),densplus(:,j,k),&
++                 trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                 sx(:,j,k),sxminus(:,j,k),sxplus(:,j,k),&
++                 trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                 sy(:,j,k),syminus(:,j,k),syplus(:,j,k),&
++                 trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                 sz(:,j,k),szminus(:,j,k),szplus(:,j,k),&
++                 trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                 tau(:,j,k),tauminus(:,j,k),tauplus(:,j,k),&
++                 trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            if(evolve_mhd.ne.0) then
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                    Bconsx(:,j,k),Bconsxminus(:,j,k),Bconsxplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                    Bconsy(:,j,k),Bconsyminus(:,j,k),Bconsyplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                    Bconsz(:,j,k),Bconszminus(:,j,k),Bconszplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            endif
++            if (evolve_entropy .ne. 0) then
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                    entropycons(:,j,k),entropyconsminus(:,j,k),entropyconsplus(:,j,k),&
++                    trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++            endif
++          else
++            !$OMP CRITICAL
++            call CCTK_WARN(0, "Variable type to reconstruct not recognized.")
++            !$OMP END CRITICAL
++          end if
++
++          if(evolve_mhd.ne.0.and.clean_divergence.ne.0) then
++             call GRHydro_MP5Reconstruct1d(cctk_lsh(1),&
++                  psidc(:,j,k),psidcminus(:,j,k),psidcplus(:,j,k),&
++                  trivial_rp(:,j,k), hydro_excision_mask(:,j,k))
++          endif
++
++          do i = 1, cctk_lsh(1)
++            if (trivial_rp(i,j,k)) then
++              SpaceMask_SetStateBitsF90(space_mask, i, j, k, type_bitsx, trivialx)
++            else
++              SpaceMask_SetStateBitsF90(space_mask, i, j, k, type_bitsx, not_trivialx)
++            end if
++          end do
++        end do
++      end do
++      !$OMP END PARALLEL DO
++    else if (flux_direction == 2) then
++      ! constraint transport needs to be able to average fluxes in the directions
++      ! other that flux_direction, which in turn need the primitives on interfaces
++      !$OMP PARALLEL DO PRIVATE(i, j, k)
++      do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil + 1 + transport_constraints
++        do j = GRHydro_stencil, cctk_lsh(1) - GRHydro_stencil + 1 + transport_constraints
++          if (CCTK_EQUALS(recon_vars,"primitive")) then
++            call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                 rho(j,:,k),rhominus(j,:,k),rhoplus(j,:,k),&
++                 trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            if (reconstruct_Wv.eq.0) then
++	       call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++		  velx(j,:,k),velxminus(j,:,k),velxplus(j,:,k),&
++		  trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++	       call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++		  vely(j,:,k),velyminus(j,:,k),velyplus(j,:,k),&
++		  trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++	       call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++		  velz(j,:,k),velzminus(j,:,k),velzplus(j,:,k),&
++		  trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            else
++	       call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++		  w_lorentz(j,:,k)*velx(j,:,k),velxminus(j,:,k),velxplus(j,:,k),&
++		  trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++	       call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++		  w_lorentz(j,:,k)*vely(j,:,k),velyminus(j,:,k),velyplus(j,:,k),&
++		  trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++	       call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++		  w_lorentz(j,:,k)*velz(j,:,k),velzminus(j,:,k),velzplus(j,:,k),&
++		  trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++	       call undo_Wv(ny, velyminus(j,:,k), velzminus(j,:,k), velxminus(j,:,k),&
++	                        velyplus(j,:,k),velzplus(j,:,k),velxplus(j,:,k),&
++	                        g22(j,:,k), g23(j,:,k), g12(j,:,k), g33(j,:,k), g13(j,:,k), g11(j,:,k))
++            endif
++            call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                 eps(j,:,k),epsminus(j,:,k),epsplus(j,:,k),&
++                 trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            if(evolve_Y_e.ne.0) then
++            call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                 Y_e(j,:,k),Y_e_minus(j,:,k),Y_e_plus(j,:,k),&
++                 trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            endif
++            if(evolve_temper.ne.0.and.reconstruct_temper.ne.0) then 
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                    temperature(j,:,k),tempminus(j,:,k),tempplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            endif
++            if(evolve_mhd.ne.0) then
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                    Bvecx(j,:,k),Bvecxminus(j,:,k),Bvecxplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                    Bvecy(j,:,k),Bvecyminus(j,:,k),Bvecyplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                    Bvecz(j,:,k),Bveczminus(j,:,k),Bveczplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            endif
++            if (evolve_entropy .ne. 0) then
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                    entropy(j,:,k),entropyminus(j,:,k),entropyplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            endif
++         else if (CCTK_EQUALS(recon_vars,"conservative")) then
++            call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                 dens(j,:,k),densminus(j,:,k),densplus(j,:,k),&
++                 trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                 sx(j,:,k),sxminus(j,:,k),sxplus(j,:,k),&
++                 trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                 sy(j,:,k),syminus(j,:,k),syplus(j,:,k),&
++                 trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                 sz(j,:,k),szminus(j,:,k),szplus(j,:,k),&
++                 trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                 tau(j,:,k),tauminus(j,:,k),tauplus(j,:,k),&
++                 trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            if(evolve_mhd.ne.0) then
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                    Bconsx(j,:,k),Bconsxminus(j,:,k),Bconsxplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                    Bconsy(j,:,k),Bconsyminus(j,:,k),Bconsyplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                    Bconsz(j,:,k),Bconszminus(j,:,k),Bconszplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            endif
++            if (evolve_entropy .ne. 0) then
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                    entropycons(j,:,k),entropyconsminus(j,:,k),entropyconsplus(j,:,k),&
++                    trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++            endif
++          else
++            !$OMP CRITICAL
++            call CCTK_WARN(0, "Variable type to reconstruct not recognized.")
++            !$OMP END CRITICAL
++          end if
++
++          if(evolve_mhd.ne.0.and.clean_divergence.ne.0) then
++            call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                 psidc(j,:,k),psidcminus(j,:,k),psidcplus(j,:,k),&
++                 trivial_rp(j,:,k), hydro_excision_mask(j,:,k))
++          endif
++
++          do i = 1, cctk_lsh(2)
++            if (trivial_rp(j,i,k)) then
++              SpaceMask_SetStateBitsF90(space_mask, j, i, k, type_bitsy, trivialy)
++            else
++              SpaceMask_SetStateBitsF90(space_mask, j, i, k, type_bitsy, not_trivialy)
++            end if
++          end do
++        end do
++      end do
++      !$OMP END PARALLEL DO
++    else if (flux_direction == 3) then
++      ! constraint transport needs to be able to average fluxes in the directions
++      ! other that flux_direction, which in turn need the primitives on interfaces
++      !$OMP PARALLEL DO PRIVATE(i, j, k)
++      do k = GRHydro_stencil, cctk_lsh(2) - GRHydro_stencil + 1 + transport_constraints
++        do j = GRHydro_stencil, cctk_lsh(1) - GRHydro_stencil + 1 + transport_constraints
++          if (CCTK_EQUALS(recon_vars,"primitive")) then
++            call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                 rho(j,k,:),rhominus(j,k,:),rhoplus(j,k,:),&
++                 trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            if (reconstruct_Wv.eq.0) then
++	       call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++		  velx(j,k,:),velxminus(j,k,:),velxplus(j,k,:),&
++		  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++	       call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++		  vely(j,k,:),velyminus(j,k,:),velyplus(j,k,:),&
++		  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++	       call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++		  velz(j,k,:),velzminus(j,k,:),velzplus(j,k,:),&
++		  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            else
++	       call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++		  w_lorentz(j,k,:)*velx(j,k,:),velxminus(j,k,:),velxplus(j,k,:),&
++		  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++	       call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++		  w_lorentz(j,k,:)*vely(j,k,:),velyminus(j,k,:),velyplus(j,k,:),&
++		  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++	       call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++		  w_lorentz(j,k,:)*velz(j,k,:),velzminus(j,k,:),velzplus(j,k,:),&
++		  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++	       call undo_Wv(nz, velzminus(j,k,:), velxminus(j,k,:), velyminus(j,k,:),&
++	                        velzplus(j,k,:),velxplus(j,k,:),velyplus(j,k,:),&
++	                        g33(j,k,:), g13(j,k,:), g23(j,k,:), g11(j,k,:), g12(j,k,:),g22(j,k,:))
++            endif
++            call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                 eps(j,k,:),epsminus(j,k,:),epsplus(j,k,:),&
++                 trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            if(evolve_Y_e.ne.0) then
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                    Y_e(j,k,:),Y_e_minus(j,k,:),Y_e_plus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            endif
++            if(evolve_temper.ne.0.and.reconstruct_temper.ne.0) then 
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                    temperature(j,k,:),tempminus(j,k,:),tempplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            endif
++            if(evolve_mhd.ne.0) then
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                    Bvecx(j,k,:),Bvecxminus(j,k,:),Bvecxplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                    Bvecy(j,k,:),Bvecyminus(j,k,:),Bvecyplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                    Bvecz(j,k,:),Bveczminus(j,k,:),Bveczplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            endif
++            if (evolve_entropy .ne. 0) then
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(2),&
++                    entropy(j,k,:),entropyminus(j,k,:),entropyplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            endif
++          else if (CCTK_EQUALS(recon_vars,"conservative")) then
++            call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                 dens(j,k,:),densminus(j,k,:),densplus(j,k,:),&
++                 trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                 sx(j,k,:),sxminus(j,k,:),sxplus(j,k,:),&
++                 trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                 sy(j,k,:),syminus(j,k,:),syplus(j,k,:),&
++                 trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                 sz(j,k,:),szminus(j,k,:),szplus(j,k,:),&
++                 trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                 tau(j,k,:),tauminus(j,k,:),tauplus(j,k,:),&
++                 trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            if(evolve_mhd.ne.0) then
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                    Bconsx(j,k,:),Bconsxminus(j,k,:),Bconsxplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                    Bconsy(j,k,:),Bconsyminus(j,k,:),Bconsyplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                    Bconsz(j,k,:),Bconszminus(j,k,:),Bconszplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            endif
++            if (evolve_entropy .ne. 0) then
++               call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                    entropycons(j,k,:),entropyconsminus(j,k,:),entropyconsplus(j,k,:),&
++                    trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++            endif
++          else
++            !$OMP CRITICAL
++            call CCTK_WARN(0, "Variable type to reconstruct not recognized.")
++            !$OMP END CRITICAL
++          end if
++
++          if(evolve_mhd.ne.0.and.clean_divergence.ne.0) then
++             call GRHydro_MP5Reconstruct1d(cctk_lsh(3),&
++                  psidc(j,k,:),psidcminus(j,k,:),psidcplus(j,k,:),&
++                  trivial_rp(j,k,:), hydro_excision_mask(j,k,:))
++          endif
++
++          do i = 1, cctk_lsh(3)
++            if (trivial_rp(j,k,i)) then
++              SpaceMask_SetStateBitsF90(space_mask, j, k, i, type_bitsz, trivialz)
++            else
++              SpaceMask_SetStateBitsF90(space_mask, j, k, i, type_bitsz, not_trivialz)
++            end if
++          end do
++        end do
++      end do
++      !$OMP END PARALLEL DO
++    else
++      call CCTK_WARN(0, "Flux direction not x,y,z")
++    end if
++!!$ MP5 ends.
++
++
++  deallocate(trivial_rp)
++  deallocate(dum,dump,dumm)
++
++
++end subroutine GRHydro_MP5Reconstruct_drv
++
+diff --git a/src/GRHydro_Reconstruct.F90 b/src/GRHydro_Reconstruct.F90
+index 6c59629..04290ab 100644
+--- a/src/GRHydro_Reconstruct.F90
++++ b/src/GRHydro_Reconstruct.F90
+@@ -94,6 +94,10 @@ subroutine Reconstruction(CCTK_ARGUMENTS)
+     ! this handles MHD and non-MHD
+     call GRHydro_WENOReconstruct_drv(CCTK_PASS_FTOF)
+   
++  else if (CCTK_EQUALS(recon_method,"mp5")) then
++    ! this handles MHD and non-MHD
++    call GRHydro_MP5Reconstruct_drv(CCTK_PASS_FTOF)
++  
+   else
+     call CCTK_WARN(0, "Reconstruction method not recognized!")
+   
+diff --git a/src/make.code.defn b/src/make.code.defn
+index 7244b0d..e4bd737 100644
+--- a/src/make.code.defn
++++ b/src/make.code.defn
+@@ -69,11 +69,15 @@ SRCS = 	Utils.F90 \
+ 	GRHydro_ENOReconstruct_drv.F90\
+ 	GRHydro_PPMReconstruct_drv.F90\
+ 	GRHydro_WENOReconstruct_drv.F90\
++	GRHydro_MP5Reconstruct_drv.F90\
+ 	GRHydro_LastMoLPostStep.c\
+ 	GRHydro_TVDReconstruct_drv.F90\
+ 	GRHydro_EvolutionMask.F90\
+ 	GRHydro_WENOReconstruct.F90\
+-	GRHydro_WENOScalars.F90
++	GRHydro_WENOScalars.F90 \
++	GRHydro_MP5Reconstruct.F90
++	
++#GRHydro_TestSync.cc
+ 
+ # Subdirectories containing source files
+ SUBDIRS = 
+-- 
+1.7.10.4
+

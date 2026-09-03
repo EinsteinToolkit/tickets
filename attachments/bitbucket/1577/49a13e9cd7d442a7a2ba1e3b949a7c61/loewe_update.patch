@@ -1,0 +1,141 @@
+Index: mdb/optionlists/loewe.cfg
+===================================================================
+--- mdb/optionlists/loewe.cfg	(revision 2303)
++++ mdb/optionlists/loewe.cfg	(working copy)
+@@ -2,7 +2,7 @@
+ 
+ # Whenever this version string changes, the application is configured
+ # and rebuilt from scratch
+-VERSION = 2012-10-4
++VERSION = 2014-03-25
+ 
+ CPP = cpp
+ FPP = cpp
+@@ -12,10 +12,10 @@
+ F90 = /cm/shared/apps/intel/composer_xe/2011_sp1.11.339/bin/intel64/ifort
+ 
+ 
+-CPPFLAGS = 
+-FPPFLAGS = -traditional
+-CFLAGS   = -g -debug all -traceback -align -std=c99 -ansi_alias -U__STRICT_ANSI__ -rdynamic
+-CXXFLAGS = -g -debug all -traceback -align -restrict -rdynamic -D__builtin_signbit=::signbit
++CPPFLAGS = -DCCTK_DISABLE_OMP_COLLAPSE
++FPPFLAGS = -DCCTK_DISABLE_OMP_COLLAPSE -traditional
++CFLAGS   = -g -debug all -traceback -align -std=c99 -ansi_alias -U__STRICT_ANSI__ 
++CXXFLAGS = -g -debug all -traceback -align -std=c++0x -restrict -D__builtin_signbit=::signbit
+ F77FLAGS = -g -debug all -traceback -align -pad 
+ F90FLAGS = -g -debug all -traceback -align -pad 
+ 
+@@ -30,8 +30,12 @@
+ C_LINE_DIRECTIVES = yes
+ F_LINE_DIRECTIVES = yes
+ 
+-LDFLAGS = -Wl,-rpath,/cm/shared/apps/intel/composer_xe/2011_sp1.11.339/compiler/lib -Wl,-rpath,/cm/shared/apps/intel/composer_xe/2011_sp1.11.339/compiler/lib/intel64 
++LDFLAGS = -Wl,--export-dynamic -Wl,-rpath,/cm/shared/apps/intel/composer_xe/2011_sp1.11.339/compiler/lib -Wl,-rpath,/cm/shared/apps/intel/composer_xe/2011_sp1.11.339/compiler/lib/intel64 
+ 
++BEGIN_WHOLE_ARCHIVE_FLAGS = -Wl,--whole-archive
++END_WHOLE_ARCHIVE_FLAGS   = -Wl,--no-whole-archive
++
++
+ #LIBDIRS = /cm/shared/apps/szip/2.1/lib/
+ 
+ VECTORISE                = yes
+@@ -44,16 +48,16 @@
+ FPP_DEBUG_FLAGS = -DCARPET_DEBUG
+ C_DEBUG_FLAGS   = -O0
+ CXX_DEBUG_FLAGS = -O0
+-F77_DEBUG_FLAGS = -O0 -check bounds 
+-F90_DEBUG_FLAGS = -O0 -check bounds 
++F77_DEBUG_FLAGS = -O0 -check bounds -check format
++F90_DEBUG_FLAGS = -O0 -check bounds -check format
+ 
+ OPTIMISE           = yes
+ CPP_OPTIMISE_FLAGS = # -DCARPET_OPTIMISE -DNDEBUG
+ FPP_OPTIMISE_FLAGS = # -DCARPET_OPTIMISE -DNDEBUG
+-C_OPTIMISE_FLAGS   = -O2 -simd -msse3 -ip
+-CXX_OPTIMISE_FLAGS = -O2 -simd -msse3 -ip
+-F77_OPTIMISE_FLAGS = -O2 -simd -msse3 
+-F90_OPTIMISE_FLAGS = -O2 -simd -msse3 -ip
++C_OPTIMISE_FLAGS   = -O2 -xHost -ip
++CXX_OPTIMISE_FLAGS = -O2 -xHost -ip
++F77_OPTIMISE_FLAGS = -O2 -xHost
++F90_OPTIMISE_FLAGS = -O2 -xHost -ip
+ 
+ PROFILE           = no
+ CPP_PROFILE_FLAGS =
+@@ -64,20 +68,31 @@
+ F90_PROFILE_FLAGS = -pg
+ 
+ OPENMP           = yes
+-CPP_OPENMP_FLAGS = 
+-FPP_OPENMP_FLAGS = 
++CPP_OPENMP_FLAGS = -D_OPENMP
++FPP_OPENMP_FLAGS = -D_OPENMP
+ C_OPENMP_FLAGS   = -openmp
+ CXX_OPENMP_FLAGS = -openmp
+ F77_OPENMP_FLAGS = -openmp
+ F90_OPENMP_FLAGS = -openmp
+ 
++#WARN           = yes
++#CPP_WARN_FLAGS = -Wall
++#FPP_WARN_FLAGS = -Wall
++#C_WARN_FLAGS   = -Wall -diag-enable warn -par-report3 -vec-report5
++#CXX_WARN_FLAGS = -Wall -diag-enable warn -par-report3 -vec-report5
++#F77_WARN_FLAGS = -warn all -diag-enable warn -warn nointerfaces -par-report3 -vec-report5
++#F90_WARN_FLAGS = -warn all -diag-enable warn -warn nointerfaces -par-report3 -vec-report5
++
++# Append "-warn nointerfaces" to F77_WARN_FLAGS and F90_WARN_FLAGS below if you
++# plan to to use this configuration file for a release earlier than Noether
++# ET_2013_11. Otherwise Lorene compilation fails.
+ WARN           = yes
+-CPP_WARN_FLAGS =
+-FPP_WARN_FLAGS =
+-C_WARN_FLAGS   = 
+-CXX_WARN_FLAGS = 
+-F77_WARN_FLAGS = 
+-F90_WARN_FLAGS = -warn nousage 
++CPP_WARN_FLAGS = -Wall
++FPP_WARN_FLAGS = -Wall
++C_WARN_FLAGS   = -Wall 
++CXX_WARN_FLAGS = -Wall 
++F77_WARN_FLAGS = -warn all 
++F90_WARN_FLAGS = -warn all 
+ 
+ BLAS_DIR  = /cm/shared/apps/intel/composer_xe/2011_sp1.11.339/mkl/lib/intel64
+ BLAS_LIBS = -Wl,--start-group mkl_intel_lp64 mkl_sequential mkl_core -Wl,--end-group  
+@@ -86,8 +101,12 @@
+ LAPACK_DIR  = /cm/shared/apps/intel/composer_xe/2011_sp1.11.339/mkl/lib/intel64
+ LAPACK_LIBS = -Wl,--start-group mkl_intel_lp64 mkl_sequential mkl_core -Wl,--end-group
+ 
+-#GSL_DIR = 
+-HDF5_DIR    = /cm/shared/apps/hdf5/intel-12.1/1.8.9/
++#GSL_DIR     = 
++HDF5_DIR    = /cm/shared/apps/hdf5/intel-12.1/1.8.9
++LIBSZ_DIR   = /cm/shared/apps/zlib/1.2.7
++
++HWLOC_DIR   = /cm/shared/apps/hwloc/1.7.2
++
+ FFTW3_DIR   = /cm/shared/apps/fftw/intel/64/3.2.2
+ ZLIB_DIR    = /cm/shared/apps/szip/2.1
+ BOOST_DIR   = /cm/shared/apps/boost/1.52.0
+@@ -95,8 +114,8 @@
+ #BOOST_LIBS  = boost_system boost_filesystem
+ 
+ MPI_DIR      = NO_BUILD
+-MPI_INC_DIRS = /cm/shared/apps/slurm/2.4.1/include /cm/shared/apps/mvapich2/intel-12.1/1.8-r5435/include
+-MPI_LIB_DIRS = /cm/shared/apps/slurm/2.4.1/lib /opt/limic2-0.5.5/lib /opt/limic2-0.5.5/lib /cm/shared/apps/mvapich2/intel-12.1/1.8-r5435/lib
++MPI_INC_DIRS = /cm/shared/apps/slurm/2.6.3/include /cm/shared/apps/mvapich2/intel-12.1/1.8-r5435/include
++MPI_LIB_DIRS = /cm/shared/apps/slurm/2.6.3/lib /opt/limic2-0.5.5/lib /opt/limic2-0.5.5/lib /cm/shared/apps/mvapich2/intel-12.1/1.8-r5435/lib
+ MPI_LIBS     = mpich opa mpl pmi pthread limic2 rdmacm ibverbs ibumad dl rt numa
+ 
+ 
+Index: mdb/submitscripts/loewe.sub
+===================================================================
+--- mdb/submitscripts/loewe.sub	(revision 2303)
++++ mdb/submitscripts/loewe.sub	(working copy)
+@@ -10,4 +10,4 @@
+ #SBATCH --output=@RUNDIR@/@SIMULATION_NAME@.out
+ #SBATCH --error=@RUNDIR@/@SIMULATION_NAME@.err
+ cd @SOURCEDIR@
+-@SIMFACTORY@ run @SIMULATION_NAME@ --machine=@MACHINE@ --restart-id=@RESTART_ID@ @FROM_RESTART_COMMAND@
++@SIMFACTORY@ run @SIMULATION_NAME@ --basedir=@BASEDIR@  --machine=@MACHINE@ --restart-id=@RESTART_ID@ @FROM_RESTART_COMMAND@

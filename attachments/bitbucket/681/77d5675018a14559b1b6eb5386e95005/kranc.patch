@@ -1,0 +1,27 @@
+From c5aecd6c7d1b69e8e79552b900c576eb14b120ec Mon Sep 17 00:00:00 2001
+From: Barry Wardell <barry.wardell@gmail.com>
+Date: Sat, 4 Feb 2012 23:37:52 +0000
+Subject: [PATCH 15/15] Make sure e and pi are vectorised when necessary.
+
+---
+ Tools/CodeGen/CodeGenCactus.m |    4 +++-
+ 1 files changed, 3 insertions(+), 1 deletions(-)
+
+diff --git a/Tools/CodeGen/CodeGenCactus.m b/Tools/CodeGen/CodeGenCactus.m
+index 6a9d2ff..7c54541 100644
+--- a/Tools/CodeGen/CodeGenCactus.m
++++ b/Tools/CodeGen/CodeGenCactus.m
+@@ -528,7 +528,9 @@ DefFn[
+     (* Constants *)
+     expr = expr /. {
+       x_Integer -> ToReal[x],
+-      x_Real    -> ToReal[x]};
++      x_Real    -> ToReal[x],
++      E         -> ToReal[E],
++      Pi        -> ToReal[Pi]};
+     
+     (* Operators *)
+     expr = expr //. {
+-- 
+1.7.7.4
+

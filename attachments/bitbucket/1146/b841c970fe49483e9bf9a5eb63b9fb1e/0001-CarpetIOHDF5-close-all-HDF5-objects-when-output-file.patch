@@ -1,0 +1,166 @@
+From d773d69568b3b0ccdaeb68c9d063144a19a9c038 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Tue, 23 Oct 2012 20:46:00 -0700
+Subject: [PATCH] CarpetIOHDF5: close all HDF5 objects when output file is
+ closed
+
+also garbage collect HDF5 at each H5close
+---
+ Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc |   26 ++++++++++++++++++++------
+ Carpet/CarpetIOHDF5/src/Output.cc       |    2 ++
+ Carpet/CarpetIOHDF5/src/OutputSlice.cc  |   17 +++++++++++++----
+ 3 files changed, 35 insertions(+), 10 deletions(-)
+
+diff --git a/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc b/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
+index 40a2a5d..27ce292 100644
+--- a/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
++++ b/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
+@@ -839,13 +839,17 @@ static int OutputVarAs (const cGH* const cctkGH, const char* const fullname,
+     }
+ 
+     if (is_new_file) {
++      hid_t fapl_id;
++      HDF5_ERROR (fapl_id = H5Pcreate (H5P_FILE_ACCESS));
++      HDF5_ERROR (H5Pset_fclose_degree (fapl_id, H5F_CLOSE_STRONG));
+       HDF5_ERROR (file = H5Fcreate (c_filename, H5F_ACC_TRUNC, H5P_DEFAULT,
+-                                    H5P_DEFAULT));
++                                    fapl_id));
+       if (output_index) {
+         HDF5_ERROR (index_file = H5Fcreate (index_filename.c_str(),
+                                             H5F_ACC_TRUNC, H5P_DEFAULT,
+-                                            H5P_DEFAULT));
++                                            fapl_id));
+       }
++      HDF5_ERROR (H5Pclose (fapl_id));
+       // write metadata information
+       error_count +=
+         WriteMetadata (cctkGH, nioprocs, firstvar, numvars, false, file);
+@@ -855,9 +859,13 @@ static int OutputVarAs (const cGH* const cctkGH, const char* const fullname,
+           WriteMetadata (cctkGH, nioprocs, firstvar, numvars, false, index_file);
+       }
+     } else {
+-      HDF5_ERROR (file = H5Fopen (c_filename, H5F_ACC_RDWR, H5P_DEFAULT));
++      hid_t fapl_id;
++      HDF5_ERROR (fapl_id = H5Pcreate (H5P_FILE_ACCESS));
++      HDF5_ERROR (H5Pset_fclose_degree (fapl_id, H5F_CLOSE_STRONG));
++      HDF5_ERROR (file = H5Fopen (c_filename, H5F_ACC_RDWR, fapl_id));
+       if (output_index)
+-        HDF5_ERROR (index_file = H5Fopen (index_filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT));
++        HDF5_ERROR (index_file = H5Fopen (index_filename.c_str(), H5F_ACC_RDWR, fapl_id));
++      HDF5_ERROR (H5Pclose (fapl_id));
+     }
+     io_files += 1;
+   }
+@@ -902,6 +910,7 @@ static int OutputVarAs (const cGH* const cctkGH, const char* const fullname,
+     if (output_index)
+       HDF5_ERROR (H5Fclose (index_file));
+   }
++  HDF5_ERROR (H5garbage_collect());
+   {
+     CCTK_REAL local[2], global[2];
+     local[0] = io_files;
+@@ -956,8 +965,11 @@ static void Checkpoint (const cGH* const cctkGH, int called_from)
+                   tempname);
+     }
+ 
++    hid_t fapl_id;
++    HDF5_ERROR (fapl_id = H5Pcreate (H5P_FILE_ACCESS));
++    HDF5_ERROR (H5Pset_fclose_degree (fapl_id, H5F_CLOSE_STRONG));
+     HDF5_ERROR (file = H5Fcreate (tempname, H5F_ACC_TRUNC, H5P_DEFAULT,
+-                                  H5P_DEFAULT));
++                                  fapl_id));
+ 
+     // write metadata information
+     error_count += WriteMetadata (cctkGH, nioprocs, -1, -1, true, file);
+@@ -966,10 +978,11 @@ static void Checkpoint (const cGH* const cctkGH, int called_from)
+ 
+       HDF5_ERROR (index_file = H5Fcreate (index_tempname,
+                                           H5F_ACC_TRUNC, H5P_DEFAULT,
+-                                          H5P_DEFAULT));
++                                          fapl_id));
+       error_count +=
+         WriteMetadata (cctkGH, nioprocs, -1, -1, true, index_file);
+     }
++    HDF5_ERROR (H5Pclose (fapl_id));
+   }
+ 
+   // remember the current wall time
+@@ -1103,6 +1116,7 @@ static void Checkpoint (const cGH* const cctkGH, int called_from)
+   if (index_file >= 0) {
+     HDF5_ERROR (H5Fclose(index_file));
+   }
++  HDF5_ERROR (H5garbage_collect());
+ 
+ 
+   // get global error count
+diff --git a/Carpet/CarpetIOHDF5/src/Output.cc b/Carpet/CarpetIOHDF5/src/Output.cc
+index 44f9df4..7288c9b 100644
+--- a/Carpet/CarpetIOHDF5/src/Output.cc
++++ b/Carpet/CarpetIOHDF5/src/Output.cc
+@@ -68,6 +68,7 @@ int WriteVarUnchunked (const cGH* const cctkGH,
+   hid_t plist;
+   HDF5_ERROR (plist = H5Pcreate (H5P_FILE_ACCESS));
+   HDF5_ERROR (H5Pset_fapl_core (plist, 0, 0));
++  HDF5_ERROR (H5Pset_fclose_degree (plist, H5F_CLOSE_STRONG));
+ 
+   // Traverse all maps
+   BEGIN_MAP_LOOP (cctkGH, group.grouptype) {
+@@ -135,6 +136,7 @@ int WriteVarUnchunked (const cGH* const cctkGH,
+         // than recombining an HDF5 dataset on a disk file.
+         HDF5_ERROR (memfile = H5Fcreate ("tempfile", H5F_ACC_EXCL, H5P_DEFAULT,
+                                          plist));
++        HDF5_ERROR (H5Pclose (plist));
+         HDF5_ERROR (dataspace = H5Screate_simple (group.dim, shape, NULL));
+         HDF5_ERROR (memdataset = H5Dcreate (memfile, datasetname.str().c_str(),
+                                          filedatatype, dataspace, H5P_DEFAULT));
+diff --git a/Carpet/CarpetIOHDF5/src/OutputSlice.cc b/Carpet/CarpetIOHDF5/src/OutputSlice.cc
+index acc9449..57f3e04 100644
+--- a/Carpet/CarpetIOHDF5/src/OutputSlice.cc
++++ b/Carpet/CarpetIOHDF5/src/OutputSlice.cc
+@@ -817,13 +817,17 @@ namespace CarpetIOHDF5 {
+       }
+ 
+       if (truncate_file or not file_exists) {
++        hid_t fapl_id;
++        HDF5_ERROR (fapl_id = H5Pcreate (H5P_FILE_ACCESS));
++        HDF5_ERROR (H5Pset_fclose_degree (fapl_id, H5F_CLOSE_STRONG));
+         HDF5_ERROR(file = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT,
+-                                    H5P_DEFAULT));
++                                    fapl_id));
+         if (output_index) {
+           HDF5_ERROR (index_file = H5Fcreate (index_filename.c_str(),
+                                               H5F_ACC_TRUNC, H5P_DEFAULT,
+-                                              H5P_DEFAULT));
++                                              fapl_id));
+         }
++        HDF5_ERROR (H5Pclose (fapl_id));
+         // write metadata information
+         error_count +=
+           WriteMetadata(cctkGH, nioprocs, vindex, numvars, false, file);
+@@ -833,9 +837,13 @@ namespace CarpetIOHDF5 {
+             WriteMetadata (cctkGH, nioprocs, vindex, numvars, false, index_file);
+         }
+       } else {
+-        HDF5_ERROR (file = H5Fopen(filename, H5F_ACC_RDWR, H5P_DEFAULT));
++        hid_t fapl_id;
++        HDF5_ERROR (fapl_id = H5Pcreate (H5P_FILE_ACCESS));
++        HDF5_ERROR (H5Pset_fclose_degree (fapl_id, H5F_CLOSE_STRONG));
++        HDF5_ERROR (file = H5Fopen(filename, H5F_ACC_RDWR, fapl_id));
++        HDF5_ERROR (H5Pclose (fapl_id));
+         if (output_index)
+-          HDF5_ERROR (index_file = H5Fopen (index_filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT));
++          HDF5_ERROR (index_file = H5Fopen (index_filename.c_str(), H5F_ACC_RDWR,fapl_id));
+       }
+       io_files += 1;
+ 
+@@ -859,6 +867,7 @@ namespace CarpetIOHDF5 {
+       if (output_index and index_file >= 0) {
+         HDF5_ERROR (H5Fclose (index_file));
+       }
++      HDF5_ERROR (H5garbage_collect());
+     }
+     if (nioprocs > 1) {
+       CCTK_REAL local[2], global[2];
+-- 
+1.7.10.4
+

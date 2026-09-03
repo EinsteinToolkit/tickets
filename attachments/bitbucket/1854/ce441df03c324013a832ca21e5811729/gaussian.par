@@ -1,0 +1,108 @@
+############################################################
+#
+# gaussian.par
+#
+# A simple example parameter file for WaveMoL
+#
+############################################################
+
+ActiveThorns = "PUGHReduce PUGH PUGHSlab IOASCII IOBasic IOHDF5 SpaceMask ADMMass ADMBase TmunuBase ADMCoupling ADMMacros StaticConformal CoordBase localreduce SymBase NaNChecker CartGrid3D Boundary IOUtil IDWaveMoL WaveMoL Time MoL CoordGauge"
+
+idwavemol::initial_data = "gaussian"
+
+wavemol::bound = "flat"
+
+CartGrid3D::type         = "coordbase"
+CartGrid3D::domain       = "full"
+CartGrid3D::avoid_origin = "no"
+CoordBase::xmin = 0
+CoordBase::ymin = 0
+CoordBase::zmin = 0
+CoordBase::xmax = 3.5
+CoordBase::ymax = 3.5
+CoordBase::zmax = 3.5
+CoordBase::dx   =   0.01
+CoordBase::dy   =   0.01
+CoordBase::dz   =   0.01
+CoordBase::boundary_size_x_lower        = 3
+CoordBase::boundary_size_y_lower        = 3
+CoordBase::boundary_size_z_lower        = 3
+CoordBase::boundary_size_x_upper        = 3
+CoordBase::boundary_size_y_upper        = 3
+CoordBase::boundary_size_z_upper        = 3
+CoordBase::boundary_shiftout_x_lower    = 1
+CoordBase::boundary_shiftout_y_lower    = 1
+CoordBase::boundary_shiftout_z_lower    = 1
+CoordBase::boundary_shiftout_x_upper    = 0
+CoordBase::boundary_shiftout_y_upper    = 0
+CoordBase::boundary_shiftout_z_upper    = 0
+
+#grid::domain = "full"
+#grid::type = "byspacing"
+#grid::avoid_origin = "no"
+driver::global_nx = 350
+driver::global_ny = 350
+driver::global_nz = 350
+#grid::dxyz = 0.02
+driver::ghost_size = 3 
+time::dtfac = 0.5
+
+cactus::cctk_itlast = 1000
+
+#PUGH::enable_all_storage = "yes"
+#PUGH::initialise_memory = "yes"
+
+TmunuBase::stress_energy_storage        =       "yes"
+TmunuBase::stress_energy_at_RHS         =       "yes"
+TmunuBase::timelevels                   =       1
+TmunuBase::prolongation_type            =       none
+#TmunuBase::support_old_CalcTmunu_mechanism =    "yes"
+
+ActiveThorns = "ML_BSSN ML_BSSN_Helper"
+ADMBase::evolution_method        = "ML_BSSN"
+ADMBase::lapse_evolution_method  = "ML_BSSN"
+ADMBase::shift_evolution_method  = "ML_BSSN"
+ADMBase::dtlapse_evolution_method= "ML_BSSN"
+ADMBase::dtshift_evolution_method= "ML_BSSN"
+TmunuBase::support_old_CalcTmunu_mechanism = "no"
+ML_BSSN::timelevels = 3
+ML_BSSN::harmonicN           = 1      # 1+log
+ML_BSSN::harmonicF           = 1.0    # 1+log
+ML_BSSN::LapseACoeff         = 1.0
+ML_BSSN::ShiftBCoeff         = 1.0
+ML_BSSN::ShiftGammaCoeff     = 0.0
+ML_BSSN::AlphaDriver         = 0.0
+ML_BSSN::BetaDriver          = 0.0
+ML_BSSN::LapseAdvectionCoeff = 0.0
+ML_BSSN::ShiftAdvectionCoeff = 0.0
+ML_BSSN::MinimumLapse        = 1.0e-8
+#ML_BSSN::my_initial_boundary_condition = "extrapolate-gammas"
+#ML_BSSN::my_rhs_boundary_condition     = "NewRad"
+ML_BSSN::ML_log_confac_bound = "none"
+ML_BSSN::ML_metric_bound     = "none"
+ML_BSSN::ML_Gamma_bound      = "none"
+ML_BSSN::ML_trace_curv_bound = "none"
+ML_BSSN::ML_curv_bound       = "none"
+ML_BSSN::ML_lapse_bound      = "none"
+ML_BSSN::ML_dtlapse_bound    = "none"
+ML_BSSN::ML_shift_bound      = "none"
+ML_BSSN::ML_dtshift_bound    = "none"
+
+
+ADMMacros::spatial_order = 4
+ADMMass::ADMMass_use_all_volume_as_volume_radius = "yes"
+
+SpaceMask::use_mask = "yes"
+
+iobasic::outScalar_every = 10
+iobasic::outScalar_vars = "wavemol::phi"
+
+iobasic::outInfo_every = 10
+iobasic::outInfo_vars = "wavemol::phi"
+
+ioascii::out1D_every = 10
+ioascii::out1D_vars = "wavemol::scalarevolvemol_scalar"
+
+IO::out_dir = $parfile
+
+methodoflines::ode_method = "icn"

@@ -1,0 +1,60 @@
+From 397cce8bfaae49e5f3b7e8d48321a5257c1ac5e5 Mon Sep 17 00:00:00 2001
+From: Bruno Coutinho Mundim <bcmsma@astro.rit.edu>
+Date: Wed, 26 Sep 2012 18:58:38 -0500
+Subject: [PATCH 04/13] GRHydro_InitData: exchange find_bondi_solution_bracket
+ for find_bondi_solution and improve smoothing of v
+ field.
+
+---
+ src/GRHydro_Bondi_new.F90 |   17 ++++++++++-------
+ 1 file changed, 10 insertions(+), 7 deletions(-)
+
+diff --git a/src/GRHydro_Bondi_new.F90 b/src/GRHydro_Bondi_new.F90
+index c8e2755..a0077c2 100644
+--- a/src/GRHydro_Bondi_new.F90
++++ b/src/GRHydro_Bondi_new.F90
+@@ -162,13 +162,14 @@ subroutine GRHydro_Bondi_Iso(CCTK_ARGUMENTS)
+ !!$                                               u_bondi(1500),v_bondi(1500)
+ !!$  call CCTK_INFO(debug_message)
+ 
+-!!$    // find the derivative near r=M
++!!$    // find the derivative near r=M in isotropic coords = r=9/4M in schwarzschild; 
+   rnew = 2.25 * M
+   j = floor ((log10(rnew) - logrmin) / dlogr + 1.0)
+ !!$  j = NINT((log10(rnew) - logrmin) / dlogr + 1.0)
+   rhocheck = rho_bondi(j)
+-  call find_bondi_solution_bracket(rnew,rhocheck, ucheck, vcheck, rs, rhos, M, Mdot, Kval, gam, Qdot, &
+-       rho_bondi(j),rho_bondi(j+1))
++!!$  call find_bondi_solution_bracket(rnew,rhocheck, ucheck, vcheck, rs, rhos, M, Mdot, Kval, gam, Qdot, &
++!!$       rho_bondi(j),rho_bondi(j+1))
++  call find_bondi_solution(rnew,rhocheck, ucheck, vcheck, rs, rhos, M, Mdot, Kval, gam, Qdot)
+   uisocheck = 4.0*vcheck/3.0
+   
+ !!$ the previous point was r=M in isotropic coords = r=9/4M in schwarzschild;  this one is r=1.01M in isotropic
+@@ -176,8 +177,9 @@ subroutine GRHydro_Bondi_Iso(CCTK_ARGUMENTS)
+   j = floor((log10(rnew) - logrmin) / dlogr + 1.0)
+ !!$ j = NINT((log10(rnew) - logrmin) / dlogr + 1.0)
+   rhocheck2 = rho_bondi(j)
+-  call find_bondi_solution_bracket( rnew, rhocheck2, ucheck2, vcheck2, rs, rhos, M, Mdot, Kval, gam, Qdot, &
+-       rho_bondi(j),rho_bondi(j+1))
++!!$  call find_bondi_solution_bracket( rnew, rhocheck2, ucheck2, vcheck2, rs, rhos, M, Mdot, Kval, gam, Qdot, &
++!!$       rho_bondi(j),rho_bondi(j+1))
++  call find_bondi_solution( rnew, rhocheck2, ucheck2, vcheck2, rs, rhos, M, Mdot, Kval, gam, Qdot)
+   uisocheck2 = vcheck2 / (1.0 - 1.0/2.02) / (1.0+ 1.0/2.02)
+ 
+   drhodr = 100.0*(rhocheck2-rhocheck)/M 
+@@ -224,8 +226,9 @@ subroutine GRHydro_Bondi_Iso(CCTK_ARGUMENTS)
+ 
+               rhotmp = rho_bondi(jb)+(rho_bondi(jb+1)-rho_bondi(jb))*&
+                   (rsch-r_bondi(jb))/(r_bondi(jb+1)-r_bondi(jb))
+-              call find_bondi_solution_bracket( rsch,rhotmp, utmp, vtmp, rs, rhos, M, Mdot, Kval, gam, Qdot, &
+-                   rho_bondi(jb),rho_bondi(jb+1)) 
++!!$              call find_bondi_solution_bracket( rsch,rhotmp, utmp, vtmp, rs, rhos, M, Mdot, Kval, gam, Qdot, &
++!!$                   rho_bondi(jb),rho_bondi(jb+1)) 
++              call find_bondi_solution( rsch,rhotmp, utmp, vtmp, rs, rhos, M, Mdot, Kval, gam, Qdot)
+               rho(i,j,k) = rhotmp
+               uiso = vtmp / (1.0 - M/2.0/riso) / (1.0+ M/2.0/riso)
+            else
+-- 
+1.7.10.4
+

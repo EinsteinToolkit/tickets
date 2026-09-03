@@ -1,0 +1,35 @@
+Index: src/Boundary.c
+===================================================================
+--- src/Boundary.c	(revision 319)
++++ src/Boundary.c	(working copy)
+@@ -1085,6 +1085,30 @@
+                  "returned %d", err);
+     }
+ 
++    /* check that all variables have storage at least on the current level
++     * individual boundary conditions (eg static) may check for more */
++    err = 0;
++    for (int i=0; i<num_vars; i++)
++    {
++      if (CCTK_VarDataPtrI(cctkGH, 0, vars[i])==NULL)
++      {
++        char *fullname = CCTK_FullName(vars[i]);
++        CCTK_VWarn(CCTK_WARN_ALERT, __LINE__, __FILE__, CCTK_THORNSTRING,
++                   "Boundary_ApplyPhysicalBCs: variable \"%s\" has no storage "
++                   "when attempting to apply boundary condition \"%s\".",
++                   fullname, current_bcdata->bc_name);
++        err += 1;
++        free(fullname);
++      }
++    }
++    if (err)
++    {
++        CCTK_VError(__LINE__, __FILE__, CCTK_THORNSTRING,
++                   "Boundary_ApplyPhysicalBCs: boundary conditions were "
++                   "requested for %d variables that do not have storage",
++                   err);
++    }
++
+     /* Apply bc to vi */
+ #ifdef DEBUG
+     printf("Boundary_ApplyPhysicalBCs: Attempting to call boundary condition\n"

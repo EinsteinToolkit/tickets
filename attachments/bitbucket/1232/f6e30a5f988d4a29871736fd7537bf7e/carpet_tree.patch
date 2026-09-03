@@ -1,0 +1,70 @@
+diff -r bf2225028a26 Carpet/Carpet/src/TimerNode.cc
+--- a/Carpet/Carpet/src/TimerNode.cc	Wed Jul 25 21:23:33 2012 +0200
++++ b/Carpet/Carpet/src/TimerNode.cc	Fri Jan 25 13:49:37 2013 +0100
+@@ -160,7 +160,7 @@ namespace Carpet {
+ 
+   /// Print this node and its children as an ASCII tree
+   void TimerNode::print(ostream& out, double total, int level,
+-                        double threshold, int precision)
++                        double threshold, int precision, int digits)
+   {
+     string space;
+ 
+@@ -180,17 +180,20 @@ namespace Carpet {
+       out << "--------" << hyphens << "--------" << hyphens << "-------" << endl;
+       out << "Percent " << spaces  << "  t/secs" << spaces  << "  Timer" << endl;
+       out << "--------" << hyphens << "--------" << hyphens << "-------" << endl;
++
++      //Compute the number of digits before .
++      digits = max(digits, int(log10(total)) + 2);
+     }
+ 
+-    const int pcw = 6;
+-    const int tw = 8;
++    const int pcw = precision + 4;
++    const int tw = precision + digits;
+     const streamsize oldprecision = out.precision();
+     const ios_base::fmtflags oldflags = out.flags();
+ 
+     // Print this timer value
+     out << fixed << setw(pcw) << setprecision(precision) << 100.0 * t / total << "%"
+         << " " << fixed << setw(tw) << setprecision(precision) << t
+-        << "  " << space << d_name << endl;
++        << " " << space << d_name << endl;
+ 
+     double children_time = 0;
+     bool printed_children = false;
+@@ -201,7 +204,7 @@ namespace Carpet {
+     {
+       if (iter->second->getTime() * 100.0 / total > threshold)
+       {
+-        iter->second->print(out,total,level+1,threshold,precision);
++        iter->second->print(out,total,level+1,threshold,precision, digits);
+         printed_children = true;
+       }
+       children_time += iter->second->getTime();
+@@ -214,9 +217,9 @@ namespace Carpet {
+       if (100.0 * untimed / total > threshold)
+       {
+         // Print the untimed portion
+-        out << fixed << setw(pcw) << setprecision(1) << 100.0 * untimed / total << "%"
+-            << " " << fixed << setw(tw) << setprecision(1) << untimed
+-            << "  | " << space << "untimed" << endl;
++        out << fixed << setw(pcw) << setprecision(precision) << 100.0 * untimed / total << "%"
++            << " " << fixed << setw(tw) << setprecision(precision) << untimed
++            << " | " << space << "untimed" << endl;
+       }
+     }
+     out.precision (oldprecision);
+diff -r bf2225028a26 Carpet/Carpet/src/TimerNode.hh
+--- a/Carpet/Carpet/src/TimerNode.hh	Wed Jul 25 21:23:33 2012 +0200
++++ b/Carpet/Carpet/src/TimerNode.hh	Fri Jan 25 13:49:37 2013 +0100
+@@ -85,7 +85,7 @@ public:
+ 
+   double getTime();
+ 
+-  void print(ostream& out, double total, int level=0, double threshold=0.0, int precision=1);
++  void print(ostream& out, double total, int level=0, double threshold=0.0, int precision=1, int digits=2);
+   void printXML(ostream& out, int level, bool include_history);
+   void outputXML(const string &out_dir, int proc, bool include_history);
+ 

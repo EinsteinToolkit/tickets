@@ -1,0 +1,16 @@
+#!/bin/bash
+#SBATCH --job-name=@SIMULATION_NAME@
+#SBATCH --error=@RUNDIR@/@SIMULATION_NAME@.err
+#SBATCH --output=@RUNDIR@/@SIMULATION_NAME@.out
+#SBATCH --account=ice69
+#SBATCH --partition=acc
+#SBATCH --qos=acc_debug
+#SBATCH --time=@WALLTIME@
+#SBATCH --nodes=@NODES@
+#SBATCH --ntasks-per-node=@NODE_PROCS@
+#SBATCH --export=ALL
+#SBATCH --no-requeue
+
+cd @SOURCEDIR@
+@SIMFACTORY@ run @SIMULATION_NAME@ --basedir=@BASEDIR@ --machine=@MACHINE@  --restart-id=@RESTART_ID@ @FROM_RESTART_COMMAND@
+

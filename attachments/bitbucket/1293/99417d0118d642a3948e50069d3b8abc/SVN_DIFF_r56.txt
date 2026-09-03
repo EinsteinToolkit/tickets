@@ -1,0 +1,69 @@
+Index: documentation.tex
+===================================================================
+--- documentation.tex	(revision 56)
++++ documentation.tex	(working copy)
+@@ -79,7 +79,7 @@
+ \begin{document}
+ 
+ % The author of the documentation
+-\author{Erik Schnetter \textless schnetter@aei.mpg.de\textgreater}
++\author{Erik Schnetter \textless schnetter@aei.mpg.de\textgreater, Bernard Kelly \textless bernard.j.kelly@nasa.gov\textgreater}
+ 
+ % The title of the document (not necessarily the name of the Thorn)
+ \title{Dissipation}
+@@ -98,7 +98,7 @@
+ 
+ % Add an abstract for this thorn's documentation
+ \begin{abstract}
+-Add fourth order Kreiss-Oliger dissipation to the right hand side of
++Add $n$th-order Kreiss-Oliger dissipation to the right hand side of
+ evolution equations.  This thorn is intended for time evolutions that
+ use MoL.
+ \end{abstract}
+@@ -107,9 +107,44 @@
+ % Remove them or add your own.
+ 
+ \section{Physical System}
+-For a description of the artificial dissipation, see
+-\cite{kreiss-oliger}.
++For a description of Kreiss-Oliger artificial dissipation, see \cite{kreiss-oliger}.
+ 
++The additional dissipation terms appear as follows, for a general grid function $U$. Here, the
++tensor character of the field is irrelevant: each component of, say, $\tilde{\gamma}_{ij}$ is
++treated as an independent field for dissipation purposes.
++%
++\begin{eqnarray*}
++\partial_t U &=& \partial_t U + (-1)^{(p+3)/2} \epsilon \frac{1}{2^{p+1}} \left( h_x^{p} \frac{\partial^{(p+1)}}{\partial x^{(p+1)}} + h_y^{p} \frac{\partial^{(p+1)}}{\partial y^{(p+1)}} +
++h_z^{p} \frac{\partial^{(p+1)}}{\partial z^{(p+1)}}\right) U, \\
++             &=& \partial_t U + (-1)^{(p+3)/2} \epsilon \frac{h^{p}}{2^{p+1}} \left( \frac{\partial^{(p+1)}}{\partial x^{(p+1)}} + \frac{\partial^{(p+1)}}{\partial y^{(p+1)}} +
++\frac{\partial^{(p+1)}}{\partial z^{(p+1)}}\right) U,
++\end{eqnarray*}
++%
++where $h_x$, $h_y$, and $h_z$ are the local grid spacings in each Cartesian direction, and the
++second equality holds in the usual situation where the three are equal: $h_x = h_y = h_z = h$.
++
++\section{Implementation in Cactus}
++
++The \texttt{Dissipation} thorn's dissipation rate is controlled by a small number of parameters:
++%
++\begin{itemize}
++  \item \texttt{order} is the order $p$ of the dissipation, implying the use of the $(p+1)$-st spatial derivatives;
++  \item \texttt{epsdiss} is the overall dissipation strength $\epsilon$.
++\end{itemize}
++
++Currently available values of \texttt{order} are $p \in \{1, 3, 5, 7, 9\}$. To apply dissipation at
++order $p$ requires that we have at least $(p+1)/2$ ghostzones --- $\{1, 2, 3, 4, 5\}$, respectively.
++
++The list of fields to be dissipated is specified in the parameter \texttt{vars}. The thorn does
++not allow for individually tuned dissipation strengths for different fields. However, the
++dissipation strength $\epsilon$ can be varied according to refinement level, using the parameter
++array \texttt{epsdis\_for\_level}, which overrides \texttt{epsdiss} if set.
++
++The thorn also allows for enhanced dissipation within the apparent horizons, triggered by the
++boolean parameter \texttt{extra\_dissipation\_in\_horizons}, and near the outer boundary,
++triggered by the boolean parameter \texttt{extra\_dissipation\_at\_outerbound}. Both of these
++default to ``no''.
++
+ \subsection{Acknowledgements}
+ I thank Scott Hawley who wrote a very similar thorn
+ \texttt{HawleyThorns/Dissipation} for evolutions that do not use MoL;

@@ -1,0 +1,24 @@
+Index: src/make.configuration.defn
+===================================================================
+--- src/make.configuration.defn	(revision 120)
++++ src/make.configuration.defn	(working copy)
+@@ -2,4 +2,5 @@
+ 
+ # Define the hwloc utilities
+ STD_HWLOC_UTILS = hwloc-assembler hwloc-assembler-remote hwloc-bind hwloc-calc hwloc-distances hwloc-distrib hwloc-info hwloc-ls hwloc-ps lstopo lstopo-no-graphics
+-ALL_UTILS += $(filter $(STD_HWLOC_UTILS), $(notdir $(wildcard $(HWLOC_DIR)/bin/*)))
++HWLOC_UTILS = $(filter $(STD_HWLOC_UTILS), $(notdir $(wildcard $(HWLOC_DIR)/bin/*)))
++ALL_UTILS += $(HWLOC_UTILS)
+Index: src/make.configuration.deps
+===================================================================
+--- src/make.configuration.deps	(revision 120)
++++ src/make.configuration.deps	(working copy)
+@@ -2,7 +2,7 @@
+ 
+ # The hwloc utilities are copied from the install directory
+ 
+-$(UTIL_DIR)/%: $(HWLOC_DIR)/bin/%
++$(patsubst %,$(UTIL_DIR)/%,$(HWLOC_UTILS)): $(UTIL_DIR)/% : $(HWLOC_DIR)/bin/%
+ 	@echo "Copying $* from $< to $(UTIL_DIR)"
+ 	-$(MKDIR) $(MKDIRFLAGS) $(UTIL_DIR) 2> /dev/null
+ 	cp $< $@

@@ -1,0 +1,102 @@
+Index: NullDecomp/src/NullDecomp_IO.F90
+===================================================================
+--- NullDecomp/src/NullDecomp_IO.F90	(revision 4)
++++ NullDecomp/src/NullDecomp_IO.F90	(working copy)
+@@ -28,8 +28,8 @@
+   do l = Lmin, Lmax
+      do m = -l, l
+ 
+-       write(lName, '(i2.2)'), l
+-       write(mName, '(i2.2)'), abs(m)
++       write(lName, '(i2.2)') l
++       write(mName, '(i2.2)') abs(m)
+        if(m.ge.0) then
+          mName='p'//mName(1:2)
+        else
+@@ -76,8 +76,8 @@
+   do l = Lmin, Lmax
+      do m = -l, l
+ 
+-       write(lName, '(i2.2)'), l
+-       write(mName, '(i2.2)'), abs(m)
++       write(lName, '(i2.2)') l
++       write(mName, '(i2.2)') abs(m)
+        if(m.ge.0) then
+          mName='p'//mName(1:2)
+        else
+Index: NullEvolve/src/NullEvol_DissipMask.F90
+===================================================================
+--- NullEvolve/src/NullEvol_DissipMask.F90	(revision 4)
++++ NullEvolve/src/NullEvol_DissipMask.F90	(working copy)
+@@ -14,33 +14,35 @@
+ 
+     CCTK_REAL, dimension (lsh(1),lsh(2)), intent (out) :: dissip_mask
+     CCTK_REAL :: rD0, rD1
++    CCTK_REAL, parameter :: zero = 0.0
++    CCTK_REAL, parameter :: one = 1.0
+ 
+     DECLARE_CCTK_PARAMETERS
+     DECLARE_CCTK_FUNCTIONS
+ 
+     if (CCTK_EQUALS(dissip_mask_type, "one")) then
+-      dissip_mask = 1
++      dissip_mask = one
+       return
+     end if
+ 
+     if (CCTK_EQUALS(dissip_mask_type, "zero at eq, one at pole")) then
+-       rD0 = 1
+-       rD1 = 0
++       rD0 = one
++       rD1 = zero
+     else if (CCTK_EQUALS(dissip_mask_type, "zero at rD0, one at pole")) then
+-       rD0 = 1 + N_dissip_zero_outside_eq * maxval(delta)
+-       rD1 = 0
++       rD0 = one + N_dissip_zero_outside_eq * maxval(delta)
++       rD1 = zero
+     else if (CCTK_EQUALS(dissip_mask_type, "zero at rD0, one at eq")) then
+-       rD0 = 1 + N_dissip_zero_outside_eq * maxval(delta)
+-       rD1 = 1
++       rD0 = one + N_dissip_zero_outside_eq * maxval(delta)
++       rD1 = one
+     else if (CCTK_EQUALS(dissip_mask_type, "zero at rD0, one at rD1")) then
+-       rD0 = 1 + N_dissip_zero_outside_eq * maxval(delta)
+-       rD1 = 1 + N_dissip_one_outside_eq * maxval(delta)
++       rD0 = one + N_dissip_zero_outside_eq * maxval(delta)
++       rD1 = one + N_dissip_one_outside_eq * maxval(delta)
+     else
+       call CCTK_WARN(0, "unsupported dissipation mask type")
+     end if
+ 
+     dissip_mask = (rD0-dsqrt(ps**2+qs**2)) / (rD0-rD1)
+-    dissip_mask = max(0.0, min(1.0, dissip_mask))
++    dissip_mask = max(zero, min(one, dissip_mask))
+ 
+   end subroutine NullEvol_set_dissipmask
+ 
+Index: SphericalHarmonicDecomp/src/h5read.cc
+===================================================================
+--- SphericalHarmonicDecomp/src/h5read.cc	(revision 2)
++++ SphericalHarmonicDecomp/src/h5read.cc	(working copy)
+@@ -47,7 +47,7 @@
+   */
+   const int nn = dim[0];
+   const int na = dim[1];
+-  const int nl = static_cast<int>(round(sqrt(na+spin*spin)-abs(spin)));
++  const int nl = static_cast<int>(round(sqrt(double(na+spin*spin))-abs(double(spin))));
+ 
+   cout << "# Spin = " << spin << endl;
+   cout << "# Rin = " << Rin << endl;
+Index: SphericalHarmonicRecon/src/Recon.cc
+===================================================================
+--- SphericalHarmonicRecon/src/Recon.cc	(revision 8)
++++ SphericalHarmonicRecon/src/Recon.cc	(working copy)
+@@ -205,7 +205,7 @@
+ 
+       nn = dim[0];
+       na = dim[1];
+-      nl = static_cast<int>(round(sqrt(na+spin*spin)-abs(double(spin))));
++      nl = static_cast<int>(round(sqrt(double(na+spin*spin))-abs(double(spin))));
+ 
+       status = H5LTget_attribute_double(file_id,"/0/", "Time", &time0);
+       status = H5LTget_attribute_double(file_id,"/1/", "Time", &dtime);

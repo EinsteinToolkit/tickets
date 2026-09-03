@@ -1,0 +1,80 @@
+ActiveThorns = "
+        Boundary
+        Carpet
+        CarpetIOASCII
+        CarpetLib
+        CartGrid3d
+        Coordbase
+        IOUtil
+        InitBase
+        LoopControl
+        SymBase
+"
+
+
+Cactus::terminate       = "iteration"
+Cactus::cctk_itlast     = 0
+
+InitBase::initial_data_setup_method = "init_all_levels"
+
+driver::ghost_size               =  1
+Carpet::prolongation_order_space =  2
+Carpet::prolongation_order_time  =  1
+
+Carpet::init_fill_timelevels     = "yes"
+
+Carpet::poison_new_timelevels = "yes"
+Carpet::check_for_poison      = "no"
+CarpetLib::poison_new_memory  = "yes"
+CarpetLib::poison_value       = 114
+
+Carpet::domain_from_coordbase = "yes"
+
+CartGrid3D::type         = "coordbase"
+CartGrid3D::avoid_origin = "no"
+CoordBase::xmin          =   -2.0
+CoordBase::ymin          =   -2.0
+CoordBase::zmin          =   -2.0
+CoordBase::xmax          =   2.0
+CoordBase::ymax          =   2.0
+CoordBase::zmax          =   2.0
+CoordBase::dx            =   0.1
+CoordBase::dy            =   0.1
+CoordBase::dz            =   0.1
+
+CoordBase::boundary_size_x_lower     = 1
+CoordBase::boundary_size_y_lower     = 1
+CoordBase::boundary_size_z_lower     = 1
+CoordBase::boundary_size_x_upper     = 1
+CoordBase::boundary_size_y_upper     = 1
+CoordBase::boundary_size_z_upper     = 1
+CoordBase::boundary_shiftout_x_lower = 0
+CoordBase::boundary_shiftout_y_lower = 0
+CoordBase::boundary_shiftout_z_lower = 0
+CoordBase::boundary_shiftout_x_upper = 0
+CoordBase::boundary_shiftout_y_upper = 0
+CoordBase::boundary_shiftout_z_upper = 0
+CoordBase::boundary_staggered_x_lower = no
+CoordBase::boundary_staggered_y_lower = no
+CoordBase::boundary_staggered_z_lower = no
+CoordBase::boundary_staggered_x_upper = no
+CoordBase::boundary_staggered_y_upper = no
+CoordBase::boundary_staggered_z_upper = no
+
+################################################################################
+################################################################################
+# Output
+################################################################################
+################################################################################
+
+IO::out_dir  = $parfile
+
+IOASCII::out1D_every            = 1
+IOASCII::out1D_x                = "yes"
+IOASCII::out1D_y                = "no"
+IOASCII::out1D_z                = "no"
+IOASCII::out1D_d                = "no"
+IOASCII::out1d_xline_y          = -1.5
+IOASCII::out1D_vars             = "
+        grid::x
+"

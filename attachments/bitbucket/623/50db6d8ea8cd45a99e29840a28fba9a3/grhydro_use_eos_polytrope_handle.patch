@@ -1,0 +1,30 @@
+Index: src/GRHydro_Prim2Con.F90
+===================================================================
+--- src/GRHydro_Prim2Con.F90	(revision 281)
++++ src/GRHydro_Prim2Con.F90	(working copy)
+@@ -541,14 +541,14 @@
+         avg_detl = SPATIAL_DETERMINANT(g11l,g12l,g13l,g22l, g23l,g33l)
+         avg_detr = SPATIAL_DETERMINANT(g11r,g12r,g13r,g22r, g23r,g33r)
+ 
+-        call prim2conpolytype(GRHydro_eos_handle, g11l,g12l,g13l,&
++        call prim2conpolytype(GRHydro_polytrope_handle, g11l,g12l,g13l,&
+              g22l,g23l,g33l, &
+              avg_detl,densminus(i,j,k),sxminus(i,j,k),&
+              syminus(i,j,k),szminus(i,j,k),tauminus(i,j,k),rhominus(i,j,k), &
+              velxminus(i,j,k),velyminus(i,j,k),velzminus(i,j,k),&
+              epsminus(i,j,k),pressminus(i,j,k),w_lorentzminus(i, j, k))
+  
+-        call prim2conpolytype(GRHydro_eos_handle, g11r,g12r,g13r,&
++        call prim2conpolytype(GRHydro_polytrope_handle, g11r,g12r,g13r,&
+              g22r,g23r,g33r, &
+              avg_detr, densplus(i,j,k),sxplus(i,j,k),&
+              syplus(i,j,k),szplus(i,j ,k),tauplus(i,j,k),&
+@@ -705,7 +705,7 @@
+         det = SPATIAL_DETERMINANT(g11(i,j,k),g12(i,j,k),g13(i,j,k),\
+              g22(i,j,k),g23(i,j,k),g33(i,j,k))
+ 
+-        call prim2conpolytype(GRHydro_eos_handle,g11(i,j,k),g12(i,j,k),&
++        call prim2conpolytype(GRHydro_polytrope_handle,g11(i,j,k),g12(i,j,k),&
+              g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k),&
+              det, dens(i,j,k),sx(i,j,k),sy(i,j,k),sz(i,j,k),&
+              tau(i,j,k),rho(i,j,k),velx(i,j,k),vely(i,j,k),velz(i,j,k),&

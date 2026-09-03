@@ -1,0 +1,51 @@
+Index: src/nuc_eos/readtable.F90
+===================================================================
+--- src/nuc_eos/readtable.F90	(revision 37)
++++ src/nuc_eos/readtable.F90	(working copy)
+@@ -257,8 +256,8 @@
+   enddo
+ #endif
+ 
++  call EOS_OmniDumpTable(alltables, nrho,ntemp,nye,nvars);
+ 
+-
+ end subroutine nuc_eos_readtable
+ 
+ 
+Index: src/nuc_eos/make.code.defn
+===================================================================
+--- src/nuc_eos/make.code.defn	(revision 37)
++++ src/nuc_eos/make.code.defn	(working copy)
+@@ -1,6 +1,6 @@
+ SRCS = eosmodule.F90 nuc_eos.F90 bisection.F90 \
+        findtemp.F90 findrho.F90 linterp_many.F90 readtable.F90 \
+-       linterp.F hdf5_stubs.c
++       linterp.F hdf5_stubs.c EOS_OmniDumpTable.c
+ 
+ SUBDIRS = 
+ 
+Index: src/nuc_eos/EOS_OmniDumpTable.c
+===================================================================
+--- src/nuc_eos/EOS_OmniDumpTable.c	(revision 0)
++++ src/nuc_eos/EOS_OmniDumpTable.c	(revision 0)
+@@ -0,0 +1,20 @@
++#include <cctk.h>
++#include <cctk_Arguments.h>
++#include <assert.h>
++#include <stdio.h>
++
++void CCTK_FNAME(EOS_OmniDumpTable)(CCTK_REAL *alltable, CCTK_INT *dim1, CCTK_INT *dim2, CCTK_INT *dim3, CCTK_INT *dim4)
++{
++  FILE *fh;
++
++  fh=fopen("eos_omni_debug_table.asc", "w");
++  assert(fh);
++
++  fprintf(fh, "# dim1 =%d, dim2 =%d, dim3 =%d, dim4 =%d\n", *dim1, *dim2, *dim3, *dim4);
++  for(int i4 = 0 ; i4 < *dim4 ; i4++)
++    for(int i3 = 0 ; i3 < *dim3 ; i3++)
++      for(int i2 = 0 ; i2 < *dim2 ; i2++)
++        for(int i1 = 0 ; i1 < *dim1 ; i1++)
++          fprintf(fh, "%g\n", alltable[i1 + *dim1 * (i2 + *dim2 * (i3 + *dim3 * i4))]);
++  fclose(fh);
++}

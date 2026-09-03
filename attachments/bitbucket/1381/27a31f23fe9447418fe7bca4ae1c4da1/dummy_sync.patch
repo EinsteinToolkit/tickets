@@ -1,0 +1,34 @@
+diff --git a/CarpetExtra/CarpetProlongateTest/schedule.ccl b/CarpetExtra/CarpetProlongateTest/schedule.ccl
+index d3b2416..4459948 100644
+--- a/CarpetExtra/CarpetProlongateTest/schedule.ccl
++++ b/CarpetExtra/CarpetProlongateTest/schedule.ccl
+@@ -18,6 +18,12 @@ SCHEDULE CarpetProlongateTest_Init AT evol
+   SYNC: scalar scaled
+ } "Set up initial data"
+ 
++SCHEDULE CarpetProlongateTest_Boundary IN MoL_PostStep BEFORE CarpetProlongateTest_Diff
++{
++  LANG: Fortran
++  SYNC: scalar
++} "Apply boundary condition"
++
+ SCHEDULE CarpetProlongateTest_Diff IN MoL_PostStep
+ {
+   LANG: Fortran
+diff --git a/CarpetExtra/CarpetProlongateTest/src/init.F90 b/CarpetExtra/CarpetProlongateTest/src/init.F90
+index 46cbf28..df588e7 100644
+--- a/CarpetExtra/CarpetProlongateTest/src/init.F90
++++ b/CarpetExtra/CarpetProlongateTest/src/init.F90
+@@ -88,6 +88,12 @@ end subroutine CarpetProlongateTest_Init
+ 
+ 
+ 
++
++subroutine CarpetProlongateTest_Boundary (CCTK_ARGUMENTS)
++  ! Dummy routine to tie a SYNC to it
++end subroutine
++
++
+ subroutine CarpetProlongateTest_Diff (CCTK_ARGUMENTS)
+   use CarpetProlongateTest
+   implicit none

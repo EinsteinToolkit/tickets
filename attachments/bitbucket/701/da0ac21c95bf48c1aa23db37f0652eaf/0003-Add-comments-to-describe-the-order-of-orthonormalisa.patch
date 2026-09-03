@@ -1,0 +1,36 @@
+From fbf4e279b80bbb49e17b3704d3585f7ce73a5bd7 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Mon, 13 Sep 2010 13:56:39 +0200
+Subject: [PATCH 03/11] Add comments to describe the order of
+ orthonormalisation
+
+---
+ m/WeylScal4.m |    6 ++++++
+ 1 files changed, 6 insertions(+), 0 deletions(-)
+
+diff --git a/m/WeylScal4.m b/m/WeylScal4.m
+index 1f5e499..ba5a165 100644
+--- a/m/WeylScal4.m
++++ b/m/WeylScal4.m
+@@ -142,12 +142,18 @@ PsisCalc[fdOrder_, PD_] :=
+   Compute the local tetrad
+  ****************************************************************************)
+ 
++        (* azmuthal *)
+ 	va1 -> -ymoved, va2 -> xmoved+offset, va3 -> 0,
++
++        (* radial *)
+ 	vb1 -> xmoved+offset, vb2 -> ymoved, vb3 -> zmoved,
++
++        (* polar *)
+ 	vc[ua] -> Sqrt[detg] gInv[ua,ud] Eps[ld,lb,lc] va[ub] vb[uc],
+ 
+ 	(* Orthonormalize using Gram-Schmidt*)
+ 
++        (* Orthonormalize in the order phi, r, theta *)
+         wa[ua] -> va[ua],
+         omega11 -> wa[ua] wa[ub] g[la,lb],
+         ea[ua] -> wa[ua] / Sqrt[omega11],
+-- 
+1.7.7.4
+

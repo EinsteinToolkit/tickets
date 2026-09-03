@@ -1,0 +1,201 @@
+Index: src/boost.F77
+===================================================================
+--- src/boost.F77	(revision 277)
++++ src/boost.F77	(working copy)
+@@ -70,6 +70,8 @@
+       save      partial_Mx_wrt_Cx
+       save      partial_Cx_wrt_Mx
+       save      R
++c$omp threadprivate (firstcall, gamma, vv, parallel, perp, 
++c$omp+               partial_Mx_wrt_Cx,partial_Cx_wrt_Mx, R)
+ 
+ c coordinates and 4-metric
+       CCTK_REAL Cx(0:3)
+@@ -141,8 +143,6 @@
+ c compute Lorentz transformation information on first call
+ c
+       if (firstcall) then
+-c$omp critical
+-      if (firstcall) then
+ 
+ c boost velocity
+          vv(1) = boost_vx
+@@ -294,8 +294,6 @@
+ 
+          firstcall = .false.
+       end if
+-c$omp end critical
+-      end if
+ 
+ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+ 
+Index: src/gauge.F77
+===================================================================
+--- src/gauge.F77	(revision 277)
++++ src/gauge.F77	(working copy)
+@@ -88,25 +88,25 @@
+ 
+       if ( set_lapse .or. set_shift .or. set_dtlapse .or. set_dtshift) then
+ 
+-C.omp    parallel do private (
+-C.omp$     i, j, k,
+-C.omp$     tt, xx, yy, zz,
+-C.omp$     alptmp, dtalptmp, axtmp, aytmp, aztmp, 
+-C.omp$     betaxtmp, betaytmp, betaztmp,
+-C.omp$     dtbetaxtmp, dtbetaytmp, dtbetaztmp,
+-C.omp$     bxxtmp, bxytmp, bxztmp, 
+-C.omp$     byxtmp, byytmp, byztmp, 
+-C.omp$     bzxtmp, bzytmp, bzztmp,
+-C.omp$     dxgxxtmp, dxgyytmp, dxgzztmp, 
+-C.omp$     dxgxytmp, dxgyztmp, dxgxztmp,
+-C.omp$     dygxxtmp, dygyytmp, dygzztmp, 
+-C.omp$     dygxytmp, dygyztmp, dygxztmp,
+-C.omp$     dzgxxtmp, dzgyytmp, dzgzztmp, 
+-C.omp$     dzgxytmp, dzgyztmp, dzgxztmp,
+-C.omp$     exact_psi,
+-C.omp$     exact_psix, exact_psiy, exact_psiz,
+-C.omp$     exact_psixx, exact_psiyy, exact_psizz,
+-C.omp$     exact_psixy, exact_psiyz, exact_psixz)
++C$omp    parallel do private (
++C$omp$     i, j, k,
++C$omp$     tt, xx, yy, zz,
++C$omp$     alptmp, dtalptmp, axtmp, aytmp, aztmp, 
++C$omp$     betaxtmp, betaytmp, betaztmp,
++C$omp$     dtbetaxtmp, dtbetaytmp, dtbetaztmp,
++C$omp$     bxxtmp, bxytmp, bxztmp, 
++C$omp$     byxtmp, byytmp, byztmp, 
++C$omp$     bzxtmp, bzytmp, bzztmp,
++C$omp$     dxgxxtmp, dxgyytmp, dxgzztmp, 
++C$omp$     dxgxytmp, dxgyztmp, dxgxztmp,
++C$omp$     dygxxtmp, dygyytmp, dygzztmp, 
++C$omp$     dygxytmp, dygyztmp, dygxztmp,
++C$omp$     dzgxxtmp, dzgyytmp, dzgzztmp, 
++C$omp$     dzgxytmp, dzgyztmp, dzgxztmp,
++C$omp$     exact_psi,
++C$omp$     exact_psix, exact_psiy, exact_psiz,
++C$omp$     exact_psixx, exact_psiyy, exact_psizz,
++C$omp$     exact_psixy, exact_psiyz, exact_psixz)
+          do k=1,nz
+             do j=1,ny
+                do i=1,nx
+Index: src/initialize.F77
+===================================================================
+--- src/initialize.F77	(revision 277)
++++ src/initialize.F77	(working copy)
+@@ -60,25 +60,25 @@
+       ny = cctk_lsh(2)
+       nz = cctk_lsh(3)
+ 
+-C.omp parallel do private(
+-C.omp$     i, j, k,
+-C.omp$     tt, xx, yy, zz,
+-C.omp$     alpjunk, dtalpjunk, axjunk, ayjunk, azjunk, 
+-C.omp$     betaxjunk, betayjunk, betazjunk,
+-C.omp$     dtbetaxjunk, dtbetayjunk, dtbetazjunk,
+-C.omp$     bxxjunk, bxyjunk, bxzjunk, 
+-C.omp$     byxjunk, byyjunk, byzjunk, 
+-C.omp$     bzxjunk, bzyjunk, bzzjunk,
+-C.omp$     dxgxxjunk, dxgyyjunk, dxgzzjunk, 
+-C.omp$     dxgxyjunk, dxgyzjunk, dxgxzjunk,
+-C.omp$     dygxxjunk, dygyyjunk, dygzzjunk, 
+-C.omp$     dygxyjunk, dygyzjunk, dygxzjunk,
+-C.omp$     dzgxxjunk, dzgyyjunk, dzgzzjunk, 
+-C.omp$     dzgxyjunk, dzgyzjunk, dzgxzjunk,
+-C.omp$     exact_psi,
+-C.omp$     exact_psix, exact_psiy, exact_psiz,
+-C.omp$     exact_psixx, exact_psiyy, exact_psizz,
+-C.omp$     exact_psixy, exact_psiyz, exact_psixz)
++C$omp parallel do private(
++C$omp$     i, j, k,
++C$omp$     tt, xx, yy, zz,
++C$omp$     alpjunk, dtalpjunk, axjunk, ayjunk, azjunk, 
++C$omp$     betaxjunk, betayjunk, betazjunk,
++C$omp$     dtbetaxjunk, dtbetayjunk, dtbetazjunk,
++C$omp$     bxxjunk, bxyjunk, bxzjunk, 
++C$omp$     byxjunk, byyjunk, byzjunk, 
++C$omp$     bzxjunk, bzyjunk, bzzjunk,
++C$omp$     dxgxxjunk, dxgyyjunk, dxgzzjunk, 
++C$omp$     dxgxyjunk, dxgyzjunk, dxgxzjunk,
++C$omp$     dygxxjunk, dygyyjunk, dygzzjunk, 
++C$omp$     dygxyjunk, dygyzjunk, dygxzjunk,
++C$omp$     dzgxxjunk, dzgyyjunk, dzgzzjunk, 
++C$omp$     dzgxyjunk, dzgyzjunk, dzgxzjunk,
++C$omp$     exact_psi,
++C$omp$     exact_psix, exact_psiy, exact_psiz,
++C$omp$     exact_psixx, exact_psiyy, exact_psizz,
++C$omp$     exact_psixy, exact_psiyz, exact_psixz)
+       do k=1,nz
+          do j=1,ny
+             do i=1,nx
+Index: src/metrics/Alvi.F77
+===================================================================
+--- src/metrics/Alvi.F77	(revision 277)
++++ src/metrics/Alvi.F77	(working copy)
+@@ -34,6 +34,7 @@
+       CCTK_REAL m1,m2,b
+       data firstcall /.true./
+       save firstcall, m1,m2,b
++c$omp threadprivate (firstcall, m1,m2,b)
+ 
+ c locals
+       CCTK_REAL rin1,rin2,rout,x1,x2, r1, r2, r3, results(10)
+Index: src/metrics/Bertotti.F77
+===================================================================
+--- src/metrics/Bertotti.F77	(revision 277)
++++ src/metrics/Bertotti.F77	(working copy)
+@@ -35,6 +35,7 @@
+       logical firstcall
+       data firstcall /.true./
+       save firstcall, baza
++c$omp threadprivate (firstcall, baza)
+ 
+ c local variables
+       CCTK_REAL baza
+Index: src/metrics/Goedel.F77
+===================================================================
+--- src/metrics/Goedel.F77	(revision 277)
++++ src/metrics/Goedel.F77	(working copy)
+@@ -38,6 +38,7 @@
+       CCTK_REAL arad
+       data firstcall /.true./
+       save firstcall, arad
++c$omp threadprivate (firstcall, arad)
+  
+ 
+ C This is a vacuum spacetime with no cosmological constant
+Index: src/metrics/Bianchi_I.F77
+===================================================================
+--- src/metrics/Bianchi_I.F77	(revision 277)
++++ src/metrics/Bianchi_I.F77	(working copy)
+@@ -38,6 +38,7 @@
+       CCTK_REAL arad
+       data firstcall /.true./
+       save firstcall, arad
++c$omp threadprivate (firstcall, arad)
+  
+ c local variables
+       CCTK_REAL bx, by
+Index: src/metrics/bowl.F77
+===================================================================
+--- src/metrics/bowl.F77	(revision 277)
++++ src/metrics/bowl.F77	(working copy)
+@@ -87,6 +87,7 @@
+       CCTK_REAL t0,st
+       data firstcall /.true./
+       save firstcall,evolve,type,a,c,s,dx,dy,dz,t0,st
++c$omp threadprivate (firstcall,evolve,type,a,c,s,dx,dy,dz,t0,st)
+ 
+ c local variables
+       integer type
+Index: src/metrics/Gowdy_wave.F77
+===================================================================
+--- src/metrics/Gowdy_wave.F77	(revision 277)
++++ src/metrics/Gowdy_wave.F77	(working copy)
+@@ -44,6 +44,7 @@
+       CCTK_REAL Bessel_J0, Bessel_J1
+       data firstcall /.true./
+       save firstcall, amp, PI, twoPI, Bessel_J0, Bessel_J1
++c$omp threadprivate (firstcall, amp, PI, twoPI, Bessel_J0, Bessel_J1)
+  
+ c local variables
+       CCTK_REAL Bessel_J0_t, Bessel_J1_t

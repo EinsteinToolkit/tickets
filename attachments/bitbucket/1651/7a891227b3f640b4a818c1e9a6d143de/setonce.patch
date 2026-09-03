@@ -1,0 +1,561 @@
+Index: Call.cc
+===================================================================
+--- Call.cc	(revision 5125)
++++ Call.cc	(working copy)
+@@ -85,7 +85,7 @@
+     int idata;
+     std::string sdata;
+     ValueType type;
+-    Value(smart_ptr<Group> g) : hold(g), ddata(0), idata(0), sdata(), type(PIR_VOID) { smart_ptr<Group> foo(g); }
++    Value(smart_ptr<Group> g) : hold(g), ddata(0), idata(0), sdata(), type(PIR_VOID) {}
+     ~Value() {}
+     /**
+      * Create a string representation of the Value.
+@@ -215,15 +215,16 @@
+     return o;
+ }
+ 
+-typedef std::map<std::string,std::map<std::string,smart_ptr<Value> > >::iterator th_iter;
+ typedef std::map<std::string,smart_ptr<Value> >::iterator nm_iter;
+-std::map<std::string,smart_ptr<Value> > variables;
+ 
+ smart_ptr<Value> eval_expr(std::string inp);
+ 
++std::map<std::string,smart_ptr<Value> > evaluated;
++std::set<std::string> expectedvar;
++
+ // If the value was already defined in this parameter file, look
+ // it up in the map. Otherwise, get it from Cactus.
+-smart_ptr<Value> find_val(smart_ptr<Group> gr,std::string thorn,std::string name) {
++smart_ptr<Value> find_val(smart_ptr<Group> gr,std::string thorn,std::string name,bool raise=false) {
+     smart_ptr<Value> ret = new Value(gr);
+     int type;
+     const void *result;
+@@ -234,6 +235,15 @@
+         std::string par = get_parfile();
+         CCTK_Error(gr->line(),par.c_str(),current_thorn.c_str(),msg.str().c_str());
+     }
++    std::string key = thorn + "::" + name;
++    nm_iter iter = evaluated.find(key);
++    if(iter == evaluated.end()) {
++      // Wait to see if the parameter is defined later.
++      if(raise)
++        throw key;
++    } else {
++      return iter->second;
++    }
+ 
+     switch(type) {
+         case PARAMETER_REAL:
+@@ -263,12 +273,19 @@
+             std::string par = get_parfile();
+             CCTK_Error(gr->line(),par.c_str(),current_thorn.c_str(),msg.str().c_str());
+     }
+-    //std::cout << "Piraha: GET: " << thorn << "::" << name << "=" << ret << std::endl;
++    if(expectedvar.find(key) == expectedvar.end()) {
++      std::ostringstream msg;
++      msg << "Cyclic definition for parameter " << key << std::endl;
++      std::string par = get_parfile();
++      CCTK_Error(gr->line(),par.c_str(),current_thorn.c_str(),msg.str().c_str());
++    }
++    evaluated[key] = ret;
+     return ret;
+ }
+ 
+-smart_ptr<Value> lookup_var(smart_ptr<Group> gr) {
++smart_ptr<Value> lookup_var(smart_ptr<Group> gr,bool raise) {
+     smart_ptr<Value> ret;
++    std::string key = gr->group(0)->substring();
+     if(gr->group(0)->getPatternName() == "env") {
+         const char *env = getenv(gr->group(0)->group(0)->substring().c_str());
+         if(env != NULL) {
+@@ -276,22 +293,30 @@
+             ret->type = PIR_STRING;
+             ret->sdata = env;
+         }
+-    } else if(gr->group(0)->substring() == "parfile") {
++    } else if(key == "parfile") {
+         ret = new Value(gr);
+         ret->type = PIR_STRING;
+         ret->sdata = get_parfilename();
+-    } else if(gr->group(0)->substring() == "pi") {
++    } else if(key == "pi") {
+         ret = new Value(gr);
+         ret->type = PIR_REAL;
+         ret->ddata = 4.0*atan2(1.0,1.0);
+-    }
+-    nm_iter iter = variables.find(gr->group(0)->substring());
+-    if(iter != variables.end()) {
++    } else {
++      nm_iter iter = evaluated.find(key);
++      if(iter != evaluated.end()) {
+         ret = iter->second;
++      } else {
++        // Wait to see if the variable is defined later.
++        if(raise)
++          throw key;
++      }
+     }
+     if(!ret.valid()) {
+         std::ostringstream msg;
+-        msg << "Unknown variable: " << gr->substring() << std::endl;
++        if(expectedvar.find(key) == expectedvar.end())
++          msg << "Unknown variable: " << gr->substring() << std::endl;
++        else
++          msg << "Cyclic definition for variable: " << gr->substring() << std::endl;
+         std::string par = get_parfile();
+         CCTK_Error(gr->line(),par.c_str(),current_thorn.c_str(),msg.str().c_str());
+     }
+@@ -299,7 +324,7 @@
+ }
+ 
+ 
+-std::string string_reparser(std::string s) {
++std::string string_reparser(std::string s,bool raise) {
+     smart_ptr<Matcher> m = new Matcher(par_file_grammar,"stringparser",s.c_str(),s.length());
+     if(m->matches()) {
+         std::string out = "";
+@@ -310,7 +335,7 @@
+             } else if(pn == "stringcomment") {
+                 ;
+             } else {
+-                smart_ptr<Value> val = lookup_var(m->group(i));
++                smart_ptr<Value> val = lookup_var(m->group(i),raise);
+                 out += val->copy();
+             }
+         }
+@@ -326,7 +351,7 @@
+  * from it. It is, therefore, designed to be
+  * used recursively.
+  **/
+-smart_ptr<Value> meval(smart_ptr<Group> gr) {
++smart_ptr<Value> meval(smart_ptr<Group> gr,bool raise) {
+     assert(gr.valid());
+     std::string pn = gr->getPatternName();
+     smart_ptr<Value> ret = new Value(gr);
+@@ -349,11 +374,11 @@
+             CCTK_Error(gr->line(),par.c_str(),current_thorn.c_str(),msg.str().c_str());
+         }
+     } else if(pn == "paren" || pn == "parindex") {
+-        return meval(gr->group(0));
++        return meval(gr->group(0),raise);
+     } else if(pn == "func") {
+         std::string fn = gr->group(0)->substring();
+         fn = mklower(fn);
+-        smart_ptr<Value> val = meval(gr->group(1));
++        smart_ptr<Value> val = meval(gr->group(1),raise);
+         if(val->type == PIR_REAL || val->type == PIR_INT) {
+             if(fn == "trunc") {
+                 val->ddata = trunc(val->doubleValue());
+@@ -515,97 +540,98 @@
+         std::string name = gr->group(1)->substring();
+         if(gr->groupCount() == 3) {
+             std::ostringstream vn;
+-            smart_ptr<Value> index = meval(gr->group(2));
++            smart_ptr<Value> index = meval(gr->group(2),raise);
+             if(index->type == PIR_INT) {
+                 std::stringstream o;
+                 o << name << "[" << index->idata << "]";
+                 o << std::flush;
+                 std::string keyi = o.str();
+-                ret = find_val(gr,thorn,keyi);
+-                return ret;
++                return find_val(gr,thorn,keyi,raise);
+             }
+         } else {
+-            ret = find_val(gr,thorn,name);
+-            return ret;
++            return find_val(gr,thorn,name,raise);
+         }
+         std::ostringstream msg;
+         msg << "Unknown par: " << thorn << "::" << name << std::endl;
+         std::string par = get_parfile();
+         CCTK_Error(gr->line(),par.c_str(),current_thorn.c_str(),msg.str().c_str());
+     } else if(pn == "var") {
+-        ret = lookup_var(gr);
++        return lookup_var(gr,raise);
+     } else if(pn == "value") {
+         if(gr->groupCount()==2) {
+             std::string unop = gr->group(0)->substring();
+-            ret = meval(gr->group(1));
++            smart_ptr<Value> subval = meval(gr->group(1),raise);
+             if(unop == "-") {
+-                if(ret->type == PIR_INT) {
+-                    ret->idata = -ret->idata;
+-                } else if(ret->type == PIR_REAL) {
+-                    ret->ddata = std::copysign(ret->ddata,
+-                                               std::signbit(ret->ddata) ?
++                if(subval->type == PIR_INT) {
++                    ret->type = PIR_INT;
++                    ret->idata = -subval->idata;
++                } else if(subval->type == PIR_REAL) {
++                    ret->type = PIR_REAL;
++                    ret->ddata = std::copysign(subval->ddata,
++                                               std::signbit(subval->ddata) ?
+                                                1. : -1.);
+                 } else {
+                     std::ostringstream msg;
+-                    msg << "Unknown operation: " << unop << ret->type << std::endl;
++                    msg << "Unknown operation: " << unop << subval->type << std::endl;
+                     std::string par = get_parfile();
+                     CCTK_Error(gr->line(),par.c_str(),current_thorn.c_str(),msg.str().c_str());
+                 }
+             } else if(unop == "!") {
+-                if(ret->type == PIR_BOOL) {
+-                    ret->idata = !ret->idata;
++                if(subval->type == PIR_BOOL) {
++                    ret->idata = !subval->idata;
++                    ret->type = PIR_BOOL;
+                 } else {
+                     std::ostringstream msg;
+-                    msg << "Unknown operation: " << unop << ret->type << std::endl;
++                    msg << "Unknown operation: " << unop << subval->type << std::endl;
+                     std::string par = get_parfile();
+                     CCTK_Error(gr->line(),par.c_str(),current_thorn.c_str(),msg.str().c_str());
+                 }
+             } else {
+                 std::ostringstream msg;
+-                msg << "Unknown operation: " << unop << ret->type << std::endl;
++                msg << "Unknown operation: " << unop << subval->type << std::endl;
+                 std::string par = get_parfile();
+                 CCTK_Error(gr->line(),par.c_str(),current_thorn.c_str(),msg.str().c_str());
+             }
+         } else {
+-            return meval(gr->group(0));
++            return meval(gr->group(0),raise);
+         }
+     } else if(pn == "quot") {
+         ret->type = PIR_STRING;
+-        ret->sdata = string_reparser(gr->group(0)->substring());
++        ret->sdata = string_reparser(gr->group(0)->substring(),raise);
+     } else if(pn == "inquot") {
+         ret->type = PIR_STRING;
+         ret->sdata = gr->substring();
+     } else if(pn == "expr") {
+         if(gr->groupCount()==1)
+-            return meval(gr->group(0));
+-        smart_ptr<Value> v1 = meval(gr->group(0));
+-        smart_ptr<Value> v2 = meval(gr->group(1));
++            return meval(gr->group(0),raise);
++        smart_ptr<Value> v1 = meval(gr->group(0),raise);
++        smart_ptr<Value> v2 = meval(gr->group(1),raise);
+         v1->checkBool();
+         v2->checkBool();
+         ret->type = PIR_BOOL;
+         ret->idata = v1->idata || v2->idata;
+     } else if(pn == "powexpr") {
+         if(gr->groupCount()==1)
+-            return meval(gr->group(0));
+-        smart_ptr<Value> v1 = meval(gr->group(0));
+-        smart_ptr<Value> v2 = meval(gr->group(1));
++            return meval(gr->group(0),raise);
++        smart_ptr<Value> v1 = meval(gr->group(0),raise);
++        smart_ptr<Value> v2 = meval(gr->group(1),raise);
+         ret->type = PIR_REAL;
+         ret->ddata = pow(v1->doubleValue(),v2->doubleValue());
+     } else if(pn == "andexpr") {
+         if(gr->groupCount()==1)
+-            return meval(gr->group(0));
+-        smart_ptr<Value> v1 = meval(gr->group(0));
+-        smart_ptr<Value> v2 = meval(gr->group(1));
++            return meval(gr->group(0),raise);
++        smart_ptr<Value> v1 = meval(gr->group(0),raise);
++        smart_ptr<Value> v2 = meval(gr->group(1),raise);
+         v1->checkBool();
+         v2->checkBool();
+         ret->type = PIR_BOOL;
+         ret->idata = v1->idata && v2->idata;
+     } else if(pn == "eqexpr") {
+         if(gr->groupCount()==1)
+-            return meval(gr->group(0));
+-        smart_ptr<Value> v1 = meval(gr->group(0));
++            return meval(gr->group(0),raise);
++        smart_ptr<Value> v1 = meval(gr->group(0),raise);
+         std::string eqop = gr->group(1)->substring();
+-        smart_ptr<Value> v2 = meval(gr->group(2));
++        smart_ptr<Value> v2 = meval(gr->group(2),raise);
+         ret->type = PIR_BOOL;
+         if(eqop == "==") {
+             ret->idata = v1->equals(v2);
+@@ -619,11 +645,11 @@
+         }
+     } else if(pn == "compexpr") {
+         if(gr->groupCount()==1)
+-            return meval(gr->group(0));
+-        smart_ptr<Value> v1 = meval(gr->group(0));
++            return meval(gr->group(0),raise);
++        smart_ptr<Value> v1 = meval(gr->group(0),raise);
+         if(gr->groupCount()>0) {
+             std::string compop = gr->group(1)->substring();
+-            smart_ptr<Value> v2 = meval(gr->group(2));
++            smart_ptr<Value> v2 = meval(gr->group(2),raise);
+             double d1 = v1->doubleValue();
+             double d2 = v2->doubleValue();
+             ret->type = PIR_BOOL;
+@@ -647,11 +673,11 @@
+         }
+     } else if(pn == "aexpr") {
+         if(gr->groupCount()==1)
+-            return meval(gr->group(0));
+-        smart_ptr<Value> v1 = meval(gr->group(0));
++            return meval(gr->group(0),raise);
++        smart_ptr<Value> v1 = meval(gr->group(0),raise);
+         for(int i=1;i+1<gr->groupCount();i+=2) {
+             std::string addop = gr->group(i)->substring();
+-            smart_ptr<Value> v2 = meval(gr->group(i+1));
++            smart_ptr<Value> v2 = meval(gr->group(i+1),raise);
+             assert(v2.valid());
+             if(v1->type == PIR_INT && v2->type == PIR_INT) {
+                 ret->type = PIR_INT;
+@@ -700,11 +726,11 @@
+         }
+     } else if(pn == "mexpr") {
+         if(gr->groupCount()==1)
+-            return meval(gr->group(0));
+-        smart_ptr<Value> v1 = meval(gr->group(0));
++            return meval(gr->group(0),raise);
++        smart_ptr<Value> v1 = meval(gr->group(0),raise);
+         for(int i=1;i+1<gr->groupCount();i+=2) {
+             std::string mulop = gr->group(i)->substring();
+-            smart_ptr<Value> v2 = meval(gr->group(i+1));
++            smart_ptr<Value> v2 = meval(gr->group(i+1),raise);
+             if(v1->type == PIR_INT && v2->type == PIR_INT) {
+                 ret->type = PIR_INT;
+                 if(mulop == "*") {
+@@ -774,7 +800,7 @@
+     smart_ptr<Matcher> m = new Matcher(par_file_grammar,"eval",input.c_str());
+     smart_ptr<Value> ret;
+     if(m->matches()) {
+-        ret = meval(m->group(0));
++        ret = meval(m->group(0),false);
+     }
+     return ret;
+ }
+@@ -819,6 +845,12 @@
+     }
+ }
+ 
++void multiple_value_error(std::string par,int line,smart_ptr<Value>& v1,smart_ptr<Value>& v2,std::string thorn) {
++  std::ostringstream msg;
++  msg << "Multiple assignment for: " << par << ", " << v1 << " != " << v2;
++  CCTK_Error(line,par.c_str(),thorn.c_str(),msg.str().c_str());
++}
++
+ extern "C" int cctk_PirahaParser(const char *buffer,unsigned long buffersize,int (*set_function)(const char *, const char *, int)) {
+     const char *par_file_src =
+         "skipper = ([ \\t\\r\\n]|\\#.*)*\n"
+@@ -886,7 +918,7 @@
+         for(int i=0;i<m2->groupCount();i++) {
+             smart_ptr<Group> gr = m2->group(i);
+             if(gr->group(0)->getPatternName() == "active") {
+-                smart_ptr<Value> smv = meval(gr->group(1));
++                smart_ptr<Value> smv = meval(gr->group(1),false);
+                 std::string val = smv->copy();
+                 active += val;
+                 active += ' ';
+@@ -894,79 +926,143 @@
+             }
+         }
+         set_function("ActiveThorns",active.c_str(),line);
+-        for(int i=0;i<m2->groupCount();i++) {
++
++        bool raise = true;
++        bool done = false;
++        std::set<int> unevaluated;
++        int last_usize = -1;
++        while(!done) {
++          for(int i=0;i<m2->groupCount();i++) {
++            
++            // Skip previously evaluated expressions
++            if(last_usize >= 0) {
++              if(unevaluated.find(i) == unevaluated.end())
++                continue;
++            }
++
+             smart_ptr<Group> gr = m2->group(i);
+-            if(gr->getPatternName() == "set") {
++            try {
++              if(gr->getPatternName() == "set") {
+                 smart_ptr<Group> par = gr->group("par");
+                 if(par.valid()) {
+-                    // add value->quot->inquot
+-                    std::string key;
+-                    std::string thorn = par->group("name",0)->substring();
+-                    std::string name  = par->group("name",1)->substring();
+-                    key += thorn;
+-                    key += "::";
+-                    key += name;
+-                    const cParamData *data = CCTK_ParameterData(name.c_str(),thorn.c_str());
++                  // add value->quot->inquot
++                  std::string key;
++                  std::string thorn = par->group("name",0)->substring();
++                  std::string name  = par->group("name",1)->substring();
++                  key += thorn;
++                  key += "::";
++                  key += name;
++                  const cParamData *data = CCTK_ParameterData(name.c_str(),thorn.c_str());
+ 
+-                    smart_ptr<Group> index = par->group("parindex");
+-                    if(index.valid()) {
+-                        key += '[';
+-                        smart_ptr<Value> vv = meval(index);
+-                        if(vv->type != PIR_INT) {
+-                            std::ostringstream msg;
+-                            std::string par = get_parfile();
+-                            msg << "bad index " << vv << std::endl;
+-                            CCTK_Error(index->line(),par.c_str(),thorn.c_str(),msg.str().c_str());
+-                        }
+-                        std::string vvstr = vv->copy();
+-                        key += vvstr;
+-                        key += ']';
++                  smart_ptr<Group> index = par->group("parindex");
++                  if(index.valid()) {
++                    key += '[';
++                    smart_ptr<Value> vv = meval(index,raise);
++                    if(vv->type != PIR_INT) {
++                      std::ostringstream msg;
++                      std::string par = get_parfile();
++                      msg << "bad index " << vv << std::endl;
++                      CCTK_Error(index->line(),par.c_str(),thorn.c_str(),msg.str().c_str());
+                     }
++                    std::string vvstr = vv->copy();
++                    key += vvstr;
++                    key += ']';
++                  }
+ 
+-                    std::string val;
+-                    smart_ptr<Group> aexpr = gr->group("expr");
+-                    if(aexpr.valid()) {
+-                        current_thorn = thorn;
+-                        smart_ptr<Value> smv = meval(aexpr);
+-                        val = smv->copy();
+-                        assert(smv.valid());
++                  std::string val;
++                  smart_ptr<Group> aexpr = gr->group("expr");
++                  if(aexpr.valid()) {
++                    current_thorn = thorn;
++                    smart_ptr<Value> smv = meval(aexpr,raise);
++                    val = smv->copy();
++                    assert(smv.valid());
++                    smv->integerize();
++                    if(data != NULL) {
++                      if(data->type == PARAMETER_REAL)
+                         smv->integerize();
+-                        if(data != NULL) {
+-                            if(data->type == PARAMETER_REAL)
+-                                smv->integerize();
+-                            if(data->type == PARAMETER_BOOLEAN)
+-                                smv->booleanize(gr);
+-                            check_types(thorn.c_str(),aexpr->line(),smv,data->type);
+-                        }
+-                        set_function(
+-                                key.c_str(),
+-                                val.c_str(),
+-                                gr->group(0)->line());
++                      if(data->type == PARAMETER_BOOLEAN)
++                        smv->booleanize(gr);
++                      check_types(thorn.c_str(),aexpr->line(),smv,data->type);
++                    }
++                    expectedvar.insert(key);
++                    nm_iter iter = evaluated.find(key);
++                    if(iter != evaluated.end()) {
++                      if(!iter->second->equals(smv))
++                        multiple_value_error(key,gr->line(),iter->second,smv,thorn);
+                     } else {
+-                        smart_ptr<Group> arr = gr->group("array");
+-                        for(int i=0;i<arr->groupCount();i++) {
+-                            aexpr = arr->group(i);
+-                            std::ostringstream keyi;
+-                            keyi << key << '[' << i << ']';
+-                            smart_ptr<Value> smv = meval(aexpr);
+-                            val = smv->copy();
+-                            if(data != NULL) {
+-                                if(data->type == PARAMETER_REAL)
+-                                    smv->integerize();
+-                                if(data->type == PARAMETER_BOOLEAN)
+-                                    smv->booleanize(gr);
+-                                check_types(thorn.c_str(),aexpr->line(),smv,data->type);
+-                            }
+-                            set_function(
+-                                    keyi.str().c_str(),
+-                                    val.c_str(),
+-                                    aexpr->line());
+-                        }
++                      evaluated[key] = smv;
++                      set_function(
++                        key.c_str(),
++                        val.c_str(),
++                        gr->group(0)->line());
+                     }
++                  } else {
++                    smart_ptr<Group> arr = gr->group("array");
++                    for(int i=0;i<arr->groupCount();i++) {
++                      aexpr = arr->group(i);
++                      std::ostringstream keyi;
++                      keyi << key << '[' << i << ']';
++                      smart_ptr<Value> smv = meval(aexpr,raise);
++                      val = smv->copy();
++                      if(data != NULL) {
++                        if(data->type == PARAMETER_REAL)
++                          smv->integerize();
++                        if(data->type == PARAMETER_BOOLEAN)
++                          smv->booleanize(gr);
++                        check_types(thorn.c_str(),aexpr->line(),smv,data->type);
++                      }
++                      std::string keyis = keyi.str();
++                      expectedvar.insert(keyis);
++                      nm_iter iter = evaluated.find(keyis);
++                      if(iter != evaluated.end()) {
++                        if(!iter->second->equals(smv))
++                          multiple_value_error(keyis,aexpr->line(),iter->second,smv,thorn);
++                      } else {
++                        evaluated[keyis] = smv;
++                        set_function(
++                          keyis.c_str(),
++                          val.c_str(),
++                          aexpr->line());
++                      }
++                    }
++                  }
+                 }
+-            } else if(gr->getPatternName() == "set_var") {
+-                variables[gr->group(0)->substring()] = meval(gr->group(1));
++              } else if(gr->getPatternName() == "set_var") {
++                std::string key = gr->group(0)->substring();
++                expectedvar.insert(key);
++                smart_ptr<Value> smv = meval(gr->group(1),raise);
++                nm_iter iter = evaluated.find(key);
++                if(iter != evaluated.end()) {
++                  if(!iter->second->equals(smv))
++                    multiple_value_error(key,gr->line(),iter->second,smv,"Cactus");
++                } else {
++                  evaluated[key] = smv;
++                  iter = evaluated.find(key);
++                }
++              }
++              // The evaluation of the expression succeeded
++              unevaluated.erase(i);
++            } catch(std::string dependency) {
++              // The evaluation of the expression failed. 
++              // The next time through the loop, the requisite
++              // dependend values/parameters may be defined.
++              unevaluated.insert(i);
+             }
++          }
++          int usize = unevaluated.size();
++          // If everything is evaluated, we're done.
++          if(usize == 0) {
++            done = true;
++          }
++          // If no further variables/parameters succeeded in
++          // evaluating this time through the loop, turn off
++          // the raise flag. This permits default variable
++          // values from param.ccl to be used for parameters,
++          // or errors to be given for variables.
++          if(last_usize == usize) {
++            raise = false;
++          }
++          last_usize = usize;
+         }
+     } else {
+         std::ostringstream msg;

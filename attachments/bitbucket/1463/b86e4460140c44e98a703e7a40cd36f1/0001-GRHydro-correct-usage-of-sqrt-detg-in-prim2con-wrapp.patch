@@ -1,0 +1,44 @@
+From 79f742fb23466b019d3d17af1a166e16c22cf930 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Tue, 29 Oct 2013 06:26:26 -0700
+Subject: [PATCH] GRHydro: correct usage of sqrt(detg) in prim2con wrappers
+
+found by Ian Hawke
+---
+ src/GRHydro_Wrappers.F90 | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/src/GRHydro_Wrappers.F90 b/src/GRHydro_Wrappers.F90
+index 6ddca44..2609fc1 100644
+--- a/src/GRHydro_Wrappers.F90
++++ b/src/GRHydro_Wrappers.F90
+@@ -193,7 +193,7 @@ subroutine Prim2ConGenWrapper(handle, gxx, gxy, gxz, gyy, gyz, gzz, det, dens,&
+ 
+   sdetg = sqrt(det)
+ 
+-  call prim2con(handle, gxx, gxy, gxz, gyy, gyz, gzz, det, dens,&
++  call prim2con(handle, gxx, gxy, gxz, gyy, gyz, gzz, sdetg, dens,&
+                 sx, sy, sz, tau, rho, velx, vely, velz, epsilon,&
+                 press, w_lorentz)
+ end subroutine
+@@ -219,7 +219,7 @@ subroutine Prim2ConPolyWrapper(handle, gxx, gxy, gxz, gyy, gyz, gzz, det, dens,&
+ 
+   sdetg = sqrt(det)
+ 
+-  call prim2conpolytype(handle, gxx, gxy, gxz, gyy, gyz, gzz, det, dens,&
++  call prim2conpolytype(handle, gxx, gxy, gxz, gyy, gyz, gzz, sdetg, dens,&
+                         sx, sy, sz, tau, rho, velx, vely, velz, epsilon,&
+                         press, w_lorentz)
+ end subroutine
+@@ -318,7 +318,7 @@ subroutine Prim2ConPolyMWrapper(handle, gxx, gxy, gxz, gyy, gyz, gzz, det,&
+ 
+   sdetg = sqrt(det)
+ 
+-  call prim2conpolytypeM(handle, gxx, gxy, gxz, gyy, gyz, gzz, det,&
++  call prim2conpolytypeM(handle, gxx, gxy, gxz, gyy, gyz, gzz, sdetg,&
+                          dens, sx, sy, sz, tau, Bconsx, Bconsy, Bconsz,&
+                          rho, velx, vely, velz, epsilon, press, Bvecx,&
+                          Bvecy, Bvecz, w_lorentz)
+-- 
+1.8.4.rc3
+

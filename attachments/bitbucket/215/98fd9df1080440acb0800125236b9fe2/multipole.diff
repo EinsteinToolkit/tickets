@@ -1,0 +1,133 @@
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 74)
++++ param.ccl	(working copy)
+@@ -29,8 +29,9 @@
+ 
+ KEYWORD integration_method "How to do surface integrals" STEERABLE=always
+ {
+-  "midpoint" :: "Midpoint rule (1st order)"
+-  "Simpson"  :: "Simpson's rule (4th order)"
++  "midpoint"      :: "Midpoint rule (1st order)"
++  "Simpson"       :: "Simpson's rule (4th order) [requires even ntheta and nphi]"
++  "DriscollHealy" :: "Driscoll & Healy (exponentially convergent) [requires odd ntheta]"
+ } "midpoint"
+ 
+ CCTK_INT out_every "How often to output" \
+Index: src/integrate.hh
+===================================================================
+--- src/integrate.hh	(revision 74)
++++ src/integrate.hh	(working copy)
+@@ -6,4 +6,7 @@
+ CCTK_REAL Simpson2DIntegral(CCTK_REAL const *f, int nx, int ny, 
+                             CCTK_REAL hx, CCTK_REAL hy);
+ 
++CCTK_REAL DriscollHealy2DIntegral(CCTK_REAL const *f, int nx, int ny,
++                                  CCTK_REAL hx, CCTK_REAL hy);
++
+ #endif
+Index: src/utils.cc
+===================================================================
+--- src/utils.cc	(revision 74)
++++ src/utils.cc	(working copy)
+@@ -331,7 +331,8 @@
+       *outim = tempi;
+     } 
+   }
+-  else if (CCTK_Equals(integration_method, "simpson"))
++  else if (CCTK_Equals(integration_method, "Simpson") ||
++           CCTK_Equals(integration_method, "DriscollHealy"))
+   {
+     static CCTK_REAL *fr = 0;
+     static CCTK_REAL *fi = 0;
+@@ -353,7 +354,31 @@
+                array1i[i] * array2r[i] ) * sin(th[i]);
+     }
+     
+-    *outre = Simpson2DIntegral(fr, ntheta, nphi, dth, dph);
+-    *outim = Simpson2DIntegral(fi, ntheta, nphi, dth, dph);
++    if (CCTK_Equals(integration_method, "Simpson"))
++    {
++      if (nphi % 2 != 0 || ntheta % 2 != 0)
++      {
++        CCTK_WARN (CCTK_WARN_ABORT, "The Simpson integration method requires even ntheta and even nphi");
++      }
++      *outre = Simpson2DIntegral(fr, ntheta, nphi, dth, dph);
++      *outim = Simpson2DIntegral(fi, ntheta, nphi, dth, dph);
++    }
++    else if (CCTK_Equals(integration_method, "DriscollHealy"))
++    {
++      if (ntheta % 2 == 0)
++      {
++        CCTK_WARN (CCTK_WARN_ABORT, "The Driscoll&Healy integration method requires odd ntheta");
++      }
++      *outre = DriscollHealy2DIntegral(fr, ntheta, nphi, dth, dph);
++      *outim = DriscollHealy2DIntegral(fi, ntheta, nphi, dth, dph);
++    }
++    else
++    {
++      CCTK_WARN(CCTK_WARN_ABORT, "internal error");
++    }
+   }
++  else
++  {
++    CCTK_WARN(CCTK_WARN_ABORT, "internal error");
++  }
+ } 
+Index: src/integrate.cc
+===================================================================
+--- src/integrate.cc	(revision 74)
++++ src/integrate.cc	(working copy)
+@@ -107,6 +107,52 @@
+   return ((double) 1 / (double) 9) * hx * hy * integrand_sum;
+ }
+ 
++// See: J.R. Driscoll and D.M. Healy Jr., Computing Fourier transforms
++// and convolutions on the 2-sphere. Advances in Applied Mathematics,
++// 15(2):202–250, 1994.
++CCTK_REAL DriscollHealy2DIntegral(CCTK_REAL const *const f,
++                                  int const nx, int const ny,
++                                  CCTK_REAL const hx, CCTK_REAL const hy)
++{
++  assert(f);
++  assert(nx >= 0);
++  assert(ny >= 0);
++  assert((nx-1) % 2 == 0);
++  
++  CCTK_REAL integrand_sum = 0.0;
++  
++  // Skip the poles (ix=0 and ix=nx), since the weight there is zero
++  // anyway
++#pragma omp parallel for reduction(+: integrand_sum)
++  for (int ix = 1; ix < nx; ++ ix)
++  {
++    
++    // These weights lead to an almost spectral convergence
++    CCTK_REAL const theta = M_PI * ix / nx;
++    CCTK_REAL weight = 0.0;
++    for (int l = 0; l <= (nx-1)/2; ++ l)
++    {
++      weight += sin((2*l+1)*theta)/(2*l+1);
++    }
++    weight *= 4.0;
++    
++    CCTK_REAL local_sum = 0.0;
++    // Skip the last point (iy=ny), since we assume periodicity and
++    // therefor it has the same value as the first point. We don't use
++    // weights in this direction, which leads to spectral convergence.
++    // (Yay periodicity!)
++    for (int iy = 0; iy < ny; ++ iy)
++    {
++      local_sum += f[idx(ix,iy)];
++    }
++    
++    integrand_sum += weight * local_sum;
++    
++  }
++  
++  return hx * hy * integrand_sum;
++}
++
+ // 1D integrals
+ 
+ static CCTK_REAL Simpson1DIntegral(CCTK_REAL const *f, int n, CCTK_REAL h)

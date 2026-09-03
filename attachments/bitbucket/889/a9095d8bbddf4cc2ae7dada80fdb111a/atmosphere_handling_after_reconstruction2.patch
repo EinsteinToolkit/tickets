@@ -1,0 +1,72 @@
+diff --git a/GRHydro/src/GRHydro_Reconstruct.F90 b/GRHydro/src/GRHydro_Reconstruct.F90
+index c35afec..f10bc71 100644
+--- a/GRHydro/src/GRHydro_Reconstruct.F90
++++ b/GRHydro/src/GRHydro_Reconstruct.F90
+@@ -44,6 +44,7 @@ subroutine Reconstruction(CCTK_ARGUMENTS)
+ 
+   CCTK_INT  :: i,j,k
+   CCTK_REAL :: local_min_tracer
++  CCTK_INT :: type_bits, not_trivial
+ 
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+@@ -83,12 +84,30 @@ subroutine Reconstruction(CCTK_ARGUMENTS)
+     end if
+   end if
+ 
++
++  if (flux_direction == 1) then
++    call SpaceMask_GetTypeBits(type_bits, "Hydro_RiemannProblemX")
++    call SpaceMask_GetStateBits(not_trivial, "Hydro_RiemannProblemX", &
++         &"not_trivial")
++  else if (flux_direction == 2) then
++    call SpaceMask_GetTypeBits(type_bits, "Hydro_RiemannProblemY")
++    call SpaceMask_GetStateBits(not_trivial, "Hydro_RiemannProblemY", &
++         &"not_trivial")
++  else if (flux_direction == 3) then
++    call SpaceMask_GetTypeBits(type_bits, "Hydro_RiemannProblemZ")
++    call SpaceMask_GetStateBits(not_trivial, "Hydro_RiemannProblemZ", &
++         &"not_trivial")
++  else
++    call CCTK_WARN(0, "Flux direction not x,y,z")
++  end if
++
+   !$OMP PARALLEL DO PRIVATE(i,j,k)
+-     do k=1,cctk_lsh(3)
+-        do j=1,cctk_lsh(2)
+-           do i=1,cctk_lsh(1)
+-              if(rhoplus(i,j,k).lt.GRHydro_rho_min .or. &
+-                   rhominus(i,j,k).lt.GRHydro_rho_min) then
++  do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil + 1
++    do j = GRHydro_stencil, cctk_lsh(2) - GRHydro_stencil + 1
++      do i = GRHydro_stencil, cctk_lsh(1) - GRHydro_stencil + 1
++         if(rhoplus(i,j,k).lt.GRHydro_rho_min .or. &
++            rhominus(i,j,k).lt.GRHydro_rho_min) then
++
+                  rhoplus(i,j,k)  = rho(i,j,k)
+                  rhominus(i,j,k) = rho(i,j,k)
+                  epsplus(i,j,k)  = eps(i,j,k)
+@@ -107,10 +126,15 @@ subroutine Reconstruction(CCTK_ARGUMENTS)
+                    tracerminus(i,j,k,:) = tracer(i,j,k,:)
+                 end where
+              end if
+-          enddo
+-       enddo
++             ! Riemann problem might not be trivial anymore!!!!
++             SpaceMask_SetStateBitsF90(space_mask, i-xoffset, j-yoffset, k-zoffset, type_bits, not_trivial)
++             SpaceMask_SetStateBitsF90(space_mask, i, j, k, type_bits, not_trivial)
++      enddo
+     enddo
+-    !$OMP END PARALLEL DO
++  enddo
++  !$OMP END PARALLEL DO
++  
++
+ 
+   if (CCTK_EQUALS(recon_vars,"primitive").or.&
+        CCTK_EQUALS(recon_method,"ppm")) then
+@@ -133,3 +157,4 @@ subroutine Reconstruction(CCTK_ARGUMENTS)
+ 
+ end subroutine Reconstruction
+ 
++

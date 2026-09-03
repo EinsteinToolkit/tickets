@@ -1,0 +1,438 @@
+Index: doc/UsersGuide/Appendices.tex
+===================================================================
+--- doc/UsersGuide/Appendices.tex	(revision 5098)
++++ doc/UsersGuide/Appendices.tex	(working copy)
+@@ -57,8 +57,8 @@
+ \item[configuration]
+   The combination of a set of thorns, and all the Cactus configure
+   options which affect what binary will be produced when compiling
+-  Cactus.  For example, the choice of compilers (Cactus \verb|CC|, \verb|CUCC|,
+-  \verb|CXX|, \verb|F77|, and \verb|F90| configure options) and the
++  Cactus.  For example, the choice of compilers (Cactus \verb|CC|,
++  \verb|CXX|, \verb|CUCC|, and \verb|F90| configure options) and the
+   compiler optimization settings (\verb|OPTIMISE|/\verb|OPTIMIZE| and
+   \verb|*_OPTIMISE_FLAGS| configure options) are part of a
+   configuration (these flags change what binary is produced), but the
+Index: doc/UsersGuide/ApplicationThorns.tex
+===================================================================
+--- doc/UsersGuide/ApplicationThorns.tex	(revision 5098)
++++ doc/UsersGuide/ApplicationThorns.tex	(working copy)
+@@ -770,18 +770,16 @@
+ \begin{center}
+ \begin{tabular}{|l|c|c|c|}
+ \hline
+-Extension           & Language   & Format & Preprocess \\
++Extension            & Language               &  Preprocess \\
+ \hline
+-{\t .c}             & C          & -      & yes \\
+-{\t .cc} or {\t .C} & C++        & -      & yes \\
+-{\t .cl}            & OpenCL     & -      & yes \\
+-{\t .cu}            & CUDA       & -      & yes \\
+-{\t .F77}           & Fortran 77 & fixed  & yes \\
+-{\t .f77}           & Fortran 77 & fixed  & no  \\
+-{\t .F}             & Fortran 90 & fixed  & yes \\
+-{\t .f}             & Fortran 90 & fixed  & no  \\
+-{\t .F90}           & Fortran 90 & free   & yes \\
+-{\t .f90}           & Fortran 90 & free   & no  \\
++{\t .c}              & C                      & yes \\
++{\t .cc} or {\t .C}  & C++                    & yes \\
++{\t .cl}             & OpenCL                 & yes \\
++{\t .cu}             & CUDA                   & yes \\
++{\t .F} or {\t .F77} & Fortran (fixed-format) & yes \\
++{\t .f} or {\t .f77} & Fortran (fixed-format) & no  \\
++{\t .F90}            & Fortran (free-format)  & yes \\
++{\t .f90}            & Fortran (free-format)  & no  \\
+ \hline
+ \end{tabular}
+ \end{center}
+@@ -790,7 +788,7 @@
+ preprocessed.
+ 
+ A complete description of Fortran fixed and free format can be found in any
+-textbook on Fortran 90.  The most obvious differences are that in fixed
++textbook on Fortran.  The most obvious differences are that in fixed
+ format, code must begin after the 5th column and line continuations are
+ indicated by a character in column 5, while in free format, lines can begin
+ anywhere, and line continuations are indicated by an ampersand at the end of
+@@ -802,7 +800,7 @@
+ \item For portability across all operating systems, the base names
+         for any particular extension should not depend on the operating
+         system being case sensitive (e.g.\ having \texttt{MyFile.c} and
+-        \texttt{MYFILE.f77} is allright, but \texttt{MyFile.c} and
++        \texttt{MYFILE.f} is allright, but \texttt{MyFile.c} and
+ 	\texttt{MYFILE.c} could cause problems).
+ \item Currently, all source files within a thorn must have distinct names,
+ regardless of whether they are placed in different subdirectories.  We hope
+@@ -889,15 +887,13 @@
+ \item \texttt{CC}: The C compiler
+ \item \texttt{CXX}: The C++ compiler
+ \item \texttt{CUCC}: The CUDA compiler
+-\item \texttt{F77}: The Fortran 77 compiler.  This is only used if
+-  there is no Fortran 90 compiler
+-\item \texttt{F90}: The Fortran 90 compiler.  If this variable is
+-  set, it is also used to compile Fortran 77 files
++\item \texttt{F90}: The Fortran compiler
++\item \texttt{F77}: Same as \texttt{F90}
+ \item \texttt{CFLAGS}: Flags which are passed to \texttt{CC}
+ \item \texttt{CXXFLAGS}: Flags which are passed to \texttt{CXX}
+ \item \texttt{CUCCFLAGS}: Flags which are passed to \texttt{CUDA}
+-\item \texttt{F77FLAGS}: Flags which are passed to \texttt{F77}
+ \item \texttt{F90FLAGS}: Flags which are passed to \texttt{F90}
++\item \texttt{F77FLAGS}: Same as \texttt{F90FLAGS}
+ \item \texttt{LD}: The binder.  This should not be directly
+   \texttt{ld}, but should be a compiler driver such as C++.
+   Often, \texttt{LD} is the same as \texttt{CXX}
+Index: doc/UsersGuide/Notes.tex
+===================================================================
+--- doc/UsersGuide/Notes.tex	(revision 5098)
++++ doc/UsersGuide/Notes.tex	(working copy)
+@@ -80,7 +80,7 @@
+ written in CUDA (Compute Unified Device Architecture), a parallel 
+ computing architecture developed by NVIDIA, you also need
+ \begin{Lentry}
+-\item[CUCC] CUDA compiler. For example, the NVIDIA C compiler. In many
++\item[CUCC] a CUDA compiler. For example, the NVIDIA C compiler. In many
+ cases, you can compile your C and C++ code with a CUDA compiler without 
+ encountering any problems, but you are advised to use a CUDA compiler exclusively
+ for CUDA code.
+@@ -90,10 +90,7 @@
+ If you are using any thorns containing routines
+ written in Fortran you also need
+ \begin{Lentry}
+-\item[F90/F77] For routines written in Fortran 77, either a Fortran 90 or
+- a Fortran 77 compiler can be used. For routines written in Fortran 90,
+- a Fortran 90 compiler is obviously required. There is a very limited set of
+- free Fortran 90 compilers available for the different architectures.
++\item[F90] a Fortran compiler.
+ \end{Lentry}
+ 
+ \noindent
+@@ -282,10 +279,10 @@
+ 
+ \begin{Lentry}
+ \item [\texttt{CC}]   * The C compiler.
++\item [\texttt{CXX}]    The C++ compiler.
+ \item [\texttt{CUCC}] * The CUDA compiler.
+-\item [\texttt{CXX}]    The C++ compiler.
+-\item [\texttt{F90}]  * The Fortran 90 compiler.
+-\item [\texttt{F77}]  * The Fortran 77 compiler.
++\item [\texttt{F90}]  * The Fortran compiler.
++\item [\texttt{F77}]  * Ignored
+ \item [\texttt{CPP}]    The preprocessor used to generate dependencies
+ for and to preprocess C and C++ code.
+ \item [\texttt{FPP}]    The preprocessor used to generate dependencies
+@@ -320,10 +317,10 @@
+ Flags for the C++ compiler.
+ 
+ \item [\texttt{F90FLAGS}]
+-* Flags for the Fortran 90 compiler.
++* Flags for the Fortran compiler.
+ 
+ \item [\texttt{F77FLAGS}]
+-* Flags for the Fortran 77 compiler.
++* Ignored
+ 
+ \item [\texttt{CPPFLAGS}]
+ Flags for the preprocessor (used to generate compilation dependencies
+@@ -404,8 +401,7 @@
+ type of debugging being used.
+ 
+ \item [\texttt{F77\_DEBUG\_FLAGS}]
+-Debug flags for the Fortran 77 compiler, their use depends on the
+-type of debugging being used.
++Ignored.
+ 
+ \item [\texttt{OPTIMISE, OPTIMIZE}]
+ * Specifies what type of optimisation should be used. The only options currently
+@@ -430,21 +426,27 @@
+ type of optimisation being used.
+ 
+ \item [\texttt{F77\_OPTIMISE\_FLAGS}]
+-Optimisation flags for the Fortran 77 compiler, their use depends on the
+-type of optimisation being used.
++Ignored.
+ 
+ \item [\texttt{C\_NO\_OPTIMISE\_FLAGS}]
++Optimisation flags used to indicate that no optimisation should be
++performed.  These are invoked when OPTIMISE=no is used.
+ 
+ \item [\texttt{CUCC\_NO\_OPTIMISE\_FLAGS}]
++Optimisation flags used to indicate that no optimisation should be
++performed.  These are invoked when OPTIMISE=no is used.
+ 
+ \item [\texttt{CXX\_NO\_OPTIMISE\_FLAGS}]
++Optimisation flags used to indicate that no optimisation should be
++performed.  These are invoked when OPTIMISE=no is used.
+ 
+ \item [\texttt{F90\_NO\_OPTIMISE\_FLAGS}]
+-
+-\item [\texttt{F77\_NO\_OPTIMISE\_FLAGS}]
+ Optimisation flags used to indicate that no optimisation should be
+ performed.  These are invoked when OPTIMISE=no is used.
+ 
++\item [\texttt{F77\_NO\_OPTIMISE\_FLAGS}]
++Ignored.
++
+ \item [\texttt{PROFILE}]
+   * Specifies what type of profiling should be used.  The only options
+   currently available are \texttt{yes} and \texttt{no}.  The default
+@@ -467,8 +469,7 @@
+   type of profiling being used.
+ 
+ \item [\texttt{F77\_PROFILE\_FLAGS}]
+-  Profile flags for the Fortran 77 compiler, their use depends on the
+-  type of profiling being used.
++  Ignored.
+ 
+ \item [\texttt{WARN}]
+   * Specifies what type of build warnings should be used.  The only
+@@ -492,8 +493,7 @@
+ warnings used during compilation (Section \ref{sec:gmopfobuco}).
+ 
+ \item [\texttt{F77\_WARN\_FLAGS}]
+-Warning flags for the Fortran 77 compiler, their use depends on the type of
+-warnings used during compilation (Section \ref{sec:gmopfobuco}).
++Ignored.
+ 
+ \end{Lentry}
+ 
+Index: doc/UsersGuide.pdf
+===================================================================
+Cannot display: file marked as a binary type.
+svn:mime-type = application/pdf
+Index: lib/make/configure.in
+===================================================================
+--- lib/make/configure.in	(revision 5098)
++++ lib/make/configure.in	(working copy)
+@@ -1,3 +1,4 @@
++dnl -*-m4-*-
+ dnl @@
+ dnl    @file      configure.in
+ dnl    @date      Sun Jan 17 15:54:23 1999
+@@ -225,10 +226,6 @@
+   AC_CHECK_PROGS(F90, f90 pgf90 xlf90 ifort gfortran-mp-4.4 gfortran-mp-4.3 gfortran-mp-4.2 gfortran)
+ fi
+ 
+-if test -z "$F77" ; then
+-  AC_CHECK_PROGS(F77, f77 pgf77 g77 f90 pgf90 xlf90 ifort gfortran-mp-4.4 gfortran-mp-4.3 gfortran-mp-4.2 gfortran)
+-fi
+-
+ if test -z "$AR" ; then
+   AC_CHECK_PROGS(AR, ar)
+ fi
+@@ -321,13 +318,6 @@
+ AC_SUBST(CUCC_WARN_FLAGS)
+ : ${CUCC_WARN_FLAGS=''}
+ 
+-AC_SUBST(F77_WARN_FLAGS)
+-if test "$F77" = 'g77' ; then
+-  : ${F77_WARN_FLAGS='-Wall'}
+-else
+-  : ${F77_WARN_FLAGS=''}
+-fi
+-
+ AC_SUBST(F90_WARN_FLAGS)
+ if test "$F90" = 'gfortran' ; then
+   : ${F90_WARN_FLAGS='-Wall -Wshadow -Wsurprising'}
+@@ -335,6 +325,9 @@
+   : ${F90_WARN_FLAGS=''}
+ fi
+ 
++AC_SUBST(F77_WARN_FLAGS)
++F77_WARN_FLAGS="$F90_WARN_FLAGS"
++
+ AC_SUBST(DEBUG_MODE)
+ DEBUG_MODE='no'
+ if test -n "$DEBUG_FLAGS"; then
+@@ -358,12 +351,12 @@
+ AC_SUBST(CUCC_DEBUG_FLAGS)
+ : ${CUCC_DEBUG_FLAGS='-g'}
+ 
+-AC_SUBST(F77_DEBUG_FLAGS)
+-: ${F77_DEBUG_FLAGS='-g'}
+-
+ AC_SUBST(F90_DEBUG_FLAGS)
+ : ${F90_DEBUG_FLAGS='-g'}
+ 
++AC_SUBST(F77_DEBUG_FLAGS)
++F77_DEBUG_FLAGS="$F90_WARN_FLAGS"
++
+ # Set the optimization flags if they've not been set by now
+ # (using '-O2' as a reasonable default)
+ AC_SUBST(OPTIMISE_MODE)
+@@ -383,16 +376,12 @@
+ AC_SUBST(CUCC_OPTIMISE_FLAGS)
+ : ${CUCC_OPTIMISE_FLAGS='-O2'}
+ 
+-AC_SUBST(F77_OPTIMISE_FLAGS)
+-if test -z "$F77_OPTIMISE_FLAGS" -a "$F77" = 'g77' ; then
+-  F77_OPTIMISE_FLAGS='-O2'
+-else
+-  : ${F77_OPTIMISE_FLAGS=''}
+-fi
+-
+ AC_SUBST(F90_OPTIMISE_FLAGS)
+ : ${F90_OPTIMISE_FLAGS='-O2'}
+ 
++AC_SUBST(F77_OPTIMISE_FLAGS)
++F77_OPTIMISE_FLAGS="$F90_OPTIMISE_FLAGS"
++
+ # Set the no-optimization flags if they've not been set by now
+ # (using '-O0' as a reasonable default)
+ 
+@@ -405,12 +394,12 @@
+ AC_SUBST(CUCC_NO_OPTIMISE_FLAGS)
+ : ${CUCC_NO_OPTIMISE_FLAGS='-O0'}
+ 
+-AC_SUBST(F77_NO_OPTIMISE_FLAGS)
+-: ${F77_NO_OPTIMISE_FLAGS='-O0'}
+-
+ AC_SUBST(F90_NO_OPTIMISE_FLAGS)
+ : ${F90_NO_OPTIMISE_FLAGS='-O0'}
+ 
++AC_SUBST(F77_NO_OPTIMISE_FLAGS)
++F77_NO_OPTIMISE_FLAGS="$F90_NO_OPTIMISE_FLAGS"
++
+ # Set the profiling flags if they've not been set by now
+ # (using '-pg' as a reasonable default)
+ AC_SUBST(PROFILE_MODE)
+@@ -430,12 +419,12 @@
+ AC_SUBST(CUCC_PROFILE_FLAGS)
+ : ${CUCC_PROFILE_FLAGS=''}
+ 
+-AC_SUBST(F77_PROFILE_FLAGS)
+-: ${F77_PROFILE_FLAGS='-pg'}
+-
+ AC_SUBST(F90_PROFILE_FLAGS)
+ : ${F90_PROFILE_FLAGS='-pg'}
+ 
++AC_SUBST(F77_PROFILE_FLAGS)
++F77_PROFILE_FLAGS="$F90_PROFILE_FLAGS"
++
+ # Set the OpenMP flags if they've not been set by now
+ AC_SUBST(OPENMP_MODE)
+ 
+@@ -444,24 +433,12 @@
+ AC_SUBST(C_OPENMP_FLAGS)
+ AC_SUBST(CXX_OPENMP_FLAGS)
+ AC_SUBST(CUCC_OPENMP_FLAGS)
++AC_SUBST(F90_OPENMP_FLAGS)
+ AC_SUBST(F77_OPENMP_FLAGS)
+-AC_SUBST(F90_OPENMP_FLAGS)
+ 
+ ##########################################################################
+ 
+-# Deal with the Fortran compiler issues.
+-# If there's a Fortran 90 compiler use that for all the Fortran.
+-if test "x$F90" != "x" -a "x$F90" != "xnone" -a "x$F77" = "x" ; then
+-  F77=$F90
+-  F77FLAGS=$F90FLAGS
+-  F77_WARN_FLAGS=$F90_WARN_FLAGS
+-  F77_DEBUG_FLAGS=$F90_DEBUG_FLAGS
+-  F77_OPTIMISE_FLAGS=$F90_OPTIMISE_FLAGS
+-  F77_PROFILE_FLAGS=$F90_PROFILE_FLAGS
+-  F77_OPENMP_FLAGS=$F90_OPENMP_FLAGS
+-fi
+-
+-# Set default Fortran compilers
++# Set default Fortran compiler
+ AC_SUBST(F90)
+ if test -z "$F90" ; then
+   F90='none'
+@@ -468,9 +445,7 @@
+ fi
+ 
+ AC_SUBST(F77)
+-if test -z "$F77" ; then
+-  F77='none'
+-fi
++F77="$F90"
+ 
+ 
+ # The known architecture stuff has probably set the LIBS variable
+@@ -610,6 +585,7 @@
+ AC_SUBST(CUCCFLAGS)
+ AC_SUBST(F90FLAGS)
+ AC_SUBST(F77FLAGS)
++F77FLAGS="$F90FLAGS"
+ 
+ #: ${F90FLAGS="$CFLAGS"}
+ #: ${F77FLAGS="$CFLAGS"}
+@@ -619,8 +595,8 @@
+ AC_SUBST(CXX_VERSION)
+ AC_SUBST(CUCC_VERSION)
+ AC_SUBST(FPP_VERSION)
++AC_SUBST(F90_VERSION)
+ AC_SUBST(F77_VERSION)
+-AC_SUBST(F90_VERSION)
+ 
+ dnl Checks for library functions.
+ 
+@@ -1152,7 +1128,7 @@
+     AC_ERROR([Didn't recognise setting of DISABLE_REAL16=\"$DISABLE_REAL16\"; should be either \"yes\" or \"no\" or \"\" (empty)])
+ fi
+ 
+-if test -n "$CCTK_REAL16_TYPE" -a \( "x$F77" = 'xnone' -o \( "x$cctk_cv_have_fortran_real16" = 'xyes' -a "x$cctk_cv_have_fortran_complex32" = 'xyes' \) \) -a "x$DISABLE_REAL16" != 'xyes' ; then
++if test -n "$CCTK_REAL16_TYPE" -a "x$cctk_cv_have_fortran_real16" = 'xyes' -a "x$cctk_cv_have_fortran_complex32" = 'xyes' -a "x$DISABLE_REAL16" != 'xyes' ; then
+   AC_DEFINE_UNQUOTED(CCTK_REAL16_TYPE, $CCTK_REAL16_TYPE)
+   AC_DEFINE(HAVE_CCTK_REAL16)
+   AC_DEFINE_UNQUOTED(CCTK_REAL16_KIND, $REAL16_KIND)
+@@ -1159,12 +1135,12 @@
+   AC_DEFINE_UNQUOTED(CCTK_COMPLEX32_KIND, $COMPLEX32_KIND)
+ fi
+ 
+-if test -n "$CCTK_REAL8_TYPE" -a \( "x$F77" = 'xnone' -o \( "x$cctk_cv_have_fortran_real8" -a "x$cctk_cv_have_fortran_complex16" = 'xyes' \) \); then
++if test -n "$CCTK_REAL8_TYPE" -a "x$cctk_cv_have_fortran_real8" -a "x$cctk_cv_have_fortran_complex16" = 'xyes' ; then
+   AC_DEFINE_UNQUOTED(CCTK_REAL8_TYPE, $CCTK_REAL8_TYPE)
+   AC_DEFINE(HAVE_CCTK_REAL8)
+ fi
+ 
+-if test -n "$CCTK_REAL4_TYPE" -a \( "x$F77" = 'xnone' -o \( "x$cctk_cv_have_fortran_real4" = 'xyes' -a "x$cctk_cv_have_fortran_complex8" = 'xyes' \) \); then
++if test -n "$CCTK_REAL4_TYPE" -a "x$cctk_cv_have_fortran_real4" = 'xyes' -a "x$cctk_cv_have_fortran_complex8" = 'xyes' ; then
+   AC_DEFINE_UNQUOTED(CCTK_REAL4_TYPE, $CCTK_REAL4_TYPE)
+   AC_DEFINE(HAVE_CCTK_REAL4)
+ fi
+@@ -1327,16 +1303,16 @@
+ AC_SUBST(CUCC_DEPEND_OUT)
+ : ${CUCC_DEPEND_OUT=' > $@'}
+ 
+-AC_SUBST(F77_DEPEND)
+-: ${F77_DEPEND='$(FPP) -M $(FPPFLAGS)'}
+-AC_SUBST(F77_DEPEND_OUT)
+-: ${F77_DEPEND_OUT=' > $@'}
+-
+ AC_SUBST(F_DEPEND)
+ : ${F_DEPEND='$(FPP) -M $(FPPFLAGS)'}
+ AC_SUBST(F_DEPEND_OUT)
+ : ${F_DEPEND_OUT=' > $@'}
+ 
++AC_SUBST(F77_DEPEND)
++F77_DEPEND="$F_DEPEND"
++AC_SUBST(F77_DEPEND_OUT)
++F77_DEPEND_OUT="$F_DEPEND_OUT"
++
+ # How to generate F90 dependency info for modules
+ AC_SUBST(F_DEPEND_MODULES)
+ : ${F_DEPEND_MODULES='$(CCTK_HOME)/lib/sbin/f_depend_modules.pl'}
+@@ -1352,10 +1328,10 @@
+ : ${CL_POSTPROCESSING=''}
+ AC_SUBST(CUCC_POSTPROCESSING)
+ : ${CUCC_POSTPROCESSING=''}
+-AC_SUBST(F77_POSTPROCESSING)
+-: ${F77_POSTPROCESSING=''}
+ AC_SUBST(F_POSTPROCESSING)
+ : ${F_POSTPROCESSING=''}
++AC_SUBST(F77_POSTPROCESSING)
++F77_POSTPROCESSING="$F_POSTPROCESSING"
+ AC_SUBST(F90_POSTPROCESSING)
+ : ${F90_POSTPROCESSING=''}
+ 
+Index: lib/make/force-reconfigure
+===================================================================
+--- lib/make/force-reconfigure	(revision 5098)
++++ lib/make/force-reconfigure	(working copy)
+@@ -42,3 +42,4 @@
+ 20 May 2013: Auto-configure static_assert
+ 16 Jun 2013: Auto-configure __builtin_assume_aligned
+ 07 Feb 2014: Change CCTK_REAL8 etc. from #define to typedef
++25 Mar 2014: Disable support for explicitly configuring Fortran 77

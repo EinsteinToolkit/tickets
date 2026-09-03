@@ -1,0 +1,127 @@
+From e9d5378589284f74e788e8ca4eb72912d25d66a6 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Tue, 3 Apr 2012 17:18:08 +0200
+Subject: [PATCH 1/2] Make timer tree output precision and threshold
+ configurable with parameters
+
+---
+ Carpet/Carpet/param.ccl         |    9 +++++++++
+ Carpet/Carpet/src/Evolve.cc     |    2 +-
+ Carpet/Carpet/src/Initialise.cc |    2 +-
+ Carpet/Carpet/src/TimerNode.cc  |   16 +++++++++-------
+ Carpet/Carpet/src/TimerNode.hh  |    2 +-
+ 5 files changed, 21 insertions(+), 10 deletions(-)
+
+diff --git a/Carpet/Carpet/param.ccl b/Carpet/Carpet/param.ccl
+index 30205e7..59ffdf2 100644
+--- a/Carpet/Carpet/param.ccl
++++ b/Carpet/Carpet/param.ccl
+@@ -401,6 +401,15 @@ INT output_timer_tree_every "Output timing information in tree form to standard
+   1:* :: "report every so many iterations"
+ } 0
+ 
++CCTK_REAL timer_tree_threshold_percentage "The percentage of the root timer below which timers are omitted" STEERABLE=always
++{
++  0:* :: ""
++} 1.0
++
++INT timer_tree_output_precision "Number of decimal places to use in standard output for timer tree"
++{
++  1:* :: "number of decimal places"
++} 1
+ 
+ 
+ BOOLEAN recompose_verbose "Output debug information during recomposing" STEERABLE=ALWAYS
+diff --git a/Carpet/Carpet/src/Evolve.cc b/Carpet/Carpet/src/Evolve.cc
+index a3d19ca..204f254 100644
+--- a/Carpet/Carpet/src/Evolve.cc
++++ b/Carpet/Carpet/src/Evolve.cc
+@@ -95,7 +95,7 @@ namespace Carpet {
+         {
+           TimerNode *rt = TimerNode::getRootTimer();
+           TimerNode *et = rt->getChildTimer("Evolve");
+-          et->print(cout, et->getTime(), 0, 1.0);
++          et->print(cout, et->getTime(), 0, timer_tree_threshold_percentage, timer_tree_output_precision);
+         }
+         timer.stop();
+       }
+diff --git a/Carpet/Carpet/src/Initialise.cc b/Carpet/Carpet/src/Initialise.cc
+index 295af4d..6db6eb8 100644
+--- a/Carpet/Carpet/src/Initialise.cc
++++ b/Carpet/Carpet/src/Initialise.cc
+@@ -146,7 +146,7 @@ namespace Carpet {
+     {
+       TimerNode *rt = TimerNode::getRootTimer();
+       TimerNode *it = rt->getChildTimer("Initialise");
+-      it->print(cout, it->getTime(), 0, 1.0);
++      it->print(cout, it->getTime(), 0, timer_tree_threshold_percentage, timer_tree_output_precision);
+     }
+ 
+     Waypoint ("Done with initialisation");
+diff --git a/Carpet/Carpet/src/TimerNode.cc b/Carpet/Carpet/src/TimerNode.cc
+index f339bce..06f8b70 100644
+--- a/Carpet/Carpet/src/TimerNode.cc
++++ b/Carpet/Carpet/src/TimerNode.cc
+@@ -150,7 +150,7 @@ namespace Carpet {
+ 
+   /// Print this node and its children as an ASCII tree
+   void TimerNode::print(ostream& out, double total, int level,
+-                        double threshold)
++                        double threshold, int precision)
+   {
+     string space;
+ 
+@@ -162,12 +162,14 @@ namespace Carpet {
+       space += "|_";
+ 
+     const double t = getTime();
++    const string hyphens = string(precision-1,'-');
++    const string spaces  = string(precision-1,' ');
+ 
+     if (level == 0)
+     {
+-      out << "-----------------------" << endl;
+-      out << "Percent   t/secs  Timer" << endl;
+-      out << "-----------------------" << endl;
++      out << "--------" << hyphens << "--------" << hyphens << "-------" << endl;
++      out << "Percent " << spaces  << "  t/secs" << spaces  << "  Timer" << endl;
++      out << "--------" << hyphens << "--------" << hyphens << "-------" << endl;
+     }
+ 
+     const int pcw = 6;
+@@ -176,8 +178,8 @@ namespace Carpet {
+     const ios_base::fmtflags oldflags = out.flags();
+ 
+     // Print this timer value
+-    out << fixed << setw(pcw) << setprecision(1) << 100.0 * t / total << "%"
+-        << " " << fixed << setw(tw) << setprecision(1) << t
++    out << fixed << setw(pcw) << setprecision(precision) << 100.0 * t / total << "%"
++        << " " << fixed << setw(tw) << setprecision(precision) << t
+         << "  " << space << d_name << endl;
+ 
+     double children_time = 0;
+@@ -189,7 +191,7 @@ namespace Carpet {
+     {
+       if (iter->second->getTime() * 100.0 / total > threshold)
+       {
+-        iter->second->print(out,total,level+1,threshold);
++        iter->second->print(out,total,level+1,threshold,precision);
+         printed_children = true;
+       }
+       children_time += iter->second->getTime();
+diff --git a/Carpet/Carpet/src/TimerNode.hh b/Carpet/Carpet/src/TimerNode.hh
+index 891d82c..89963fa 100644
+--- a/Carpet/Carpet/src/TimerNode.hh
++++ b/Carpet/Carpet/src/TimerNode.hh
+@@ -83,7 +83,7 @@ public:
+ 
+   double getTime();
+ 
+-  void print(ostream& out, double total, int level=0, double threshold=0.0);
++  void print(ostream& out, double total, int level=0, double threshold=0.0, int precision=1);
+   void printXML(ostream& out, int level=0);
+ 
+ private:
+-- 
+1.7.5.4
+

@@ -1,0 +1,127 @@
+# HG changeset patch
+# User Roland Haas <rhaas@caltech.edu>
+# Date 1320943687 28800
+# Node ID 4b482499fea62cc52ebca43c2d337762ab936ef0
+# Parent  049fbbb1c76dbe96eeeee4857833c1362adff643
+CarpetIOScalar: output grid scalars directly rather than reducing them
+
+  Carpet assumes that grid scalar have the same value on all processors:
+      // CarpetIOHDF5/src/Output.cc contains:
+      // According to Cactus conventions, DISTRIB=CONSTANT arrays
+      // (including grid scalars) are assumed to be the same on all
+      // processors and are therefore stored only by processor 0.
+
+diff -r 049fbbb1c76d -r 4b482499fea6 Carpet/CarpetIOScalar/src/ioscalar.cc
+--- a/Carpet/CarpetIOScalar/src/ioscalar.cc	Wed Nov 09 16:25:13 2011 -0800
++++ b/Carpet/CarpetIOScalar/src/ioscalar.cc	Thu Nov 10 08:48:07 2011 -0800
+@@ -208,6 +208,8 @@
+     assert (var>=0 and var<CCTK_NumVarsInGroupI(group));
+     const int num_tl = CCTK_NumTimeLevelsFromVarI(n);
+     assert (num_tl>=1);
++    const int group_type = CCTK_GroupTypeI(group);
++    assert (group_type>=0);
+ 
+     // Check for storage
+     if (not CCTK_QueryGroupStorageI(cctkGH, group)) {
+@@ -249,25 +251,32 @@
+ 
+     // Find the set of desired reductions
+     list<info> reductions;
+-    string const redlist (out_reductions);
+-    string::const_iterator p = redlist.begin();
+-    while (p!=redlist.end()) {
+-      while (p!=redlist.end() and isspace(*p)) ++p;
+-      if (p==redlist.end()) break;
+-      string::const_iterator const start = p;
+-      while (p!=redlist.end() and not isspace(*p)) ++p;
+-      string::const_iterator const end = p;
+-      string const reduction (start, end);
+-      int const handle = CCTK_ReductionHandle (reduction.c_str());
+-      if (handle < 0) {
+-        CCTK_VWarn (1, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                    "Reduction operator \"%s\" does not exist (maybe there is no reduction thorn active?)",
+-                    reduction.c_str());
+-      } else {
+-        info i;
+-        i.reduction = reduction;
+-        i.handle = handle;
+-        reductions.push_back (i);
++    if (group_type == CCTK_SCALAR) {
++      info i;
++      i.reduction = "scalar";
++      i.handle = -1;
++      reductions.push_back (i); // push in single dummy reduction to get one loop iteration below
++    } else {
++      string const redlist (out_reductions);
++      string::const_iterator p = redlist.begin();
++      while (p!=redlist.end()) {
++        while (p!=redlist.end() and isspace(*p)) ++p;
++        if (p==redlist.end()) break;
++        string::const_iterator const start = p;
++        while (p!=redlist.end() and not isspace(*p)) ++p;
++        string::const_iterator const end = p;
++        string const reduction (start, end);
++        int const handle = CCTK_ReductionHandle (reduction.c_str());
++        if (handle < 0) {
++          CCTK_VWarn (1, __LINE__, __FILE__, CCTK_THORNSTRING,
++                      "Reduction operator \"%s\" does not exist (maybe there is no reduction thorn active?)",
++                      reduction.c_str());
++        } else {
++          info i;
++          i.reduction = reduction;
++          i.handle = handle;
++          reductions.push_back (i);
++        }
+       }
+     }
+ 
+@@ -286,7 +295,7 @@
+         CCTK_REAL io_bytes_begin = 0, io_bytes_end = 0;
+         if (CCTK_MyProc(cctkGH)==0) {
+ 
+-          // Invent a file name
++          // Invent a file name (TODO: decide whether to leave of the "scalar" dummy reduction name for CCTK_SCALARs)
+           ostringstream filenamebuf;
+           filenamebuf << myoutdir << "/" << alias << "." << reduction
+                       << ".asc";
+@@ -413,15 +422,31 @@
+         
+         for (int n=firstvar; n<firstvar+numvars; ++n) {
+           
+-          int const ierr
+-            = CCTK_Reduce (cctkGH, 0, handle, 1, vartype, &result, 1, n);
+-          if (ierr) {
+-            char * const fullname = CCTK_FullName (n);
+-            CCTK_VWarn (1, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                        "Error during reduction for variable \"%s\"",
+-                        fullname);
+-            free (fullname);
+-            memset (&result, 0, sizeof result);
++          if (group_type == CCTK_SCALAR) {
++            const void* vardata_ptr =  CCTK_VarDataPtrI(cctkGH, 0, n);
++            if (vardata_ptr) {
++#define TYPECASE(N,T) result.var_##T = *(const T*)vardata_ptr;
++#include "typecase.hh"
++#undef TYPECASE
++            } else {
++              char * const fullname = CCTK_FullName (n);
++              CCTK_VWarn (1, __LINE__, __FILE__, CCTK_THORNSTRING,
++                          "Error during reading for variable \"%s\"",
++                          fullname);
++              free (fullname);
++              memset (&result, 0, sizeof result);
++            }
++          } else {
++            int const ierr
++              = CCTK_Reduce (cctkGH, 0, handle, 1, vartype, &result, 1, n);
++            if (ierr) {
++              char * const fullname = CCTK_FullName (n);
++              CCTK_VWarn (1, __LINE__, __FILE__, CCTK_THORNSTRING,
++                          "Error during reduction for variable \"%s\"",
++                          fullname);
++              free (fullname);
++              memset (&result, 0, sizeof result);
++            }
+           }
+           
+           if (CCTK_MyProc(cctkGH)==0) {

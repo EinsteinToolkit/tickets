@@ -1,0 +1,49 @@
+From a43986908b18264bae32b4e8e25f862df2484a3d Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Wed, 6 Aug 2014 14:51:39 +0200
+Subject: [PATCH 1/2] CarpetInterp: Add a parameter to use cctk_time instead of
+ tt->get_time
+
+---
+ Carpet/CarpetInterp/param.ccl     | 4 ++++
+ Carpet/CarpetInterp/src/interp.cc | 5 +++--
+ 2 files changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/Carpet/CarpetInterp/param.ccl b/Carpet/CarpetInterp/param.ccl
+index f73f4cc..8b4e7af 100644
+--- a/Carpet/CarpetInterp/param.ccl
++++ b/Carpet/CarpetInterp/param.ccl
+@@ -21,3 +21,7 @@ BOOLEAN tree_search "Use a tree search to find the source processor" STEERABLE=a
+ BOOLEAN check_tree_search "Cross-check the result of the tree search" STEERABLE=always
+ {
+ } "no"
++
++BOOLEAN use_cctk_time "Use the cctk_time variable to determine whether time interpolation is required" STEERABLE=always
++{
++} "no"
+diff --git a/Carpet/CarpetInterp/src/interp.cc b/Carpet/CarpetInterp/src/interp.cc
+index 3418a93..21b5cfe 100644
+--- a/Carpet/CarpetInterp/src/interp.cc
++++ b/Carpet/CarpetInterp/src/interp.cc
+@@ -1296,6 +1296,8 @@ namespace CarpetInterp {
+                           CCTK_INT const output_array_type_codes [],
+                           CCTK_INT const input_array_variable_indices [])
+   {
++    DECLARE_CCTK_PARAMETERS;
++
+     static Timer timer ("CarpetInterp::interpolate_components");
+     timer.start();
+ 
+@@ -1338,8 +1340,7 @@ namespace CarpetInterp {
+     for (int rl=minrl; rl<maxrl; ++rl) {
+       
+       // Number of neccessary time levels
+-      // CCTK_REAL const level_time = cctkGH->cctk_time;
+-      CCTK_REAL const level_time = tt->get_time(mglevel, rl, tl);
++      CCTK_REAL const level_time = use_cctk_time ? cctkGH->cctk_time : tt->get_time(mglevel, rl, tl);
+       vector<int> num_tl (N_input_arrays, 0);
+       vector<bool> need_time_interp (N_output_arrays);
+       for (int m=0; m<N_output_arrays; ++m) {
+-- 
+1.9.1
+

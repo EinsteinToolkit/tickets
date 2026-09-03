@@ -1,0 +1,153 @@
+Index: include/cctk_Timers.h
+===================================================================
+--- include/cctk_Timers.h	(revision 4889)
++++ include/cctk_Timers.h	(working copy)
+@@ -77,6 +77,8 @@
+ int CCTK_TimerStopI(int this_timer);
+ int CCTK_TimerReset(const char *name);
+ int CCTK_TimerResetI(int this_timer);
++int CCTK_TimerIsRunning(const char *name);
++int CCTK_TimerIsRunningI(int this_timer);
+ int CCTK_Timer(const char *name, cTimerData *info);
+ int CCTK_TimerI(int this_timer, cTimerData *info);
+ 
+Index: main/ScheduleInterface.c
+===================================================================
+--- main/ScheduleInterface.c	(revision 4889)
++++ main/ScheduleInterface.c	(working copy)
+@@ -1253,13 +1253,20 @@
+   /* also print total time at the bottom */
+   if (total_timer >= 0)
+   {
+-    CCTK_TimerStopI (total_timer);
++    int total_timer_running = CCTK_TimerIsRunningI(total_timer);
++    if (total_timer_running)
++    {
++      CCTK_TimerStopI (total_timer);
++    }
+     CCTK_TimerI (total_timer, timerinfo);
+     CCTKi_SchedulePrintTimerInfo
+       (timerinfo, NULL, "", "Total time for simulation", file);
+ 
+     /* just in case this is not at termination yet ... */
+-    CCTK_TimerStartI (total_timer);
++    if (total_timer_running)
++    {
++      CCTK_TimerStartI (total_timer);
++    }
+   }
+ 
+   return 0;
+Index: util/CactusTimers.c
+===================================================================
+--- util/CactusTimers.c	(revision 4889)
++++ util/CactusTimers.c	(working copy)
+@@ -54,6 +54,10 @@
+                            (int *ierr, int *this_timer, int *this_clock);
+ void CCTK_FCALL CCTK_FNAME (CCTK_TimerPrintData)
+                            (int *ierr, TWO_FORTSTRING_ARG);
++void CCTK_FCALL CCTK_FNAME (CCTK_TimerIsRunningI)
++                           (int *ierr, int *this_timer);
++void CCTK_FCALL CCTK_FNAME (CCTK_TimerIsRunning)
++                           (int *ierr, ONE_FORTSTRING_ARG);
+ 
+ 
+ /********************************************************************
+@@ -1017,6 +1021,97 @@
+ 
+ 
+  /*@@
++   @routine    CCTK_TimerIsRunningI
++   @date       Wed Oct 24 2012  13:00:00
++   @author     Frank Löffler
++   @desc
++               Returns if a timer is currently running given by its handle.
++   @enddesc
++   @calls
++
++   @var        this_timer
++   @vdesc      handle for the timer
++   @vtype      int
++   @vio        in
++   @endvar
++
++   @returntype int
++   @returndesc
++               0 for no (or failure to lookup timer), 1 for yes
++   @endreturndesc
++@@*/
++int CCTK_TimerIsRunningI (int this_timer)
++{
++  t_Timer *timer;
++
++
++  timer = Util_GetHandledData (timers, this_timer);
++  if (timer)
++  {
++    return !!timer->running;
++  }
++  else
++  {
++    CCTK_VWarn (8, __LINE__, __FILE__, "Cactus",
++                "CCTK_TimerIsRunningI: Timer %d not found",this_timer);
++  }
++  return 0;
++}
++
++void CCTK_FCALL CCTK_FNAME (CCTK_TimerIsRunningI)
++                           (int *ierr, int *this_timer)
++{
++  *ierr = CCTK_TimerIsRunningI (*this_timer);
++}
++
++ /*@@
++   @routine    CCTK_TimerIsRunning
++   @date       Wed Oct 24 13:00:00
++   @author     Frank Löffler
++   @desc
++               Returns if a timer is currently running.
++   @enddesc
++   @calls      CCTK_TimerIsRunningI
++
++   @var        timername
++   @vdesc      name of the timer
++   @vtype      const char *
++   @vio        in
++   @endvar
++
++   @returntype int
++   @returndesc
++               0 for no (or failure to lookup timer), 1 for yes
++   @endreturndesc
++@@*/
++int CCTK_TimerIsRunning (const char *timername)
++{
++  t_Timer *timer;
++  int this_timer;
++
++
++  this_timer = Util_GetHandle (timers, timername, (void **) &timer);
++  if (this_timer >= 0)
++  {
++    return CCTK_TimerIsRunningI (this_timer);
++  }
++  else
++  {
++    CCTK_VWarn (8, __LINE__, __FILE__, "Cactus",
++                "CCTK_TimerIsRunning: Timer %s not found",timername);
++  }
++  return 0;
++}
++
++void CCTK_FCALL CCTK_FNAME (CCTK_TimerIsRunning)
++                           (int *ierr, ONE_FORTSTRING_ARG)
++{
++  ONE_FORTSTRING_CREATE (timername)
++  *ierr = CCTK_TimerIsRunning (timername);
++  free (timername);
++}
++
++ /*@@
+    @routine    CCTK_Timer
+    @date       Wed Sep  1 10:10:38 1999
+    @author     Tom Goodale

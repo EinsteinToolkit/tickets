@@ -1,0 +1,239 @@
+diff --git a/src/piraha/Bracket.cc b/src/piraha/Bracket.cc
+index 47c3cc0..c24c8f2 100644
+--- a/src/piraha/Bracket.cc
++++ b/src/piraha/Bracket.cc
+@@ -71,6 +71,7 @@ static void fail(Bracket *b,Matcher *m) {
+ 
+ bool Bracket::match(Matcher *m) {
+   if(m->pos >= (int)m->input_size) {
++    fail(this,m);
+     return false;
+   }
+   for(range_iter r = ranges.begin();r != ranges.end(); ++r) {
+diff --git a/src/piraha/Call.cc b/src/piraha/Call.cc
+index c141292..3bc8699 100644
+--- a/src/piraha/Call.cc
++++ b/src/piraha/Call.cc
+@@ -66,10 +66,10 @@ smart_ptr<Grammar> create_grammar() {
+         "index = \\[ {int} \\]\n"
+         "parindex = \\[ {expr} \\]\n"
+         "active = (?i:ActiveThorns)\n"
+-        "set = ({active} = ({quot}|{name})|{par}( {index}|) = ({array}|\\+?{expr})){-skipeol}\n"
+-        "set_var = \\${name} = \\+?{expr}{-skipeol}\n"
++        "set = ({active} = ({quot}|{name})|{par}( {index}|) = ({array}|\\+?{expr}))\n"
++        "set_var = \\${name} = \\+?{expr}\n"
+         "desc = !DESC {quot}\n"
+-        "file = ^( ({desc}|{set_var}|{set}|{active}) )*$";
++        "file = ^ ({desc} |{set_var} |{set} |{active} )*$";
+     //std::ofstream peg("/tmp/par.peg");
+     //peg << par_file_src;
+     //peg.close();
+diff --git a/src/piraha/ILiteral.cc b/src/piraha/ILiteral.cc
+index b781614..77f20c4 100644
+--- a/src/piraha/ILiteral.cc
++++ b/src/piraha/ILiteral.cc
+@@ -5,20 +5,19 @@ using namespace cctki_piraha;
+ ILiteral::ILiteral(char b) : lc(lc_(b)), uc(uc_(b)) {}
+ 
+ bool ILiteral::match(Matcher *m) {
+-    if(m->pos >= (int)m->input_size )
++  if(m->pos >= (int)m->input_size ) {
++    m->fail(lc);
++    m->fail(uc);
+     return false;
++  }
+   char c = m->input[m->pos];
+   if(c == uc || c == lc) {
+     m->max_pos = std::max(m->pos,m->max_pos);
+     m->pos++;
+     return true;
+   } else {
+-        if(m->pos == m->max_pos+1) {
+-            Bracket bex;
+-            bex.addRange(lc,lc);
+-            bex.addRange(uc,uc);
+-            m->fail(&bex);
+-        }
++    m->fail(lc);
++    m->fail(uc);
+     return false;
+   }
+ }
+diff --git a/src/piraha/Literal.cc b/src/piraha/Literal.cc
+index a8022ff..ae993f3 100644
+--- a/src/piraha/Literal.cc
++++ b/src/piraha/Literal.cc
+@@ -4,6 +4,7 @@ using namespace cctki_piraha;
+ 
+ bool Literal::match(Matcher *m) {
+   if(m->pos - m->input_size >= 0) {
++    m->fail(c);
+     return false;
+   }
+   if(m->input[m->pos] == c) {
+@@ -11,11 +12,7 @@ bool Literal::match(Matcher *m) {
+     m->pos++;
+     return true;
+   } else {
+-        if(m->pos == m->max_pos+1) {
+-        	Bracket bex;
+-        	bex.addRange(c,c);
+-            m->fail(&bex);
+-        }
++    m->fail(c);
+     return false;
+   }
+ }
+diff --git a/src/piraha/Matcher.cc b/src/piraha/Matcher.cc
+index 71fb055..c5c8040 100644
+--- a/src/piraha/Matcher.cc
++++ b/src/piraha/Matcher.cc
+@@ -44,64 +44,96 @@ void Matcher::fail(Bracket *br) {
+   }
+ }
+ 
++void Matcher::fail(char c) {
++  fail(c,c);
++}
++
+ void Matcher::fail(char lo,char hi) {
+-    if(pos == max_pos+1) {
++  if(err_pos > pos)
++    return;
++  if(lo == hi) {
++    if(lo == ' ' || lo == '\r' || lo == '\t' || lo == '\n' || lo == '#')
++      return;
++  }
++  if(pos < input_size) {
++    char c = input[pos];
++    if(c == '\n' || c == ' ' || c == '\r' || c == '\t') {
++      return;
++    }
++  }
+   if(err_pos < pos)
+     expected.ranges.clear();
+   expected.addRange(lo,hi);
+   inrule_max = inrule;
+   err_pos = pos;
+ }
+-}
+ 
+ void Matcher::showError() {
+     showError(std::cout);
+ }
+ 
++const int num_previous_lines = 5;
++
++bool isHumanReadableRange(char c) {
++  return ('a' <= c && c <= 'y') or ('A' <= c && c <= 'Y') or ('0' <= c && c <= '8');
++}
++
+ void Matcher::showError(std::ostream& out) {
+-	int line = 1;
+-	int error_pos = -1;
+-	const int num_previous_lines = 4;
+-	int start_of_line = 0;
+-	int start_of_previous_line[num_previous_lines];
+-	for(int i=0;i<num_previous_lines;i++)
+-		start_of_previous_line[i] = 0;
++  std::vector<char> expectedChars;
++  for(auto r = expected.ranges.begin(); r != expected.ranges.end(); ++r) {
++    for(int i = (*r)->lo; i <= (*r)->hi; ++i) {
++      expectedChars.push_back((char)i);
++    }
++  }
++  out << "Parse Error" << std::endl;
++  out << "Expected one of the following characters:";
++  bool first = true;
++  for(auto c=expectedChars.begin();c != expectedChars.end();++c) {
++    if(first) first = false;
++    else out << ',';
++    if(isHumanReadableRange(*c)) {
++      int n = 1;
++      while(c+n != expectedChars.end() && n+(*c) == *(c+n)) {
++        n++;
++      }
++      if(n >= 3) {
++        out << " '" << *c << "' to";
++        c += (n-1);
++      }
++    }
++    if(*c == '\'')
++      out << "single quote";
++    else if(*c == '"')
++      out << "double quote";
++    else
++      out << " '" << *c << "'";
++  }
++  int buf[num_previous_lines];
++  buf[0] = 0;
++  int line = 0;
+   for(int i=0;i < input_size;i++) {
+-		if(i == max_pos) {
+-			error_pos = i;
+-			int column = i - start_of_previous_line[0]+1;
+-		    out << "In rule '" << inrule_max
+-			    <<  "' Line=" << line << ", Column=" << column << std::endl;
+-			while(input[i] == '\n'||input[i] == '\r') {
++    char c = input[i];
++    if(c == '\n') {
+       line++;
+-				for(int j=1;j<num_previous_lines;j++) {
+-					start_of_previous_line[j-1] = start_of_previous_line[j];
+-				}
+-				start_of_previous_line[num_previous_lines-1] = start_of_line;
+-				start_of_line = ++i;
+-			}
++      int ln = line % num_previous_lines;
++      buf[ln] = i;
++      if(i >= err_pos)
+         break;
+     }
+-		if(input[i] == '\n') {
+-			line++;
+-			for(int j=1;j<num_previous_lines;j++) {
+-				start_of_previous_line[j-1] = start_of_previous_line[j];
+-			}
+-			start_of_previous_line[num_previous_lines-1] = start_of_line;
+-			start_of_line = i+1;
+-		}
+-	}
+-    bool eol = false;
+-	for(int i=start_of_previous_line[0];i<input_size;i++) {
+-		out << input[i];
+-		if(i > error_pos && input[i] == '\n') {
+-            eol = true;
+-			break;
+   }
++  int ln = line % num_previous_lines;
++  int lo = line - num_previous_lines + 1;
++  if(lo < 0) lo = 0;
++  lo = lo % num_previous_lines;
++  for(int i=buf[lo];i<buf[ln];i++) {
++    char c = input[i];
++    if(c == '\r') ;
++    else if(c == '\n') out << std::endl;
++    else out << c;
+   }
+-    if(!eol) out << std::endl;
+-	for(int i=start_of_line;i<=error_pos;i++)
++  out << std::endl;
++  int m = (line - 1) % num_previous_lines;
++  for(int i=buf[m]+1;i<err_pos;i++)
+     out << ' ';
+-	out << "^" << std::endl;
+-    out << "Expected one of the following characters: " << expected << std::endl;
++  out << '^' << std::endl;
+ }
+diff --git a/src/piraha/Piraha.hpp b/src/piraha/Piraha.hpp
+index 33da871..9a637a3 100644
+--- a/src/piraha/Piraha.hpp
++++ b/src/piraha/Piraha.hpp
+@@ -371,6 +371,7 @@ public:
+     int err_pos;
+     void fail(Bracket *ex);
+     void fail(char lo,char hi);
++    void fail(char lo);
+     char foundChar() { return input[max_pos+1]; }
+ };
+ 

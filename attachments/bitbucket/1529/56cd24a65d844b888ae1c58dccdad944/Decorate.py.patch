@@ -1,0 +1,12 @@
+--- Decorate.py.orig	2014-01-25 22:04:04.388320973 -0800
++++ Decorate.py	2014-01-25 22:03:40.844319564 -0800
+@@ -43,6 +43,9 @@
+     if msgdata.get('isdigest') or msgdata.get('nodecorate'):
+         return
+     d = {}
++    msgid = msg.get('message-id', 'n/a')
++    msgid = msgid[1:msgid.find("@")]
++    d['msg_id'] = msgid
+     if msgdata.get('personalize'):
+         # Calculate the extra personalization dictionary.  Note that the
+         # length of the recips list better be exactly 1.

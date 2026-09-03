@@ -1,0 +1,158 @@
+From 8ca71595b5468e9cc9f5ae546f168275351c2d41 Mon Sep 17 00:00:00 2001
+From: "Christian D. Ott" <cott@tapir.caltech.edu>
+Date: Thu, 21 Nov 2013 13:36:52 -0800
+Subject: [PATCH 07/36] GRHydro: start changes for improved EOS and HLLE
+ handling
+
+---
+ interface.ccl          | 19 +++++++++++++++++--
+ src/GRHydro_Prim2Con.c | 32 ++++++++++++++++----------------
+ src/make.code.defn     |  3 ++-
+ 3 files changed, 35 insertions(+), 19 deletions(-)
+
+diff --git a/interface.ccl b/interface.ccl
+index d7451a4..c04b9a3 100644
+--- a/interface.ccl
++++ b/interface.ccl
+@@ -286,6 +286,21 @@ void FUNCTION EOS_Omni_press(CCTK_INT IN eoskey,         \
+ 
+ USES FUNCTION EOS_Omni_press
+ 
++void FUNCTION EOS_Omni_press_cs2(CCTK_INT IN eoskey,         \
++			     CCTK_INT IN havetemp,       \
++			     CCTK_REAL IN rf_precision,   \
++                             CCTK_INT IN npoints,        \
++			     CCTK_REAL IN ARRAY rho,     \
++			     CCTK_REAL INOUT ARRAY eps,  \
++			     CCTK_REAL INOUT ARRAY temp, \
++			     CCTK_REAL IN ARRAY ye,      \
++			     CCTK_REAL OUT ARRAY press,  \
++			     CCTK_REAL OUT ARRAY cs2,  \
++			     CCTK_INT OUT ARRAY keyerr,  \
++			     CCTK_INT OUT anyerr)
++
++USES FUNCTION EOS_Omni_press_cs2
++
+ 
+ void FUNCTION EOS_Omni_DPressByDEps(CCTK_INT IN eoskey,      \
+ 			     CCTK_INT IN havetemp,           \
+@@ -455,8 +470,8 @@ CCTK_REAL local_shift type = GF Timelevels = 1 tags='Prolongation="None" checkpo
+ real GRHydro_prim_bext type = GF Timelevels = 1 tags='Prolongation="None" checkpoint="no"'
+ {
+   rhoplus, velxplus, velyplus, velzplus, pressplus, epsplus, w_lorentzplus, 
+-  rhominus, velxminus, velyminus, velzminus, pressminus, epsminus, 
+-  w_lorentzminus
++  cs2plus, rhominus, velxminus, velyminus, velzminus, pressminus, epsminus, 
++  w_lorentzminus, cs2minus
+ } "Primitive variables extended to the cell boundaries"
+ 
+ int GRHydro_scalars type = SCALAR tags='checkpoint="no"'
+diff --git a/src/GRHydro_Prim2Con.c b/src/GRHydro_Prim2Con.c
+index 4f206d1..16a8476 100644
+--- a/src/GRHydro_Prim2Con.c
++++ b/src/GRHydro_Prim2Con.c
+@@ -79,11 +79,11 @@ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+        for(int k=0;k<cctk_ash[2];k++) 
+ 	 for(int j=0;j<cctk_ash[1];j++) {
+ 	   int i = CCTK_GFINDEX3D(cctkGH,0,j,k);
+-	   EOS_Omni_press(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,cctk_ash[0],
+-			  &(rhominus[i]),&(epsminus[i]),NULL,NULL,&(pressminus[i]),
++	   EOS_Omni_press_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,cctk_ash[0],
++			  &(rhominus[i]),&(epsminus[i]),NULL,NULL,&(pressminus[i]),&(cs2minus[i]),
+ 			  &(keyerr[i]),&anyerr);
+-	   EOS_Omni_press(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,cctk_ash[0],
+-			  &(rhoplus[i]),&(epsplus[i]),NULL,NULL,&(pressplus[i]),
++	   EOS_Omni_press_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,cctk_ash[0],
++			  &(rhoplus[i]),&(epsplus[i]),NULL,NULL,&(pressplus[i]),&(cs2plus[i]),
+ 			  &(keyerr[i]),&anyerr);
+ 	 }
+      free(keyerr);
+@@ -108,9 +108,9 @@ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+        for(int k=0;k<cctk_ash[2];k++) 
+ 	 for(int j=0;j<cctk_ash[1];j++) {
+ 	   int i = CCTK_GFINDEX3D(cctkGH,0,j,k);
+-	   EOS_Omni_press(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,cctk_ash[0],
++	   EOS_Omni_press_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,cctk_ash[0],
+ 			  &rhominus[i],&epsminus[i],&tempminus[i],&Y_e_minus[i],
+-			  &pressminus[i],
++			  &pressminus[i],&cs2minus[i],
+ 			  &keyerr[i],&anyerr);
+ 	 }
+        
+@@ -137,9 +137,9 @@ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+        for(int k=0;k<cctk_ash[2];k++) 
+ 	 for(int j=0;j<cctk_ash[1];j++) {
+ 	   int i = CCTK_GFINDEX3D(cctkGH,0,j,k);
+-	   EOS_Omni_press(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,cctk_ash[0],
++	   EOS_Omni_press_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,cctk_ash[0],
+ 			  &rhoplus[i],&epsplus[i],&tempplus[i],&Y_e_plus[i],
+-			  &pressplus[i],
++			  &pressplus[i],&cs2plus[i],
+ 			  &keyerr[i],&anyerr);
+ 	 }
+ 
+@@ -185,9 +185,9 @@ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+        for(int k=0;k<cctk_ash[2];k++) 
+ 	 for(int j=0;j<cctk_ash[1];j++) {
+ 	   int i = CCTK_GFINDEX3D(cctkGH,0,j,k);
+-	   EOS_Omni_press(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,cctk_ash[0],
++	   EOS_Omni_press_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,cctk_ash[0],
+ 			  &rhominus[i],&epsminus[i],&tempminus[i],&Y_e_minus[i],
+-			  &pressminus[i],
++			  &pressminus[i],&cs2minus[i],
+ 			  &keyerr[i],&anyerr);
+ 	 }
+ 
+@@ -212,9 +212,9 @@ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+ 		 int lkeyerr[1];
+ 		 int lanyerr = 0;
+ 		 int lkeytemp = 1;
+-		 EOS_Omni_press(*GRHydro_eos_handle,lkeytemp,GRHydro_eos_rf_prec,ln,
++		 EOS_Omni_press_cs2(*GRHydro_eos_handle,lkeytemp,GRHydro_eos_rf_prec,ln,
+ 				&rhominus[i],&epsminus[i],&tempminus[i],
+-				&Y_e_minus[i],&pressminus[i],lkeyerr,&lanyerr);
++				&Y_e_minus[i],&pressminus[i],&cs2minus[i],lkeyerr,&lanyerr);
+ 		 if(lanyerr !=0) {
+ 		   CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+ 			      "Aborting! keyerr=%d, r=%15.6E, t=%15.6E, ye=%15.6E",
+@@ -233,9 +233,9 @@ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+        for(int k=0;k<cctk_ash[2];k++) 
+ 	 for(int j=0;j<cctk_ash[1];j++) {
+ 	   int i = CCTK_GFINDEX3D(cctkGH,0,j,k);
+-	   EOS_Omni_press(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,cctk_ash[0],
++	   EOS_Omni_press_cs2(*GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,cctk_ash[0],
+ 			  &rhoplus[i],&epsplus[i],&tempplus[i],&Y_e_plus[i],
+-			  &pressplus[i],
++			  &pressplus[i],&cs2plus[i],
+ 			  &keyerr[i],&anyerr);
+ 	 }
+ 
+@@ -259,9 +259,9 @@ void Primitive2ConservativeC(CCTK_ARGUMENTS)
+ 		 int lkeyerr[1];
+ 		 int lanyerr = 0;
+ 		 int lkeytemp = 1;
+-		 EOS_Omni_press(*GRHydro_eos_handle,lkeytemp,GRHydro_eos_rf_prec,ln,
++		 EOS_Omni_press_cs2(*GRHydro_eos_handle,lkeytemp,GRHydro_eos_rf_prec,ln,
+ 				&rhoplus[i],&epsplus[i],&tempplus[i],
+-				&Y_e_plus[i],&pressplus[i],lkeyerr,&lanyerr);
++				&Y_e_plus[i],&pressplus[i],&cs2plus[i],lkeyerr,&lanyerr);
+ 		 if(lanyerr !=0) {
+ 		   CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+ 			      "Aborting! keyerr=%d, r=%15.6E, t=%15.6E, ye=%15.6E",
+diff --git a/src/make.code.defn b/src/make.code.defn
+index f786a94..46ff0e9 100644
+--- a/src/make.code.defn
++++ b/src/make.code.defn
+@@ -84,7 +84,8 @@ SRCS = 	Utils.F90 \
+         GRHydro_Prim2Con.c \
+ 	GRHydro_PPM.cc \
+         GRHydro_PPMReconstruct_drv_opt.cc \
+-        GRHydro_Wrappers.F90
++        GRHydro_Wrappers.F90 \
++	GRHydro_HLLE.cc
+ 	
+ # Subdirectories containing source files
+ SUBDIRS = 
+-- 
+1.8.5.3
+

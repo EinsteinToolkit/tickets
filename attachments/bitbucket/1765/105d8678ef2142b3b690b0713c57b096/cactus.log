@@ -1,0 +1,574 @@
+--------------------------------------------------------------------------------
+
+       10                                  
+  1   0101       ************************  
+  01  1010 10      The Cactus Code V4.2.3    
+ 1010 1101 011      www.cactuscode.org     
+  1001 100101    ************************  
+    00010101                               
+     100011     (c) Copyright The Authors  
+      0100      GNU Licensed. No Warranty  
+      0101                                 
+--------------------------------------------------------------------------------
+
+Cactus version:    4.2.3
+Compile date:      Apr 17 2015 (12:56:43)
+Run date:          Apr 23 2015 (09:10:12-0700)
+Run host:          fdea4908.spdns.de (pid=11102)
+Working directory: /home/rhaas/postdoc/gr/CactusTAPIR
+Executable:        exe/cactus_sim
+Parameter file:    repos/carpet/CustomGhosts/par/testghosts.par
+--------------------------------------------------------------------------------
+
+Activating thorn Cactus...Success -> active implementation Cactus
+Activation requested for 
+--->
+  SymBase
+  InitBase
+  CoordBase
+  CarpetRegrid2
+  CarpetIOASCII
+  CartGrid3D
+  CoordBase
+ <---
+Warning: thorn CoordBase already scheduled for activation
+Thorn CarpetIOASCII requests automatic activation of Carpet
+Thorn CarpetIOASCII requests automatic activation of CarpetLib
+Thorn CarpetIOASCII requests automatic activation of IOUtil
+Thorn Carpet requests automatic activation of MPI
+Thorn Carpet requests automatic activation of Timers
+Thorn Carpet requests automatic activation of LoopControl
+Thorn CarpetLib requests automatic activation of Vectors
+Thorn CarpetLib requests automatic activation of CycleClock
+Thorn CarpetLib requests automatic activation of hwloc
+Thorn hwloc requests automatic activation of zlib
+Activating thorn Carpet...Success -> active implementation Driver
+Activating thorn CarpetIOASCII...Success -> active implementation IOASCII
+Activating thorn CarpetLib...Success -> active implementation CarpetLib
+Activating thorn CarpetRegrid2...Success -> active implementation CarpetRegrid2
+Activating thorn CartGrid3D...Success -> active implementation grid
+Activating thorn CoordBase...Success -> active implementation CoordBase
+Activating thorn CycleClock...Success -> active implementation CycleClock
+Activating thorn hwloc...Success -> active implementation hwloc
+Activating thorn InitBase...Success -> active implementation InitBase
+Activating thorn IOUtil...Success -> active implementation IO
+Activating thorn LoopControl...Success -> active implementation LoopControl
+Activating thorn MPI...Success -> active implementation MPI
+Activating thorn SymBase...Success -> active implementation SymBase
+Activating thorn Timers...Success -> active implementation Timers
+Activating thorn Vectors...Success -> active implementation Vectors
+Activating thorn zlib...Success -> active implementation zlib
+--------------------------------------------------------------------------------
+  if (recover initial data)
+    Recover parameters
+  endif
+
+  Startup routines
+    [CCTK_STARTUP]
+      Carpet::MultiModel_Startup: Multi-model Startup routine
+      CycleClock::CycleClock_Setup: Set up CycleClock
+      LoopControl::lc_setup: Set up LoopControl
+      CartGrid3D::SymmetryStartup: Register GH Extension for GridSymmetry
+      CoordBase::CoordBase_Startup: Register a GH extension to store the coordinate system handles
+      Timers::Timer_Startup: Prepare hierarchical timers
+      hwloc::hwloc_system_topology: Output and/or modify system topology and hardware locality
+      Carpet::Driver_Startup: Startup routine
+      SymBase::SymBase_Startup: Register GH Extension for SymBase
+      IOUtil::IOUtil_Startup: Startup routine
+      Vectors::Vectors_Startup: Print startup message
+      CarpetIOASCII::CarpetIOASCIIStartup: [global] Startup routine
+
+  Startup routines which need an existing grid hierarchy
+    [CCTK_WRAGH]
+      CarpetRegrid2::CarpetRegrid2_Initialise: [global] Initialise locations of refined regions
+      CartGrid3D::RegisterCartGrid3DCoords: [meta] Register coordinates for the Cartesian grid
+      GROUP SymBase_Wrapper: Wrapper group for SymBase
+        GROUP SymmetryRegister: Register your symmetries here
+          CartGrid3D::RegisterSymmetryBoundaries: [meta] Register symmetry boundaries
+        SymBase::SymBase_Statistics: Print symmetry boundary face descriptions
+  Parameter checking routines
+    [CCTK_PARAMCHECK]
+      Carpet::CarpetParamCheck: Parameter checking routine
+      CarpetLib::CarpetLib_test_prolongate_3d_rf2: [global] Test prolongation operators
+      CarpetRegrid2::CarpetRegrid2_ParamCheck: Check parameters
+      CartGrid3D::ParamCheck_CartGrid3D: Check coordinates for CartGrid3D
+      Vectors::Vectors_Test: Run correctness tests.
+
+  Initialisation
+    if (NOT (recover initial data AND recovery_mode is 'strict'))
+      [CCTK_PREREGRIDINITIAL]
+      Set up grid hierarchy
+      [CCTK_POSTREGRIDINITIAL]
+        CartGrid3D::SpatialCoordinates: Set Coordinates after regridding
+      [CCTK_BASEGRID]
+        CartGrid3D::SpatialSpacings: Set up ranges for spatial 3D Cartesian coordinates (on all grids)
+        CartGrid3D::SpatialCoordinates: Set up spatial 3D Cartesian coordinates on the GH
+        SymBase::SymBase_Check: Check whether the driver set up the grid consistently
+      [CCTK_INITIAL]
+        CarpetIOASCII::CarpetIOASCIIInit: [global] Initialisation routine
+      [CCTK_POSTINITIAL]
+      Initialise finer grids recursively
+      Restrict from finer grids
+      [CCTK_POSTRESTRICTINITIAL]
+      [CCTK_POSTPOSTINITIAL]
+      [CCTK_POSTSTEP]
+    endif
+    if (recover initial data)
+      [CCTK_BASEGRID]
+        CartGrid3D::SpatialSpacings: Set up ranges for spatial 3D Cartesian coordinates (on all grids)
+        CartGrid3D::SpatialCoordinates: Set up spatial 3D Cartesian coordinates on the GH
+        SymBase::SymBase_Check: Check whether the driver set up the grid consistently
+      [CCTK_RECOVER_VARIABLES]
+      [CCTK_POST_RECOVER_VARIABLES]
+    endif
+    if (checkpoint initial data)
+      [CCTK_CPINITIAL]
+    endif
+    if (analysis)
+      [CCTK_ANALYSIS]
+        CarpetLib::CarpetLib_printtimestats: [global] Print timing statistics if desired
+        CarpetLib::CarpetLib_printmemstats: [global] Print memory statistics if desired
+        LoopControl::lc_statistics_analysis: [meta] Output LoopControl statistics
+  endif
+  Output grid variables
+
+  do loop over timesteps
+    [CCTK_PREREGRID]
+    Change grid hierarchy
+    [CCTK_POSTREGRID]
+      CartGrid3D::SpatialCoordinates: Set Coordinates after regridding
+    Rotate timelevels
+    iteration = iteration+1
+    t = t+dt
+    [CCTK_PRESTEP]
+      LoopControl::lc_steer: [meta] Update LoopControl algorithm preferences
+    [CCTK_EVOL]
+    Evolve finer grids recursively
+    Restrict from finer grids
+    [CCTK_POSTRESTRICT]
+    [CCTK_POSTSTEP]
+  if (checkpoint)
+    [CCTK_CHECKPOINT]
+  endif
+  if (analysis)
+    [CCTK_ANALYSIS]
+      CarpetLib::CarpetLib_printtimestats: [global] Print timing statistics if desired
+      CarpetLib::CarpetLib_printmemstats: [global] Print memory statistics if desired
+      LoopControl::lc_statistics_analysis: [meta] Output LoopControl statistics
+  endif
+  Output grid variables
+  enddo
+
+  Termination routines
+    [CCTK_TERMINATE]
+      LoopControl::lc_statistics_terminate: [meta] Output LoopControl statistics
+
+  Shutdown routines
+    [CCTK_SHUTDOWN]
+      Timers::Timer_Shutdown: Prepare hierarchical timers
+
+  Routines run after changing the grid hierarchy:
+    [CCTK_POSTREGRID]
+      CartGrid3D::SpatialCoordinates: Set Coordinates after regridding
+--------------------------------------------------------------------------------
+INFO (Carpet): Multi-Model listing:
+   model 0: "world"
+INFO (Carpet): Multi-Model process distribution:
+   process 0: model 0 "world"
+INFO (Carpet): Multi-Model: This is process 0, model 0 "world"
+Current core file size limit: hard=[unlimited], soft=0 MB
+Current memory size limit: hard=[unlimited], soft=[unlimited]
+INFO (CycleClock): Measuring CycleClock tick via OpenMP...
+INFO (CycleClock): Calibrated CycleClock: 0.47614 ns per clock tick (2.10022 GHz)
+INFO (hwloc): MPI process-to-host mapping:
+This is MPI process 0 of 1
+MPI hosts:
+  0: fdea4908
+This MPI process runs on host 0 of 1
+On this host, this is MPI process 0 of 1
+INFO (hwloc): Topology support:
+Discovery support:
+  discovery->pu                            : yes
+CPU binding support:
+  cpubind->set_thisproc_cpubind            : yes
+  cpubind->get_thisproc_cpubind            : yes
+  cpubind->set_proc_cpubind                : yes
+  cpubind->get_proc_cpubind                : yes
+  cpubind->set_thisthread_cpubind          : yes
+  cpubind->get_thisthread_cpubind          : yes
+  cpubind->set_thread_cpubind              : yes
+  cpubind->get_thread_cpubind              : yes
+  cpubind->get_thisproc_last_cpu_location  : yes
+  cpubind->get_proc_last_cpu_location      : yes
+  cpubind->get_thisthread_last_cpu_location: yes
+Memory binding support:
+  membind->set_thisproc_membind            : no
+  membind->get_thisproc_membind            : no
+  membind->set_proc_membind                : no
+  membind->get_proc_membind                : no
+  membind->set_thisthread_membind          : yes
+  membind->get_thisthread_membind          : yes
+  membind->set_area_membind                : yes
+  membind->get_area_membind                : yes
+  membind->alloc_membind                   : yes
+  membind->firsttouch_membind              : yes
+  membind->bind_membind                    : yes
+  membind->interleave_membind              : yes
+  membind->replicate_membind               : no
+  membind->nexttouch_membind               : no
+  membind->migrate_membind                 : yes
+INFO (hwloc): Hardware objects in this node:
+Machine L#0: (P#0, local=4025728KB, total=4025728KB, DMIProductName="U80A                ", DMIProductVersion="1.0       ", DMIBoardVendor="ASUSTeK Computer Inc.        ", DMIBoardName="U80A      ", DMIBoardVersion="1.0       ", DMIBoardAssetTag=ATN12345678901234567, DMIChassisVendor="ASUSTeK Computer Inc.        ", DMIChassisType=10, DMIChassisVersion="1.0       ", DMIChassisAssetTag=ATN12345678901234567, DMIBIOSVendor="American Megatrends Inc.", DMIBIOSVersion="211    ", DMIBIOSDate=11/18/2009, DMISysVendor="ASUSTeK Computer Inc.        ", Backend=Linux, LinuxCgroup=/, OSName=Linux, OSRelease=3.16.0-4-amd64, OSVersion="#1 SMP Debian 3.16.7-ckt9-2 (2015-04-13)", HostName=fdea4908, Architecture=x86_64)
+  Socket L#0: (P#0, CPUVendor=GenuineIntel, CPUFamilyNumber=6, CPUModelNumber=23, CPUModel="Intel(R) Core(TM)2 Duo CPU     T6500  @ 2.10GHz")
+    L2Cache L#0: (P#-1, size=2048KB, linesize=64, ways=8)
+      L1dCache L#0: (P#-1, size=32KB, linesize=64, ways=8)
+        Core L#0: (P#0)
+          PU L#0: (P#0)
+      L1dCache L#1: (P#-1, size=32KB, linesize=64, ways=8)
+        Core L#1: (P#1)
+          PU L#1: (P#1)
+INFO (hwloc): Thread CPU bindings:
+  MPI process 0 on host 0 (process 0 of 1 on this host)
+    OpenMP thread 0: PU set L#{0-1} P#{0-1}
+    OpenMP thread 1: PU set L#{0-1} P#{0-1}
+INFO (hwloc): Setting thread CPU bindings:
+INFO (hwloc): Thread CPU bindings:
+  MPI process 0 on host 0 (process 0 of 1 on this host)
+    OpenMP thread 0: PU set L#{0} P#{0}
+    OpenMP thread 1: PU set L#{1} P#{1}
+INFO (hwloc): Extracting CPU/cache/memory properties:
+  There are 1 PUs per core (aka hardware SMT threads)
+  There are 1 threads per core (aka SMT threads used)
+  Cache (unknown name) has type "data" depth 1
+    size 32768 linesize 64 associativity 8 stride 4096, for 1 PUs
+  Cache (unknown name) has type "unified" depth 2
+    size 2097152 linesize 64 associativity 8 stride 262144, for 2 PUs
+  Memory has type "local" depth 0
+    size 4122345472 pagesize 4096, for 2 PUs
+INFO (Vectors): Using vector size 1 for architecture scalar (no vectorisation, 64-bit precision)
+--------------------------------------------------------------------------------
+AMR driver provided by Carpet
+--------------------------------------------------------------------------------
+AMR 0D ASCII I/O provided by CarpetIOASCII
+--------------------------------------------------------------------------------
+AMR 1D ASCII I/O provided by CarpetIOASCII
+--------------------------------------------------------------------------------
+AMR 2D ASCII I/O provided by CarpetIOASCII
+--------------------------------------------------------------------------------
+AMR 3D ASCII I/O provided by CarpetIOASCII
+--------------------------------------------------------------------------------
+
+INFO (Carpet): MPI is enabled
+INFO (Carpet): Carpet is running on 1 processes
+INFO (Carpet): This is process 0
+INFO (Carpet): OpenMP is enabled
+INFO (Carpet): This process contains 2 threads, this is thread 0
+INFO (Carpet): There are 2 threads in total
+INFO (Carpet): There are 2 threads per process
+INFO (Carpet): This process runs on host fdea4908, pid=11102
+INFO (Carpet): This process runs on 2 cores: 0-1
+INFO (Carpet): Thread 0 runs on 1 core: 0
+INFO (Carpet): Thread 1 runs on 1 core: 1
+INFO (Carpet): This simulation is running in 3 dimensions
+INFO (Carpet): Boundary specification for map 0:
+   nboundaryzones: [[1,1,1],[1,1,1]]
+   is_internal   : [[0,0,0],[0,0,0]]
+   is_staggered  : [[0,0,0],[0,0,0]]
+   shiftout      : [[0,0,0],[0,0,0]]
+INFO (Carpet): CoordBase domain specification for map 0:
+   physical extent: [-0.5,-0.5,-0.5] : [0.5,0.5,0.5]   ([1,1,1])
+   interior extent: [-0.4375,-0.4375,-0.4375] : [0.4375,0.4375,0.4375]   ([0.875,0.875,0.875])
+   exterior extent: [-0.5,-0.5,-0.5] : [0.5,0.5,0.5]   ([1,1,1])
+   base_spacing   : [0.0625,0.0625,0.0625]
+INFO (Carpet): Adapted domain specification for map 0:
+   convergence factor: 2
+   convergence level : 0
+   physical extent   : [-0.5,-0.5,-0.5] : [0.5,0.5,0.5]   ([1,1,1])
+   interior extent   : [-0.4375,-0.4375,-0.4375] : [0.4375,0.4375,0.4375]   ([0.875,0.875,0.875])
+   exterior extent   : [-0.5,-0.5,-0.5] : [0.5,0.5,0.5]   ([1,1,1])
+   spacing           : [0.0625,0.0625,0.0625]
+INFO (Carpet): Base grid specification for map 0:
+   number of grid points             : [17,17,17]
+   number of coarse grid ghost points: [[3,3,3],[3,3,3]]
+INFO (Carpet): Buffer zone counts (excluding ghosts):
+   [0]: [[0,0,0],[0,0,0]]
+   [1]: [[9,9,9],[9,9,9]]
+   [2]: [[9,9,9],[9,9,9]]
+INFO (Carpet): Overlap zone counts:
+   [0]: [[0,0,0],[0,0,0]]
+   [1]: [[0,0,0],[0,0,0]]
+   [2]: [[0,0,0],[0,0,0]]
+INFO (Carpet): Group and variable statistics:
+INFO (Carpet):    There are 7 grid functions in 4 groups
+INFO (Carpet):    There are 146 grid scalars in 13 groups
+INFO (Carpet):    There are 80 1-dimensional grid arrays in 6 groups
+INFO (Carpet):    There are 0 2-dimensional grid arrays in 0 groups
+INFO (Carpet):    There are 0 3-dimensional grid arrays in 0 groups
+INFO (Carpet):    (The number of variables counts all time levels)
+INFO (CarpetIOASCII): I/O Method 'IOASCII_0D' registered: 0D AMR output of grid variables to ASCII files
+INFO (CarpetIOASCII): I/O Method 'IOASCII_1D' registered: 1D AMR output of grid variables to ASCII files
+INFO (CarpetIOASCII): I/O Method 'IOASCII_2D' registered: 2D AMR output of grid variables to ASCII files
+INFO (CarpetIOASCII): I/O Method 'IOASCII_3D' registered: 3D AMR output of grid variables to ASCII files
+INFO (CarpetRegrid2): Initialising position of centre 0 to [0,0,0]
+INFO (Vectors): Testing vectorisation... [errors may result in segfaults]
+WARNING[L1,P0] (CarpetLib): 
+/home/rhaas/postdoc/gr/CactusTAPIR/configs/sim/build/CarpetLib/dh.cc:845:
+   [ml=0 rl=1 c=0] The following grid structure consistency check failed:
+   Refinement prolongation: Send region must be contained in exterior
+   send <= obox.exterior
+INFO (Vectors): 92/92 tests passed 
+INFO (CarpetRegrid2): Centre 1 is at position [0,0,0] with 3 levels
+INFO (CarpetRegrid2): Regridding level 0 map 0 at iteration 0 time 0
+INFO (CarpetRegrid2): Enforcing grid structure properties, iteration 0
+INFO (CarpetRegrid2): Enforcing grid structure properties, iteration 0
+INFO (CarpetRegrid2): Enforcing grid structure properties, iteration 1
+
+ml=0 rl=1
+baseextent=([0,0,0]:[64,64,64]:[2,2,2]/[0,0,0]:[32,32,32]/[33,33,33]/35937)
+
+ml=0 rl=1 c=0
+extent=([0,0,0]:[64,64,64]:[2,2,2]/[0,0,0]:[32,32,32]/[33,33,33]/35937)
+outer_boundaries=[[1,1,1],[1,1,1]]
+processor=0
+
+ml=0 rl=1 c=0
+dh::full_dboxes:{
+   exterior: ([0,0,0]:[64,64,64]:[2,2,2]/[0,0,0]:[32,32,32]/[33,33,33]/35937)
+   is_outer_boundary: [[1,1,1],[1,1,1]]
+   outer_boundaries: bboxset<CCTK_INT4,3>(set<bbox>:{([0,0,0]:[64,64,0]:[2,2,2]/[0,0,0]:[32,32,0]/[33,33,1]/1089),([0,0,2]:[64,0,62]:[2,2,2]/[0,0,1]:[32,0,31]/[33,1,31]/1023),([0,2,2]:[0,62,62]:[2,2,2]/[0,1,1]:[0,31,31]/[1,31,31]/961),([64,2,2]:[64,62,62]:[2,2,2]/[32,1,1]:[32,31,31]/[1,31,31]/961),([0,64,2]:[64,64,62]:[2,2,2]/[0,32,1]:[32,32,31]/[33,1,31]/1023),([0,0,64]:[64,64,64]:[2,2,2]/[0,0,32]:[32,32,32]/[33,33,1]/1089)},stride:[2,2,2],offset:[0,0,0])
+   communicated: ([2,2,2]:[62,62,62]:[2,2,2]/[1,1,1]:[31,31,31]/[31,31,31]/29791)
+   boundaries: bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0])
+   owned: ([2,2,2]:[62,62,62]:[2,2,2]/[1,1,1]:[31,31,31]/[31,31,31]/29791)
+   buffers: bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0])
+   overlaps: bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0])
+   active: bboxset<CCTK_INT4,3>(set<bbox>:{([2,2,2]:[62,62,62]:[2,2,2]/[1,1,1]:[31,31,31]/[31,31,31]/29791)},stride:[2,2,2],offset:[0,0,0])
+   sync: bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0])
+   bndref: bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0])
+   ghosts: bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0])
+   interior: ([0,0,0]:[64,64,64]:[2,2,2]/[0,0,0]:[32,32,32]/[33,33,33]/35937)
+}
+
+ml=0 rl=2
+baseextent=([0,0,0]:[64,64,64]:[1,1,1]/[0,0,0]:[64,64,64]/[65,65,65]/274625)
+
+ml=0 rl=2 c=0
+extent=([15,15,15]:[49,49,49]:[1,1,1]/[15,15,15]:[49,49,49]/[35,35,35]/42875)
+outer_boundaries=[[0,0,0],[0,0,0]]
+processor=0
+
+ml=0 rl=2 c=0
+dh::full_dboxes:{
+   exterior: ([12,12,12]:[52,52,52]:[1,1,1]/[12,12,12]:[52,52,52]/[41,41,41]/68921)
+   is_outer_boundary: [[0,0,0],[0,0,0]]
+   outer_boundaries: bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])
+   communicated: ([12,12,12]:[52,52,52]:[1,1,1]/[12,12,12]:[52,52,52]/[41,41,41]/68921)
+   boundaries: bboxset<CCTK_INT4,3>(set<bbox>:{([12,12,12]:[52,52,14]:[1,1,1]/[12,12,12]:[52,52,14]/[41,41,3]/5043),([12,12,15]:[52,14,49]:[1,1,1]/[12,12,15]:[52,14,49]/[41,3,35]/4305),([12,15,15]:[14,49,49]:[1,1,1]/[12,15,15]:[14,49,49]/[3,35,35]/3675),([50,15,15]:[52,49,49]:[1,1,1]/[50,15,15]:[52,49,49]/[3,35,35]/3675),([12,50,15]:[52,52,49]:[1,1,1]/[12,50,15]:[52,52,49]/[41,3,35]/4305),([12,12,50]:[52,52,52]:[1,1,1]/[12,12,50]:[52,52,52]/[41,41,3]/5043)},stride:[1,1,1],offset:[0,0,0])
+   owned: ([15,15,15]:[49,49,49]:[1,1,1]/[15,15,15]:[49,49,49]/[35,35,35]/42875)
+   buffers: bboxset<CCTK_INT4,3>(set<bbox>:{([15,15,15]:[49,49,23]:[1,1,1]/[15,15,15]:[49,49,23]/[35,35,9]/11025),([15,15,24]:[49,23,40]:[1,1,1]/[15,15,24]:[49,23,40]/[35,9,17]/5355),([15,24,24]:[23,40,40]:[1,1,1]/[15,24,24]:[23,40,40]/[9,17,17]/2601),([41,24,24]:[49,40,40]:[1,1,1]/[41,24,24]:[49,40,40]/[9,17,17]/2601),([15,41,24]:[49,49,40]:[1,1,1]/[15,41,24]:[49,49,40]/[35,9,17]/5355),([15,15,41]:[49,49,49]:[1,1,1]/[15,15,41]:[49,49,49]/[35,35,9]/11025)},stride:[1,1,1],offset:[0,0,0])
+   overlaps: bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])
+   active: bboxset<CCTK_INT4,3>(set<bbox>:{([24,24,24]:[40,40,40]:[1,1,1]/[24,24,24]:[40,40,40]/[17,17,17]/4913)},stride:[1,1,1],offset:[0,0,0])
+   sync: bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])
+   bndref: bboxset<CCTK_INT4,3>(set<bbox>:{([12,12,12]:[52,52,23]:[1,1,1]/[12,12,12]:[52,52,23]/[41,41,12]/20172),([12,12,24]:[52,23,40]:[1,1,1]/[12,12,24]:[52,23,40]/[41,12,17]/8364),([12,24,24]:[23,40,40]:[1,1,1]/[12,24,24]:[23,40,40]/[12,17,17]/3468),([41,24,24]:[52,40,40]:[1,1,1]/[41,24,24]:[52,40,40]/[12,17,17]/3468),([12,41,24]:[52,52,40]:[1,1,1]/[12,41,24]:[52,52,40]/[41,12,17]/8364),([12,12,41]:[52,52,52]:[1,1,1]/[12,12,41]:[52,52,52]/[41,41,12]/20172)},stride:[1,1,1],offset:[0,0,0])
+   ghosts: bboxset<CCTK_INT4,3>(set<bbox>:{([12,12,12]:[52,52,14]:[1,1,1]/[12,12,12]:[52,52,14]/[41,41,3]/5043),([12,12,15]:[52,14,49]:[1,1,1]/[12,12,15]:[52,14,49]/[41,3,35]/4305),([12,15,15]:[14,49,49]:[1,1,1]/[12,15,15]:[14,49,49]/[3,35,35]/3675),([50,15,15]:[52,49,49]:[1,1,1]/[50,15,15]:[52,49,49]/[3,35,35]/3675),([12,50,15]:[52,52,49]:[1,1,1]/[12,50,15]:[52,52,49]/[41,3,35]/4305),([12,12,50]:[52,52,52]:[1,1,1]/[12,12,50]:[52,52,52]/[41,41,3]/5043)},stride:[1,1,1],offset:[0,0,0])
+   interior: ([15,15,15]:[49,49,49]:[1,1,1]/[15,15,15]:[49,49,49]/[35,35,35]/42875)
+}
+
+ml=0 rl=0
+baseextent=([0,0,0]:[64,64,64]:[4,4,4]/[0,0,0]:[16,16,16]/[17,17,17]/4913)
+
+ml=0 rl=0 c=0
+extent=([0,0,0]:[64,64,64]:[4,4,4]/[0,0,0]:[16,16,16]/[17,17,17]/4913)
+outer_boundaries=[[1,1,1],[1,1,1]]
+processor=0
+
+ml=0 rl=0 c=0
+dh::light_dboxes:{
+   exterior: ([0,0,0]:[64,64,64]:[4,4,4]/[0,0,0]:[16,16,16]/[17,17,17]/4913)
+   owned: ([4,4,4]:[60,60,60]:[4,4,4]/[1,1,1]:[15,15,15]/[15,15,15]/3375)
+   interior: ([0,0,0]:[64,64,64]:[4,4,4]/[0,0,0]:[16,16,16]/[17,17,17]/4913)
+   active_size: 216000
+}
+
+ml=0 rl=0 lc=0 c=0
+dh::local_dboxes:{
+   buffers: bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0])
+   overlaps: bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0])
+   active: bboxset<CCTK_INT4,3>(set<bbox>:{([4,4,4]:[60,60,60]:[4,4,4]/[1,1,1]:[15,15,15]/[15,15,15]/3375)},stride:[4,4,4],offset:[0,0,0])
+   prolongation_boundary: [bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])]
+   restriction_boundary: [bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([4,4,4]:[60,60,60]:[4,4,4]/[1,1,1]:[15,15,15]/[15,15,15]/3375)},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[4,4,4],offset:[0,0,0])]
+   restricted_region: bboxset<CCTK_INT4,3>(set<bbox>:{([4,4,4]:[60,60,60]:[4,4,4]/[1,1,1]:[15,15,15]/[15,15,15]/3375)},stride:[4,4,4],offset:[0,0,0])
+   unused_region: bboxset<CCTK_INT4,3>(set<bbox>:{([16,16,16]:[48,48,48]:[4,4,4]/[4,4,4]:[12,12,12]/[9,9,9]/729)},stride:[4,4,4],offset:[0,0,0])
+   coarse_boundary: [[bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])],[bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])],[bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])]]
+   fine_boundary: [[bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])],[bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])],[bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])]]
+}
+
+ml=0 rl=0
+dh::level_dboxes:{
+   active: bboxset<CCTK_INT4,3>(set<bbox>:{([4,4,4]:[60,60,60]:[4,4,4]/[1,1,1]:[15,15,15]/[15,15,15]/3375)},stride:[4,4,4],offset:[0,0,0])
+}
+
+ml=0 rl=0
+dh::fast_dboxes:{
+   fast_mg_rest_sendrecv: []
+   fast_mg_prol_sendrecv: []
+   fast_ref_prol_sendrecv: []
+   fast_ref_rest_sendrecv: [(send:(ext:([4,4,4]:[60,60,60]:[2,2,2]/[2,2,2]:[30,30,30]/[29,29,29]/24389),c:0),recv:(ext:([4,4,4]:[60,60,60]:[4,4,4]/[1,1,1]:[15,15,15]/[15,15,15]/3375),c:0))]
+   fast_sync_sendrecv: []
+   fast_ref_bnd_prol_sendrecv: []
+   fast_ref_bnd_prol2_sendrecv: []
+   fast_ref_refl_sendrecv_0_0: []
+   fast_ref_refl_sendrecv_0_1: []
+   fast_ref_refl_sendrecv_1_0: []
+   fast_ref_refl_sendrecv_1_1: []
+   fast_ref_refl_sendrecv_2_0: []
+   fast_ref_refl_sendrecv_2_1: []
+   fast_ref_refl_prol_sendrecv_0_0: []
+   fast_ref_refl_prol_sendrecv_0_1: []
+   fast_ref_refl_prol_sendrecv_1_0: []
+   fast_ref_refl_prol_sendrecv_1_1: []
+   fast_ref_refl_prol_sendrecv_2_0: []
+   fast_ref_refl_prol_sendrecv_2_1: []
+   do_init: 0
+   fast_old2new_sync_sendrecv: []
+   fast_old2new_ref_prol_sendrecv: []
+}
+
+ml=0 rl=1
+baseextent=([0,0,0]:[64,64,64]:[2,2,2]/[0,0,0]:[32,32,32]/[33,33,33]/35937)
+
+ml=0 rl=1 c=0
+extent=([0,0,0]:[64,64,64]:[2,2,2]/[0,0,0]:[32,32,32]/[33,33,33]/35937)
+outer_boundaries=[[1,1,1],[1,1,1]]
+processor=0
+
+ml=0 rl=1 c=0
+dh::light_dboxes:{
+   exterior: ([0,0,0]:[64,64,64]:[2,2,2]/[0,0,0]:[32,32,32]/[33,33,33]/35937)
+   owned: ([2,2,2]:[62,62,62]:[2,2,2]/[1,1,1]:[31,31,31]/[31,31,31]/29791)
+   interior: ([0,0,0]:[64,64,64]:[2,2,2]/[0,0,0]:[32,32,32]/[33,33,33]/35937)
+   active_size: 238328
+}
+
+ml=0 rl=1 lc=0 c=0
+dh::local_dboxes:{
+   buffers: bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0])
+   overlaps: bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0])
+   active: bboxset<CCTK_INT4,3>(set<bbox>:{([2,2,2]:[62,62,62]:[2,2,2]/[1,1,1]:[31,31,31]/[31,31,31]/29791)},stride:[2,2,2],offset:[0,0,0])
+   prolongation_boundary: [bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0])]
+   restriction_boundary: [bboxset<CCTK_INT4,3>(set<bbox>:{([24,24,24]:[24,24,24]:[2,2,2]/[12,12,12]:[12,12,12]/[1,1,1]/1)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([26,24,24]:[38,24,24]:[2,2,2]/[13,12,12]:[19,12,12]/[7,1,1]/7)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([40,24,24]:[40,24,24]:[2,2,2]/[20,12,12]:[20,12,12]/[1,1,1]/1)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,26,24]:[24,38,24]:[2,2,2]/[12,13,12]:[12,19,12]/[1,7,1]/7)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([26,26,24]:[38,38,24]:[2,2,2]/[13,13,12]:[19,19,12]/[7,7,1]/49)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([40,26,24]:[40,38,24]:[2,2,2]/[20,13,12]:[20,19,12]/[1,7,1]/7)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,40,24]:[24,40,24]:[2,2,2]/[12,20,12]:[12,20,12]/[1,1,1]/1)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([26,40,24]:[38,40,24]:[2,2,2]/[13,20,12]:[19,20,12]/[7,1,1]/7)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([40,40,24]:[40,40,24]:[2,2,2]/[20,20,12]:[20,20,12]/[1,1,1]/1)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,24,26]:[24,24,38]:[2,2,2]/[12,12,13]:[12,12,19]/[1,1,7]/7)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([26,24,26]:[38,24,38]:[2,2,2]/[13,12,13]:[19,12,19]/[7,1,7]/49)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([40,24,26]:[40,24,38]:[2,2,2]/[20,12,13]:[20,12,19]/[1,1,7]/7)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,26,26]:[24,38,38]:[2,2,2]/[12,13,13]:[12,19,19]/[1,7,7]/49)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([26,26,26]:[38,38,38]:[2,2,2]/[13,13,13]:[19,19,19]/[7,7,7]/343)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([40,26,26]:[40,38,38]:[2,2,2]/[20,13,13]:[20,19,19]/[1,7,7]/49)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,40,26]:[24,40,38]:[2,2,2]/[12,20,13]:[12,20,19]/[1,1,7]/7)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([26,40,26]:[38,40,38]:[2,2,2]/[13,20,13]:[19,20,19]/[7,1,7]/49)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([40,40,26]:[40,40,38]:[2,2,2]/[20,20,13]:[20,20,19]/[1,1,7]/7)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,24,40]:[24,24,40]:[2,2,2]/[12,12,20]:[12,12,20]/[1,1,1]/1)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([26,24,40]:[38,24,40]:[2,2,2]/[13,12,20]:[19,12,20]/[7,1,1]/7)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([40,24,40]:[40,24,40]:[2,2,2]/[20,12,20]:[20,12,20]/[1,1,1]/1)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,26,40]:[24,38,40]:[2,2,2]/[12,13,20]:[12,19,20]/[1,7,1]/7)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([26,26,40]:[38,38,40]:[2,2,2]/[13,13,20]:[19,19,20]/[7,7,1]/49)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([40,26,40]:[40,38,40]:[2,2,2]/[20,13,20]:[20,19,20]/[1,7,1]/7)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,40,40]:[24,40,40]:[2,2,2]/[12,20,20]:[12,20,20]/[1,1,1]/1)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([26,40,40]:[38,40,40]:[2,2,2]/[13,20,20]:[19,20,20]/[7,1,1]/7)},stride:[2,2,2],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([40,40,40]:[40,40,40]:[2,2,2]/[20,20,20]:[20,20,20]/[1,1,1]/1)},stride:[2,2,2],offset:[0,0,0])]
+   restricted_region: bboxset<CCTK_INT4,3>(set<bbox>:{([26,26,26]:[38,38,38]:[2,2,2]/[13,13,13]:[19,19,19]/[7,7,7]/343)},stride:[2,2,2],offset:[0,0,0])
+   unused_region: bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[2,2,2],offset:[0,0,0])
+   coarse_boundary: [[bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])],[bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])],[bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])]]
+   fine_boundary: [[bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])],[bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])],[bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])]]
+}
+
+ml=0 rl=1
+dh::level_dboxes:{
+   active: bboxset<CCTK_INT4,3>(set<bbox>:{([2,2,2]:[62,62,62]:[2,2,2]/[1,1,1]:[31,31,31]/[31,31,31]/29791)},stride:[2,2,2],offset:[0,0,0])
+}
+
+ml=0 rl=1
+dh::fast_dboxes:{
+   fast_mg_rest_sendrecv: []
+   fast_mg_prol_sendrecv: []
+   fast_ref_prol_sendrecv: [(send:(ext:([-8,-8,-8]:[72,72,72]:[4,4,4]/[-2,-2,-2]:[18,18,18]/[21,21,21]/9261),c:0),recv:(ext:([2,2,2]:[62,62,62]:[2,2,2]/[1,1,1]:[31,31,31]/[31,31,31]/29791),c:0))]
+   fast_ref_rest_sendrecv: [(send:(ext:([24,24,24]:[40,40,40]:[1,1,1]/[24,24,24]:[40,40,40]/[17,17,17]/4913),c:0),recv:(ext:([24,24,24]:[40,40,40]:[2,2,2]/[12,12,12]:[20,20,20]/[9,9,9]/729),c:0))]
+   fast_sync_sendrecv: []
+   fast_ref_bnd_prol_sendrecv: []
+   fast_ref_bnd_prol2_sendrecv: []
+   fast_ref_refl_sendrecv_0_0: []
+   fast_ref_refl_sendrecv_0_1: []
+   fast_ref_refl_sendrecv_1_0: []
+   fast_ref_refl_sendrecv_1_1: []
+   fast_ref_refl_sendrecv_2_0: []
+   fast_ref_refl_sendrecv_2_1: []
+   fast_ref_refl_prol_sendrecv_0_0: []
+   fast_ref_refl_prol_sendrecv_0_1: []
+   fast_ref_refl_prol_sendrecv_1_0: []
+   fast_ref_refl_prol_sendrecv_1_1: []
+   fast_ref_refl_prol_sendrecv_2_0: []
+   fast_ref_refl_prol_sendrecv_2_1: []
+   do_init: 0
+   fast_old2new_sync_sendrecv: []
+   fast_old2new_ref_prol_sendrecv: []
+}
+
+ml=0 rl=2
+baseextent=([0,0,0]:[64,64,64]:[1,1,1]/[0,0,0]:[64,64,64]/[65,65,65]/274625)
+
+ml=0 rl=2 c=0
+extent=([15,15,15]:[49,49,49]:[1,1,1]/[15,15,15]:[49,49,49]/[35,35,35]/42875)
+outer_boundaries=[[0,0,0],[0,0,0]]
+processor=0
+
+ml=0 rl=2 c=0
+dh::light_dboxes:{
+   exterior: ([12,12,12]:[52,52,52]:[1,1,1]/[12,12,12]:[52,52,52]/[41,41,41]/68921)
+   owned: ([15,15,15]:[49,49,49]:[1,1,1]/[15,15,15]:[49,49,49]/[35,35,35]/42875)
+   interior: ([15,15,15]:[49,49,49]:[1,1,1]/[15,15,15]:[49,49,49]/[35,35,35]/42875)
+   active_size: 4913
+}
+
+ml=0 rl=2 lc=0 c=0
+dh::local_dboxes:{
+   buffers: bboxset<CCTK_INT4,3>(set<bbox>:{([15,15,15]:[49,49,23]:[1,1,1]/[15,15,15]:[49,49,23]/[35,35,9]/11025),([15,15,24]:[49,23,40]:[1,1,1]/[15,15,24]:[49,23,40]/[35,9,17]/5355),([15,24,24]:[23,40,40]:[1,1,1]/[15,24,24]:[23,40,40]/[9,17,17]/2601),([41,24,24]:[49,40,40]:[1,1,1]/[41,24,24]:[49,40,40]/[9,17,17]/2601),([15,41,24]:[49,49,40]:[1,1,1]/[15,41,24]:[49,49,40]/[35,9,17]/5355),([15,15,41]:[49,49,49]:[1,1,1]/[15,15,41]:[49,49,49]/[35,35,9]/11025)},stride:[1,1,1],offset:[0,0,0])
+   overlaps: bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])
+   active: bboxset<CCTK_INT4,3>(set<bbox>:{([24,24,24]:[40,40,40]:[1,1,1]/[24,24,24]:[40,40,40]/[17,17,17]/4913)},stride:[1,1,1],offset:[0,0,0])
+   prolongation_boundary: [bboxset<CCTK_INT4,3>(set<bbox>:{([40,23,23]:[40,23,23]:[1,1,1]/[40,23,23]:[40,23,23]/[1,1,1]/1)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,40,23]:[40,40,23]:[1,1,1]/[24,40,23]:[40,40,23]/[17,1,1]/17)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,23,23]:[24,23,23]:[1,1,1]/[24,23,23]:[24,23,23]/[1,1,1]/1)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([40,24,23]:[40,40,23]:[1,1,1]/[40,24,23]:[40,40,23]/[1,17,1]/17)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,24,40]:[40,40,40]:[1,1,1]/[24,24,40]:[40,40,40]/[17,17,1]/289)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,24,23]:[24,40,23]:[1,1,1]/[24,24,23]:[24,40,23]/[1,17,1]/17)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([40,41,23]:[40,41,23]:[1,1,1]/[40,41,23]:[40,41,23]/[1,1,1]/1)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,24,23]:[40,24,23]:[1,1,1]/[24,24,23]:[40,24,23]/[17,1,1]/17)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,41,23]:[24,41,23]:[1,1,1]/[24,41,23]:[24,41,23]/[1,1,1]/1)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([40,23,24]:[40,23,40]:[1,1,1]/[40,23,24]:[40,23,40]/[1,1,17]/17)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,40,24]:[40,40,40]:[1,1,1]/[24,40,24]:[40,40,40]/[17,1,17]/289)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,23,24]:[24,23,40]:[1,1,1]/[24,23,24]:[24,23,40]/[1,1,17]/17)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([40,24,24]:[40,40,40]:[1,1,1]/[40,24,24]:[40,40,40]/[1,17,17]/289)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([12,12,12]:[52,52,23]:[1,1,1]/[12,12,12]:[52,52,23]/[41,41,12]/20172),([12,12,24]:[52,23,40]:[1,1,1]/[12,12,24]:[52,23,40]/[41,12,17]/8364),([12,24,24]:[23,40,40]:[1,1,1]/[12,24,24]:[23,40,40]/[12,17,17]/3468),([41,24,24]:[52,40,40]:[1,1,1]/[41,24,24]:[52,40,40]/[12,17,17]/3468),([12,41,24]:[52,52,40]:[1,1,1]/[12,41,24]:[52,52,40]/[41,12,17]/8364),([12,12,41]:[52,52,52]:[1,1,1]/[12,12,41]:[52,52,52]/[41,41,12]/20172)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,24,24]:[24,40,40]:[1,1,1]/[24,24,24]:[24,40,40]/[1,17,17]/289)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([40,41,24]:[40,41,40]:[1,1,1]/[40,41,24]:[40,41,40]/[1,1,17]/17)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,24,24]:[40,24,40]:[1,1,1]/[24,24,24]:[40,24,40]/[17,1,17]/289)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,41,24]:[24,41,40]:[1,1,1]/[24,41,24]:[24,41,40]/[1,1,17]/17)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([40,23,41]:[40,23,41]:[1,1,1]/[40,23,41]:[40,23,41]/[1,1,1]/1)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,40,41]:[40,40,41]:[1,1,1]/[24,40,41]:[40,40,41]/[17,1,1]/17)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,23,41]:[24,23,41]:[1,1,1]/[24,23,41]:[24,23,41]/[1,1,1]/1)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([40,24,41]:[40,40,41]:[1,1,1]/[40,24,41]:[40,40,41]/[1,17,1]/17)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,24,24]:[40,40,24]:[1,1,1]/[24,24,24]:[40,40,24]/[17,17,1]/289)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,24,41]:[24,40,41]:[1,1,1]/[24,24,41]:[24,40,41]/[1,17,1]/17)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([40,41,41]:[40,41,41]:[1,1,1]/[40,41,41]:[40,41,41]/[1,1,1]/1)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,24,41]:[40,24,41]:[1,1,1]/[24,24,41]:[40,24,41]/[17,1,1]/17)},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{([24,41,41]:[24,41,41]:[1,1,1]/[24,41,41]:[24,41,41]/[1,1,1]/1)},stride:[1,1,1],offset:[0,0,0])]
+   restriction_boundary: [bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])]
+   restricted_region: bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])
+   unused_region: bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])
+   coarse_boundary: [[bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])],[bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])],[bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])]]
+   fine_boundary: [[bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])],[bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])],[bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0]),bboxset<CCTK_INT4,3>(set<bbox>:{},stride:[1,1,1],offset:[0,0,0])]]
+}
+
+ml=0 rl=2
+dh::level_dboxes:{
+   active: bboxset<CCTK_INT4,3>(set<bbox>:{([24,24,24]:[40,40,40]:[1,1,1]/[24,24,24]:[40,40,40]/[17,17,17]/4913)},stride:[1,1,1],offset:[0,0,0])
+}
+
+ml=0 rl=2
+dh::fast_dboxes:{
+   fast_mg_rest_sendrecv: []
+   fast_mg_prol_sendrecv: []
+   fast_ref_prol_sendrecv: [(send:(ext:([20,20,20]:[44,44,44]:[2,2,2]/[10,10,10]:[22,22,22]/[13,13,13]/2197),c:0),recv:(ext:([24,24,24]:[40,40,40]:[1,1,1]/[24,24,24]:[40,40,40]/[17,17,17]/4913),c:0))]
+   fast_ref_rest_sendrecv: []
+WARNING level 0 from host fdea4908.spdns.de process 0
+  while executing schedule bin (none), routine (no thorn)::(no routine)
+  in thorn CarpetLib, file /home/rhaas/postdoc/gr/CactusTAPIR/configs/sim/build/CarpetLib/dh.cc:2221:
+  -> The grid structure is inconsistent.  It is impossible to continue.
+cactus_sim: /home/rhaas/postdoc/gr/CactusTAPIR/configs/sim/build/Carpet/helpers.cc:315: int Carpet::Abort(const cGH*, int): Assertion `0' failed.
+   fast_sync_sendrecv: []
+   fast_ref_bnd_prol_sendrecv: [(send:(ext:([8,8,8]:[56,56,28]:[2,2,2]/[4,4,4]:[28,28,14]/[25,25,11]/6875),c:0),recv:(ext:([12,12,12]:[52,52,23]:[1,1,1]/[12,12,12]:[52,52,23]/[41,41,12]/20172),c:0)),(send:(ext:([8,8,20]:[56,28,44]:[2,2,2]/[4,4,10]:[28,14,22]/[25,11,13]/3575),c:0),recv:(ext:([12,12,24]:[52,23,40]:[1,1,1]/[12,12,24]:[52,23,40]/[41,12,17]/8364),c:0)),(send:(ext:([8,20,20]:[28,44,44]:[2,2,2]/[4,10,10]:[14,22,22]/[11,13,13]/1859),c:0),recv:(ext:([12,24,24]:[23,40,40]:[1,1,1]/[12,24,24]:[23,40,40]/[12,17,17]/3468),c:0)),(send:(ext:([36,20,20]:[56,44,44]:[2,2,2]/[18,10,10]:[28,22,22]/[11,13,13]/1859),c:0),recv:(ext:([41,24,24]:[52,40,40]:[1,1,1]/[41,24,24]:[52,40,40]/[12,17,17]/3468),c:0)),(send:(ext:([8,36,20]:[56,56,44]:[2,2,2]/[4,18,10]:[28,28,22]/[25,11,13]/3575),c:0),recv:(ext:([12,41,24]:[52,52,40]:[1,1,1]/[12,41,24]:[52,52,40]/[41,12,17]/8364),c:0)),(send:(ext:([8,8,36]:[56,56,56]:[2,2,2]/[4,4,18]:[28,28,28]/[25,25,11]/6875),c:0),recv:(ext:([12,12,41]:[52,52,52]:[1,1,1]/[12,12,41]:[52,52,52]/[41,41,12]/20172),c:0))]
+   fast_ref_bnd_prol2_sendrecv: [(send:(ext:([16,16,16]:[48,48,28]:[2,2,2]/[8,8,8]:[24,24,14]/[17,17,7]/2023),c:0),recv:(ext:([20,20,20]:[44,44,23]:[1,1,1]/[20,20,20]:[44,44,23]/[25,25,4]/2500),c:0)),(send:(ext:([16,16,20]:[48,28,44]:[2,2,2]/[8,8,10]:[24,14,22]/[17,7,13]/1547),c:0),recv:(ext:([20,20,24]:[44,23,40]:[1,1,1]/[20,20,24]:[44,23,40]/[25,4,17]/1700),c:0)),(send:(ext:([16,20,20]:[28,44,44]:[2,2,2]/[8,10,10]:[14,22,22]/[7,13,13]/1183),c:0),recv:(ext:([20,24,24]:[23,40,40]:[1,1,1]/[20,24,24]:[23,40,40]/[4,17,17]/1156),c:0)),(send:(ext:([36,20,20]:[48,44,44]:[2,2,2]/[18,10,10]:[24,22,22]/[7,13,13]/1183),c:0),recv:(ext:([41,24,24]:[44,40,40]:[1,1,1]/[41,24,24]:[44,40,40]/[4,17,17]/1156),c:0)),(send:(ext:([16,36,20]:[48,48,44]:[2,2,2]/[8,18,10]:[24,24,22]/[17,7,13]/1547),c:0),recv:(ext:([20,41,24]:[44,44,40]:[1,1,1]/[20,41,24]:[44,44,40]/[25,4,17]/1700),c:0)),(send:(ext:([16,16,36]:[48,48,48]:[2,2,2]/[8,8,18]:[24,24,24]/[17,17,7]/2023),c:0),recv:(ext:([20,20,41]:[44,44,44]:[1,1,1]/[20,20,41]:[44,44,44]/[25,25,4]/2500),c:0))]
+   fast_ref_refl_sendrecv_0_0: []
+   fast_ref_refl_sendrecv_0_1: []
+   fast_ref_refl_sendrecv_1_0: []
+   fast_ref_refl_sendrecv_1_1: []
+   fast_ref_refl_sendrecv_2_0: []
+   fast_ref_refl_sendrecv_2_1: []
+   fast_ref_refl_prol_sendrecv_0_0: []
+   fast_ref_refl_prol_sendrecv_0_1: []
+   fast_ref_refl_prol_sendrecv_1_0: []
+   fast_ref_refl_prol_sendrecv_1_1: []
+   fast_ref_refl_prol_sendrecv_2_0: []
+   fast_ref_refl_prol_sendrecv_2_1: []
+   do_init: 0
+   fast_old2new_sync_sendrecv: []
+   fast_old2new_ref_prol_sendrecv: []
+}
+
+memoryof(gh)=1228
+memoryof(dh)=94180
+memoryof(dh.light_boxes)=516
+memoryof(dh.local_boxes)=86928
+memoryof(dh.level_boxes)=3384
+memoryof(dh.fast_boxes)=2852
+#gfs=4
+memoryof(gfs)=1024
+WARNING level 0 from host fdea4908.spdns.de process 0
+  while executing schedule bin (none), routine (no thorn)::(no routine)
+  in thorn CarpetLib, file /home/rhaas/postdoc/gr/CactusTAPIR/configs/sim/build/CarpetLib/dh.cc:2221:
+  -> The grid structure is inconsistent.  It is impossible to continue.
+Rank 0 with PID 11102 received signal 6
+Writing backtrace to ./backtrace.0.txt

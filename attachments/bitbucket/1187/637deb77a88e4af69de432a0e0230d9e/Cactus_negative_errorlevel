@@ -1,0 +1,43 @@
+Index: main/WarnLevel.c
+===================================================================
+--- main/WarnLevel.c	(revision 4911)
++++ main/WarnLevel.c	(working copy)
+@@ -1109,8 +1109,14 @@
+ {
+   int retval;
+ 
+-  if (level <= warning_level)
++  if (level < 0)
+   {
++    CCTK_VWarn (3, __LINE__, __FILE__, "Cactus",
++                "Error level cannot be negative (%d requested)", level);
++    retval = 0;
++  }
++  else if (level <= warning_level)
++  {
+     if (error_level != level)
+     {
+       retval = level > error_level ? +1 : -1;
+Index: main/CommandLine.c
+===================================================================
+--- main/CommandLine.c	(revision 4911)
++++ main/CommandLine.c	(working copy)
+@@ -379,7 +379,17 @@
+   errorlevel = strtol (argument, &endptr, 10);
+   if (endptr && *endptr == 0)
+   {
+-    CCTKi_SetErrorLevel (errorlevel);
++    if (errorlevel < 0)
++    {
++      CCTK_VWarn (0, __LINE__, __FILE__, "Cactus",
++                  "Error level cannot be negative, but %d was requested.",
++                  (int)errorlevel);
++      CCTK_Exit (NULL, 1);
++    }
++    else
++    {
++      CCTKi_SetErrorLevel (errorlevel);
++    }
+   }
+   else
+   {

@@ -1,0 +1,69 @@
+From d97101336010eb5ac68040ab497009f214fa6bf6 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Wed, 7 Mar 2012 02:37:29 -0800
+Subject: [PATCH 07/12] Hydro_Analysis: make parameters steerable
+
+---
+ param.ccl |   16 ++++++++--------
+ 1 file changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index eaf4475..a73b004 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -1,6 +1,6 @@
+ # Parameter definitions for thorn Hydro_Analysis
+ 
+-BOOLEAN Hydro_Analysis_comp_rho_max "Look for the value and location of the maximum of rho"
++BOOLEAN Hydro_Analysis_comp_rho_max "Look for the value and location of the maximum of rho" STEERABLE = recover
+ {
+ } "false"
+ 
+@@ -18,20 +18,20 @@ INT verbosity_level "how much information to ouptut to the logs" STEERABLE = alw
+   2 :: "also output location of maxima" 
+ } 1
+ 
+-BOOLEAN Hydro_Analysis_rho_max_loc_only_positive_x "Restrict location search for density maximum to positive values of x"
++BOOLEAN Hydro_Analysis_rho_max_loc_only_positive_x "Restrict location search for density maximum to positive values of x" STEERABLE = always
+ {
+ } "false"
+ 
+ 
+-BOOLEAN Hydro_Analysis_comp_vol_weighted_center_of_mass "Look for the location of the volume-weighted center of mass"
++BOOLEAN Hydro_Analysis_comp_vol_weighted_center_of_mass "Look for the location of the volume-weighted center of mass" STEERABLE = recover
+ {
+ } "false"
+ 
+-BOOLEAN Hydro_Analysis_comp_rho_max_origin_distance "Look for the proper distance between the maximum of the density and the origin (along a straight coordinate line)"
++BOOLEAN Hydro_Analysis_comp_rho_max_origin_distance "Look for the proper distance between the maximum of the density and the origin (along a straight coordinate line)" STEERABLE = recover
+ {
+ } "false"
+ 
+-CCTK_INT Hydro_Analysis_rho_max_origin_distance_npoints "Number of points along the straight line for measuring proper distance"
++CCTK_INT Hydro_Analysis_rho_max_origin_distance_npoints "Number of points along the straight line for measuring proper distance" STEERABLE = always
+ {
+   1:* :: "Any positive number"
+ } 100
+@@ -57,16 +57,16 @@ STRING Hydro_Analysis_interpolator_coordinates "Coordinate system" STEERABLE=alw
+   ".*" :: "must be a registered coordinate system"
+ } "cart3d"
+ 
+-BOOLEAN Hydro_Analysis_comp_vol_weighted_core_center_of_mass "compute center of mass in region r_core around densest point"
++BOOLEAN Hydro_Analysis_comp_vol_weighted_core_center_of_mass "compute center of mass in region r_core around densest point" STEERABLE = recover
+ {
+ } "no"
+ 
+-CCTK_REAL Hydro_Analysis_r_core "size of region around densest point in which to compute CoM"
++CCTK_REAL Hydro_Analysis_r_core "size of region around densest point in which to compute CoM" STEERABLE = always
+ {
+   0:* :: "any positive radius. suggested is 1/2 of stellar radius"
+ } 4.0
+ 
+-CCTK_REAL Hydro_Analysis_rho_core_rel_min "only include points where rho>rho_rel_min*rho_max when computing CoM around densest point"
++CCTK_REAL Hydro_Analysis_rho_core_rel_min "only include points where rho>rho_rel_min*rho_max when computing CoM around densest point" STEERABLE = always
+ {
+   0:* :: "any positive value. For best results should be such that the region selected is smaller than r_core. 1/10 of rho_max should be fine."
+ } 0.01
+-- 
+1.7.10.4
+

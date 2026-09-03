@@ -1,0 +1,45 @@
+Index: src/RadiationBoundary.c
+===================================================================
+--- src/RadiationBoundary.c	(revision 317)
++++ src/RadiationBoundary.c	(working copy)
+@@ -159,8 +159,6 @@
+                       CCTK_INT *faces, CCTK_INT *widths, CCTK_INT *tables)
+ {
+   int i, j, k, gi, gdim, max_gdim, err, retval;
+-  CCTK_INT value_type, value_size;
+-  char *prev_time_level_name;
+ 
+   /* variables to pass to ApplyBndRadiative */
+   CCTK_INT *width_alldirs;  /* width of boundary in all directions */
+@@ -235,31 +233,6 @@
+                  CCTK_VarName(vars[i]));
+     } else
+     {
+-      /* Previous time level (for GVs which don't use Cactus time levels)
+-         (to be deprecated) */
+-      if (Util_TableQueryValueInfo(tables[i], &value_type, &value_size,
+-                                   "PREVIOUS_TIME_LEVEL"))
+-      {
+-        /* Key for previous time level is set */
+-        if (value_type==CCTK_VARIABLE_STRING)
+-        {
+-          prev_time_level_name = malloc(value_size*sizeof(char));
+-          Util_TableGetString(tables[i], value_size, prev_time_level_name,
+-                              "PREVIOUS_TIME_LEVEL");
+-          prev_time_level = (CCTK_INT) CCTK_VarIndex(prev_time_level_name);
+-          free(prev_time_level_name);
+-        } else if (value_type==CCTK_VARIABLE_INT)
+-        {
+-          Util_TableGetInt(tables[i], &prev_time_level, "PREVIOUS_TIME_LEVEL");
+-        } else
+-        {
+-          CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
+-                     "Invalid data type for key \"PREVIOUS_TIME_LEVEL\" "
+-                     "Please use CCTK_STRING for the variable name, "
+-                     "or CCTK_INT for the variable index.");
+-        }
+-      }
+-
+       /* Wave speed */
+       Util_TableGetReal(tables[i], &speed, "SPEED");
+     }

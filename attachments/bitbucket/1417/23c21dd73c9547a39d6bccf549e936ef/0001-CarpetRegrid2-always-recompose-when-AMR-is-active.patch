@@ -1,0 +1,51 @@
+From 4a3e904fa68f26d5601e626dbd08c321c2e14d5a Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Tue, 6 Aug 2013 01:17:25 -0700
+Subject: [PATCH] CarpetRegrid2: always recompose when AMR is active
+
+in particular ignore the fact that the fixed boxes have not changed
+---
+ Carpet/CarpetRegrid2/src/regrid.cc |    8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/Carpet/CarpetRegrid2/src/regrid.cc b/Carpet/CarpetRegrid2/src/regrid.cc
+index 01f70e3..1a7e941 100644
+--- a/Carpet/CarpetRegrid2/src/regrid.cc
++++ b/Carpet/CarpetRegrid2/src/regrid.cc
+@@ -537,14 +537,14 @@ namespace CarpetRegrid2 {
+       }
+     }
+     
+-    if (not force and do_recompose and * last_iteration != -1) {
++    if (not force and not adaptive_refinement
++        and do_recompose and * last_iteration != -1) {
+       
+       int lsh[2];
+       getvectorindex2 (cctkGH, "CarpetRegrid2::radii", lsh);
+       
+       // Regrid only if the regions have changed sufficiently
+       do_recompose = false;
+-      if (adaptive_refinement) do_recompose = true;
+       for (int n = 0; n < num_centres; ++ n) {
+         
+         // Regrid if a region became active or inactive
+@@ -720,14 +720,14 @@ namespace CarpetRegrid2 {
+       }
+     }
+     
+-    if (not force and do_recompose and * last_iteration != -1) {
++    if (not force and not adaptive_refinement
++        and do_recompose and * last_iteration != -1) {
+       
+       int lsh[2];
+       getvectorindex2 (cctkGH, "CarpetRegrid2::radii", lsh);
+       
+       // Regrid only if the regions have changed sufficiently
+       do_recompose = false;
+-      if (adaptive_refinement) do_recompose = true;
+       for (int n = 0; n < num_centres; ++ n) {
+         
+         // When debugging, sneakily add a new level, but skip the
+-- 
+1.7.10.4
+

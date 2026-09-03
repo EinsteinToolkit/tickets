@@ -1,0 +1,35 @@
+From 377bcace03b9f6fd6bc5b84ed8dac4d32ad8cd72 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Fri, 4 Feb 2011 15:28:38 +0100
+Subject: [PATCH 06/11] Fix Makefile so that it copies the generated files
+ even if the top-level thorn directory is not
+ WeylScal4
+
+---
+ m/Makefile |   10 +++++-----
+ 1 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/m/Makefile b/m/Makefile
+index 4d19481..2dec70c 100644
+--- a/m/Makefile
++++ b/m/Makefile
+@@ -10,11 +10,11 @@ WeylScal4.out: WeylScal4.m
+ 	./runmath.sh $^
+ 	grep --silent 'Thorn ./WeylScal4 created successfully' WeylScal4.out
+ 	for thorn in WeylScal4; do								  \
+-		./copy-if-changed.sh $$thorn/configuration.ccl ../../$$thorn/configuration.ccl && \
+-		./copy-if-changed.sh $$thorn/interface.ccl     ../../$$thorn/interface.ccl     && \
+-		./copy-if-changed.sh $$thorn/param.ccl         ../../$$thorn/param.ccl         && \
+-		./copy-if-changed.sh $$thorn/schedule.ccl      ../../$$thorn/schedule.ccl      && \
+-		./copy-if-changed.sh $$thorn/src               ../../$$thorn/src;		  \
++		./copy-if-changed.sh $$thorn/configuration.ccl ../configuration.ccl && \
++		./copy-if-changed.sh $$thorn/interface.ccl     ../interface.ccl     && \
++		./copy-if-changed.sh $$thorn/param.ccl         ../param.ccl         && \
++		./copy-if-changed.sh $$thorn/schedule.ccl      ../schedule.ccl      && \
++		./copy-if-changed.sh $$thorn/src               ../src;		  \
+ 	done
+ 
+ clean:
+-- 
+1.7.7.4
+

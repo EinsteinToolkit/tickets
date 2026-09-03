@@ -1,0 +1,196 @@
+Index: make/configure.in
+===================================================================
+--- make/configure.in	(revision 4856)
++++ make/configure.in	(working copy)
+@@ -1249,12 +1249,12 @@
+ 
+ # How to generate dependency info
+ AC_SUBST(C_DEPEND)
+-: ${C_DEPEND='$(CC) -E -M $(CPPFLAGS)'}
++: ${C_DEPEND='$(CC) -E -M $(CPPFLAGS) $(CFLAGS)'}
+ AC_SUBST(C_DEPEND_OUT)
+ : ${C_DEPEND_OUT=' > $@'}
+ 
+ AC_SUBST(CXX_DEPEND)
+-: ${CXX_DEPEND='$(CXX) -E -M $(CPPFLAGS)'}
++: ${CXX_DEPEND='$(CXX) -E -M $(CPPFLAGS) $(CXXFLAGS)'}
+ AC_SUBST(CXX_DEPEND_OUT)
+ : ${CXX_DEPEND_OUT=' > $@'}
+ 
+Index: make/known-architectures/linux
+===================================================================
+--- make/known-architectures/linux	(revision 4856)
++++ make/known-architectures/linux	(working copy)
+@@ -409,7 +409,7 @@
+        icc_c99='-c99'
+      fi
+      : ${CFLAGS="$icc_opt $icc_c99"}
+-     : ${C_DEPEND='$(CC) -M $(CPPFLAGS)'}
++     : ${C_DEPEND='$(CC) -M $(CPPFLAGS) $(CFLAGS)'}
+      if test $icc_version -ge 8; then
+        c_warn_flags='-Wall -w1 -Wcheck'
+      else
+@@ -486,7 +486,7 @@
+        cxx_warn_flags='-Wall -w1'
+      fi
+      : ${CXX_WARN_FLAGS="$cxx_warn_flags"}
+-     : ${CXX_DEPEND='$(CXX) -M $(CPPFLAGS)'}
++     : ${CXX_DEPEND='$(CXX) -M $(CPPFLAGS) $(CXXFLAGS)'}
+      CXX_VERSION="`$CXX -V 2>&1 | grep -i version | head -n1`"
+      : ${CXX_OPENMP_FLAGS='-openmp'}
+      ;;
+Index: make/known-architectures/hiuxwe2
+===================================================================
+--- make/known-architectures/hiuxwe2	(revision 4856)
++++ make/known-architectures/hiuxwe2	(working copy)
+@@ -76,8 +76,8 @@
+   fi
+ 
+   # /lib/cpp cannot generate dependencies on this machine but we have gcc.
+-  : ${C_DEPEND='gcc -E -M $(CPPFLAGS)'}
+-  : ${CXX_DEPEND='$(C_DEPEND)'}
++  : ${C_DEPEND='gcc -E -M $(CPPFLAGS) $(CFLAGS)'}
++  : ${CXX_DEPEND='$(C_DEPEND) $(CXXFLAGS)'}
+   : ${F_DEPEND='$(C_DEPEND) -x c'}
+   : ${F77_DEPEND='$(F_DEPEND)'}
+ 
+Index: make/known-architectures/hp-ux
+===================================================================
+--- make/known-architectures/hp-ux	(revision 4856)
++++ make/known-architectures/hp-ux	(working copy)
+@@ -17,8 +17,8 @@
+ 
+   : ${LIBS="cl F90 m"}
+   : ${LIBDIRS="/opt/fortran90/lib/"}
+-  : ${C_DEPEND='$(CPP) -M$@ $(CPPFLAGS)'}
+-  : ${CXX_DEPEND='$(CPP) -M$@ $(CPPFLAGS)'}
++  : ${C_DEPEND='$(CPP) -M$@ $(CPPFLAGS) $(CFLAGS)'}
++  : ${CXX_DEPEND='$(CPP) -M$@ $(CPPFLAGS) $(CXXFLAGS)'}
+   : ${F77_DEPEND='$(CPP) -M$@ $(CPPFLAGS)'}
+   : ${C_DEPEND_OUT='> /dev/null'}
+   : ${CXX_DEPEND_OUT='> /dev/null'}
+Index: make/known-architectures/darwin
+===================================================================
+--- make/known-architectures/darwin	(revision 4856)
++++ make/known-architectures/darwin	(working copy)
+@@ -70,11 +70,11 @@
+   fi
+ 
+   if test "$MAC_C_COMP" = "gcc" ; then
+-    : ${C_DEPEND='$(CC) -M -MP $(CPPFLAGS)'}
+-    : ${CXX_DEPEND='$(CXX) -M -MP $(CPPFLAGS)'}
++    : ${C_DEPEND='$(CC) -M -MP $(CPPFLAGS) $(CFLAGS)'}
++    : ${CXX_DEPEND='$(CXX) -M -MP $(CPPFLAGS) $(CXXFLAGS)'}
+   elif test "$MAC_C_COMP" = "intel" ; then
+-    : ${C_DEPEND='$(CC) -M $(CPPFLAGS)'}
+-    : ${CXX_DEPEND='$(CXX) -M $(CPPFLAGS)'}
++    : ${C_DEPEND='$(CC) -M $(CPPFLAGS) $(CFLAGS)'}
++    : ${CXX_DEPEND='$(CXX) -M $(CPPFLAGS) $(CXXFLAGS)'}
+   else
+     : ${C_DEPEND='$(PERL) $(CCTK_HOME)/lib/sbin/cpp.pl -M $(CPPFLAGS)'}
+     : ${CXX_DEPEND='$(PERL) $(CCTK_HOME)/lib/sbin/cpp.pl -M $(CPPFLAGS)'}
+Index: make/known-architectures/osf
+===================================================================
+--- make/known-architectures/osf	(revision 4856)
++++ make/known-architectures/osf	(working copy)
+@@ -32,7 +32,7 @@
+ 
+   if test "$CC" = "cc" ; then
+     if test "X$PTHREADS" = "Xyes" ; then
+-      : ${C_DEPEND='$(CC) -pthread -E -M $(CPPFLAGS)'}
++      : ${C_DEPEND='$(CC) -pthread -E -M $(CPPFLAGS) $(CFLAGS)'}
+     fi
+     : ${CFLAGS="$STD_FLAGS"}
+     : ${C_OPTIMISE_FLAGS='-O5 -fast -writable_strings'}
+@@ -41,9 +41,9 @@
+ 
+   if test "$CXX" = "cxx" ; then
+     if test "X$PTHREADS" = "Xyes" ; then
+-      : ${CXX_DEPEND='$(CXX) -pthread -noimplicit_include -E -M $(CPPFLAGS)'}
++      : ${CXX_DEPEND='$(CXX) -pthread -noimplicit_include -E -M $(CPPFLAGS) $(CXXFLAGS)'}
+     else
+-      : ${CXX_DEPEND='$(CXX) -noimplicit_include -E -M $(CPPFLAGS)'}
++      : ${CXX_DEPEND='$(CXX) -noimplicit_include -E -M $(CPPFLAGS) $(CXXFLAGS)'}
+     fi
+     : ${CXXFLAGS="$STD_FLAGS"}
+     : ${CXX_OPTIMISE_FLAGS='-O5 -fast -writable_strings'}
+Index: make/known-architectures/bgl
+===================================================================
+--- make/known-architectures/bgl	(revision 4856)
++++ make/known-architectures/bgl	(working copy)
+@@ -65,7 +65,7 @@
+   # C/C++ compilers
+   case "$CC" in
+     blrts_xlc)
+-     : ${C_DEPEND='$(CC) -M $(CPPFLAGS)'}
++     : ${C_DEPEND='$(CC) -M $(CPPFLAGS) $(CFLAGS)'}
+      : ${C_DEPEND_OUT=' 2> /dev/null; mv $(basename $(basename $@)).d $@'}
+      : ${CFLAGS="-qmaxmem=64000 -qlanglvl=stdc99"}
+      : ${C_OPTIMISE_FLAGS='-O2 -qarch=440'}
+@@ -77,7 +77,7 @@
+ 
+   case "$CXX" in
+     blrts_xlC)
+-     : ${CXX_DEPEND='$(CXX) -M $(CPPFLAGS)'}
++     : ${CXX_DEPEND='$(CXX) -M $(CPPFLAGS) $(CXXFLAGS)'}
+      : ${CXX_DEPEND_OUT=' 2> /dev/null; mv $(basename $(basename $@)).d $@'}
+      : ${CXXFLAGS="-qmaxmem=64000 -qlanglvl=stdc99"}
+      : ${CXX_OPTIMISE_FLAGS='-O2 -qarch=440'}
+Index: make/known-architectures/solaris
+===================================================================
+--- make/known-architectures/solaris	(revision 4856)
++++ make/known-architectures/solaris	(working copy)
+@@ -37,13 +37,13 @@
+   fi
+ 
+ 
+-  : ${C_DEPEND='$(CPP) -M $(CPPFLAGS)'}
+-  : ${CXX_DEPEND='$(CPP) -M $(CPPFLAGS)'}
++  : ${C_DEPEND='$(CPP) -M $(CPPFLAGS) $(CFLAGS)'}
++  : ${CXX_DEPEND='$(CPP) -M $(CPPFLAGS) $(CXXFLAGS)'}
+ 
+   if test "`basename $CC`" = 'cc' ; then
+     : ${C_OPTIMISE_FLAGS='-fast'}
+   fi
+-  if test "basename $CXX`" = 'CC' ; then
++  if test "`basename $CXX`" = 'CC' ; then
+     : ${CXX_OPTIMISE_FLAGS='-fast'}
+   fi
+   : ${F90_OPTIMISE_FLAGS='-fast'}
+Index: make/known-architectures/aix
+===================================================================
+--- make/known-architectures/aix	(revision 4856)
++++ make/known-architectures/aix	(working copy)
+@@ -88,7 +88,7 @@
+      CC_VERSION="`$CC -v 2>&1 | grep -i version | tail -n1`"
+      ;;
+     cc|xlc|xlc_r)
+-     : ${C_DEPEND='$(CC) -E -M $(CPPFLAGS)'}
++     : ${C_DEPEND='$(CC) -E -M $(CPPFLAGS) $(CFLAGS)'}
+      : ${C_DEPEND_OUT=' > /dev/null ; mv $(basename $(basename $@)).u $@'}
+      : ${CFLAGS="-q$AIX_BITS -qlanglvl=stdc99"}
+      : ${C_OPTIMISE_FLAGS="-O3 -qarch=auto -qtune=auto -qcache=auto -qhot"}
+@@ -105,7 +105,7 @@
+      CXX_VERSION="`$CXX -v 2>&1 | grep -i version | tail -n1`"
+      ;;
+     xlC|xlC_r)
+-     : ${CXX_DEPEND='$(CXX) -E -M $(CPPFLAGS)'}
++     : ${CXX_DEPEND='$(CXX) -E -M $(CPPFLAGS) $(CXXFLAGS)'}
+      : ${CXX_DEPEND_OUT=' > /dev/null ; mv $(basename $(basename $@)).u $@'}
+      : ${CXXFLAGS="-q$AIX_BITS"}
+      : ${CXX_OPTIMISE_FLAGS="-O3 -qarch=auto -qtune=auto -qcache=auto -qhot"}
+Index: make/known-architectures/cygwin
+===================================================================
+--- make/known-architectures/cygwin	(revision 4856)
++++ make/known-architectures/cygwin	(working copy)
+@@ -163,8 +163,8 @@
+ 
+ # The -nostdinc stops it picking stdio.h, etc, from the GNU headers.
+ # The -x c++ is because some of the Windows headers contain C++ comments
+-  C_DEPEND='$(CPP) -x c++ -E -MM -nostdinc -D_WIN32 $(CPPFLAGS) '
+-  CXX_DEPEND='$(CPP) -x c++ -E -MM -nostdinc -D_WIN32 $(CPPFLAGS) '
++  C_DEPEND='$(CPP) -x c++ -E -MM -nostdinc -D_WIN32 $(CPPFLAGS) $(CFLAGS) '
++  CXX_DEPEND='$(CPP) -x c++ -E -MM -nostdinc -D_WIN32 $(CPPFLAGS) $(CXXFLAGS) '
+ 
+ # Add in system include dirs from $(INCLUDE).  These may contain spaces.
+ # The -D_M_IX86 is necessary for things like winnt.h.  Since this is

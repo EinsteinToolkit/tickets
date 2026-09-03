@@ -1,0 +1,27 @@
+diff --git a/Carpet/Carpet/src/Initialise.cc b/Carpet/Carpet/src/Initialise.cc
+index f869297..73b3a9e 100644
+--- a/Carpet/Carpet/src/Initialise.cc
++++ b/Carpet/Carpet/src/Initialise.cc
+@@ -1,5 +1,6 @@
+ #include <cassert>
+ #include <cstdlib>
++#include <cstring>
+ #include <iostream>
+ #include <map>
+ #include <string>
+@@ -1388,10 +1389,14 @@ namespace Carpet {
+   /// Output a stack backtrace file backtrace.<rank>.txt
+   void write_backtrace_file(void)
+   {
++    // declaring parameters is "safe" since it really only accesses some hidden
++    // global structures, and no fragile linked list or similar
++    DECLARE_CCTK_PARAMETERS;
++
+     ofstream myfile;
+     stringstream ss;
+ 
+-    ss << "backtrace." << dist::rank() << ".txt";
++    ss << out_dir << "/" << "backtrace." << dist::rank() << ".txt";
+     string filename = ss.str();
+ 
+     cerr << "Writing backtrace to " << filename << endl;

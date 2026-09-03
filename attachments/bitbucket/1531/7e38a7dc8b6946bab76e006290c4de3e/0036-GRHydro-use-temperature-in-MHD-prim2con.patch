@@ -1,0 +1,99 @@
+From 708ec4330f3ac6dda2787fc4dd4b388f65d72144 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Sat, 8 Feb 2014 21:22:10 -0800
+Subject: [PATCH 36/36] GRHydro: use temperature in MHD prim2con
+
+this uses tempplus/tempminus in MHD prim2con
+
+this helps when temperature is actually reconstructed. It *does* however
+change the results already when temperature is not reconstructed, though
+it does make the results use constant values rather then averages which
+is lower order.
+---
+ src/GRHydro_Prim2ConM.F90 | 29 +++++++----------------------
+ 1 file changed, 7 insertions(+), 22 deletions(-)
+
+diff --git a/src/GRHydro_Prim2ConM.F90 b/src/GRHydro_Prim2ConM.F90
+index 0d6f680..19f1d2f 100644
+--- a/src/GRHydro_Prim2ConM.F90
++++ b/src/GRHydro_Prim2ConM.F90
+@@ -176,14 +176,6 @@ subroutine primitive2conservativeM(CCTK_ARGUMENTS)
+               avg_sdetl = sqrt(SPATIAL_DETERMINANT(g11l,g12l,g13l,g22l,g23l,g33l))
+               avg_sdetr = sqrt(SPATIAL_DETERMINANT(g11r,g12r,g13r,g22r,g23r,g33r))
+ 
+-              ! we do not have plus/minus vars for temperature since
+-              ! eps is reconstructed. Hence, we do not update the
+-              ! variable 'temperature' in prim2con at the interfaces 
+-              ! We will instead use an average temperature as an initial
+-              ! guess.
+-              xtemp(1) = 0.5d0*(temperature(i,j,k) + &
+-                   temperature(i-xoffset,j-yoffset,k-zoffset))
+-
+               if (y_e_minus(i,j,k) .le. 0.0d0 .or. y_e_plus(i,j,k) .le. 0.0d0) then
+               !$OMP CRITICAL
+                   write(NaN_WarnLine,'(a100,7g15.6)') '(y_e_minus,y_e_plus,x,y,z,rho)', y_e(i,j,k), y_e_minus(i,j,k), y_e_plus(i,j,k), x(i,j,k),y(i,j,k),z(i,j,k),rho(i,j,k)
+@@ -197,14 +189,7 @@ subroutine primitive2conservativeM(CCTK_ARGUMENTS)
+                    Bconsxminus(i,j,k),Bconsyminus(i,j,k),Bconszminus(i,j,k), rhominus(i,j,k), &
+                    velxminus(i,j,k),velyminus(i,j,k),velzminus(i,j,k),&
+                    epsminus(i,j,k),pressminus(i,j,k),Bvecxminus(i,j,k), &
+-                   Bvecyminus(i,j,k), Bveczminus(i,j,k), w_lorentzminus(i, j, k), xtemp, y_e_minus(i,j,k))
+-              ! we do not have plus/minus vars for temperature since
+-              ! eps is reconstructed. Hence, we do not update the
+-              ! variable 'temperature' in prim2con at the interfaces
+-              ! We will instead use an average temperature as an initial
+-              ! guess.
+-              xtemp(1) = 0.5d0*(temperature(i,j,k) + &
+-                   temperature(i+xoffset,j+yoffset,k+zoffset))
++                   Bvecyminus(i,j,k), Bveczminus(i,j,k), w_lorentzminus(i, j, k), tempminus(i,j,k), y_e_minus(i,j,k))
+   
+               call prim2conM_hot(GRHydro_eos_handle, GRHydro_reflevel,&
+                    i,j,k,x(i,j,k),y(i,j,k),z(i,j,k), g11r,g12r,g13r,g22r,g23r,g33r, &
+@@ -214,7 +199,7 @@ subroutine primitive2conservativeM(CCTK_ARGUMENTS)
+                    rhoplus(i,j,k),velxplus(i,j,k),velyplus(i,j,k),&
+                    velzplus(i,j,k),epsplus(i,j,k),pressplus(i,j,k),&
+                    Bvecxplus(i,j,k), Bvecyplus(i,j,k), Bveczplus(i,j,k), &
+-                   w_lorentzplus(i,j,k), xtemp, y_e_plus(i,j,k)) 
++                   w_lorentzplus(i,j,k), tempplus(i,j,k), y_e_plus(i,j,k)) 
+              
+            end do
+         end do
+@@ -265,7 +250,7 @@ subroutine prim2conM_hot(handle, GRHydro_reflevel, ii, jj, kk, &
+   integer :: n, keytemp, anyerr, keyerr(1)
+  ! real*8  :: xpress(1),xeps(1),xtemp(1),xye(1)
+   real*8  :: temp0(1)
+-  n = 1; keytemp = 0; anyerr = 0; keyerr(1) = 0
++  n = 1; keytemp = reconstruct_temper; anyerr = 0; keyerr(1) = 0
+   !xpress = 0.0d0; xeps = 0.0d0; xtemp = 0.0d0; xye = 0.0d0
+ ! end EOS Omni vars
+   
+@@ -299,11 +284,11 @@ subroutine prim2conM_hot(handle, GRHydro_reflevel, ii, jj, kk, &
+         ! in this case (coarse grid error that is hopefully restricted
+         ! away), we use the average temperature between cells and call
+         ! the EOS with keytemp=1
+-        keytemp=1
++        keytemp=1-reconstruct_temper
+         temp = temp0
+         call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+              drho,deps,temp,ye,dpress,keyerr,anyerr)  
+-        keytemp=0
++        keytemp=reconstruct_temper
+         if(anyerr.ne.0) then
+            !$OMP CRITICAL
+            call CCTK_WARN(1,"EOS error in prim2con_hot: lev 2")
+@@ -332,11 +317,11 @@ subroutine prim2conM_hot(handle, GRHydro_reflevel, ii, jj, kk, &
+         write(warnline,"(A10,i5)") "reflevel: ", GRHydro_reflevel
+         call CCTK_WARN(1,warnline)
+         !$OMP END CRITICAL
+-        keytemp=1
++        keytemp=1-reconstruct_temper
+         temp = temp0
+         call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+              drho,deps,temp,ye,dpress,keyerr,anyerr)  
+-        keytemp=0
++        keytemp=reconstruct_temper
+         if(anyerr.ne.0) then
+            !$OMP CRITICAL
+            call CCTK_WARN(1,"EOS error in prim2con_hot")
+-- 
+1.9.0
+

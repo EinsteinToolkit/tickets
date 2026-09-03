@@ -1,0 +1,59 @@
+Index: src/DumpUtils.c
+===================================================================
+--- src/DumpUtils.c	(revision 172)
++++ src/DumpUtils.c	(working copy)
+@@ -429,6 +429,8 @@
+   WRITE_ATTRIBUTE ("unchunked", &ioUtilGH->unchunked, group, myGH, 0,
+                    H5T_NATIVE_INT);
+   WRITE_ATTRIBUTE ("cctk_time", &GH->cctk_time, group, myGH, 0, HDF5_REAL);
++  WRITE_ATTRIBUTE ("cctk_delta_time", &GH->cctk_delta_time, group, myGH, 0,
++                   HDF5_REAL);
+   WRITE_ATTRIBUTE ("cctk_iteration", &GH->cctk_iteration, group, myGH, 0,
+                    H5T_NATIVE_INT);
+   version = CCTK_FullVersion ();
+Index: src/RecoverVar.c
+===================================================================
+--- src/RecoverVar.c	(revision 172)
++++ src/RecoverVar.c	(working copy)
+@@ -193,7 +193,7 @@
+ int IOHDF5Util_RecoverGHextensions (cGH *GH, const fileinfo_t *fileinfo)
+ {
+   hid_t group;
+-  CCTK_REAL realBuffer;
++  CCTK_REAL realBuffer[2];
+   CCTK_INT4 int4Buffer[3];
+ 
+ 
+@@ -208,7 +208,13 @@
+     {
+       READ_ATTRIBUTE (group, "cctk_iteration", HDF5_INT4, &int4Buffer[1]);
+       READ_ATTRIBUTE (group, "main_loop_index", HDF5_INT4, &int4Buffer[2]);
+-      READ_ATTRIBUTE (group, "cctk_time", HDF5_REAL, &realBuffer);
++      READ_ATTRIBUTE (group, "cctk_time", HDF5_REAL, &realBuffer[0]);
++      // pre rev 173 checkpoints do not contain cctk_delta_time. When reading
++      // such a checkpoint, we output a warning and continue to use the old
++      // cctk_delta_time. For this we need to initialize realBuffer[1] since we
++      // cannot tell if READ_ATTRIBUTE succeeded or not.
++      realBuffer[1] = GH->cctk_delta_time;
++      READ_ATTRIBUTE (group, "cctk_delta_time", HDF5_REAL, &realBuffer[1]);
+ 
+       HDF5_ERROR (H5Gclose (group));
+     }
+@@ -227,14 +233,15 @@
+   CACTUS_MPI_ERROR (MPI_Bcast (int4Buffer, 3, PUGH_MPI_INT4, 0,MPI_COMM_WORLD));
+   if (int4Buffer[0])
+   {
+-    CACTUS_MPI_ERROR (MPI_Bcast (&realBuffer, 1, PUGH_MPI_REAL, 0,
++    CACTUS_MPI_ERROR (MPI_Bcast (realBuffer, 2, PUGH_MPI_REAL, 0,
+                                  MPI_COMM_WORLD));
+   }
+ #endif
+ 
+   if (int4Buffer[0])
+   {
+-    GH->cctk_time = realBuffer;
++    GH->cctk_time = realBuffer[0];
++    GH->cctk_delta_time = realBuffer[1];
+     GH->cctk_iteration = int4Buffer[1];
+     CCTK_SetMainLoopIndex ((int) int4Buffer[2]);
+   }

@@ -1,0 +1,30 @@
+Index: MoL/src/InitialCopy.c
+===================================================================
+--- MoL.orig/src/InitialCopy.c	2014-04-30 19:10:07.530465877 -0700
++++ MoL/src/InitialCopy.c	2014-04-30 19:31:13.176083716 -0700
+@@ -702,6 +702,25 @@
+   }
+   
+ 
++  for (var = 0; var < MoLNumEvolvedVariablesSlow; var++)
++  {
++    CurrentVar = (CCTK_REAL const*)CCTK_VarDataPtrI(cctkGH, 0, 
++                                              EvolvedVariableIndexSlow[var]);
++    for (level = 1; 
++         level < CCTK_ActiveTimeLevelsVI(cctkGH,
++                                         EvolvedVariableIndexSlow[var]); 
++         level++)
++    {
++      PreviousVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, level, 
++                                                 EvolvedVariableIndexSlow[var]);
++      if (PreviousVar)
++      {   
++        memcpy(PreviousVar, CurrentVar, totalsize * sizeof(CCTK_REAL));
++      }
++    }
++  }
++  
++
+   for (var = 0; var < MoLNumConstrainedVariables; var++)
+   {
+     CurrentVar = (CCTK_REAL const*)CCTK_VarDataPtrI(cctkGH, 0, 

@@ -1,0 +1,20 @@
+Index: src/util/git-get-localdir.pl
+===================================================================
+--- src/util/git-get-localdir.pl	(revision 221)
++++ src/util/git-get-localdir.pl	(working copy)
+@@ -24,13 +24,13 @@
+ 
+ 
+ # Obtain local machine name
+-my $machine = `cd ${CCTK_HOME} && ${CCTK_HOME}/bin/sim whoami`;
++my $machine = `cd ${CCTK_HOME} && ${CCTK_HOME}/bin/sim whoami 2>/dev/null | sim whoami`;
+ chomp $machine;
+ $machine =~ s{Current machine:\s*(.*)}{$1};
+ exit 0 if $machine eq '';
+ 
+ # Obtain sourcebasedir
+-my @mdb=`cd ${CCTK_HOME} && ${CCTK_HOME}/bin/sim print-mdb "${machine}"`;
++my @mdb=`cd ${CCTK_HOME} && ${CCTK_HOME}/bin/sim print-mdb "${machine}" 2>/dev/null | sim print-mdb "${machine}"`;
+ @mdb = grep m{^\s*sourcebasedir\s*=}, @mdb;
+ exit 1 if @mdb != 1;
+ my $sourcebasedir = $mdb[0];

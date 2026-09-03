@@ -1,0 +1,151 @@
+From 0b1594296c3000ec102ed8556a95a7ca2b8a5283 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Wed, 14 Aug 2013 16:27:28 -0700
+Subject: [PATCH 2/2] free file handles when asked to close a database by VisIt
+
+just keep file metadata around
+---
+ trunk/avtCarpetHDF5FileFormat.C | 43 ++++++++++++++++++++++++++++-------------
+ trunk/avtCarpetHDF5FileFormat.h | 21 +++++++++++++++-----
+ 2 files changed, 46 insertions(+), 18 deletions(-)
+
+diff --git a/trunk/avtCarpetHDF5FileFormat.C b/trunk/avtCarpetHDF5FileFormat.C
+index 6b843d1..1651e4d 100644
+--- a/trunk/avtCarpetHDF5FileFormat.C
++++ b/trunk/avtCarpetHDF5FileFormat.C
+@@ -869,9 +869,12 @@ void avtCarpetHDF5FileFormat::close_cached_file(avtCarpetHDF5FileFormat::multi_f
+   // this logic has two maybe unexpected side effects:
+   // a file is only ever closed when it is replaced by a new versin of it
+   // the close button in visit has no effect whatsoever
+-  if(file && --file->refcount == 0)
++  if(file)
+   {
+-    delete file;
++    if(--file->refcount == 0)
++       delete file;
++    else
++       file->close();
+   }
+ }
+ 
+@@ -1227,21 +1230,27 @@ static herr_t H5iter(hid_t group_id, const char *member_name, void *operator_dat
+ }
+ 
+ 
+-
+-
+-void avtCarpetHDF5FileFormat::file_t::openfile(const char* fname)
++hid_t avtCarpetHDF5FileFormat::file_t::gethandle()
+ {
+-   struct stat s;
++   if (file < 0) {
++      struct stat s;
+ 
+-   file = H5Fopen(fname, H5F_ACC_RDONLY, H5P_DEFAULT);
+-   if (stat(filename.c_str(), &s) == 0) {
+-     mtime = s.st_mtime;
+-   } else {
+-     mtime = 0;
++      file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
++      if (stat(filename.c_str(), &s) == 0) {
++        mtime = s.st_mtime;
++      } else {
++        mtime = 0;
++      }
+    }
++   return file;
++}
+ 
++void avtCarpetHDF5FileFormat::file_t::open(const char* fname)
++{
+    // get hierarchy datasetnames contained only in this file
+    if (haveIndex(fname)) {
++     struct stat s;
++
+      hid_t index_file = H5Fopen(indexFilename(fname).c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+      if (stat(indexFilename(fname).c_str(), &s) == 0) {
+        idx_mtime = s.st_mtime;
+@@ -1254,13 +1263,21 @@ void avtCarpetHDF5FileFormat::file_t::openfile(const char* fname)
+    } 
+    else {
+      //file->iterateElems("/", NULL, H5iter, &dsetnames);
+-     H5Giterate (file, "/", NULL, H5iter, &dsetnames);
++     H5Giterate (gethandle(), "/", NULL, H5iter, &dsetnames);
+    }
+ 
+    // try to free memory allocated during file traversal
+    H5garbage_collect();
+ }
+ 
++void avtCarpetHDF5FileFormat::file_t::close()
++{
++   if (file >= 0) {
++      H5Fclose(file);
++      file = -1;
++   }
++}
++
+ bool avtCarpetHDF5FileFormat::file_t::file_changed_on_disk()
+ {
+     struct stat s;
+@@ -1290,7 +1307,7 @@ void avtCarpetHDF5FileFormat::file_t::set_varnames(const vector<string>& v, cons
+ 
+ void avtCarpetHDF5FileFormat::file_t::get_data(const dataset_entry& dset, float** data, const bool removeGhosts)
+ {
+-   hid_t dataset = H5Dopen(file, dset.name().c_str(), H5P_DEFAULT);
++   hid_t dataset = H5Dopen(gethandle(), dset.name().c_str(), H5P_DEFAULT);
+       
+    hid_t dataspace = H5Dget_space(dataset);
+    hid_t attrib;
+diff --git a/trunk/avtCarpetHDF5FileFormat.h b/trunk/avtCarpetHDF5FileFormat.h
+index db3b96f..7ff168c 100644
+--- a/trunk/avtCarpetHDF5FileFormat.h
++++ b/trunk/avtCarpetHDF5FileFormat.h
+@@ -463,13 +463,18 @@ class avtCarpetHDF5FileFormat : public avtMTMDFileFormat
+                file_t(const file_t& file);
+                file_t& operator=(const file_t& file);
+       public:
+-               hid_t file;
+-               
+-               file_t(const char* fname) : filename(fname) { file = -1; openfile(fname); }
++               file_t(const char* fname) : filename(fname), file(-1) { open(fname); }
+                virtual ~file_t() { if (file >= 0) H5Fclose(file); }
++
++               // get file handle, possibly open file again
++               hid_t gethandle();
+                
+                // open file and opbtain all datasetnames contained in that file
+-               void openfile(const char* fname);
++               void open(const char* fname);
++               
++               // close file handle but retain all datasetnames contained in
++               // the file, gethandle will re-open as required
++               void close();
+                
+                // filter out the available coordinates and variables given a set of varnames
+                // and put them to there associated time-slot in the hierarchy and variables vector
+@@ -493,7 +498,8 @@ class avtCarpetHDF5FileFormat : public avtMTMDFileFormat
+                string                         filename;    // name of the hdf5 file we represent
+                time_t                         mtime;       // modification time when we were last opened
+                time_t                         idx_mtime;   // modification time when index was last
+-               
++        private:
++               hid_t file;      // low leve lHDF5 file handle for this file, use gethandle() instead
+     };
+   
+     avtCarpetHDF5FileFormat(const char *);
+@@ -592,6 +598,11 @@ class avtCarpetHDF5FileFormat : public avtMTMDFileFormat
+                {
+                  for(unsigned int i = 0; i < files.size(); i++) delete files[i];
+                };
++
++               void close()
++               {
++                 for(unsigned int i = 0; i < files.size(); i++) files[i]->close();
++               };
+                
+                void get_data(const bool is_Cartesian, const int timestep, const int comp, const int var_no, float** data)
+                {
+-- 
+1.8.4.2
+

@@ -1,0 +1,118 @@
+Index: lib/sbin/GridFuncStuff.pl
+===================================================================
+--- lib/sbin/GridFuncStuff.pl	(revision 4666)
++++ lib/sbin/GridFuncStuff.pl	(working copy)
+@@ -381,19 +382,37 @@
+         {
+ # FIXME: quick hack to shorten argument names
+ #          $type .= "${sep}cctkv$dim$group";
+-          $type .= "${sep}X$dim$group";
+-          $sep = ',';
+-          if($block eq 'PRIVATE')
++          if ($gtype ne 'GF')
+           {
+-# FIXME: quick hack to shorten argument names
+-#            $arguments{"cctkv$dim$group"} = "(STORAGESIZE($thorn\::$group, $dim))";
+-            $arguments{"X$dim$group"} = "(STORAGESIZE($thorn\::$group, $dim))";
++            $type .= "${sep}X$dim$group";
+           }
+           else
+           {
++            my $dim1=$dim+1;
++            if ($dim<3)
++            {
++              $type .= "${sep}cctk_lsh$dim1";
++            }
++            else
++            {
++              $type .= "${sep}cctk_lsh($dim1)";
++            }
++          }
++          $sep = ',';
++          if ($gtype ne 'GF')
++          {
++            if($block eq 'PRIVATE')
++            {
+ # FIXME: quick hack to shorten argument names
++#            $arguments{"cctkv$dim$group"} = "(STORAGESIZE($thorn\::$group, $dim))";
++              $arguments{"X$dim$group"} = "(STORAGESIZE($thorn\::$group, $dim))";
++            }
++            else
++            {
++# FIXME: quick hack to shorten argument names
+ #            $arguments{"cctkv$dim$group"} = "(STORAGESIZE($imp\::$group, $dim))";
+-            $arguments{"X$dim$group"} = "(STORAGESIZE($imp\::$group, $dim))";
++              $arguments{"X$dim$group"} = "(STORAGESIZE($imp\::$group, $dim))";
++            }
+           }
+         }
+         if(defined($vararraysize) && $compactgroup == 0)
+Index: lib/make/force-rebuild
+===================================================================
+--- lib/make/force-rebuild	(revision 4666)
++++ lib/make/force-rebuild	(working copy)
+@@ -34,3 +34,4 @@
+ 21 Nov 2005: Change names of auto-generated capability header files
+ 08 Apr 2008: Add IF clause to scheduler
+ 23 Dec 2010: Rename cctki_Capabilities.h to cctk_Capabilities.h
++22 Jan 2011: Optimize CCTK_ARGUMENTS for grid functions in Fortran
+Index: src/include/cctk.h
+===================================================================
+--- src/include/cctk.h	(revision 4666)
++++ src/include/cctk.h	(working copy)
+@@ -37,7 +37,8 @@
+ cctk_dim,cctk_gsh,cctk_lsh,cctk_lbnd,cctk_ubnd,cctk_lssh,cctk_from,cctk_to,\
+ cctk_bbox,cctk_delta_time,cctk_time,cctk_delta_space,cctk_origin_space,\
+ cctk_levfac,cctk_levoff,cctk_levoffdenom,cctk_timefac,cctk_convlevel,\
+-cctk_convfac,cctk_nghostzones,cctk_iteration,cctkGH
++cctk_convfac,cctk_nghostzones,cctk_iteration,cctkGH,\
++cctk_lsh1,cctk_lsh2,cctk_lsh3
+ 
+ #define _DECLARE_CCTK_ARGUMENTS _DECLARE_CCTK_FARGUMENTS
+ #define _DECLARE_CCTK_FARGUMENTS &&\
+@@ -62,7 +63,10 @@
+         CCTK_DECLARE(INTEGER,cctk_convfac,)&&\
+         CCTK_DECLARE(INTEGER,cctk_nghostzones,(cctk_dim))&&\
+         CCTK_DECLARE(INTEGER,cctk_iteration,)&&\
+-        CCTK_DECLARE(CCTK_POINTER,cctkGH,)&&
++        CCTK_DECLARE(CCTK_POINTER,cctkGH,)&&\
++        CCTK_DECLARE(INTEGER,cctk_lsh1,)&&\
++        CCTK_DECLARE(INTEGER,cctk_lsh2,)&&\
++        CCTK_DECLARE(INTEGER,cctk_lsh3,)&&
+ 
+ #define CCTK_WARN(a,b) CCTK_Warn(a,__LINE__,__FORTRANFILE__,CCTK_THORNSTRING,b)
+ 
+@@ -158,6 +162,9 @@
+ #include "cctk_Timers.h"
+ #include "cctk_WarnLevel.h"
+ 
++/* Include prototypes for scheduled functions */
++#include "cctk_ScheduleFunctions.h"
++
+ /* Include definitions provided by capabilities */
+ #include "cctk_Capabilities.h"
+ 
+@@ -332,7 +339,10 @@
+                             &((xGH)->cctk_convfac),\
+                             (xGH)->cctk_nghostzones,\
+                             &((xGH)->cctk_iteration),\
+-                            &(xGH)
++                            &(xGH),\
++                            &(xGH)->cctk_lsh[0],\
++                            &(xGH)->cctk_lsh[1],\
++                            &(xGH)->cctk_lsh[2]
+ #define _CCTK_C2F_PROTO     int *,\
+                             int *,\
+                             int *,int *, int *, int *, int *,int *,int *,\
+@@ -346,7 +356,10 @@
+                             int *,\
+                             int *,\
+                             int *,\
+-                            cGH **
++                            cGH **,\
++                            int *,\
++                            int *,\
++                            int *
+ 
+ #define CCTK_EQUALS(a,b) (CCTK_Equals((a),(b)))
+ 

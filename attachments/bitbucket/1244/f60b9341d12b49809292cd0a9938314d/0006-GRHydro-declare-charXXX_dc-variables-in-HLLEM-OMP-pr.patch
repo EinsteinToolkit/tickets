@@ -1,0 +1,27 @@
+From b82a86be8c2f12732121e9fd5528a1d79cf0c9fb Mon Sep 17 00:00:00 2001
+From: Philipp Moesta <pmoesta@tapir.caltech.edu>
+Date: Wed, 30 Jan 2013 18:54:01 -0800
+Subject: [PATCH 06/11] GRHydro: declare charXXX_dc variables in HLLEM OMP
+ private
+
+---
+ src/GRHydro_HLLEM.F90 |    3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/GRHydro_HLLEM.F90 b/src/GRHydro_HLLEM.F90
+index 6fe2b5f..75af760 100644
+--- a/src/GRHydro_HLLEM.F90
++++ b/src/GRHydro_HLLEM.F90
+@@ -136,7 +136,8 @@ subroutine GRHydro_HLLEM(CCTK_ARGUMENTS)
+   !$OMP bdotvp,bdotvm,b2p,b2m,v2p,v2m,wp,wm,&
+   !$OMP bxlowp,bxlowm,bylowp,bylowm,bzlowp,bzlowm,&
+   !$OMP rhoenth_p,rhoenth_m,ab0p,ab0m,vA2p,vA2m,pressstarp,pressstarm,&
+-  !$OMP usendh,psidcdiff,psidcfp,psidcfm,charmin,charmax,chartop,charpm,m,xtemp,&
++  !$OMP usendh,psidcdiff,psidcfp,psidcfm,charmin,charmax,chartop,charpm,&
++  !$OMP charmin_dc,charmax_dc,charpm_dc,m,xtemp,&
+   !$OMP entropyconsp,entropyconsm,entropyp,entropym,entropyf,entropydiff,entropyfp,entropyfm)
+   do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil + transport_constraints*(1-zoffset)
+     do j = GRHydro_stencil, cctk_lsh(2) - GRHydro_stencil + transport_constraints*(1-yoffset)
+-- 
+1.7.10.4
+

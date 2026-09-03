@@ -1,0 +1,44 @@
+From d42093f4d2e1f2b1815659bb28bcd9fe99f55a6a Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Fri, 3 Aug 2012 18:27:18 +0200
+Subject: [PATCH] configure.sh: Check that directory in MPI_DIR exists and
+ display a message containing the location of MPI
+
+---
+ configure.sh |   16 +++++++++++++---
+ 1 files changed, 13 insertions(+), 3 deletions(-)
+ mode change 100644 => 100755 configure.sh
+
+diff --git a/configure.sh b/configure.sh
+old mode 100644
+new mode 100755
+index f3d7402..35ca8c8
+--- a/configure.sh
++++ b/configure.sh
+@@ -162,10 +162,20 @@ then
+             exit 1
+         fi
+     fi
+-    
+-fi
+-
++else
++    # MPI_DIR is not empty and is not BUILD
+ 
++    if [ -d "$MPI_DIR" ]; then
++        echo "BEGIN MESSAGE"
++        echo "Found MPI in ${MPI_DIR}"
++        echo "END MESSAGE"
++    else
++        echo 'BEGIN ERROR'
++        echo "Directory MPI_DIR = $MPI_DIR does not exist"
++        echo 'END ERROR'
++        exit 1
++    fi
++fi
+ 
+ ################################################################################
+ # Configure Cactus
+-- 
+1.7.5.4
+

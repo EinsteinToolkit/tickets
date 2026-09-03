@@ -1,0 +1,84 @@
+cactus_sim: /data/rhaas/postdoc/gr/ET_trunk/configs/sim/build/LoopControl/loopcontrol.cc:312: T {anonymous}::divexact(T, T) [with T = int]: Assertion `i % j == 0' failed.
+
+Program received signal SIGABRT, Aborted.
+0x00007ffff43cc107 in __GI_raise (sig=sig@entry=6) at ../nptl/sysdeps/unix/sysv/linux/raise.c:56
+56      ../nptl/sysdeps/unix/sysv/linux/raise.c: No such file or directory.
+(gdb) bt
+#0  0x00007ffff43cc107 in __GI_raise (sig=sig@entry=6) at ../nptl/sysdeps/unix/sysv/linux/raise.c:56
+#1  0x00007ffff43cd4e8 in __GI_abort () at abort.c:89
+#2  0x00007ffff43c5226 in __assert_fail_base (
+    fmt=0x7ffff44fbce8 "%s%s%s:%u: %s%sAssertion `%s' failed.\n%n",
+    assertion=assertion@entry=0x2e6a631 "i % j == 0",
+    file=file@entry=0x2e69ee8 "/data/rhaas/postdoc/gr/ET_trunk/configs/sim/build/LoopControl/loopcontrol.cc", line=line@entry=312,
+    function=function@entry=0x2e6aa60 <int (anonymous namespace)::divexact<int>(int, int)::__PRETTY_FUNCTION__> "T {anonymous}::divexact(T, T) [with T = int]") at assert.c:92
+#3  0x00007ffff43c52d2 in __GI___assert_fail (assertion=0x2e6a631 "i % j == 0",
+    file=0x2e69ee8 "/data/rhaas/postdoc/gr/ET_trunk/configs/sim/build/LoopControl/loopcontrol.cc",
+    line=312,
+    function=0x2e6aa60 <int (anonymous namespace)::divexact<int>(int, int)::__PRETTY_FUNCTION__> "T {anonymous}::divexact(T, T) [with T = int]") at assert.c:101
+#4  0x00000000028256c9 in divexact<int> (j=<optimized out>, i=<optimized out>)
+    at /data/rhaas/postdoc/gr/ET_trunk/configs/sim/build/LoopControl/loopcontrol.cc:312
+#5  (anonymous namespace)::get_num_coarse_threads ()
+    at /data/rhaas/postdoc/gr/ET_trunk/configs/sim/build/LoopControl/loopcontrol.cc:500
+#6  0x0000000002827af9 in lc_control_init (control=0x7fffffffc530, descr=0xb3275a0, imin=6, jmin=-1,
+    kmin=-72340172838076673, imax=20, jmax=33, kmax=33, iash=20, jash=33, kash=33, istr=1)
+    at /data/rhaas/postdoc/gr/ET_trunk/configs/sim/build/LoopControl/loopcontrol.cc:670
+#7  0x00000000020777dc in ML_BSSN::ML_BSSN_convertFromADMBase_Body ()
+    at /data/rhaas/postdoc/gr/ET_trunk/configs/sim/build/ML_BSSN/ML_BSSN_convertFromADMBase.cc:228
+#8  0x00007ffff495f7df in GOMP_parallel () from /usr/lib/x86_64-linux-gnu/libgomp.so.1
+#9  0x0000000002079fe4 in ML_BSSN::ML_BSSN_convertFromADMBase_Body (cctkGH=0x8943ff0,
+    dir=<optimized out>, face=<optimized out>, normal=<optimized out>, tangentA=<optimized out>,
+    tangentB=<optimized out>, imin=0x7fffffffcc70, imax=0x7fffffffcc80, n_subblock_gfs=0,
+    subblock_gfs=0x0)
+    at /data/rhaas/postdoc/gr/ET_trunk/configs/sim/build/ML_BSSN/ML_BSSN_convertFromADMBase.cc:227
+#10 0x0000000002104a82 in ML_BSSN::LoopOverEverything (cctkGH=cctkGH@entry=0x8943ff0,
+    calc=calc@entry=0x2078480 <ML_BSSN::ML_BSSN_convertFromADMBase_Body(cGH const*, int, int, CCTK_REAL8 const*, CCTK_REAL8 const*, CCTK_REAL8 const*, int const*, int const*, int, CCTK_REAL8* const*)>)
+    at /data/rhaas/postdoc/gr/ET_trunk/configs/sim/build/ML_BSSN/Kranc.cc:236
+#11 0x000000000207d3eb in ML_BSSN::ML_BSSN_convertFromADMBase (cctkGH=cctkGH@entry=0x8943ff0)
+    at /data/rhaas/postdoc/gr/ET_trunk/configs/sim/build/ML_BSSN/ML_BSSN_convertFromADMBase.cc:447
+#12 0x0000000000cd02f5 in CCTK_CallFunction (
+    function=0x207ae80 <ML_BSSN::ML_BSSN_convertFromADMBase(cGH*)>, fdata=0x890ef08, data=0x8943ff0)
+    at /data/rhaas/postdoc/gr/ET_trunk/configs/sim/build/Cactus/main/ScheduleInterface.c:312
+#13 0x0000000000cd0a00 in CCTKi_ScheduleCallFunction (
+    function=0x207ae80 <ML_BSSN::ML_BSSN_convertFromADMBase(cGH*)>, attribute=0x890eef0,
+    data=0x7fffffffcf50)
+    at /data/rhaas/postdoc/gr/ET_trunk/configs/sim/build/Cactus/main/ScheduleInterface.c:3048
+#14 0x0000000000cd5c9c in ScheduleTraverseFunction (data=0x7fffffffcf50,
+    function_process=0xcd09a0 <CCTKi_ScheduleCallFunction>, if_check=0xcd05d0 <CCTKi_ScheduleCallIf>,
+    while_check=0xcd0640 <CCTKi_ScheduleCallWhile>, item_exit=0xcd06b0 <CCTKi_ScheduleCallExit>,
+    item_entry=0xcd0820 <CCTKi_ScheduleCallEntry>, ifs=0x0, n_ifs=0, whiles=0x0, n_whiles=0,
+    attributes=0x890eef0, function=0x207ae80 <ML_BSSN::ML_BSSN_convertFromADMBase(cGH*)>)
+    at /data/rhaas/postdoc/gr/ET_trunk/configs/sim/build/Cactus/schedule/ScheduleTraverse.c:595
+#15 ScheduleTraverseGroup (schedule_groups=schedule_groups@entry=0x88f4910, group=<optimized out>,
+---Type <return> to continue, or q <return> to quit---
+    attributes=attributes@entry=0x0, n_whiles=n_whiles@entry=0, whiles=whiles@entry=0x0,
+    n_ifs=n_ifs@entry=0, ifs=0x0, item_entry=0xcd0820 <CCTKi_ScheduleCallEntry>,
+    item_exit=0xcd06b0 <CCTKi_ScheduleCallExit>, while_check=0xcd0640 <CCTKi_ScheduleCallWhile>,
+    if_check=0xcd05d0 <CCTKi_ScheduleCallIf>, function_process=0xcd09a0 <CCTKi_ScheduleCallFunction>,
+    data=0x7fffffffcf50)
+#16 0x0000000000cd5f8d in CCTKi_DoScheduleTraverse (
+    group_name=group_name@entry=0x2dcc2ec "CCTK_INITIAL",
+    item_entry=item_entry@entry=0xcd0820 <CCTKi_ScheduleCallEntry>,
+    item_exit=item_exit@entry=0xcd06b0 <CCTKi_ScheduleCallExit>,
+    while_check=while_check@entry=0xcd0640 <CCTKi_ScheduleCallWhile>,
+    if_check=if_check@entry=0xcd05d0 <CCTKi_ScheduleCallIf>,
+    function_process=function_process@entry=0xcd09a0 <CCTKi_ScheduleCallFunction>, data=0x7fffffffcf50)
+    at /data/rhaas/postdoc/gr/ET_trunk/configs/sim/build/Cactus/schedule/ScheduleTraverse.c:159
+#17 0x0000000000cd05c5 in ScheduleTraverse (where=where@entry=0x2dcc2ec "CCTK_INITIAL",
+    GH=GH@entry=0x8943ff0, CallFunction=CallFunction@entry=0x0)
+    at /data/rhaas/postdoc/gr/ET_trunk/configs/sim/build/Cactus/main/ScheduleInterface.c:1368
+#18 0x0000000000cd14e9 in CCTK_ScheduleTraverse (where=0x2dcc2ec "CCTK_INITIAL", GH=0x8943ff0,
+    CallFunction=0x0)
+    at /data/rhaas/postdoc/gr/ET_trunk/configs/sim/build/Cactus/main/ScheduleInterface.c:892
+#19 0x0000000000cf0abc in CCTKi_ScheduleTraverseGHExtensions (GH=GH@entry=0x8943ff0,
+    where=where@entry=0x2dcc2ec "CCTK_INITIAL")
+    at /data/rhaas/postdoc/gr/ET_trunk/configs/sim/build/Cactus/main/GHExtensions.c:587
+#20 0x0000000000cf5495 in CCTK_Traverse (GH=GH@entry=0x8943ff0,
+    where=where@entry=0x2dcc2ec "CCTK_INITIAL")
+    at /data/rhaas/postdoc/gr/ET_trunk/configs/sim/build/Cactus/main/Traverse.c:60
+#21 0x0000000000cee380 in CactusInitialiseGH (config=0x7fffffffd030, GH=0x8943ff0)
+    at /data/rhaas/postdoc/gr/ET_trunk/configs/sim/build/Cactus/main/CactusDefaultInitialise.c:152
+#22 CactusDefaultInitialise (config=0x7fffffffd030)
+    at /data/rhaas/postdoc/gr/ET_trunk/configs/sim/build/Cactus/main/CactusDefaultInitialise.c:76
+#23 0x0000000000cc4553 in main (argc=2, argv=0x7fffffffd138)
+    at /data/rhaas/postdoc/gr/ET_trunk/configs/sim/build/Cactus/main/flesh.cc:80
+

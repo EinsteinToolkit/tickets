@@ -1,0 +1,168 @@
+From 45483b35b23fd0c085f3c5e70295a6f93f08ca02 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Mon, 25 Nov 2013 21:11:57 -0800
+Subject: [PATCH 18/36] GRHydro: remove string comparisons from C++ PPM driver
+
+---
+ src/GRHydro_PPMReconstruct_drv_opt.cc | 49 ++++++++++++++++++-----------------
+ 1 file changed, 25 insertions(+), 24 deletions(-)
+
+diff --git a/src/GRHydro_PPMReconstruct_drv_opt.cc b/src/GRHydro_PPMReconstruct_drv_opt.cc
+index 76a9ce7..b790228 100644
+--- a/src/GRHydro_PPMReconstruct_drv_opt.cc
++++ b/src/GRHydro_PPMReconstruct_drv_opt.cc
+@@ -256,6 +256,7 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+   const bool do_mhd = *evolve_MHD;
+   const bool dc_flag = clean_divergence;
+   const bool do_ppm_detect = ppm_detect;
++  const bool do_Avec = CCTK_Equals(Bvec_evolution_method,"GRHydro_Avec");
+   ppm1d_cxx_func = ppm1d_cxx_funcs[MKINDEX(do_temp,do_ye,do_mhd,dc_flag,do_ppm_detect,apply_enhanced_ppm)];
+   if(ppm1d_cxx_func == NULL) {
+     CCTK_VError(__LINE__, __FILE__, CCTK_THORNSTRING,
+@@ -287,22 +288,22 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+         oned_slice(nx,nstart,1,eps,eps1d);
+         oned_slice(nx,nstart,1,press,press1d);
+         
+-        if(Y_e!=NULL) {
++        if(do_ye) {
+           oned_slice(nx,nstart,1,Y_e,ye1d);
+-          if(temperature!=NULL){
++          if(do_temp){
+             oned_slice(nx,nstart,1,temperature,temp1d);
+           } 
+         }
+         
+-        if(Bvec!=NULL) {
++        if(do_mhd) {
+           oned_slice(nx,nstart,       1,Bprim,Bvcx1d);
+           oned_slice(nx,nstart+nxyz,  1,Bprim,Bvcy1d);
+           oned_slice(nx,nstart+2*nxyz,1,Bprim,Bvcz1d);
+           if(clean_divergence) {
+             oned_slice(nx,nstart,1,psidc,psidc1d);
+           }
+-        } else if (CCTK_Equals(Bvec_evolution_method,"GRHydro_Avec")) {
+-          CCTK_WARN(0, "Someone needs to figure out which variables to pass for Avec");
++          if (do_Avec)
++            CCTK_WARN(0, "Someone needs to figure out which variables to pass for Avec");
+         }
+         
+         ppm1d_cxx_func(cctk_lsh[0],CCTK_DELTA_SPACE(0),
+@@ -327,16 +328,16 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+         oned_unslice(nx,nstart,1,eps1d_minus,epsminus);
+         oned_unslice(nx,nstart,1,eps1d_plus,epsplus);
+         
+-        if(CCTK_Equals(Y_e_evolution_method,"GRHydro")) {
++        if(do_ye) {
+           oned_unslice(nx,nstart,1,ye1d_minus,Y_e_minus);
+           oned_unslice(nx,nstart,1,ye1d_plus,Y_e_plus);
+-          if(CCTK_Equals(temperature_evolution_method,"GRHydro")) {
++          if(do_temp) {
+             oned_unslice(nx,nstart,1,temp1d_minus,tempminus);
+             oned_unslice(nx,nstart,1,temp1d_plus,tempplus);
+           }
+         }
+         
+-        if(CCTK_Equals(Bvec_evolution_method,"GRHydro")) {
++        if(do_mhd) {
+           oned_unslice(nx,nstart,1,Bvcx1d_minus,Bvecxminus);
+           oned_unslice(nx,nstart,1,Bvcy1d_minus,Bvecyminus);
+           oned_unslice(nx,nstart,1,Bvcz1d_minus,Bveczminus);
+@@ -373,22 +374,22 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+         oned_slice(ny,nstart,nx,eps,eps1d);
+         oned_slice(ny,nstart,nx,press,press1d);
+         
+-        if(Y_e!=NULL) {
++        if(do_ye) {
+           oned_slice(ny,nstart,nx,Y_e,ye1d);
+-          if(temperature!=NULL){
++          if(do_temp){
+             oned_slice(ny,nstart,nx,temperature,temp1d);
+           } 
+         }
+         
+-        if(Bvec!=NULL) {
++        if(do_mhd) {
+           oned_slice(ny,nstart,       nx,Bprim,Bvcx1d);
+           oned_slice(ny,nstart+nxyz,  nx,Bprim,Bvcy1d);
+           oned_slice(ny,nstart+2*nxyz,nx,Bprim,Bvcz1d);
+           if(clean_divergence) {
+             oned_slice(ny,nstart,nx,psidc,psidc1d);
+           }
+-        } else if (CCTK_Equals(Bvec_evolution_method,"GRHydro_Avec")) {
+-          CCTK_WARN(0, "Someone needs to figure out which variables to pass for Avec");
++          if (do_Avec)
++            CCTK_WARN(0, "Someone needs to figure out which variables to pass for Avec");
+         }
+         
+         ppm1d_cxx_func
+@@ -414,16 +415,16 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+         oned_unslice(ny,nstart,nx,eps1d_minus,epsminus);
+         oned_unslice(ny,nstart,nx,eps1d_plus,epsplus);
+         
+-        if(CCTK_Equals(Y_e_evolution_method,"GRHydro")) {
++        if(do_ye) {
+           oned_unslice(ny,nstart,nx,ye1d_minus,Y_e_minus);
+           oned_unslice(ny,nstart,nx,ye1d_plus,Y_e_plus);
+-          if(CCTK_Equals(temperature_evolution_method,"GRHydro")) {
++          if(do_temp) {
+             oned_unslice(ny,nstart,nx,temp1d_minus,tempminus);
+             oned_unslice(ny,nstart,nx,temp1d_plus,tempplus);
+           }
+         }
+         
+-        if(CCTK_Equals(Bvec_evolution_method,"GRHydro")) {
++        if(do_mhd) {
+           oned_unslice(ny,nstart,nx,Bvcx1d_minus,Bvecxminus);
+           oned_unslice(ny,nstart,nx,Bvcy1d_minus,Bvecyminus);
+           oned_unslice(ny,nstart,nx,Bvcz1d_minus,Bveczminus);
+@@ -461,22 +462,22 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+         oned_slice(nz,nstart,nxy,eps,eps1d);
+         oned_slice(nz,nstart,nxy,press,press1d);
+         
+-        if(Y_e!=NULL) {
++        if(do_ye) {
+           oned_slice(nz,nstart,nxy,Y_e,ye1d);
+-          if(temperature!=NULL){
++          if(do_temp){
+             oned_slice(nz,nstart,nxy,temperature,temp1d);
+           } 
+         }
+         
+-        if(Bvec!=NULL) {
++        if(do_mhd) {
+           oned_slice(nz,nstart,       nxy,Bprim,Bvcx1d);
+           oned_slice(nz,nstart+nxyz,  nxy,Bprim,Bvcy1d);
+           oned_slice(nz,nstart+2*nxyz,nxy,Bprim,Bvcz1d);
+           if(clean_divergence) {
+             oned_slice(nz,nstart,nxy,psidc,psidc1d);
+           }
+-        } else if (CCTK_Equals(Bvec_evolution_method,"GRHydro_Avec")) {
+-          CCTK_WARN(0, "Someone needs to figure out which variables to pass for Avec");
++          if (do_Avec)
++            CCTK_WARN(0, "Someone needs to figure out which variables to pass for Avec");
+         }
+         
+         ppm1d_cxx_func
+@@ -502,16 +503,16 @@ void CCTK_FNAME(GRHydro_PPMReconstruct_drv_opt)(cGH const * const restrict & res
+         oned_unslice(nz,nstart,nxy,eps1d_minus,epsminus);
+         oned_unslice(nz,nstart,nxy,eps1d_plus,epsplus);
+         
+-        if(CCTK_Equals(Y_e_evolution_method,"GRHydro")) {
++        if(do_ye) {
+           oned_unslice(nz,nstart,nxy,ye1d_minus,Y_e_minus);
+           oned_unslice(nz,nstart,nxy,ye1d_plus,Y_e_plus);
+-          if(CCTK_Equals(temperature_evolution_method,"GRHydro")) {
++          if(do_temp) {
+             oned_unslice(nz,nstart,nxy,temp1d_minus,tempminus);
+             oned_unslice(nz,nstart,nxy,temp1d_plus,tempplus);
+           }
+         }
+         
+-        if(CCTK_Equals(Bvec_evolution_method,"GRHydro")) {
++        if(do_mhd) {
+           oned_unslice(nz,nstart,nxy,Bvcx1d_minus,Bvecxminus);
+           oned_unslice(nz,nstart,nxy,Bvcy1d_minus,Bvecyminus);
+           oned_unslice(nz,nstart,nxy,Bvcz1d_minus,Bveczminus);
+-- 
+1.9.0
+

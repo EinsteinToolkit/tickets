@@ -1,0 +1,214 @@
+Index: src/Interpolate.c
+===================================================================
+--- src/Interpolate.c	(revision 212)
++++ src/Interpolate.c	(working copy)
+@@ -289,13 +289,7 @@
+                             void *const out_arrays[])
+ {
+   int retval;
+-  int i, a, n, shift;
+-  int out_of_bounds;
+-  CCTK_INT max_dims[MAXDIM], point[MAXDIM];
+   CCTK_REAL delta_inv[MAXDIM];
+-  CCTK_REAL below[MAXDIM];
+-  CCTK_REAL offset[MAXDIM];
+-  CCTK_REAL coeff[MAXDIM][MAXORDER + 1];
+ 
+ 
+   retval = RETURN_SUCCESS;
+@@ -330,6 +324,15 @@
+     return UTIL_ERROR_BAD_INPUT;
+   }
+ 
++  /* check that the stencil/molecule isn't bigger than the grid */
++  for (int i = 0; i < num_dims; i++)
++  {
++    if (order+1 > dims[i])      /* stencil/molecule size = order+1 */
++    {
++      return CCTK_ERROR_INTERP_GRID_TOO_SMALL;
++    }
++  }
++
+   if (num_points < 0)
+   {
+     CCTK_WARN (1, "Negative number of points given");
+@@ -344,11 +347,21 @@
+   }
+ 
+   /* avoid divisions by delta later on */
+-  for (i = 0; i < num_dims; i++)
++  for (int i = 0; i < num_dims; i++)
+   {
+     delta_inv[i] = 1.0 / delta[i];
+   }
+ 
++
++#pragma omp parallel
++  {
++  int shift, myretval;
++  int out_of_bounds;
++  CCTK_INT max_dims[MAXDIM], point[MAXDIM];
++  CCTK_REAL below[MAXDIM];
++  CCTK_REAL offset[MAXDIM];
++  CCTK_REAL coeff[MAXDIM][MAXORDER + 1];
++
+   /* duplicate the dims[] vector into one with MAXDIM-1 elements
+      (with the remaining elements zeroed out)
+      so that we can use nested loops over MAXDIM dimensions later on */
+@@ -358,7 +371,7 @@
+   /* zero out the coefficients and set the elements with index 'order' to one
+      so that we can use nested loops over MAXDIM dimensions later on */
+   memset (coeff, 0, sizeof (coeff));
+-  for (i = num_dims; i < MAXDIM; i++)
++  for (int i = num_dims; i < MAXDIM; i++)
+   {
+     coeff[i][0] = 1;
+   }
+@@ -366,14 +379,17 @@
+   /* zero out the iterator */
+   memset (point, 0, sizeof (point));
+ 
++  myretval = RETURN_SUCCESS;
++
+   /* loop over all points to interpolate at */
+-  for (n = retval = 0; n < num_points; n++)
++  #pragma omp for
++  for (int n = 0; n < num_points; n++)
+   {
+     /* reset the out-of-bounds flag */
+     out_of_bounds = 0;
+ 
+     /* loop over all dimensions */
+-    for (i = 0; i < num_dims; i++)
++    for (int i = 0; i < num_dims; i++)
+     {
+       /* closest grid point for stencil/molecule */
+       point[i] = floor ((coord[i][n] - origin[i]) * delta_inv[i]
+@@ -382,12 +398,6 @@
+       /* test bounds */
+       out_of_bounds |= point[i] < 0 || point[i]+order >= dims[i];
+ 
+-      /* check that the stencil/molecule isn't bigger than the grid */
+-      if (order+1 > dims[i])      /* stencil/molecule size = order+1 */
+-      {
+-        return CCTK_ERROR_INTERP_GRID_TOO_SMALL;
+-      }
+-
+       /* if beyond lower bound shift the grid point to the right */
+       shift = point[i];
+       if (shift < 0)
+@@ -411,6 +421,7 @@
+ 
+ #ifdef LOCALINTERP_VERBOSE_DEBUG
+ if (n == LocalInterp_verbose_debug_n)
++#pragma omp critical
+         {
+         int ii;
+         printf("out_of_bounds = %d\n", out_of_bounds);
+@@ -424,6 +435,7 @@
+     /* check bounds */
+     if (out_of_bounds)
+     {
++#pragma omp critical
+       if (num_dims == 1)
+       {
+         CCTK_VWarn (1, __LINE__, __FILE__, CCTK_THORNSTRING,
+@@ -481,7 +493,7 @@
+                     "Internal error: %d dimensions aren't supported", num_dims);
+       }
+ 
+-      retval = CCTK_ERROR_INTERP_POINT_OUTSIDE;
++      myretval = CCTK_ERROR_INTERP_POINT_OUTSIDE;
+       continue;				/* with next interpolation point */
+     }
+ 
+@@ -508,7 +520,7 @@
+     if (order == 1)
+     {
+       /* first order (linear) 1D interpolation */
+-      for (i = 0; i < num_dims; i++)
++      for (int i = 0; i < num_dims; i++)
+       {
+         coeff[i][0] = 1 - offset[i];
+         coeff[i][1] =     offset[i];
+@@ -517,7 +529,7 @@
+     else if (order == 2)
+     {
+       /* second order (quadratic) 1D interpolation */
+-      for (i = 0; i < num_dims; i++)
++      for (int i = 0; i < num_dims; i++)
+       {
+         coeff[i][0] = (1-offset[i]) * (2-offset[i]) / (  2  *   1 );
+         coeff[i][1] = ( -offset[i]) * (2-offset[i]) / (  1  * (-1));
+@@ -527,7 +539,7 @@
+     else if (order == 3)
+     {
+       /* third order (cubic) 1D interpolation */
+-      for (i = 0; i < num_dims; i++)
++      for (int i = 0; i < num_dims; i++)
+       {
+         coeff[i][0] = (1-offset[i]) * (2-offset[i]) * (3-offset[i]) /
+                       (  3  *   2  *   1 );
+@@ -541,11 +553,13 @@
+     }
+     else
+     {
++#pragma omp critical
+       CCTK_WARN (0, "Implementation error");
+     }
+ 
+ #ifdef LOCALINTERP_VERBOSE_DEBUG
+ if (n == LocalInterp_verbose_debug_n)
++#pragma omp critical
+         {
+         int ii,mm;
+                 for (ii = 0 ; ii < num_dims ; ++ii)
+@@ -560,23 +574,25 @@
+ #endif /* LOCALINTERP_VERBOSE_DEBUG */
+ 
+     /* now loop over all arrays to interpolate at the current point */
+-    for (a = 0; a < num_arrays; a++)
++    for (int a = 0; a < num_arrays; a++)
+     {
+       /* check for valid input and output array type */
+       if (in_types[a] < 0 || out_types[a] < 0)
+       {
++#pragma omp critical
+         CCTK_VWarn (1, __LINE__, __FILE__, CCTK_THORNSTRING,
+                     "Datatype for input and/or output array with index %d "
+                     "is invalid", a);
+-        retval = UTIL_ERROR_BAD_INPUT;
++        myretval = UTIL_ERROR_BAD_INPUT;
+         continue;
+       }
+ 
+       /* sorry, for now input and output arrays must be of same type */
+       if (in_types[a] != out_types[a])
+       {
++#pragma omp critical
+         CCTK_WARN (1, "Type casting of interpolation results not implemented");
+-        retval = UTIL_ERROR_BAD_INPUT;
++        myretval = UTIL_ERROR_BAD_INPUT;
+         continue;
+       }
+ 
+@@ -644,12 +660,19 @@
+ #endif
+       else
+       {
++#pragma omp critical
+         CCTK_VWarn (1, __LINE__, __FILE__, CCTK_THORNSTRING,
+                     "Unsupported variable type %d", (int) in_types[a]);
+       }
+     } /* end of loop over all arrays */
+ 
+   } /* end of loop over all points to interpolate at */
++#pragma omp critical
++  if (myretval != RETURN_SUCCESS && retval == RETURN_SUCCESS)
++  {
++    retval = myretval; /* return one of the error conditions that occured */
++  }
++  } /* end of parallel section */
+ 
+   /* we're done */
+   return (retval);

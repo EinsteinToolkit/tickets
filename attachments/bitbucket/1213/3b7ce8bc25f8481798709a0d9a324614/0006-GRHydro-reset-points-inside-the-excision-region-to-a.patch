@@ -1,0 +1,46 @@
+From 44feff27776ca2a43eb14c42d16a255e8a5d9c12 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Fri, 12 Oct 2012 00:48:14 -0700
+Subject: [PATCH 06/25] GRHydro: reset points inside the excision region to
+ atmosphere in
+
+InitialAtmosphereReset(M) so that the ID thorns do not have to know
+about he excised region.
+---
+ src/GRHydro_UpdateMask.F90  |    4 +++-
+ src/GRHydro_UpdateMaskM.F90 |    4 +++-
+ 2 files changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/src/GRHydro_UpdateMask.F90 b/src/GRHydro_UpdateMask.F90
+index b5a84a5..67a42cb 100644
+--- a/src/GRHydro_UpdateMask.F90
++++ b/src/GRHydro_UpdateMask.F90
+@@ -452,7 +452,9 @@ subroutine GRHydro_InitialAtmosphereReset(CCTK_ARGUMENTS)
+     do j = 1, cctk_lsh(2)
+       do i = 1, cctk_lsh(1)
+         
+-        if (rho(i,j,k) .le. rho_min) then
++        if (rho(i,j,k) .le. rho_min .or. &
++            GRHydro_enable_internal_excision /= 0 .and. &
++            hydro_excision_mask(i,j,k) .ne. 0) then 
+           rho(i,j,k) = rho_min
+           det = SPATIAL_DETERMINANT(g11(i,j,k), g12(i,j,k), g13(i,j,k), \
+                 g22(i,j,k), g23(i,j,k), g33(i,j,k))
+diff --git a/src/GRHydro_UpdateMaskM.F90 b/src/GRHydro_UpdateMaskM.F90
+index b5066e2..a965f53 100644
+--- a/src/GRHydro_UpdateMaskM.F90
++++ b/src/GRHydro_UpdateMaskM.F90
+@@ -323,7 +323,9 @@ subroutine GRHydro_InitialAtmosphereResetM(CCTK_ARGUMENTS)
+     do j = 1, cctk_lsh(2)
+       do i = 1, cctk_lsh(1)
+         
+-        if (rho(i,j,k) .le. rho_min) then
++        if (rho(i,j,k) .le. rho_min .or. &
++            (GRHydro_enable_internal_excision .ne. 0 .and. &
++             hydro_excision_mask(i,j,k) .ne. 0) )  then
+           rho(i,j,k) = rho_min
+           vup(i,j,k,1) = 0.0d0
+           vup(i,j,k,2) = 0.0d0
+-- 
+1.7.10.4
+

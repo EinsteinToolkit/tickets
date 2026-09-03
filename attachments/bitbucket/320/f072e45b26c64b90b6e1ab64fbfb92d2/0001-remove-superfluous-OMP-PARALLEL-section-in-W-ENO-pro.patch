@@ -1,0 +1,37 @@
+From 24aaf47b5a8fbbaa5678dea3c52852d287396364 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Wed, 2 Mar 2011 10:03:38 -0500
+Subject: [PATCH] remove superfluous OMP PARALLEL section in (W)ENO prolongation
+
+---
+ Carpet/CarpetLib/src/prolongate_3d_real8_eno.F90  |    1 -
+ Carpet/CarpetLib/src/prolongate_3d_real8_weno.F90 |    1 -
+ 2 files changed, 0 insertions(+), 2 deletions(-)
+
+diff --git a/Carpet/CarpetLib/src/prolongate_3d_real8_eno.F90 b/Carpet/CarpetLib/src/prolongate_3d_real8_eno.F90
+index 4b5be09..84e56f0 100644
+--- a/Carpet/CarpetLib/src/prolongate_3d_real8_eno.F90
++++ b/Carpet/CarpetLib/src/prolongate_3d_real8_eno.F90
+@@ -194,7 +194,6 @@ subroutine prolongate_3d_real8_eno (src, srciext, srcjext, &
+ 
+ !!$     Loop over fine region
+ 
+-!$omp parallel do private (k0, fk, j0, fj, i0, fi)
+   do k = 0, regkext-1
+     k0 = (srckoff + k) / dstkfac
+     fk = mod(srckoff + k, dstkfac)
+diff --git a/Carpet/CarpetLib/src/prolongate_3d_real8_weno.F90 b/Carpet/CarpetLib/src/prolongate_3d_real8_weno.F90
+index 199f455..d5ec434 100644
+--- a/Carpet/CarpetLib/src/prolongate_3d_real8_weno.F90
++++ b/Carpet/CarpetLib/src/prolongate_3d_real8_weno.F90
+@@ -271,7 +271,6 @@ subroutine prolongate_3d_real8_weno (src, srciext, srcjext, &
+ 
+ !!$     Loop over fine region
+ 
+-!$omp parallel do private (k0, fk, j0, fj, i0, fi)
+   do k = 0, regkext-1
+     k0 = (srckoff + k) / dstkfac
+     fk = mod(srckoff + k, dstkfac)
+-- 
+1.7.1
+

@@ -1,0 +1,57 @@
+From 834d1301504d0e0752727e2b697f475ebcb04e02 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Sun, 25 Nov 2012 21:22:24 -0800
+Subject: [PATCH 8/8] GRHydro_InitData: add parameter to offset radial origin
+
+r_code = r_KS - r0 with r0=1M by default. This avoids placing the
+central singularity on the grid.
+---
+ param.ccl            |    5 +++++
+ src/GRHydro_BondiM.c |   15 +++++++++++++++
+ 2 files changed, 20 insertions(+)
+
+diff --git a/param.ccl b/param.ccl
+index 51c4c9d..1eb8e46 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -381,6 +381,11 @@ CCTK_REAL bondi_bmag "B_0 parameter for magnetized Bondi"
+   0:* :: "Anything positive"
+ } 0.01
+ 
++CCTK_REAL bondi_radial_offset "redefine r_grid=r_KS-r0 to avoid singularity on grid"
++{
++  0:* :: "Any positive number"
++} 0.0
++
+ CCTK_BOOLEAN set_bondi_beta_sonicpt "Set plasma beta parameter instead of bondi_bmag"
+ {
+ } no
+diff --git a/src/GRHydro_BondiM.c b/src/GRHydro_BondiM.c
+index ef7c1c5..f947abb 100644
+--- a/src/GRHydro_BondiM.c
++++ b/src/GRHydro_BondiM.c
+@@ -1097,6 +1097,21 @@ void GRHydro_BondiM(CCTK_ARGUMENTS)
+     xpos[YY] = y[i] ;
+     xpos[ZZ] = z[i] ;
+ 
++    if (bondi_radial_offset > 0.) {
++      double rspher_orig = sqrt(SQR(xpos[XX])+SQR(xpos[YY])+SQR(xpos[ZZ]));
++      double rspher_new = rspher_orig + bondi_radial_offset;
++      if(rspher_orig < SMALL_BONDI) { 
++        xpos[XX] = rspher_new;
++        xpos[YY] = 0.;
++        xpos[ZZ] = 0.;
++      } else {
++        for(int n = XX ; n <= ZZ ; n++) {
++          xpos[n] *= rspher_new/rspher_orig;
++        }
++      }
++    }
++
++
+     switch( coord_type ) {
+   
+     case COORD_BOYERLINDQUIST :
+-- 
+1.7.10.4
+

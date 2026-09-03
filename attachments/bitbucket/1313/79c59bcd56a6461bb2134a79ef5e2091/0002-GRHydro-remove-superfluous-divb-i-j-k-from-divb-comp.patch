@@ -1,0 +1,35 @@
+From 182f5405598ac4497192ac42f5a41591762e8f65 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Sun, 7 Apr 2013 18:05:39 -0700
+Subject: [PATCH 2/2] GRHydro: remove superfluous "divb(i,j,k) +" from divb
+ computation
+
+---
+ src/GRHydro_Analysis.F90 |    4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/GRHydro_Analysis.F90 b/src/GRHydro_Analysis.F90
+index 8417fb7..cbb6f6a 100644
+--- a/src/GRHydro_Analysis.F90
++++ b/src/GRHydro_Analysis.F90
+@@ -41,7 +41,7 @@ subroutine GRHydro_CalcDivB(CCTK_ARGUMENTS)
+                if(track_divB.ne.0) then
+                  if(transport_constraints.ne.0) then
+                    ! edge based divergence (see WhiskyMHD & Bruno's thesis, Eq. 7.27)
+-                   divB(i,j,k) = divB(i,j,k) + &
++                   divB(i,j,k) = &
+                      0.25d0*(Bcons(i+1,j,k,1)-Bcons(i,j,k,1)+ &
+                              Bcons(i+1,j+1,k,1)-Bcons(i,j+1,k,1)+ &
+                              Bcons(i+1,j,k+1,1)-Bcons(i,j,k+1,1)+ &
+@@ -68,7 +68,7 @@ subroutine GRHydro_CalcDivB(CCTK_ARGUMENTS)
+                    Bcons_r3 = 0.5d0 * (Bcons(i,j,k,3) + &
+                             Bcons(i,j,k+1,3))
+                    
+-                   divB(i,j,k) = divB(i,j,k) + (Bcons_l1 - Bcons_r1) * idx + (Bcons_l2 - Bcons_r2) * idy + (Bcons_l3 - Bcons_r3) * idz  
++                   divB(i,j,k) = (Bcons_l1 - Bcons_r1) * idx + (Bcons_l2 - Bcons_r2) * idy + (Bcons_l3 - Bcons_r3) * idz  
+ 
+                  endif
+                endif
+-- 
+1.7.10.4
+

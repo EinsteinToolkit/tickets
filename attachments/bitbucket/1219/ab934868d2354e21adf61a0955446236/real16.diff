@@ -1,0 +1,103 @@
+Index: make/aclocal.m4
+===================================================================
+--- make/aclocal.m4	(revision 4934)
++++ make/aclocal.m4	(working copy)
+@@ -710,7 +710,7 @@
+ [cctk_cv_have_fortran_real16=no
+ AC_LANG_SAVE
+ AC_LANG_FORTRAN77
+-CCTK_TRY_COMPILE(,[      REAL*16 a], cctk_cv_have_fortran_real16=yes, cctk_cv_have_fortran_real16=no)
++CCTK_TRY_COMPILE(,[      REAL*$REAL16_KIND a], cctk_cv_have_fortran_real16=yes, cctk_cv_have_fortran_real16=no)
+ AC_LANG_RESTORE
+ ])
+ if test "$cctk_cv_have_fortran_real16" = "yes" ; then
+@@ -749,7 +749,7 @@
+ [cctk_cv_have_fortran_complex32=no
+ AC_LANG_SAVE
+ AC_LANG_FORTRAN77
+-CCTK_TRY_COMPILE(,[      COMPLEX*32 a], cctk_cv_have_fortran_complex32=yes, cctk_cv_have_fortran_complex32=no)
++CCTK_TRY_COMPILE(,[      COMPLEX*$COMPLEX32_KIND a], cctk_cv_have_fortran_complex32=yes, cctk_cv_have_fortran_complex32=no)
+ AC_LANG_RESTORE
+ ])
+ if test "$cctk_cv_have_fortran_complex32" = "yes" ; then
+Index: make/cctk_Config.h.in
+===================================================================
+--- make/cctk_Config.h.in	(revision 4934)
++++ make/cctk_Config.h.in	(working copy)
+@@ -568,6 +568,9 @@
+ #undef HAVE_CCTK_FORTRAN_COMPLEX16
+ #undef HAVE_CCTK_FORTRAN_COMPLEX32
+ 
++#undef CCTK_REAL16_KIND
++#undef CCTK_COMPLEX32_KIND
++
+ /* OpenMP collapse clause */
+ #if defined __INTEL_COMPILER && __INTEL_COMPILER_BUILD_DATE < 20100801
+ /* see http://software.intel.com/en-us/articles/intel-professional-edition-compilers-111-fixes-list/ */
+Index: make/configure.in
+===================================================================
+--- make/configure.in	(revision 4934)
++++ make/configure.in	(working copy)
+@@ -912,6 +912,11 @@
+ CCTK_C_BUILTIN_EXPECT
+ CCTK_CXX_BUILTIN_EXPECT
+ 
++if test "x$REAL16_KIND" = 'x'; then
++  REAL16_KIND=16
++fi
++COMPLEX32_KIND=$(( $REAL16_KIND * 2 ))
++
+ CCTK_FORTRAN_REAL4
+ CCTK_FORTRAN_REAL8
+ CCTK_FORTRAN_REAL16
+@@ -1127,6 +1132,8 @@
+ if test -n "$CCTK_REAL16" -a \( "x$F77" = 'xnone' -o \( "x$cctk_cv_have_fortran_real16" = 'xyes' -a "x$cctk_cv_have_fortran_complex32" = 'xyes' \) \) -a "x$DISABLE_REAL16" != 'xyes' ; then
+   AC_DEFINE_UNQUOTED(CCTK_REAL16, $CCTK_REAL16)
+   AC_DEFINE(HAVE_CCTK_REAL16)
++  AC_DEFINE_UNQUOTED(CCTK_REAL16_KIND, $REAL16_KIND)
++  AC_DEFINE_UNQUOTED(CCTK_COMPLEX32_KIND, $COMPLEX32_KIND)
+ fi
+ 
+ if test -n "$CCTK_REAL8" -a \( "x$F77" = 'xnone' -o \( "x$cctk_cv_have_fortran_real8" -a "x$cctk_cv_have_fortran_complex16" = 'xyes' \) \); then
+Index: make/force-reconfigure
+===================================================================
+--- make/force-reconfigure	(revision 4934)
++++ make/force-reconfigure	(working copy)
+@@ -34,4 +34,5 @@
+ 15 Jul 2012: Correct error in determining make dependencies
+ 09 Aug 2012: Take CFLAGS/CXXFLAGS into account when determining dependencies
+ 22 Oct 2012: Check availability of isnan etc. in C++
++20 Nov 2012: Introduce CCTK_REAL16_KIND
+ 15 Jan 2013: Add CCTK_ATTRIBUTE_ALWAYS_INLINE
+Index: include/cctk_Types.h
+===================================================================
+--- include/cctk_Types.h	(revision 4929)
++++ include/cctk_Types.h	(working copy)
+@@ -115,9 +115,9 @@
+ #endif
+ 
+ #ifdef HAVE_CCTK_REAL16
+-#define CCTK_REAL16 REAL*16
++#define CCTK_REAL16 REAL*CCTK_REAL16_KIND
+ #define HAVE_CCTK_COMPLEX32 1
+-#define CCTK_COMPLEX32  COMPLEX*32
++#define CCTK_COMPLEX32  COMPLEX*CCTK_COMPLEX32_KIND
+ #endif
+ 
+ #ifdef HAVE_CCTK_REAL8
+@@ -194,7 +194,7 @@
+ #define CCTK_COMPLEX CCTK_COMPLEX8
+ #endif
+ 
+-#endif /*_CCTK_TYPES_H_ */
++#endif /* CCODE */
+ 
+ /* Determine whether we have a traditional or an ANSI cpp. */
+ #ifdef FCODE
+@@ -273,5 +273,4 @@
+ 
+ #endif /* HAVE_..._ATTRIBUTE_UNUSED */
+ 
+-#endif /* CCODE */
+-
++#endif /*_CCTK_TYPES_H_ */

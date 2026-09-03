@@ -1,0 +1,197 @@
+From 13a8ff532ede936c8b197e45c4a41f259464bdc9 Mon Sep 17 00:00:00 2001
+From: Anton Khirnov <anton@khirnov.net>
+Date: Mon, 20 Aug 2012 13:27:36 +0200
+Subject: [PATCH] CarpetIOHDF5: make WriteLargeAttribute write a string, not
+ an array of ints
+
+The data that's supplied to it is to be interpreted as a string.
+
+Before this commit the data is written as an array of int8, e.g.:
+h5dump -d '/Parameters and Global Attributes/Datasets' alpha.h5
+HDF5 "alpha.h5" {
+DATASET "/Parameters and Global Attributes/Datasets" {
+   DATATYPE  H5T_STD_I8LE
+   DATASPACE  SIMPLE { ( 16 ) / ( 16 ) }
+   DATA {
+   (0): 77, 76, 95, 66, 83, 83, 78, 58, 58, 97, 108, 112, 104, 97, 10, 0
+   }
+}
+}
+
+After this commit:
+h5dump -d '/Parameters and Global Attributes/Datasets' alpha.h5
+HDF5 "alpha.h5" {
+DATASET "/Parameters and Global Attributes/Datasets" {
+   DATATYPE  H5T_STRING {
+         STRSIZE 16;
+         STRPAD H5T_STR_NULLTERM;
+         CSET H5T_CSET_ASCII;
+         CTYPE H5T_C_S1;
+      }
+   DATASPACE  SCALAR
+   DATA {
+   (0): "ML_BSSN::alpha
+           "
+   }
+}
+}
+---
+ Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc            |   14 ++++--
+ Carpet/CarpetIOHDF5/src/Input.cc                   |   48 +++++++++++++++++---
+ .../test/CarpetWaveToyCheckpoint_test.it_64.h5     |  Bin 1387794 -> 1431874 bytes
+ Carpet/CarpetIOHDF5/test/nobuffers/x.xy.h5         |  Bin 13882 -> 18226 bytes
+ Carpet/CarpetIOHDF5/test/nobuffers/x.xz.h5         |  Bin 13794 -> 18138 bytes
+ 5 files changed, 50 insertions(+), 12 deletions(-)
+
+diff --git a/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc b/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
+index c3053c3..9255f9d 100644
+--- a/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
++++ b/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
+@@ -1478,18 +1478,22 @@ static int WriteLargeAttribute (hid_t const group,
+                                 char const * const name,
+                                 char const * const svalue)
+ {
+-  hid_t dataspace, dataset;
++  hid_t dataspace, dataset, datatype;
+   int error_count = 0;
+   
+   // Create a dataset, since the data may not fit into an attribute
+   hsize_t const size = strlen (svalue) + 1;
+-  HDF5_ERROR (dataspace = H5Screate_simple (1, & size, NULL));
+-  HDF5_ERROR (dataset = H5Dcreate (group, name, H5T_NATIVE_CHAR,
+-                                   dataspace, H5P_DEFAULT));
+-  HDF5_ERROR (H5Dwrite (dataset, H5T_NATIVE_CHAR, H5S_ALL, H5S_ALL,
++  HDF5_ERROR (datatype = H5Tcopy (H5T_C_S1));
++  HDF5_ERROR (H5Tset_size (datatype, size));
++
++  HDF5_ERROR (dataspace = H5Screate (H5S_SCALAR));
++  HDF5_ERROR (dataset   = H5Dcreate (group, name, datatype,
++                                     dataspace, H5P_DEFAULT));
++  HDF5_ERROR (H5Dwrite (dataset, datatype, H5S_ALL, H5S_ALL,
+                         H5P_DEFAULT, svalue));
+   HDF5_ERROR (H5Dclose (dataset));
+   HDF5_ERROR (H5Sclose (dataspace));
++  HDF5_ERROR (H5Tclose (datatype));
+   
+   return error_count;
+ }
+diff --git a/Carpet/CarpetIOHDF5/src/Input.cc b/Carpet/CarpetIOHDF5/src/Input.cc
+index f14146d..0e76295 100644
+--- a/Carpet/CarpetIOHDF5/src/Input.cc
++++ b/Carpet/CarpetIOHDF5/src/Input.cc
+@@ -871,13 +871,28 @@ static list<fileset_t>::iterator OpenFileSet (const cGH* const cctkGH,
+       CCTK_VInfo (CCTK_THORNSTRING, "Recovering parameters from checkpoint "
+                   "file '%s'", file.filename);
+     }
+-    hid_t dataset;
++    hid_t dataset, datatype;
++    size_t len;
++    htri_t old_data;
++    char *parameters;
++
+     HDF5_ERROR (dataset = H5Dopen (file.file,
+                                    METADATA_GROUP "/" ALL_PARAMETERS));
+-    char *parameters = new char[H5Dget_storage_size (dataset) + 1];
+-    HDF5_ERROR (H5Dread (dataset, H5T_NATIVE_CHAR, H5S_ALL, H5S_ALL,
++    HDF5_ERROR (datatype = H5Dget_type(dataset));
++    HDF5_ERROR (old_data = H5Tequal(datatype, H5T_NATIVE_CHAR));
++    if (old_data) {
++        /* old data that stored this as an array of chars */
++        CCTK_WARN (CCTK_WARN_ALERT, "Old-style checkpoint data found.");
++        HDF5_ERROR (len = H5Dget_storage_size(dataset) + 1);
++    } else {
++        HDF5_ERROR (len = H5Tget_size(datatype));
++    }
++    parameters = new char[len];
++
++    HDF5_ERROR (H5Dread (dataset, datatype, H5S_ALL, H5S_ALL,
+                          H5P_DEFAULT, parameters));
+     HDF5_ERROR (H5Dclose (dataset));
++    HDF5_ERROR (H5Tclose (datatype));
+     IOUtil_SetAllParameters (parameters);
+     delete[] parameters;
+ 
+@@ -958,11 +973,28 @@ static void ReadMetadata (fileset_t& fileset, hid_t file)
+     dataset = H5Dopen (metadata, GRID_STRUCTURE);
+   } H5E_END_TRY;
+   if (dataset >= 0) {
+-    vector<char> gs_cstr (H5Dget_storage_size (dataset) + 1);
+-    HDF5_ERROR (H5Dread (dataset, H5T_NATIVE_CHAR, H5S_ALL, H5S_ALL,
+-                         H5P_DEFAULT, &gs_cstr.front()));
++    hid_t datatype;
++    htri_t old_data;
++    size_t len;
++    char *gs_str;
++
++    HDF5_ERROR (datatype = H5Dget_type(dataset));
++    HDF5_ERROR (datatype = H5Dget_type(dataset));
++    HDF5_ERROR (old_data = H5Tequal(datatype, H5T_NATIVE_CHAR));
++    if (old_data) {
++        /* old data that stored this as an array of chars */
++        CCTK_WARN (CCTK_WARN_ALERT, "Old-style checkpoint data found.");
++        HDF5_ERROR (len = H5Dget_storage_size(dataset) + 1);
++    } else {
++        HDF5_ERROR (len = H5Tget_size(datatype));
++    }
++    gs_str = new char[len];
++
++    HDF5_ERROR (H5Dread (dataset, datatype, H5S_ALL, H5S_ALL,
++                         H5P_DEFAULT, gs_str));
+     HDF5_ERROR (H5Dclose (dataset));
+-    istringstream gs_buf (&gs_cstr.front());
++    HDF5_ERROR (H5Tclose (datatype));
++    istringstream gs_buf (gs_str);
+     
+     skipws (gs_buf);
+     consume (gs_buf, "grid_superstructure:");
+@@ -1019,6 +1051,8 @@ static void ReadMetadata (fileset_t& fileset, hid_t file)
+     gs_buf >> fileset.grid_prolongation_orders;
+     skipws (gs_buf);
+     consume (gs_buf, ".");
++
++    delete[] gs_str;
+   }
+ 
+ //   fileset.mgleveltimes.resize (fileset.num_mglevels * fileset.num_reflevels);
+diff --git a/Carpet/CarpetIOHDF5/test/CarpetWaveToyCheckpoint_test.it_64.h5 b/Carpet/CarpetIOHDF5/test/CarpetWaveToyCheckpoint_test.it_64.h5
+index 5133cf46571a7402c034f7d77fd4a4db76f86d6b..9c976715a51316049f707b7dbc8a49c2268ffb78 100644
+GIT binary patch
+delta 414
+zcmbPqE9B6o@Ch1BPB%AdiE%M2>4{DbWR#tpz{SCQ?I@Vdt-$~R&yIokPn#>a+bg&k
+zftU%1nSq!Eh*^P{4T#x+m;;D8ftU-3L27w`m=}oofS4bM1%Ox(h=qVy7>Gr-S8$8Y
+zQk=ePF{i-d1V+Zm6~aO?9AHZsp>{Jfa4>+_!ayR)W4c2ElMHi7t?1;t!t(6)&ej18
+z3^O(dGKMp5PGIyvCnhH_vTd%APVxW~dW;NgV51-e1CYXPRSyf;Dz0m1MZpf~VVOKZ
+qK!RP!4QwMYH0Ba;>jO53Tazw{PJSyQ57SA&t=v5<n{OpQU;_Zny<6`9
+
+delta 137
+zcmX@KDSXnckO>-0Lb@BZ#JHF$geM0w%1ut-;$TwX1TncZ7$BfS1jv2XT*2L5!OaN7
+zOhC*G#4JF}3dC$c%nrmHK+FlmTtEy`%LBx`K+Ffk{6H)K#DYL91jNEXEV8|VTXdEp
+E0MAb(h5!Hn
+
+diff --git a/Carpet/CarpetIOHDF5/test/nobuffers/x.xy.h5 b/Carpet/CarpetIOHDF5/test/nobuffers/x.xy.h5
+index e33f1c264024dcf870457de98d1122c193a462ee..5f3584f23070d5cf48b6620b7dd7c8433044ce7b 100644
+GIT binary patch
+delta 251
+zcmdm$v#F19f(Db3`$jD>E~Y4pi5ul6Cvb5vd6@%QTpA1zU}ZLO<Fm~b+=sOE7#Y|Y
+z7(t?70z`3u)j+un%s@VfEes@rSSAZ-$uL>jO@1Syz;5qu9l*daW8%iSlRHF&q;YHG
+zoXoE!%hlrqHkW~uVe&gw2{hd@xOLBkSUS~d@*QEgrJEHEJy|v$P+{C$Asxg5^vN<7
+E0B4~q{r~^~
+
+delta 49
+zcmdng$G9tJf(Db7*+wlfE~X0Mi5ul6Cvb5vDR2T=TpA1z&>=E$<Fm~b+=sLPWN;25
+
+diff --git a/Carpet/CarpetIOHDF5/test/nobuffers/x.xz.h5 b/Carpet/CarpetIOHDF5/test/nobuffers/x.xz.h5
+index e532566928627720a1d82e35e31421e6e3a8b784..82d4ed568a22de55acf9db78b365ce0b96b97cff 100644
+GIT binary patch
+delta 263
+zcmaEqeXEyof(Fwqw~bn2TuhHlCvKFRoWRAw^vMj!;?iJ%049rx8=q~i;Lg(0V`N}s
+zU<8SR2@u5rRs-cSFa!A@wlI*G%QCq@Rfg%2?c_Vc3hcMstpgYsW=z~TcXEe_kTh;>
+zoRjlaWx48|z~(Y=GEBawDS@V22Dk1Yh@~A)li!HIE#0{BJLAR!FMzm@adRX0Tow-Z
+QAWs)7s|v2o<<h|{00$s8<NyEw
+
+delta 49
+zcmccB%lIgJf(Fwg(~VkUTuc?h6F16DPT=BTQs4x#xHK3bphINh#%G%=xU;kXjQbA1
+
+-- 
+1.7.10.4
+

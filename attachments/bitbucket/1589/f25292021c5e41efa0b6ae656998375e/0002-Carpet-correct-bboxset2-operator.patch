@@ -1,0 +1,38 @@
+From 2c554e9cc4a40308a315eab5134c0a8bc631e08a Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Wed, 23 Apr 2014 23:51:09 -0700
+Subject: [PATCH 2/3] Carpet: correct bboxset2::operator+
+
+this was actually coded as operator^
+---
+ Carpet/CarpetLib/src/bboxset2.hh | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/Carpet/CarpetLib/src/bboxset2.hh b/Carpet/CarpetLib/src/bboxset2.hh
+index 8f81cde..00c767a 100644
+--- a/Carpet/CarpetLib/src/bboxset2.hh
++++ b/Carpet/CarpetLib/src/bboxset2.hh
+@@ -1275,7 +1275,19 @@ inline ostream& operator<<(ostream& os, const bboxset<T,D>& bs)
+ #ifdef CARPET_DEBUG
+     assert((*this & other).empty());
+ #endif
+-    return *this ^ other;
++#ifndef CARPET_AVOID_LAMBDA
++    return binary_operator
++      ([](const bboxset1& set0, const bboxset1& set1) { return set0 + set1; },
++       other);
++#else
++    bboxset _0;
++    BINARY_OPERATOR
++      (const bboxset1& set0(_1);
++       const bboxset1& set1(_2);
++       { _0 = set0 + set1; },
++       other);
++    return _0;
++#endif
+   }
+   
+   /** Symmetric set union */
+-- 
+1.9.2
+

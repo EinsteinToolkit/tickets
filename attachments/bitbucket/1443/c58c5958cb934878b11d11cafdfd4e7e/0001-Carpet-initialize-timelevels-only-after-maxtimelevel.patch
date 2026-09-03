@@ -1,0 +1,34 @@
+From b4fe52d384c336cd20bc544416b62bc06f918d5f Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Wed, 25 Sep 2013 14:24:20 -0700
+Subject: [PATCH] Carpet: initialize timelevels only after maxtimelevels is
+ known
+
+---
+ Carpet/Carpet/src/SetupGH.cc | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/Carpet/Carpet/src/SetupGH.cc b/Carpet/Carpet/src/SetupGH.cc
+index 1bbaa30..3437bad 100644
+--- a/Carpet/Carpet/src/SetupGH.cc
++++ b/Carpet/Carpet/src/SetupGH.cc
+@@ -541,7 +541,7 @@ namespace Carpet {
+     cctkGH->cctk_mode = CCTK_MODE_META;
+ #endif
+     
+-    timelevels       = maxtimelevels;
++    // timelevels is initialized in setup_refinement_information()
+     timelevel        = 0;
+     timelevel_offset = 0;
+     
+@@ -647,6 +647,7 @@ namespace Carpet {
+                    "There are not enough time levels for this time prolongation order: max_time_levels=%d, prolongation_order_time=%d",
+                    int(max_time_levels), int(prolongation_order_time));
+     }
++    timelevels = maxtimelevels;
+     
+     // Set maximum number of refinement levels
+     maxreflevels = max_refinement_levels;
+-- 
+1.8.4.rc3
+

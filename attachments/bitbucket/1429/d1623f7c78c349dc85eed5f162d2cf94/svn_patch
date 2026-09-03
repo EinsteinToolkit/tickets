@@ -1,0 +1,116 @@
+Index: FuncAndJacobian.c
+===================================================================
+--- FuncAndJacobian.c	(revision 134)
++++ FuncAndJacobian.c	(working copy)
+@@ -939,8 +939,8 @@
+ 	
+ 	N=maximum3(n1,n2,n3);
+ 	p=dvector(0,N);
+-	values3=d3tensor(0,n1,0,n2,0,n3);
+-	values4=d3tensor(0,n1,0,n2,0,n3);
++	values3=d3tensor_SIMPLE(n1,n2,n3);
++	values4=d3tensor_SIMPLE(n1,n2,n3);
+ 
+ 
+ 
+@@ -981,7 +981,7 @@
+ 	      }
+    
+ 	      free_dvector(p,0,N);
+-	      free_d3tensor(values3,0,n1,0,n2,0,n3);
+-	      free_d3tensor(values4,0,n1,0,n2,0,n3);
++	      free_d3tensor_SIMPLE(values3,n1,n2,n3);
++	      free_d3tensor_SIMPLE(values4,n1,n2,n3);
+ 
+ }
+Index: TP_utilities.c
+===================================================================
+--- TP_utilities.c	(revision 134)
++++ TP_utilities.c	(working copy)
+@@ -143,6 +143,29 @@
+ }
+ 
+ /*--------------------------------------------------------------------------*/
++
++CCTK_REAL *** d3tensor_SIMPLE (long L, long W, long D)
++/* allocate a CCTK_REAL 3tensor with range t[0..nrh-1][0..nch-1][0..ndh-1] */
++{
++  CCTK_REAL ***retval = malloc(L*sizeof(CCTK_REAL **));
++  if(retval == NULL) CCTK_WARN (CCTK_WARN_ABORT, "allocation failure (1) in d3tensor()");
++
++  long i, j;
++
++  for(i=0; i<L; i++){
++    retval[i] = malloc(W*sizeof(CCTK_REAL *));
++    if(retval == NULL) CCTK_WARN (CCTK_WARN_ABORT, "allocation failure (2) in d3tensor()");
++
++    for(j=0; j<W; j++){
++      retval[i][j] = malloc(D*sizeof(CCTK_REAL *));
++      if(retval == NULL) CCTK_WARN (CCTK_WARN_ABORT, "allocation failure (3) in d3tensor()");
++    }
++  }
++
++  return retval;
++}
++
++/*--------------------------------------------------------------------------*/
+ void
+ free_ivector (int *v, long nl, long nh)
+ /* free an int vector allocated with ivector() */
+@@ -188,6 +211,22 @@
+ }
+ 
+ /*--------------------------------------------------------------------------*/
++void free_d3tensor_SIMPLE (CCTK_REAL ***t, long L, long W, long D)
++/* free a CCTK_REAL d3tensor allocated by d3tensor_SIMPLE() */
++{
++  long i, j;
++
++  for(i=0; i<L; i++){
++    for(j=0; j<W; j++){
++      free(t[i][j]);
++    }
++    free(t[i]);
++  }
++  free(t);
++
++}
++
++/*--------------------------------------------------------------------------*/
+ int
+ minimum2 (int i, int j)
+ {
+Index: TP_utilities.h
+===================================================================
+--- TP_utilities.h	(revision 134)
++++ TP_utilities.h	(working copy)
+@@ -17,11 +17,13 @@
+ #define imatrix TP_imatrix
+ #define dmatrix TP_dmatrix
+ #define d3tensor TP_d3tensor
++#define d3tensor_SIMPLE TP_d3tensor_SIMPLE
+ #define free_ivector TP_free_ivector
+ #define free_dvector TP_free_dvector
+ #define free_imatrix TP_free_imatrix
+ #define free_dmatrix TP_free_dmatrix
+ #define free_d3tensor TP_free_d3tensor
++#define free_d3tensor_SIMPLE TP_free_d3tensor_SIMPLE
+ 
+ void nrerror (char error_text[]);
+ int *ivector (long nl, long nh);
+@@ -30,6 +32,7 @@
+ CCTK_REAL **dmatrix (long nrl, long nrh, long ncl, long nch);
+ CCTK_REAL ***d3tensor (long nrl, long nrh, long ncl, long nch, long ndl,
+ 		    long ndh);
++CCTK_REAL ***d3tensor_SIMPLE (long L, long W, long D);
+ void free_ivector (int *v, long nl, long nh);
+ void free_dvector (CCTK_REAL *v, long nl, long nh);
+ void free_imatrix (int **m, long nrl, long nrh, long ncl, long nch);
+@@ -36,6 +39,7 @@
+ void free_dmatrix (CCTK_REAL **m, long nrl, long nrh, long ncl, long nch);
+ void free_d3tensor (CCTK_REAL ***t, long nrl, long nrh, long ncl, long nch,
+ 		    long ndl, long ndh);
++void free_d3tensor_SIMPLE (CCTK_REAL ***t, long L, long W, long D);
+ 
+ int minimum2 (int i, int j);
+ int minimum3 (int i, int j, int k);

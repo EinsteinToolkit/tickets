@@ -1,0 +1,25 @@
+From 8a25c838f905f6cca477997b9cb8d52aaf2b9154 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Wed, 4 Jul 2012 18:57:23 -0700
+Subject: [PATCH 10/10] GRHydro: clear atmosphere_mask_real in MHD
+ AtmosphereReset
+
+---
+ src/GRHydro_UpdateMaskM.F90 |    1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/GRHydro_UpdateMaskM.F90 b/src/GRHydro_UpdateMaskM.F90
+index 3419864..f7e1fda 100644
+--- a/src/GRHydro_UpdateMaskM.F90
++++ b/src/GRHydro_UpdateMaskM.F90
+@@ -153,6 +153,7 @@ subroutine GRHydro_AtmosphereResetM(CCTK_ARGUMENTS)
+                  Bprim(i,j,k,1),Bprim(i,j,k,2),Bprim(i,j,k,3),w_lorentz(i,j,k))
+             if (wk_atmosphere .eq. 0) then
+               atmosphere_mask(i, j, k) = 0
++              atmosphere_mask_real(i, j, k) = 0
+             end if
+ 
+           end if
+-- 
+1.7.10.4
+

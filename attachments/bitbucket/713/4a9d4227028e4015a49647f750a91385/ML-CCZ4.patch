@@ -1,0 +1,349 @@
+From: Erik Schnetter <eschnetter@perimeterinstitute.ca>
+Date: 2012-01-03
+Subject: Add CCZ4 system to McLachlan
+
+Add the CCZ4 system to McLachlan, selected via a new parameter
+CCZ4Method (defaulting to 0).
+
+
+diff --git repos/McLachlan/m/McLachlan_BSSN.m repos/McLachlan/m/McLachlan_BSSN.m
+index 4df6573..38f8ed3 100644
+--- repos/McLachlan/m/McLachlan_BSSN.m
++++ repos/McLachlan/m/McLachlan_BSSN.m
+@@ -2,6 +2,9 @@
+ SetEnhancedTimes[False];
+ SetSourceLanguage["C"];
+ 
++Unprotect[Zeta];
++Zeta = Zeta1;
++
+ (******************************************************************************)
+ (* Options *)
+ (******************************************************************************)
+@@ -103,7 +106,8 @@ Map [DefineTensor,
+       xx, rr, th, ph,
+       admg, admK, admalpha, admdtalpha, admbeta, admdtbeta, H, M,
+       g, detg, gu, G, R, trR, Km, trK, cdphi, cdphi2,
+-      phi, gt, At, Xt, Xtn, alpha, A, beta, B, Atm, Atu, trA, Ats, trAts,
++      phi, gt, At, Xt, Xtn, Theta, Zeta,
++      alpha, A, beta, B, Atm, Atu, trA, Ats, trAts,
+       dottrK, dotXt,
+       cXt, cS, cA,
+       e4phi, em4phi, ddetg, detgt, gtu, ddetgt, dgtu, ddgtu, Gtl, Gtlu, Gt,
+@@ -182,6 +186,7 @@ evolvedGroups =
+   {SetGroupName [CreateGroupFromTensor [phi      ], prefix <> "log_confac"],
+    SetGroupName [CreateGroupFromTensor [gt[la,lb]], prefix <> "metric"    ],
+    SetGroupName [CreateGroupFromTensor [Xt[ua]   ], prefix <> "Gamma"     ],
++   SetGroupName [CreateGroupFromTensor [Theta    ], prefix <> "Theta"     ],
+    SetGroupName [CreateGroupFromTensor [trK      ], prefix <> "trace_curv"],
+    SetGroupName [CreateGroupFromTensor [At[la,lb]], prefix <> "curv"      ],
+    SetGroupName [CreateGroupFromTensor [alpha    ], prefix <> "lapse"     ],
+@@ -233,6 +238,7 @@ initialCalc =
+     trK       -> 0,
+     At[la,lb] -> 0,
+     Xt[ua]    -> 0,
++    Theta     -> 0,
+     alpha     -> 1,
+     A         -> 0,
+     beta[ua]  -> 0,
+@@ -290,6 +296,8 @@ convertFromADMBaseCalc =
+     trK       -> gu[ua,ub] admK[la,lb],
+     At[la,lb] -> em4phi (admK[la,lb] - (1/3) g[la,lb] trK),
+     
++    Theta     -> 0,
++    
+     alpha     -> admalpha,
+     
+     beta[ua]  -> admbeta[ua]
+@@ -518,13 +526,14 @@ evolCalc =
+      radiative boundary conditions.  *)
+   Where -> InteriorNoSync,
+   Shorthands -> {dir[ua],
+-                 detgt, gtu[ua,ub],
++                 detgt, gtu[ua,ub], Zeta[ua],
+                  Gt[ua,lb,lc], Gtl[la,lb,lc], Gtlu[la,lb,uc], Xtn[ua],
+                  Rt[la,lb], Rphi[la,lb], R[la,lb],
+                  Atm[ua,lb], Atu[ua,ub],
+                  e4phi, em4phi, cdphi[la], cdphi2[la,lb], g[la,lb], detg,
+                  gu[ua,ub], Ats[la,lb], trAts, eta, theta,
+-                 rho, S[la], trS, fac1, fac2, dottrK, dotXt[ua], epsdiss[ua]},
++                 rho, S[la], trS, fac1, fac2, dottrK, dotXt[ua], dotTheta,
++                 epsdiss[ua]},
+   Equations -> 
+   {
+     dir[ua] -> Sign[beta[ua]],
+@@ -541,8 +550,21 @@ evolCalc =
+     (* The conformal connection functions calculated from the conformal metric,
+        used instead of Xt where no derivatives of Xt are taken *)
+     Xtn[ui] -> gtu[uj,uk] Gt[ui,lj,lk],
++    
++    e4phi       -> IfThen [conformalMethod, 1/phi^2, Exp[4 phi]],
++    em4phi      -> 1 / e4phi,
++    g[la,lb]    -> e4phi gt[la,lb],
++    detg        -> detgExpr,
++    (* gu[ua,ub] -> 1/detg detgExpr MatrixInverse [g[ua,ub]], *)
++    gu[ua,ub]   -> em4phi gtu[ua,ub],
++    
++    (* The Z quantities *)
++    (* gr-qc:1106.2254 (2011), eqn. (23) *)
++    Zeta[ud] -> (1/2) gu[ua,ud] (- PD[gt[la,lb],lc] gtu[ub,uc]
++                                 + gt[la,lc] Xt[uc]),
+ 
+     (* PRD 62, 044034 (2000), eqn. (18) *)
++    (* Adding Zeta term by changing Xtn to Xt *)
+     Rt[li,lj] -> - (1/2) gtu[ul,um] PD[gt[li,lj],ll,lm]
+                  + (1/2) gt[lk,li] PD[Xt[uk],lj]
+                  + (1/2) gt[lk,lj] PD[Xt[uk],li]
+@@ -566,14 +588,14 @@ evolCalc =
+     Atm[ua,lb] -> gtu[ua,uc] At[lc,lb],
+     Atu[ua,ub] -> Atm[ua,lc] gtu[ub,uc],
+     
+-    e4phi       -> IfThen [conformalMethod, 1/phi^2, Exp[4 phi]],
+-    em4phi      -> 1 / e4phi,
+-    g[la,lb]    -> e4phi gt[la,lb],
+-    detg        -> detgExpr,
+-    (* gu[ua,ub] -> 1/detg detgExpr MatrixInverse [g[ua,ub]], *)
+-    gu[ua,ub]   -> em4phi gtu[ua,ub],
+-    
+-    R[la,lb] -> Rt[la,lb] + Rphi[la,lb],
++    R[la,lb] -> + Rt[la,lb] + Rphi[la,lb]
++                + IfThen[CCZ4Method,
++                         (* This assumes conformalMethd==0 *)
++                         + (2/phi) (+ g[la,lc] Zeta[uc] PD[phi,lb]
++                                    + g[lb,lc] Zeta[uc] PD[phi,la]
++                                    - g[la,lb] Zeta[uc] PD[phi,lc])
++                         + e4phi Zeta[uc] PD[gt[la,lb],lc],
++                         0],
+     
+     (* Matter terms *)
+     
+@@ -591,15 +613,23 @@ evolCalc =
+     
+     (* PRD 62, 044034 (2000), eqn. (10) *)
+     (* PRD 67 084023 (2003), eqn. (16) and (23) *)
+-    dot[phi]       -> IfThen [conformalMethod, 1/3 phi, -1/6] alpha trK
++    dot[phi]       -> + IfThen [conformalMethod, 1/3 phi, -1/6] alpha trK
+                       + IfThen [conformalMethod, -1/3 phi, 1/6] PD[beta[ua],la],
+     
+     (* PRD 62, 044034 (2000), eqn. (9) *)
+-    dot[gt[la,lb]] -> - 2 alpha At[la,lb]
++    (* gr-qc:1106.2254 (2011), eqn. (14) *)
++    (* removing trA from Aij ensures that detg = 1 *)
++    dot[gt[la,lb]] -> - 2 alpha (+ At[la,lb]
++                                 - IfThen[CCZ4Method,
++                                          (1/3) At[lc,ld] gtu[uc,ud] gt[la,lb],
++                                          0])
+                       + gt[la,lc] PD[beta[uc],lb] + gt[lb,lc] PD[beta[uc],la]
+                       - (2/3) gt[la,lb] PD[beta[uc],lc],
+     (* PRD 62, 044034 (2000), eqn. (20) *)
+     (* PRD 67 084023 (2003), eqn (26) *)
++    (* gr-qc:1106.2254 (2011), eqn. (19) *)
++    (* Adding Zeta terms by changing Xtn to Xt,
++       also adding extra Zeta and Theta terms *)
+     dotXt[ui]      -> - 2 Atu[ui,uj] PD[alpha,lj]
+                       + 2 alpha (+ Gt[ui,lj,lk] Atu[uk,uj]
+                                  - (2/3) gtu[ui,uj] PD[trK,lj]
+@@ -608,27 +638,60 @@ evolCalc =
+                       + (1/3) gtu[ui,uj] PD[beta[ul],lj,ll]
+                       - Xtn[uj] PD[beta[ui],lj] 
+                       + (2/3) Xtn[ui] PD[beta[uj],lj]
++                      + IfThen[CCZ4Method,
++                               + IfThen[GammaShift,
++                                        2 e4phi
++                                        (- Zeta[uj] PD[beta[ui],lj]
++                                         + (2/3) Zeta[ui] PD[beta[uj],lj]),
++                                        0]
++                               - (4/3) alpha e4phi Zeta[ui] trK
++                               + 2 gtu[ui,uj] (+ alpha PD[Theta,lj]
++                                               - Theta PD[alpha,lj])
++                               - 2 alpha e4phi dampk1 Zeta[ui],
++                               0]
+     (* Equation (4.28) in Baumgarte & Shapiro (Phys. Rept. 376 (2003) 41-131) *)
+                       + addMatter (- 16 Pi alpha gtu[ui,uj] S[lj]),
+     dot[Xt[ui]]    -> dotXt[ui],
+ 
++    (* gr-qc:1106.2254 (2011), eqn. (18) *)
++    dotTheta       -> IfThen[CCZ4Method,
++                             - PD[alpha,la] Zeta[ua]
++                             + (1/2) alpha (gu[ua,ub] R[la,lb]
++                                            - Atm[ua,lb] Atm[ub,la]
++                                            + (2/3) trK^2 - 2 trK Theta)
++                             - dampk1 (2 + dampk2) alpha Theta,
++                             0],
++
++    dot[Theta] -> dotTheta,
++
+     (* PRD 62, 044034 (2000), eqn. (11) *)
++    (* gr-qc:1106.2254 (2011), eqn. (17) *)
++    (* Adding the RHS of Theta to K, because K_Z4 = K_BSSN + 2 Theta *)
++    (* Also adding the Z term, as it has to cancel with the one in Theta *)
+     dottrK         -> - em4phi ( gtu[ua,ub] ( PD[alpha,la,lb]
+                                 + 2 cdphi[la] PD[alpha,lb] )
+                                 - Xtn[ua] PD[alpha,la] )
+                       + alpha (Atm[ua,lb] Atm[ub,la] + (1/3) trK^2)
++                      + IfThen[CCZ4Method,
++                               + 2 dotTheta + 2 PD[alpha,la] Zeta[ua]
++                               + dampk1 (1 - dampk2) alpha Theta,
++                               0]
+     (* Equation (4.21) in Baumgarte & Shapiro (Phys. Rept. 376 (2003) 41-131) *)
+                       + addMatter (4 Pi alpha (rho + trS)),
+     dot[trK]       -> dottrK,
+ 
+     (* PRD 62, 044034 (2000), eqn. (12) *)
+     (* TODO: Should we use the Hamiltonian constraint to make Rij tracefree? *)
++    (* gr-qc:1106.2254 (2011), eqn. (15) *)
++    (* Adding Zeta terms in the Ricci and Theta terms *)
+     Ats[la,lb]     -> - CDt[alpha,la,lb] +
+                       + 2 (PD[alpha,la] cdphi[lb] + PD[alpha,lb] cdphi[la] )
+                       + alpha R[la,lb],
+     trAts          -> gu[ua,ub] Ats[la,lb],
+     dot[At[la,lb]] -> + em4phi (+ Ats[la,lb] - (1/3) g[la,lb] trAts )
+-                      + alpha (trK At[la,lb] - 2 At[la,lc] Atm[uc,lb])
++                      + alpha (+ ((trK - IfThen[CCZ4Method, 2 Theta, 0])
++                                  At[la,lb])
++                               - 2 At[la,lc] Atm[uc,lb])
+                       + At[la,lc] PD[beta[uc],lb] + At[lb,lc] PD[beta[uc],la]
+                       - (2/3) At[la,lb] PD[beta[uc],lc]
+     (* Equation (4.23) in Baumgarte & Shapiro (Phys. Rept. 376 (2003) 41-131) *)
+@@ -697,6 +760,9 @@ advectCalc =
+ 
+        dot[Xt[ui]] -> dot[Xt[ui]] + Upwind[beta[uj], Xt[ui], lj],
+ 
++        dot[Theta] -> dot[Theta]
++                      + IfThen[CCZ4Method, Upwind[beta[ua], Theta, la], 0],
++
+           dot[trK] -> dot[trK] + Upwind[beta[ua], trK, la],
+ 
+     dot[At[la,lb]] -> dot[At[la,lb]] + Upwind[beta[uc], At[la,lb], lc],
+@@ -724,10 +790,11 @@ evolCalc1 = PartialCalculation[evolCalc, "1",
+     ConditionalOnKeyword -> {"RHS_calculation", "split"}
+   },
+   {
+-    dot[trK],
+     dot[phi],
+     dot[gt[la,lb]],
+     dot[Xt[ui]],
++    dot[Theta],
++    dot[trK],
+     dot[alpha],
+     dot[A],
+     dot[beta[ua]],
+@@ -755,7 +822,8 @@ dissCalc =
+     epsdiss[ua] -> EpsDiss,
+     Sequence@@Table[
+       dot[var]       -> dot[var] + epsdiss[ux] PDdiss[var,lx],
+-      {var, {phi, gt[la,lb], Xt[ui], trK, At[la,lb], alpha, A, beta[ua], B[ua]}}]
++      {var, {phi, gt[la,lb], Xt[ui], Theta, trK, At[la,lb],
++             alpha, A, beta[ua], B[ua]}}]
+   }
+ };
+ 
+@@ -774,7 +842,8 @@ Table[
+     dot[var]    -> dot[var] + epsdiss[ux] PDdiss[var,lx]
+   }
+ },
+-  {var, {phi, gt[la,lb], Xt[ui], trK, At[la,lb], alpha, A, beta[ua], B[ua]}}
++  {var, {phi, gt[la,lb], Xt[ui], Theta, trK, At[la,lb],
++         alpha, A, beta[ua], B[ua]}}
+ ];
+ 
+ RHSStaticBoundaryCalc =
+@@ -790,6 +859,7 @@ RHSStaticBoundaryCalc =
+     dot[trK]       -> 0,
+     dot[At[la,lb]] -> 0,
+     dot[Xt[ua]]    -> 0,
++    dot[Theta]     -> 0,
+     dot[alpha]     -> 0,
+     dot[A]         -> 0,
+     dot[beta[ua]]  -> 0,
+@@ -812,6 +882,7 @@ initRHSCalc =
+     dot[trK]       -> 0,
+     dot[At[la,lb]] -> 0,
+     dot[Xt[ua]]    -> 0,
++    dot[Theta]     -> 0,
+     dot[alpha]     -> 0,
+     dot[A]         -> 0,
+     dot[beta[ua]]  -> 0,
+@@ -851,6 +922,7 @@ RHSRadiativeBoundaryCalc =
+     dot[trK]       -> - vg su[uc] PDo[trK      ,lc],
+     dot[At[la,lb]] -> -    su[uc] PDo[At[la,lb],lc],
+     dot[Xt[ua]]    -> -    su[uc] PDo[Xt[ua]   ,lc],
++    dot[Theta]     -> - vg su[uc] PDo[Theta    ,lc],
+     dot[alpha]     -> - vg su[uc] PDo[alpha    ,lc],
+     dot[A]         -> - vg su[uc] PDo[A        ,lc],
+     dot[beta[ua]]  -> -    su[uc] PDo[beta[ua] ,lc],
+@@ -902,6 +974,7 @@ boundaryCalc =
+     trK       -> 0,
+     At[la,lb] -> 0,
+     Xt[ua]    -> 0,
++    Theta     -> 0,
+     alpha     -> 1,
+     A         -> 0,
+     beta[ua]  -> 0,
+@@ -1162,12 +1235,10 @@ keywordParameters =
+ intParameters =
+ {
+   {
+-    Name -> harmonicN,
+-    Description -> "d/dt alpha = - f alpha^n K  (harmonic=2, 1+log=1)",
+-    Default -> 2
+-  },
+-  {
+-    Name -> ShiftAlphaPower,
++    Name -> CCZ4Method,
++    Description -> "Switch between BSSN and CCZ4",
++    AllowedValues -> {{Value -> "0", Description -> "BSSN"},
++                      {Value -> "1", Description -> "CCZ4"}},
+     Default -> 0
+   },
+   {
+@@ -1178,9 +1249,18 @@ intParameters =
+     Default -> 0
+   },
+   {
+-    Name -> fdOrder,
+-    Default -> derivOrder,
+-    AllowedValues -> {2,4,6,8}
++    Name -> GammaShift,
++    Description -> "Covariant shift term in Gamma",
++    Default -> 0
++  },
++  {
++    Name -> harmonicN,
++    Description -> "d/dt alpha = - f alpha^n K  (harmonic=2, 1+log=1)",
++    Default -> 2
++  },
++  {
++    Name -> ShiftAlphaPower,
++    Default -> 0
+   },
+   {
+     Name -> harmonicShift,
+@@ -1188,12 +1268,27 @@ intParameters =
+     AllowedValues -> {{Value -> "0", Description -> "Gamma driver shift"},
+                       {Value -> "1", Description -> "Harmonic shift"}},
+     Default -> 0
++  },
++  {
++    Name -> fdOrder,
++    Default -> derivOrder,
++    AllowedValues -> {2,4,6,8}
+   }
+ };
+ 
+ realParameters =
+ {
+   {
++    Name -> dampk1,
++    Description -> "CCZ4 damping term 1 for Theta and Zeta",
++    Default -> 0
++  },
++  {
++    Name -> dampk2,
++    Description -> "CCZ4 damping term 2 for Theta and Zeta",
++    Default -> 0
++  },
++  {
+     Name -> LapseACoeff,
+     Description -> "Whether to evolve A in time",
+     Default -> 0

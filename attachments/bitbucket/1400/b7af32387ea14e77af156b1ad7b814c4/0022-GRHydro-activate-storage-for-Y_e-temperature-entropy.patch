@@ -1,0 +1,31 @@
+From 5b174296410e1705e34f0da8d75ac09ef4dce783 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Thu, 27 Jun 2013 19:39:16 -0700
+Subject: [PATCH 22/24] GRHydro: activate storage for Y_e, temperature,
+ entropy when we evolve it
+
+---
+ schedule.ccl |    3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/schedule.ccl b/schedule.ccl
+index bf4ec6e..5e2b178 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -60,10 +60,13 @@ if(CCTK_Equals(Y_e_evolution_method,"GRHydro"))
+ {
+   STORAGE: Y_e_con[timelevels]	
+   STORAGE: Y_e_con_rhs, Y_e_con_flux, Y_e_plus, Y_e_minus
++  STORAGE: HydroBase::Y_e[timelevels]
+ }
+ if(CCTK_Equals(temperature_evolution_method,"GRHydro"))
+ {
+   STORAGE: tempplus, tempminus
++  STORAGE: HydroBase::temperature[timelevels]
++  STORAGE: HydroBase::entropy[timelevels]
+ }
+ if(CCTK_Equals(Bvec_evolution_method,"GRHydro"))
+ {
+-- 
+1.7.10.4
+

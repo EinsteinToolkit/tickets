@@ -1,0 +1,646 @@
+Index: bin/distribute-watch
+===================================================================
+--- bin/distribute-watch	(revision 1291)
++++ bin/distribute-watch	(working copy)
+@@ -13,7 +13,7 @@
+ def ifthen(cond, val1, val2, val0=None):
+     if cond:
+         return val1
+-    if cond==None:
++    if cond == None:
+         return val0
+     return val2
+ 
+@@ -29,45 +29,69 @@
+ 
+ 
+ def start_time(lines):
+-    string = "".join(lines)
+-    line = re.search(r"^\[(\d+-\d+-\d+ \d+:\d+:\d+)\]$", string, re.MULTILINE)
+-    if not line:
+-        return 0
+-    try:
+-        return time.mktime(time.strptime(line.group(1), "%Y-%m-%d %H:%M:%S"))
+-    except:
+-        return 0
++    timepat = re.compile(r"^DISTRIBUTE: \[(\d+-\d+-\d+ \d+:\d+:\d+)\]")
++    for line in lines:
++        match = timepat.search(line)
++        if match:
++            try:
++                return time.mktime(time.strptime(match.group(1), "%Y-%m-%d %H:%M:%S"))
++            except:
++                return 0
++    return 0
+ 
+ def end_time(lines):
+-    string = "".join(reversed(lines))
+-    line = re.search(r"^\[(\d+-\d+-\d+ \d+:\d+:\d+)\]$", string, re.MULTILINE)
+-    if not line:
+-        return 0
+-    try:
+-        return time.mktime(time.strptime(line.group(1), "%Y-%m-%d %H:%M:%S"))
+-    except:
+-        return 0
++    timepat = re.compile(r"^DISTRIBUTE: \[(\d+-\d+-\d+ \d+:\d+:\d+)\]")
++    for line in reversed(lines):
++        match = timepat.search(line)
++        if match:
++            try:
++                return time.mktime(time.strptime(match.group(1), "%Y-%m-%d %H:%M:%S"))
++            except:
++                return 0
++    return 0
+ 
+ def build_state(lines, configuration):
+-    string = "".join(lines)
+-    if re.search(r"^ *%s +\[built .*\]"   % configuration, string,
+-                 re.MULTILINE):
+-        return True
+-    if re.search(r"^ *%s +\[incomplete\]" % configuration, string,
+-                 re.MULTILINE):
+-        return False
++    builtpat      = re.compile(r"^ *%s +\[built .*\]"   % configuration)
++    incompletepat = re.compile(r"^ *%s +\[incomplete\]" % configuration)
++    for line in reversed(lines):
++        if builtpat.search(line):
++            return True
++        if incompletepat.search(line):
++            return False
+     return None    
+ 
+ def run_state(lines):
+-    string = "".join(lines)
+-    if re.search(r"^Simulation finished successfully", string, re.MULTILINE):
+-        return True
+-    if re.search(r"^Simulation did not finish", string, re.MULTILINE):
+-        return False
++    successpat = re.compile(r"^DISTRIBUTE: Simulation finished successfully")
++    failpat    = re.compile(r"^DISTRIBUTE: Simulation aborted")
++    for line in reversed(lines):
++        if successpat.search(line):
++            return True
++        if failpat.search(line):
++            return False
+     return None
+ 
++def distribute_state(lines):
++    donepat    = re.compile(r"^DISTRIBUTE: Done")
++    abortedpat = re.compile(r"^DISTRIBUTE: Aborted")
++    for line in reversed(lines):
++        if donepat.search(line):
++            return True
++        if abortedpat.search(line):
++            return False
++    return None
+ 
++def error_state(lines):
++    crashpat = re.compile(r"^Traceback")
++    errorpat = re.compile(r"^Aborting Simfactory")
++    for line in reversed(lines):
++        if crashpat.search(line):
++            return True         # A crash (severe error)
++        if errorpat.search(line):
++            return False        # A fatal error
++    return None                 # No error
+ 
++
++
+ # Show all tasks have completed
+ 
+ while True:
+@@ -89,26 +113,28 @@
+         duration = os.path.getmtime(path) - start_time(lines[:10])
+         age      = time.time() - os.path.getmtime(path)
+         size = os.path.getsize(path)
+-        good_conf_debug = build_state(lines[-1000:], "sim-debug")
+-        good_conf       = build_state(lines[-1000:], "sim"      )
+-        good_sim        = run_state(lines[-1000:])
+-        done = len(lines)>0 and lines[-1] == "Distribution done.\n"
+-        output = (machine, age,duration, size,
+-                  good_conf_debug, good_conf, good_sim, done)
++        good_conf_debug = build_state(lines, "sim-debug")
++        good_conf       = build_state(lines, "sim"      )
++        good_sim        = run_state(lines)
++        error           = error_state(lines)
++        done            = distribute_state(lines[-1:])
++        output = (machine, age, duration, size,
++                  good_conf_debug, good_conf, good_sim, error, done)
+         outputs.append(output)
+     # sort by age
+     outputs.sort(key=lambda output: output[1])
+     for output in outputs:
+         (machine, age, duration, size,
+-         good_conf_debug, good_conf, good_sim, done) = output
++         good_conf_debug, good_conf, good_sim, error, done) = output
+         age_str      = age_string(age)
+         duration_str = age_string(duration)
+         good_conf_debug_str = ifthen(good_conf_debug, " [sim-debug]", "", "")
+-        good_conf_str       = ifthen(good_conf      , " [sim]"      , "", "")
+-        good_sim_str        = ifthen(good_sim       , " [success]"  , "", "" )
+-        done_str = ifthen(done, " [done]", " working...", "")
++        good_conf_str       = ifthen(good_conf, " [sim]", "", "")
++        good_sim_str        = ifthen(good_sim, " [success]", " [failure]", "")
++        error_str = ifthen(error, " [CRASH]", " [ERROR]", "")
++        done_str  = ifthen(done, " [done]", " [aborted]", " working...")
+         state_str = "".join([good_conf_debug_str, good_conf_str, good_sim_str,
+-                             done_str])
++                             error_str, done_str])
+         print ("   %-10s   %5s %5s %10d  %s" %
+                (machine, age_str, duration_str, size, state_str))
+     time.sleep(60)
+Index: bin/distribute
+===================================================================
+--- bin/distribute	(revision 1291)
++++ bin/distribute	(working copy)
+@@ -14,8 +14,8 @@
+ #
+ # The options --no-sync, --no-build, --no-clean, --no-reconfig, and
+ # --no-submit fine-tune the behaviour in the obvious way. The options
+-# --configuration=..., --thornlist=..., and --parfile=... are also
+-# available.
++# --configuration=..., --thornlist=..., --parfile=..., and
++# --walltime=... are also available.
+ #
+ # Non-option arguments specify the set of machines on which the test
+ # should be performed. For example, I could use
+@@ -134,7 +134,7 @@
+     "numrel02",
+     "numrel05",
+     "numrel06",
+-    "numrel07",
++    #"numrel07",                 # makes the machine swap
+     "numrel08",
+     "numrel09",
+     "numrel10",
+@@ -165,12 +165,12 @@
+                                 "submit", "no-submit",
+                                 "configuration=",
+                                 "thornlist=",
+-                                "parfile="])
++                                "parfile=",
++                                "walltime="])
+ 
+ for x in argv:
+     if re.search(r"^-", x):
+-        print 'Error: unrecognoised option "%s"' % x
+-        sys.exit(1)
++        fatal("Unrecognoised option \"%s\"" % x)
+ 
+ def optbool (options, name, default=None):
+     for option, value in options:
+@@ -196,12 +196,16 @@
+ 
+ configuration = optstr (options, "configuration", "")
+ thornlist     = optstr (options, "thornlist",     "manifest/einsteintoolkit.th")
+-#parfile       = optstr (options, "parfile",       "par/static_tov.par")
+-
+ #configuration = optstr (options, "configuration", "empty")
+-#thornlist     = optstr (options, "thornlist",     "par/empty.th")
+-parfile       = optstr (options, "parfile",       "par/empty.par")
++#thornlist     = optstr (options, "thornlist",     "simfactory/par/empty.th")
+ 
++#parfile  = optstr (options, "parfile", "par/static_tov.par")
++#walltime = optstr (options, "walltime", "1:00:00")
++parfile  = optstr (options, "parfile", "recover.par")
++walltime = optstr (options, "walltime", "0:15:00")
++#parfile  = optstr (options, "parfile", "empty.par")
++#walltime = optstr (options, "walltime", "0:10:00")
++
+ machines = argv
+ if machines==[]:
+     machines = all_machines
+@@ -235,8 +239,32 @@
+     assert description
+     return description.GetKey(key)
+     
++def info(msg=""):
++    sys.stdout.flush()
++    sys.stderr.flush()
++    print "DISTRIBUTE:", create_timestamp()
++    print "DISTRIBUTE:", msg
++    sys.stdout.flush()
++
++def fatal(msg):
++    sys.stdout.flush()
++    sys.stderr.flush()
++    print "DISTRIBUTE:", create_timestamp()
++    print "DISTRIBUTE:", "Error:", msg
++    print "DISTRIBUTE:", "Aborted."
++    sys.stdout.flush()
++    sys.exit(1)
++
++def done():
++    sys.stdout.flush()
++    sys.stderr.flush()
++    print "DISTRIBUTE:", create_timestamp()
++    print "DISTRIBUTE:", "Done."
++    sys.stdout.flush()
++    sys.exit(0)
++
+ def execute(command):
+-    print "   Executing: %s" % " ".join(command)
++    info ("Executing: %s" % " ".join(command))
+     sys.stdout.flush()
+     sys.stderr.flush()
+     subprocess.call(command, bufsize=1,
+@@ -245,7 +273,7 @@
+     sys.stderr.flush()
+     
+ def get_output(command):
+-    print "   Executing: %s" % " ".join(command)
++    info("Calling: %s" % " ".join(command))
+     sys.stdout.flush()
+     sys.stderr.flush()
+     p = subprocess.Popen(command,
+@@ -263,6 +291,19 @@
+ 
+ 
+ 
++def authenticate(machine):
++    command = flatten([["./simfactory/bin/sim"], get_remotes(machine),
++                       ["execute", "true"]])
++    execute(command)
++
++
++
++def authenticate_access(machine):
++    info("Authenticating access to %s:" % machine)
++    authenticate(machine)
++
++
++
+ def sync(machine):
+     local_machine = get_local_machine()
+     if local_machine != machine:
+@@ -271,6 +312,13 @@
+ 
+ 
+ 
++def list_configurations(machine):
++    command = flatten([["./simfactory/bin/sim"], get_remotes(machine),
++                       ["list-configurations"]])
++    execute(command)
++
++
++
+ def build(machine, options):
+     if configuration:
+         if "--debug" in options:
+@@ -298,21 +346,43 @@
+     execute(command)
+ 
+ 
+-
+-def list_configurations(machine):
++def list_simulations(machine):
+     command = flatten([["./simfactory/bin/sim"], get_remotes(machine),
+-                       ["list-configurations", "--noverbose"]])
++                       ["list-simulations"]])
+     execute(command)
+ 
+ 
+ 
+-def submit(machine, parfile):
++def get_status(machine):
+     (path, file) = os.path.split(parfile)
+     file = re.sub(r"\.[^.]*$", "", file) # remove suffix
+     simulation = "%s-%s-%s" % (file, machine, date)
+     
+-    walltime = "1:0:0"
++    # Examine the simulation status
++    command = flatten([["./simfactory/bin/sim"], get_remotes(machine),
++                       ["list-simulations", simulation]])
++    output = get_output(command)
++    if re.search(r"^ +%s .*INACTIVE" % simulation, output, re.MULTILINE):
++        return 'I'
++    if re.search(r"^ +%s .*QUEUED" % simulation, output, re.MULTILINE):
++        return 'Q'
++    if re.search(r"^ +%s .*RUNNING" % simulation, output, re.MULTILINE):
++        return 'R'
++    if re.search(r"^ +%s .*FINISHED" % simulation, output, re.MULTILINE):
++        return 'F'
++    return 'E'
++
++
++
++def create_submit(machine):
++    (path, file) = os.path.split(parfile)
++    file = re.sub(r"\.[^.]*$", "", file) # remove suffix
++    simulation = "%s-%s-%s" % (file, machine, date)
+     
++    status = get_status(machine)
++    if status != 'E':
++        fatal("Simulation exist before it is created")
++    
+     memory      = float(get_mdb_entry(machine, "memory"))
+     num_threads = int(get_mdb_entry(machine, "num-threads"))
+     ppn         = int(get_mdb_entry(machine, "ppn"))
+@@ -323,141 +393,191 @@
+                 int(math.ceil(want_memory / memory)))
+     procs = nodes * ppn
+     
+-    submitscript = get_mdb_entry(machine, "submitscript")
+-    if submitscript:
+-        # Submit
+-        command = flatten([["./simfactory/bin/sim"], get_remotes(machine),
+-                           ["create-submit", simulation,
+-                            "--parfile=%s" % parfile,
+-                            "--walltime=%s" % walltime,
+-                            "--procs=%s" % procs,
+-                            "--num-threads=%s" % num_threads]])
+-    else:
+-        # Run directly
+-        command = flatten([["./simfactory/bin/sim"], get_remotes(machine),
+-                           ["create-run", simulation,
+-                            "--parfile=%s" % parfile,
+-                            "--procs=%s" % procs,
+-                            "--num-threads=%s" % num_threads]])
++    # Create and submit
++    command = flatten([["./simfactory/bin/sim"], get_remotes(machine),
++                       ["create-submit", simulation,
++                        "--parfile=%s" % parfile,
++                        "--walltime=%s" % walltime,
++                        "--procs=%s" % procs,
++                        "--num-threads=%s" % num_threads]])
+     execute(command)
++    
++    status = get_status(machine)
++    if status not in ['Q', 'R', 'F']:
++        fatal ("Simulation is not active after it has been submitted")
+ 
+ 
+ 
+-def list_simulations(machine):
++def submit(machine):
++    (path, file) = os.path.split(parfile)
++    file = re.sub(r"\.[^.]*$", "", file) # remove suffix
++    simulation = "%s-%s-%s" % (file, machine, date)
++    
++    status = get_status(machine)
++    if status not in ['I', 'F']:
++        fatal("Simulation is not inactive or finished before it is submitted")
++    
++    # Submit
+     command = flatten([["./simfactory/bin/sim"], get_remotes(machine),
+-                       ["list-simulations", "--noverbose"]])
++                       ["submit", simulation]])
+     execute(command)
++    
++    status = get_status(machine)
++    if status not in ['Q', 'R', 'F']:
++        fatal("Simulation is not active after it has been submitted")
+ 
+ 
+ 
+-def wait(machine, parfile):
++def presubmit(machine):
+     (path, file) = os.path.split(parfile)
+     file = re.sub(r"\.[^.]*$", "", file) # remove suffix
+     simulation = "%s-%s-%s" % (file, machine, date)
+     
+-    sleep_time = 60             # 1 minute
+-    max_sleep_time = 600        # 10 minutes
++    status = get_status(machine)
++    if status not in ['Q', 'R', 'F']:
++        fatal("Simulation is not active before it is presubmitted")
++    
++    # Submit
++    command = flatten([["./simfactory/bin/sim"], get_remotes(machine),
++                       ["submit", simulation]])
++    execute(command)
++    
++    status = get_status(machine)
++    if status not in ['Q', 'R', 'F']:
++        fatal("Simulation is not active after it has been submitted")
++
++
++
++def show_output(machine):
++    (path, file) = os.path.split(parfile)
++    file = re.sub(r"\.[^.]*$", "", file) # remove suffix
++    simulation = "%s-%s-%s" % (file, machine, date)
++    
++    command = flatten([["./simfactory/bin/sim"], get_remotes(machine),
++                       ["show-output", simulation]])
++    execute(command)
++
++
++
++def check_output(machine):
++    (path, file) = os.path.split(parfile)
++    file = re.sub(r"\.[^.]*$", "", file) # remove suffix
++    simulation = "%s-%s-%s" % (file, machine, date)
++    
++    command = flatten([["./simfactory/bin/sim"], get_remotes(machine),
++                       ["show-output", simulation]])
++    output = get_output(command)
++    if re.search(r"^Done\.$", output, re.MULTILINE):
++        return 'S'
++    return 'E'
++
++
++
++def wait(machine):
++    (path, file) = os.path.split(parfile)
++    file = re.sub(r"\.[^.]*$", "", file) # remove suffix
++    simulation = "%s-%s-%s" % (file, machine, date)
++    
++    sleep_time = 60             # seconds
++    max_sleep_time = 60         # seconds
+     while True:
+-        print create_timestamp()
+         # Examine the simulation status
+-        print "Examining simulation status..."
+-        command = flatten([["./simfactory/bin/sim"], get_remotes(machine),
+-                           ["list-simulations", simulation]])
+-        status_output = get_output(command)
+-        if not re.search(r"^ +%s +\[ACTIVE" % simulation, status_output,
+-                         re.MULTILINE):
+-            print "Simulation is not active any more."
++        info("Examining simulation status...")
++        status = get_status(machine)
++        if status not in ['I', 'Q', 'R', 'F']:
++            fatal("Simulation is neither inactive nor active")
++        if status in ['I', 'F']:
++            info("Simulation is not active any more.")
+             sys.stdout.flush()
+             break
+-        print "Waiting for %s seconds..." % sleep_time
++        
++        # Wait
++        info("Waiting for %s seconds..." % sleep_time)
+         sys.stdout.flush()
+         sys.stderr.flush()
+         time.sleep(sleep_time)
+         sleep_time = min(max_sleep_time, sleep_time*2)
++    
+     # Wait a bit for things to settle down
+     time.sleep(60)
++    
+     # Examine the simulation output
+-    print "Examining simulation output..."
+-    command = flatten([["./simfactory/bin/sim"], get_remotes(machine),
+-                       ["show-output", simulation]])
+-    sim_output = get_output(command)
+-    if re.search(r"^Done\.$", sim_output, re.MULTILINE):
+-        print "Simulation finished successfully."
++    info("Examining simulation output...")
++    status = check_output(machine)
++    if status == 'S':
++        info("Simulation finished successfully.")
+     else:
+-        print "Simulation did not finish."
++        info("Simulation aborted.")
+     sys.stdout.flush()
+ 
+ 
+ 
+-def show_output(machine, parfile):
++def cleanup(machine):
+     (path, file) = os.path.split(parfile)
+     file = re.sub(r"\.[^.]*$", "", file) # remove suffix
+     simulation = "%s-%s-%s" % (file, machine, date)
+     
++    # Ensure simulation is active and finished (i.e. ready to be
++    # cleaned up)
++    status = get_status (machine)
++    if status not in ['I', 'F']:
++        fatal("Simulation is not inactive or finished before cleanup")
++    # Clean up
+     command = flatten([["./simfactory/bin/sim"], get_remotes(machine),
+-                       ["show-output", simulation]])
++                       ["cleanup", simulation]])
+     execute(command)
++    # Ensure simulation is inactive
++    status = get_status (machine)
++    if status != 'I':
++        fatal("Simulation is not inactive after cleanup")
+ 
+ 
+ 
+-def authenticate(machine):
+-    command = flatten([["./simfactory/bin/sim"], get_remotes(machine),
+-                       ["execute", "true"]])
+-    execute(command)
+-
+-
+-
+-def authenticate_access(machine):
+-    print "Authenticating access to %s:" % machine
+-    authenticate(machine)
+-
+-
+-
+ def sync_build_submit(machine):
+-    print "Distributing to %s..." % machine
+-    print
++    info("Distributing to %s..." % machine)
++    
+     if do_sync:
+-        print "Synchronising..."
+-        print create_timestamp()
++        info("Synchronising...")
+         sync(machine)
+-        print create_timestamp()
+         # Give the file system some time to settle down
+         time.sleep(3)
+-        print
++        info
++    
++    info("Current configurations:")
++    list_configurations(machine)
+     if do_build:
+-        list_configurations(machine)
+-        print
+-        print "Building debug configuration..."
+-        print create_timestamp()
++        info("Building debug configuration...")
+         build(machine, build_options + ["--debug"])
+-        print create_timestamp()
+-        print
+-        print "Building optimised configuration..."
+-        print create_timestamp()
++        info("Building optimised configuration...")
+         build(machine, build_options)
+-        print create_timestamp()
+-        print
+-    list_configurations(machine)
+-    print
++        info("Current configurations:")
++        list_configurations(machine)
++    
++    info("Current simulations:")
++    list_simulations(machine)
+     if do_submit:
++        info("Submitting test job...")
++        create_submit(machine)
++        info("Waiting for test job...")
++        wait(machine)
++        info("Cleaning up test job...")
++        cleanup(machine)
++        info("Submitting a second test job...")
++        submit(machine)
++        info("Presubmitting second test job...")
++        presubmit(machine)
++        info("Waiting for second test job...")
++        wait(machine)
++        info("Waiting a bit of time...")
++        time.sleep(60)
++        info("Waiting for second test job again...")
++        wait(machine)
++        info("Cleaning up second test job...")
++        cleanup(machine)
++        info("Current simulations:")
+         list_simulations(machine)
+-        print
+-        print "Submitting test job..."
+-        print create_timestamp()
+-        submit(machine, parfile)
+-        print create_timestamp()
+-        print
+-        wait(machine, parfile)
+-        print create_timestamp()
+-        print
+-        show_output(machine, parfile)
+-        print
+-    list_simulations(machine)
+-    list_configurations(machine)
+-    print
+-    print create_timestamp()
+-    print "Distribution done."
+-    sys.stdout.flush()
++        info("Simulation output:")
++        show_output(machine)
+ 
+ 
+ 
+@@ -500,7 +620,7 @@
+     print "   - not building"
+ 
+ if do_submit:
+-    print "   - submitting %s" % parfile
++    print "   - submitting parfile %s with walltime %s" % (parfile, walltime)
+ else:
+     print "   - not submitting"
+ 
+@@ -527,8 +647,8 @@
+ # time.sleep(3)
+ 
+ print
+-sleep_time = 0
+-next_sleep_time = 2
++sleep_time = 0                  # seconds
++next_sleep_time = 2             # seconds
+ for machine in machines:
+     time.sleep(sleep_time)
+     sleep_time = next_sleep_time
+@@ -566,7 +686,7 @@
+         # Execute the task
+         sync_build_submit(machine)
+         # Exit the subprocess
+-        sys.exit(0)
++        done()
+     print " (pid %s)" % pid
+ 
+ 

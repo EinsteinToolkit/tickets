@@ -1,0 +1,49 @@
+47d46
+<   CCTK_INT :: type_bits, not_trivial
+87,103d85
+< 
+<   if (flux_direction == 1) then
+<     call SpaceMask_GetTypeBits(type_bits, "Hydro_RiemannProblemX")
+<     call SpaceMask_GetStateBits(not_trivial, "Hydro_RiemannProblemX", &
+<          &"not_trivial")
+<   else if (flux_direction == 2) then
+<     call SpaceMask_GetTypeBits(type_bits, "Hydro_RiemannProblemY")
+<     call SpaceMask_GetStateBits(not_trivial, "Hydro_RiemannProblemY", &
+<          &"not_trivial")
+<   else if (flux_direction == 3) then
+<     call SpaceMask_GetTypeBits(type_bits, "Hydro_RiemannProblemZ")
+<     call SpaceMask_GetStateBits(not_trivial, "Hydro_RiemannProblemZ", &
+<          &"not_trivial")
+<   else
+<     call CCTK_WARN(0, "Flux direction not x,y,z")
+<   end if
+< 
+105,110c87,91
+<   do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil
+<     do j = GRHydro_stencil, cctk_lsh(2) - GRHydro_stencil
+<       do i = GRHydro_stencil, cctk_lsh(1) - GRHydro_stencil
+<          if(rhoplus(i,j,k).lt.GRHydro_rho_min .or. &
+<             rhominus(i,j,k).lt.GRHydro_rho_min) then
+< 
+---
+>      do k=1,cctk_lsh(3)
+>         do j=1,cctk_lsh(2)
+>            do i=1,cctk_lsh(1)
+>               if(rhoplus(i,j,k).lt.GRHydro_rho_min .or. &
+>                    rhominus(i,j,k).lt.GRHydro_rho_min) then
+129,131c110,111
+<              ! Riemann problem might not be trivial anymore!!!!
+<              SpaceMask_SetStateBitsF90(space_mask, i-xoffset, j-yoffset, k-zoffset, type_bits, not_trivial)
+<       enddo
+---
+>           enddo
+>        enddo
+133,136c113
+<   enddo
+<   !$OMP END PARALLEL DO
+<   
+< 
+---
+>     !$OMP END PARALLEL DO
+159d135
+< 

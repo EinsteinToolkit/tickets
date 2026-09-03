@@ -1,0 +1,157 @@
+From 82d1ac8cd9cd232145319c2356c13093b6a40554 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Mon, 14 Jan 2013 23:03:40 -0800
+Subject: [PATCH 02/12] GRHydro_InitData: set Bvec according to UIUC formula
+
+---
+ param.ccl            |    6 +++++
+ src/GRHydro_BondiM.c |   72 ++++++++++++++++++++++++++++++++------------------
+ 2 files changed, 52 insertions(+), 26 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index 0218b2b..9b741b2 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -395,6 +395,12 @@ CCTK_REAL  bondi_beta_sonicpt "Plasma beta parameter at the sonic point. Calcula
+   (0:* :: "positive"
+ } 1.0
+ 
++CCTK_KEYWORD bondi_Bvec_method "how to compute the magnetic field vector"
++{
++  "direct"    :: "directly from Cartesian metric"
++  "transform" :: "transform Schwarzschild solution to Kerr Schild"
++} "direct"
++
+ CCTK_BOOLEAN bondi_evolve_only_annulus "reset to initial data outside of bondi_freeze_inner_radius and bondi_freeze_outer_radius"
+ {
+ } "no"
+diff --git a/src/GRHydro_BondiM.c b/src/GRHydro_BondiM.c
+index ca693ad..c40c507 100644
+--- a/src/GRHydro_BondiM.c
++++ b/src/GRHydro_BondiM.c
+@@ -901,6 +901,8 @@ static void  calc_vel_bondi( CCTK_REAL vtmp, CCTK_REAL x[NDIM], CCTK_REAL x_sphe
+    -- driver routine for the Bondi solution;
+ 
+ ***********************************************************************************/
++static void GRHydro_BondiM_Internal(CCTK_ARGUMENTS, CCTK_REAL range_min, CCTK_REAL range_max);
++
+ void GRHydro_BondiM(CCTK_ARGUMENTS)
+ {
+   GRHydro_BondiM_Internal(CCTK_PASS_CTOC, 1e100, -1e100);
+@@ -914,17 +916,18 @@ void GRHydro_BondiM_Range(CCTK_ARGUMENTS)
+ }
+ 
+ 
+-void GRHydro_BondiM_Internal(CCTK_ARGUMENTS, CCTK_REAL range_min, CCTK_REAL range_max)
++static void GRHydro_BondiM_Internal(CCTK_ARGUMENTS, CCTK_REAL range_min, CCTK_REAL range_max)
+ {
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+-  CCTK_REAL det;
++  CCTK_REAL det, inv_alp;
+   CCTK_REAL rhotmp, utmp, vtmp, rspher, xpos[NDIM], x_spher[NDIM], ucon[NDIM], bcon[NDIM];
+   int retval;
+   CCTK_REAL  *r_bondi, *logr_bondi, *rho_bondi, *u_bondi, *v_bondi;
+   CCTK_REAL  dlogr,logrmin;
+   CCTK_REAL  rmin_bondi,rmax_bondi;
+-//  CCTK_INT GRHydro_reflevel=0;
++  int bvec_method;
++  enum {BVEC_DIRECT, BVEC_TRANSFORM};
+ 
+   int nbondi; 
+   
+@@ -946,14 +949,26 @@ void GRHydro_BondiM_Internal(CCTK_ARGUMENTS, CCTK_REAL range_min, CCTK_REAL rang
+ 
+   if( CCTK_EQUALS(bondi_coordinates,"Boyer-Lindquist") ) { 
+     coord_type = COORD_BOYERLINDQUIST ;
+-  }
+-  if( CCTK_EQUALS(bondi_coordinates,"Kerr-Schild") ) { 
++  } else if( CCTK_EQUALS(bondi_coordinates,"Kerr-Schild") ) { 
+     coord_type = COORD_KERRSCHILD  ;
+-  }
+-  if( CCTK_EQUALS(bondi_coordinates,"Isotropic") ) { 
++  } else if( CCTK_EQUALS(bondi_coordinates,"Isotropic") ) { 
+     coord_type = COORD_ISOTROPIC ;
++  } else {
++    CCTK_VWarn(CCTK_WARN_ABORT, __LINE__, __FILE__, CCTK_THORNSTRING,
++               "Unknown coordinate type '%s'", bondi_coordinates);
++  }
++
++  if( CCTK_EQUALS(bondi_Bvec_method, "direct")) {
++    bvec_method = BVEC_DIRECT;
++  } else if( CCTK_EQUALS(bondi_Bvec_method, "transform")) {
++    bvec_method = BVEC_TRANSFORM;
++  } else {
++    CCTK_VWarn(CCTK_WARN_ABORT, __LINE__, __FILE__, CCTK_THORNSTRING,
++               "Unknown bvec setup method '%s'", bondi_Bvec_method);
+   }
+ 
++
++
+   /* xyz location of the black hole : */
+   i = 0; 
+   x_cen = bh_bondi_pos_x[i] ; 
+@@ -1215,11 +1230,11 @@ void GRHydro_BondiM_Internal(CCTK_ARGUMENTS, CCTK_REAL range_min, CCTK_REAL rang
+       }
+     }
+ 
+-    det = 1./alp[i];   /* temp var */
++    inv_alp = 1./alp[i];
+ 
+-    velx(i) = (ucon[XX]/ucon[TT] + betax[i]) * det;
+-    vely(i) = (ucon[YY]/ucon[TT] + betay[i]) * det;
+-    velz(i) = (ucon[ZZ]/ucon[TT] + betaz[i]) * det;
++    velx(i) = (ucon[XX]/ucon[TT] + betax[i]) * inv_alp;
++    vely(i) = (ucon[YY]/ucon[TT] + betay[i]) * inv_alp;
++    velz(i) = (ucon[ZZ]/ucon[TT] + betaz[i]) * inv_alp;
+ 
+     w_lorentz[i] = 1./sqrt(1-(gxx[i]*SQR(velx(i))+gyy[i]*SQR(vely(i))+gzz[i]*SQR(velz(i))+
+                               2*(gxy[i]*velx(i)*vely(i)+gxz[i]*velx(i)*velz(i)+gyz[i]*vely(i)*velz(i))) );
+@@ -1230,24 +1245,29 @@ void GRHydro_BondiM_Internal(CCTK_ARGUMENTS, CCTK_REAL range_min, CCTK_REAL rang
+                               2*(gxy[i]*velx(i)*vely(i)+gxz[i]*velx(i)*velz(i)+gyz[i]*vely(i)*velz(i))));
+     }
+ 
+-
+-    Bvecx(i) = w_lorentz[i]*bcon[XX] - alp[i]*bcon[TT]*ucon[XX];
+-    Bvecy(i) = w_lorentz[i]*bcon[YY] - alp[i]*bcon[TT]*ucon[YY];
+-    Bvecz(i) = w_lorentz[i]*bcon[ZZ] - alp[i]*bcon[TT]*ucon[ZZ];
+-
+     SpatialDet(gxx[i],gxy[i],gxz[i],gyy[i],gyz[i],gzz[i],&det);
+ 
+-      Prim2ConGenM(*GRHydro_eos_handle,gxx[i],gxy[i],
+-		  gxz[i],gyy[i],gyz[i],gzz[i],
+-		  det, &dens[i],&sx(i),&sy(i),&sz(i),
+-		  &tau[i],
+-                  &Bconsx(i),&Bconsy(i),&Bconsz(i),
+-		  rho[i],
+-		  velx(i),vely(i),velz(i),
+-		  eps[i],&press[i],
+-                  Bvecx(i),Bvecy(i),Bvecz(i),
+-                  &w_lorentz[i]);
++    if(bvec_method == BVEC_TRANSFORM) {
++      Bvecx(i) = w_lorentz[i]*bcon[XX] - alp[i]*bcon[TT]*ucon[XX];
++      Bvecy(i) = w_lorentz[i]*bcon[YY] - alp[i]*bcon[TT]*ucon[YY];
++      Bvecz(i) = w_lorentz[i]*bcon[ZZ] - alp[i]*bcon[TT]*ucon[ZZ];
++    } else {
++      Bvecx(i) = bondi_bmag*SQR(M)*x[i]/sqrt(det)/CUBE(r[i]);
++      Bvecy(i) = bondi_bmag*SQR(M)*y[i]/sqrt(det)/CUBE(r[i]);
++      Bvecz(i) = bondi_bmag*SQR(M)*z[i]/sqrt(det)/CUBE(r[i]);
++    }
+ 
++    Prim2ConGenM(*GRHydro_eos_handle,gxx[i],gxy[i],
++                 gxz[i],gyy[i],gyz[i],gzz[i],
++                 det, &dens[i],&sx(i),&sy(i),&sz(i),
++                 &tau[i],
++                 &Bconsx(i),&Bconsy(i),&Bconsz(i),
++                 rho[i],
++                 velx(i),vely(i),velz(i),
++                 eps[i],&press[i],
++                 Bvecx(i),Bvecy(i),Bvecz(i),
++                 &w_lorentz[i]);
++                 
+   }
+ 
+   free(r_bondi);      free(logr_bondi);      free(rho_bondi);     free(u_bondi);   free(v_bondi);
+-- 
+1.7.10.4
+

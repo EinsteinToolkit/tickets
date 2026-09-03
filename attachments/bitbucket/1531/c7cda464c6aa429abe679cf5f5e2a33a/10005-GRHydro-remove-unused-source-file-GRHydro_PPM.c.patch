@@ -1,0 +1,448 @@
+From 940d9e3edc6da51161521b2ba9e99c77950e7073 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Tue, 26 Nov 2013 10:02:27 -0800
+Subject: [PATCH 05/36] GRHydro: remove unused source file GRHydro_PPM.c
+
+---
+ src/GRHydro_PPM.c | 429 ------------------------------------------------------
+ 1 file changed, 429 deletions(-)
+ delete mode 100644 src/GRHydro_PPM.c
+
+diff --git a/src/GRHydro_PPM.c b/src/GRHydro_PPM.c
+deleted file mode 100644
+index 31e189f..0000000
+--- a/src/GRHydro_PPM.c
++++ /dev/null
+@@ -1,429 +0,0 @@
+-#include <assert.h>
+-#include <math.h>
+-#include <stdio.h>
+-#include <stdlib.h>
+-
+-#if 1
+-#include "cctk.h"
+-#include "cctk_Parameters.h"
+-#include "cctk_Arguments.h"
+-#include "cctk_Functions.h"
+-#endif
+-
+-#include "GRHydro_PPM.h"
+-
+-
+-void SimplePPM_1d_c(int* restrict nx, 
+-		    double* restrict dx, 
+-		    double* restrict rho, 
+-		    double* restrict velx,
+-		    double* restrict vely, 
+-		    double* restrict velz, 
+-		    double* restrict eps, 
+-		    double* restrict press,
+-		    double* restrict rhominus, 
+-		    double* restrict velxminus, 
+-		    double* restrict velyminus,
+-		    double* restrict velzminus, 
+-		    double* restrict epsminus, 
+-		    double* restrict rhoplus, 
+-		    double* restrict velxplus, 
+-		    double* restrict velyplus,
+-		    double* restrict velzplus, 
+-		    double* restrict epsplus)
+-
+-{
+-  double drho[*nx], dpress[*nx], deps[*nx], d2rho[*nx]; 
+-  double dmrho[*nx], dmpress[*nx], dmeps[*nx];
+-  double dvelx[*nx], dvely[*nx], dvelz[*nx];
+-  double dmvelx[*nx], dmvely[*nx], dmvelz[*nx];
+-  double tilde_flatten[*nx];
+-
+-  const double onesixth = 1.0/6.0;
+-
+-  for(int i=1;i < *nx-1;i++) {
+-    drho[i]   = 0.5 * (rho[i+1]-rho[i-1]);
+-    d2rho[i]  = rho[i+1] - 2.0 * rho[i] + rho[i-1];
+-    dpress[i] = (press[i+1]-press[i-1]);
+-    deps[i]   = 0.5 * (eps[i+1]-eps[i-1]);
+-    dvelx[i]  = 0.5 * (velx[i+1]-velx[i-1]);
+-    dvely[i]  = 0.5 * (vely[i+1]-vely[i-1]);
+-    dvelz[i]  = 0.5 * (velz[i+1]-velz[i-1]);
+-  }
+-
+-  for(int i=1;i<*nx-1;i++) {
+-    steep(rho,drho,dmrho,i);
+-    steep(eps,deps,dmeps,i);
+-    steep(velx,dvelx,dmvelx,i);
+-    steep(vely,dvely,dmvely,i);
+-    steep(velz,dvelz,dmvelz,i);
+-  }
+-
+-  for(int i=1;i<*nx-1;i++) {
+-    rhoplus[i] = 0.5 * (rho[i] + rho[i+1]) + 
+-      (dmrho[i] - dmrho[i+1]) * onesixth;
+-    epsplus[i] = 0.5 * (eps[i] + eps[i+1]) + 
+-      (dmeps[i] - dmeps[i+1]) * onesixth;
+-    velxplus[i] = 0.5 * (velx[i] + velx[i+1]) + 
+-      (dmvelx[i] - dmvelx[i+1]) * onesixth;
+-    velyplus[i] = 0.5 * (vely[i] + vely[i+1]) + 
+-      (dmvely[i] - dmvely[i+1]) * onesixth;
+-    velzplus[i] = 0.5 * (velz[i] + velz[i+1]) + 
+-      (dmvelz[i] - dmvelz[i+1]) * onesixth;
+-  }
+-
+-  for(int i=1;i<*nx-2;i++) {
+-    rhominus[i+1] = rhoplus[i];
+-    epsminus[i+1] = epsplus[i];
+-    velxminus[i+1] = velxplus[i];
+-    velyminus[i+1] = velyplus[i];
+-    velzminus[i+1] = velzplus[i];
+-  }
+-
+-  const double ppm_epsilon_shock = 0.01;
+-  const double ppm_eta1 = 20.0;
+-  const double ppm_eta2 = 0.05;
+-  const double ppm_k0 = 0.2;
+-  const double ppm_epsilon = 0.33;
+-  const double ppm_omega1 = 0.75;
+-  const double ppm_omega2 = 10.0;
+-  const double ppm_small = 1.0e-7;
+-
+-  // steepening
+-  for(int i=2;i<*nx-2;i++) {
+-    double etatilde = 0.0;
+-    if ( d2rho[i+1]*d2rho[i-1] < 0.0 
+-	 && ( fabs(rho[i+1]-rho[i-1]) - ppm_epsilon_shock 
+-	      * MIN(fabs(rho[i+1]), 
+-		    fabs(rho[i-1])) > 0.0) )
+-      {
+-	etatilde = (rho[i-2] - rho[i+2] + 4.0 * drho[i]) / (drho[i] * 12.0);
+-      }
+-    double eta = MAX(0.0, MIN(1.0, ppm_eta1 * (etatilde - ppm_eta2)));
+-    if (ppm_k0 * fabs(drho[i]) * MIN(press[i-1],press[i+1]) 
+-	< fabs(dpress[i]) * MIN(rho[i-1], rho[i+1])) 
+-      {
+-	eta = 0.0;
+-      }
+-    rhominus[i] = rhominus[i] * (1.0 - eta) + 
+-      (rho[i-1] + 0.5 * dmrho[i-1]) * eta;
+-    rhoplus[i] = rhoplus[i] * (1.0 - eta) + 
+-      (rho[i+1] - 0.5 * dmrho[i+1]) * eta;
+-  }
+-
+-  // flattening
+-  for(int i=2;i<*nx-2;i++) {
+-    double dpress2 = press[i+2] - press[i-2];
+-    double dvel = velx[i+1] - velx[i-1];
+-    double w=0.0;
+-    if ( (fabs(dpress[i]) >  ppm_epsilon * MIN(press[i-1],press[i+1])) 
+-	 && (dvel < 0.0) ) 
+-      {
+-	w = 1.0;
+-      } 
+-    if (fabs(dpress2) < ppm_small) 
+-      {
+-	tilde_flatten[i] = 1.0;
+-      } 
+-    else
+-      {
+-	tilde_flatten[i] = MAX(0.0, 1.0 - w * MAX(0.0, 
+-			   ppm_omega2 * (dpress[i] / dpress2 - ppm_omega1)));
+-      }
+-  } 
+-
+-  for(int i=2;i<*nx-2;i++) {
+-    double flatten = tilde_flatten[i];
+-    rhoplus[i] = flatten * rhoplus[i] + (1.0 - flatten) * rho[i];
+-    rhominus[i] = flatten * rhominus[i] + (1.0 - flatten) * rho[i];
+-    epsplus[i] = flatten * epsplus[i] + (1.0 - flatten) * eps[i];
+-    epsminus[i] = flatten * epsminus[i] + (1.0 - flatten) * eps[i];
+-    velxplus[i] = flatten * velxplus[i] + (1.0 - flatten) * velx[i];
+-    velxminus[i] = flatten * velxminus[i] + (1.0 - flatten) * velx[i];
+-    velyplus[i] = flatten * velyplus[i] + (1.0 - flatten) * vely[i];
+-    velyminus[i] = flatten * velyminus[i] + (1.0 - flatten) * vely[i];
+-    velzplus[i] = flatten * velzplus[i] + (1.0 - flatten) * velz[i];
+-    velzminus[i] = flatten * velzminus[i] + (1.0 - flatten) * velz[i];
+-  } // flattening
+-
+-  for(int i=2;i<*nx-2;i++) {
+-    monotonize(rhominus,rho,rhoplus,i);
+-    monotonize(epsminus,eps,epsplus,i);
+-    monotonize(velxminus,velx,velxplus,i);
+-    monotonize(velyminus,vely,velyplus,i);
+-    monotonize(velzminus,velz,velzplus,i);
+-  }
+-
+-  return;
+-}
+-		    
+-CCTK_FCALL void CCTK_FNAME(PPMc)(int* restrict nx, 
+-				 double* restrict dx, 
+-				 double* restrict rho, 
+-				 double* restrict velx,
+-				 double* restrict vely, 
+-				 double* restrict velz, 
+-				 double* restrict eps, 
+-				 double* restrict press,
+-				 double* restrict rhominus, 
+-				 double* restrict velxminus, 
+-				 double* restrict velyminus,
+-				 double* restrict velzminus, 
+-				 double* restrict epsminus, 
+-				 double* restrict rhoplus, 
+-				 double* restrict velxplus, 
+-				 double* restrict velyplus,
+-				 double* restrict velzplus, 
+-				 double* restrict epsplus) {
+-
+-void SimplePPM_1d_c(nx, dx, 
+-		    rho, 
+-		    velx,
+-		    vely, 
+-		    velz, 
+-		    eps, 
+-		    press,
+-		    rhominus, 
+-		    velxminus, 
+-		    velyminus,
+-		    velzminus, 
+-		    epsminus, 
+-		    rhoplus, 
+-		    velxplus, 
+-		    velyplus,
+-		    velzplus, 
+-		    epsplus);
+-
+-}
+-
+-
+-void SimplePPM_1d_tyc(int* restrict nx, 
+-		       double* restrict dx, 
+-		       double* restrict rho, 
+-		       double* restrict velx,
+-		       double* restrict vely, 
+-		       double* restrict velz, 
+-		       double* restrict eps, 
+-		       double* restrict temp, 
+-		       double* restrict ye, 
+-		       double* restrict press,
+-		       double* restrict rhominus, 
+-		       double* restrict velxminus, 
+-		       double* restrict velyminus,
+-		       double* restrict velzminus, 
+-		       double* restrict epsminus, 
+-		       double * restrict tempminus,
+-		       double * restrict yeminus,
+-		       double* restrict rhoplus, 
+-		       double* restrict velxplus, 
+-		       double* restrict velyplus,
+-		       double* restrict velzplus, 
+-		       double* restrict epsplus,
+-		       double* restrict tempplus,
+-		       double* restrict yeplus)
+-
+-{
+-  double drho[*nx], dpress[*nx], deps[*nx], d2rho[*nx]; 
+-  double dtemp[*nx], dye[*nx];
+-  double dmrho[*nx], dmpress[*nx], dmeps[*nx];
+-  double dmtemp[*nx], dmye[*nx];
+-  double dvelx[*nx], dvely[*nx], dvelz[*nx];
+-  double dmvelx[*nx], dmvely[*nx], dmvelz[*nx];
+-  double tilde_flatten[*nx];
+-
+-  const double onesixth = 1.0/6.0;
+-
+-  for(int i=1;i < *nx-1;i++) {
+-    drho[i]   = 0.5 * (rho[i+1]-rho[i-1]);
+-    d2rho[i]  = rho[i+1] - 2.0 * rho[i] + rho[i-1];
+-    dpress[i] = (press[i+1]-press[i-1]);
+-    deps[i]   = 0.5 * (eps[i+1]-eps[i-1]);
+-    dtemp[i]  = 0.5 * (temp[i+1]-temp[i-1]);
+-    dye[i]    = 0.5 * (ye[i+1]-ye[i-1]);
+-    dvelx[i]  = 0.5 * (velx[i+1]-velx[i-1]);
+-    dvely[i]  = 0.5 * (vely[i+1]-vely[i-1]);
+-    dvelz[i]  = 0.5 * (velz[i+1]-velz[i-1]);
+-  }
+-
+-  for(int i=1;i<*nx-1;i++) {
+-    steep(rho,drho,dmrho,i);
+-    steep(eps,deps,dmeps,i);
+-    steep(temp,dtemp,dmtemp,i);
+-    steep(ye,dye,dmye,i);
+-    steep(velx,dvelx,dmvelx,i);
+-    steep(vely,dvely,dmvely,i);
+-    steep(velz,dvelz,dmvelz,i);
+-  }
+-
+-  for(int i=1;i<*nx-1;i++) {
+-    rhoplus[i] = 0.5 * (rho[i] + rho[i+1]) + 
+-      (dmrho[i] - dmrho[i+1]) * onesixth;
+-    epsplus[i] = 0.5 * (eps[i] + eps[i+1]) + 
+-      (dmeps[i] - dmeps[i+1]) * onesixth;
+-    tempplus[i] = 0.5 * (temp[i] + temp[i+1]) + 
+-      (dmtemp[i] - dmtemp[i+1]) * onesixth;
+-    yeplus[i] = 0.5 * (ye[i] + ye[i+1]) + 
+-      (dmye[i] - dmye[i+1]) * onesixth;
+-    velxplus[i] = 0.5 * (velx[i] + velx[i+1]) + 
+-      (dmvelx[i] - dmvelx[i+1]) * onesixth;
+-    velyplus[i] = 0.5 * (vely[i] + vely[i+1]) + 
+-      (dmvely[i] - dmvely[i+1]) * onesixth;
+-    velzplus[i] = 0.5 * (velz[i] + velz[i+1]) + 
+-      (dmvelz[i] - dmvelz[i+1]) * onesixth;
+-  }
+-
+-  for(int i=1;i<*nx-2;i++) {
+-    rhoplus[i] = approx_at_cell_interface(rho,i);
+-    epsplus[i] = approx_at_cell_interface(eps,i);
+-    tempplus[i] = approx_at_cell_interface(temp,i);
+-    yeplus[i] = approx_at_cell_interface(ye,i);
+-    velxplus[i] = approx_at_cell_interface(velx,i);
+-    velyplus[i] = approx_at_cell_interface(vely,i);
+-    velzplus[i] = approx_at_cell_interface(velz,i);
+-  }
+-
+-  for(int i=1;i<*nx-2;i++) {
+-    rhominus[i+1] = rhoplus[i];
+-    epsminus[i+1] = epsplus[i];
+-    tempminus[i+1] = tempplus[i];
+-    yeminus[i+1] = yeplus[i];
+-    velxminus[i+1] = velxplus[i];
+-    velyminus[i+1] = velyplus[i];
+-    velzminus[i+1] = velzplus[i];
+-  }
+-
+-  const double ppm_epsilon_shock = 0.01;
+-  const double ppm_eta1 = 20.0;
+-  const double ppm_eta2 = 0.05;
+-  const double ppm_k0 = 0.2;
+-  const double ppm_epsilon = 0.33;
+-  const double ppm_omega1 = 0.75;
+-  const double ppm_omega2 = 10.0;
+-  const double ppm_small = 1.0e-7;
+-
+-  // steepening
+-  for(int i=2;i<*nx-2;i++) {
+-    double etatilde = 0.0;
+-    if ( d2rho[i+1]*d2rho[i-1] < 0.0 
+-	 && ( fabs(rho[i+1]-rho[i-1]) - ppm_epsilon_shock 
+-	      * MIN(fabs(rho[i+1]), 
+-		    fabs(rho[i-1])) > 0.0) )
+-      {
+-	etatilde = (rho[i-2] - rho[i+2] + 4.0 * drho[i]) / (drho[i] * 12.0);
+-      }
+-    double eta = MAX(0.0, MIN(1.0, ppm_eta1 * (etatilde - ppm_eta2)));
+-    if (ppm_k0 * fabs(drho[i]) * MIN(press[i-1],press[i+1]) 
+-	< fabs(dpress[i]) * MIN(rho[i-1], rho[i+1])) 
+-      {
+-	eta = 0.0;
+-      }
+-    rhominus[i] = rhominus[i] * (1.0 - eta) + 
+-      (rho[i-1] + 0.5 * dmrho[i-1]) * eta;
+-    rhoplus[i] = rhoplus[i] * (1.0 - eta) + 
+-      (rho[i+1] - 0.5 * dmrho[i+1]) * eta;
+-  }
+-
+-  // flattening
+-  for(int i=2;i<*nx-2;i++) {
+-    double dpress2 = press[i+2] - press[i-2];
+-    double dvel = velx[i+1] - velx[i-1];
+-    double w=0.0;
+-    if ( (fabs(dpress[i]) >  ppm_epsilon * MIN(press[i-1],press[i+1])) 
+-	 && (dvel < 0.0) ) 
+-      {
+-	w = 1.0;
+-      } 
+-    if (fabs(dpress2) < ppm_small) 
+-      {
+-	tilde_flatten[i] = 1.0;
+-      } 
+-    else
+-      {
+-	tilde_flatten[i] = MAX(0.0, 1.0 - w * MAX(0.0, 
+-			   ppm_omega2 * (dpress[i] / dpress2 - ppm_omega1)));
+-      }
+-  } 
+-
+-  for(int i=2;i<*nx-2;i++) {
+-    double flatten = tilde_flatten[i];
+-    rhoplus[i] = flatten * rhoplus[i] + (1.0 - flatten) * rho[i];
+-    rhominus[i] = flatten * rhominus[i] + (1.0 - flatten) * rho[i];
+-    epsplus[i] = flatten * epsplus[i] + (1.0 - flatten) * eps[i];
+-    epsminus[i] = flatten * epsminus[i] + (1.0 - flatten) * eps[i];
+-    tempplus[i] = flatten * tempplus[i] + (1.0 - flatten) * temp[i];
+-    tempminus[i] = flatten * tempminus[i] + (1.0 - flatten) * temp[i];
+-    yeplus[i] = flatten * yeplus[i] + (1.0 - flatten) * ye[i];
+-    yeminus[i] = flatten * yeminus[i] + (1.0 - flatten) * ye[i];
+-    velxplus[i] = flatten * velxplus[i] + (1.0 - flatten) * velx[i];
+-    velxminus[i] = flatten * velxminus[i] + (1.0 - flatten) * velx[i];
+-    velyplus[i] = flatten * velyplus[i] + (1.0 - flatten) * vely[i];
+-    velyminus[i] = flatten * velyminus[i] + (1.0 - flatten) * vely[i];
+-    velzplus[i] = flatten * velzplus[i] + (1.0 - flatten) * velz[i];
+-    velzminus[i] = flatten * velzminus[i] + (1.0 - flatten) * velz[i];
+-  } // flattening
+-
+-  for(int i=2;i<*nx-2;i++) {
+-    monotonize(rhominus,rho,rhoplus,i);
+-    monotonize(epsminus,eps,epsplus,i);
+-    monotonize(tempminus,temp,tempplus,i);
+-    monotonize(yeminus,ye,yeplus,i);
+-    monotonize(velxminus,velx,velxplus,i);
+-    monotonize(velyminus,vely,velyplus,i);
+-    monotonize(velzminus,velz,velzplus,i);
+-  }
+-
+-  return;
+-}
+-
+-
+-		    
+-CCTK_FCALL void CCTK_FNAME(PPMtyc)(int* restrict nx, 
+-				    double* restrict dx, 
+-				    double* restrict rho, 
+-				    double* restrict velx,
+-				    double* restrict vely, 
+-				    double* restrict velz, 
+-				    double* restrict eps, 
+-				    double* restrict temp, 
+-				    double* restrict ye, 
+-				    double* restrict press,
+-				    double* restrict rhominus, 
+-				    double* restrict velxminus, 
+-				    double* restrict velyminus,
+-				    double* restrict velzminus, 
+-				    double* restrict epsminus, 
+-				    double* restrict tempminus, 
+-				    double* restrict yeminus, 
+-				    double* restrict rhoplus, 
+-				    double* restrict velxplus, 
+-				    double* restrict velyplus,
+-				    double* restrict velzplus, 
+-				    double* restrict epsplus,
+-				    double* restrict tempplus,
+-				    double* restrict yeplus) {
+-
+-void SimplePPM_1d_tyc(nx, dx, 
+-		      rho, 
+-		      velx,
+-		      vely, 
+-		      velz, 
+-		      eps, 
+-		      temp,
+-		      ye,
+-		      press,
+-		      rhominus, 
+-		      velxminus, 
+-		      velyminus,
+-		      velzminus, 
+-		      epsminus, 
+-		      tempminus,
+-		      yeminus,
+-		      rhoplus, 
+-		      velxplus, 
+-		      velyplus,
+-		      velzplus, 
+-		      epsplus,
+-		      tempplus,
+-		      yeplus);
+-}
+-
+-- 
+1.8.5.3
+

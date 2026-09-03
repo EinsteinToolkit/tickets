@@ -1,0 +1,132 @@
+From 469dd6147467e18202bde59df423ecb15997009d Mon Sep 17 00:00:00 2001
+From: Bruno Coutinho Mundim <bcmsma@astro.rit.edu>
+Date: Tue, 20 Nov 2012 12:10:55 -0800
+Subject: [PATCH 5/8] GRHydro_InitData: Implement entropy evolution (separated
+ from temp evolution)
+
+---
+ param.ccl                  |    8 ++++++++
+ src/CheckParam.c           |   12 ++++++++++++
+ src/GRHydro_BondiM_new.F90 |   26 +++++++++++++++++++-------
+ 3 files changed, 39 insertions(+), 7 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index bb9dad6..276cbb5 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -7,6 +7,7 @@ USES CCTK_INT timelevels
+ USES KEYWORD Bvec_evolution_method
+ USES KEYWORD Y_e_evolution_method
+ USES KEYWORD temperature_evolution_method
++USES KEYWORD entropy_evolution_method
+ 
+ EXTENDS KEYWORD initial_hydro ""
+ {
+@@ -33,6 +34,13 @@ EXTENDS KEYWORD initial_Bvec
+   "poloidalmagfield" :: "Poloidal Magnetic Field"
+   "magnetized Bondi" :: "radial magnetic field appropriate for Bondi test"
+ }
++
++EXTENDS KEYWORD initial_entropy
++{
++  "magnetized Bondi" :: "Initial entropy for a radial magnetic field appropriate for Bondi test"
++}
++
++
+ shares:ADMBase
+ 
+ EXTENDS KEYWORD initial_data ""
+diff --git a/src/CheckParam.c b/src/CheckParam.c
+index d3a40df..15dc162 100644
+--- a/src/CheckParam.c
++++ b/src/CheckParam.c
+@@ -71,4 +71,16 @@ void GRHydro_InitData_CheckParameters(CCTK_ARGUMENTS)
+     }
+   }
+ 
++  if(CCTK_Equals(Bvec_evolution_method,"GRHydro") &&
++     CCTK_Equals(initial_hydro,"magnetized_bondi_solution") &&
++     CCTK_Equals(entropy_evolution_method,"GRHydro") &&
++     !CCTK_Equals(initial_entropy,"magnetized Bondi") ){
++      CCTK_PARAMWARN("Please set initial_entropy='magnetized Bondi' in order to initialize the entropy correctly!");
++  }
++
++  if(CCTK_Equals(entropy_evolution_method,"GRHydro")){
++    *evolve_entropy = 1;
++  }else{
++    *evolve_entropy = 0;
++  }
+ }
+diff --git a/src/GRHydro_BondiM_new.F90 b/src/GRHydro_BondiM_new.F90
+index 6991bbc..d9fe6b3 100644
+--- a/src/GRHydro_BondiM_new.F90
++++ b/src/GRHydro_BondiM_new.F90
+@@ -59,11 +59,11 @@ subroutine GRHydro_BondiM_Iso(CCTK_ARGUMENTS)
+   CCTK_INT :: i, j, k, nx, ny, nz, imin, jb,N_points
+   CCTK_REAL :: ONEmTINY, tiny
+   PARAMETER (N_points=100000,ONEmTINY=0.999999d0,tiny=1.0d-12)
+-  CCTK_REAL :: M, Msq, Mdot, rs, gam, rmin_bondi, rmax_bondi, cs_sq,cs,vs_sq,vs,rhos,gtemp,hs, Kval, Qdot
++  CCTK_REAL :: M, Msq, Mdot, rs, gam, rmin_bondi, rmax_bondi, cs_sq,cs,vs_sq,vs,rhos,gmo,hs, Kval, Qdot
+   CCTK_REAL :: psonic, riso_s
+   CCTK_REAL :: logrmin,dlogr,rhotmp,utmp,vtmp,rspher
+   CCTK_REAL :: r_bondi(N_points), logr_bondi(N_points), rho_bondi(N_points), u_bondi(N_points), v_bondi(N_points)
+-  CCTK_REAL :: drhodr, det, rhocheck, rhocheck2, riso, rnew, rsch, ucheck
++  CCTK_REAL :: drhodr, det, sdet, rhocheck, rhocheck2, riso, rnew, rsch, ucheck
+   CCTK_REAL :: uiso, uisocheck, vcheck, ucheck2, vcheck2, xhat,yhat, zhat, xp, yp, zp
+   CCTK_REAL :: f,df,ddf,a,b,c,rsm,roverm,dudr,uisocheck2,auiso,buiso
+   CCTK_REAL :: bondi_bsmooth, bmag, bsonic, psonicmag
+@@ -101,9 +101,9 @@ subroutine GRHydro_BondiM_Iso(CCTK_ARGUMENTS)
+   vs_sq  =  M / ( 2. * rs )  
+   vs     =  sqrt(vs_sq)
+   rhos   =  Mdot / ( 4. * M_PI * vs * rs * rs ) 
+-  gtemp  =  gam - 1.
++  gmo  =  gam - 1.
+   hs     =  1. / ( 1. - cs_sq / (gam - 1.) )
+-  Kval      = hs * cs_sq * rhos**(-gtemp) / gam 
++  Kval      = hs * cs_sq * rhos**(-gmo) / gam 
+   Qdot   = hs * hs * ( 1. - 3. * vs_sq ) 
+   ! Get the pressure value psonic at the sonic point
+   psonic = Kval * rhos**gam
+@@ -295,10 +295,12 @@ subroutine GRHydro_BondiM_Iso(CCTK_ARGUMENTS)
+            velz(i,j,k) = -1.0*uiso * zhat / w_lorentz(i,j,k)
+            
+            det=SPATIAL_DETERMINANT(gxx(i,j,k),gxy(i,j,k),gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k))
++           sdet = sqrt(det)
++
++           Bvecx(i,j,k) = bondi_bsmooth*bmag*M**2*xhat/sdet/riso**2
++           Bvecy(i,j,k) = bondi_bsmooth*bmag*M**2*yhat/sdet/riso**2
++           Bvecz(i,j,k) = bondi_bsmooth*bmag*M**2*zhat/sdet/riso**2
+ 
+-           Bvecx(i,j,k) = bondi_bsmooth*bmag*M**2*xhat/sqrt(det)/riso**2
+-           Bvecy(i,j,k) = bondi_bsmooth*bmag*M**2*yhat/sqrt(det)/riso**2
+-           Bvecz(i,j,k) = bondi_bsmooth*bmag*M**2*zhat/sqrt(det)/riso**2
+ 
+            call Prim2ConGenM(GRHydro_eos_handle,gxx(i,j,k),gxy(i,j,k), &
+                           gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k), &
+@@ -307,6 +309,13 @@ subroutine GRHydro_BondiM_Iso(CCTK_ARGUMENTS)
+                           rho(i,j,k),velx(i,j,k),vely(i,j,k),velz(i,j,k), &
+                           eps(i,j,k),press(i,j,k), &
+                   Bvecx(i,j,k),Bvecy(i,j,k),Bvecz(i,j,k),w_lorentz(i,j,k))
++
++           if(evolve_entropy) then
++             entropy(i,j,k) = press(i,j,k) * rho(i,j,k)**(-gmo)
++             entropycons(i,j,k) = sdet * entropy(i,j,k) * w_lorentz(i,j,k)
++           end if
++
++!!$        write(48,'(3f22.14)')riso,uiso,bondi_bsmooth*bondi_bmag
+            
+         end do
+      end do
+@@ -316,6 +325,9 @@ subroutine GRHydro_BondiM_Iso(CCTK_ARGUMENTS)
+   srhs = 0.d0
+   taurhs = 0.d0
+   Bconsrhs = 0.d0
++  if(evolve_entropy) then
++    entropyrhs = 0.d0
++  end if
+ 
+   return
+ 
+-- 
+1.7.10.4
+

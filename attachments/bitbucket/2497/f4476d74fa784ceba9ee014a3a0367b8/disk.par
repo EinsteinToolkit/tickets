@@ -1,0 +1,903 @@
+
+################################################################################
+# Script variables
+################################################################################
+
+# __file__                       = disk.rpar
+# __name__                       = __main__
+# bh_movement_threshold          = 0.124
+# carpet_str                     = CartGrid3D::type = "coordbase"
+# Carpet::domain_from_coordbase = "yes"
+# 
+# Driver::ghost_size = 4
+# CoordBase::boundary_size_x_lower = 4
+# CoordBase::boundary_size_y_lower = 4
+# CoordBase::boundary_size_z_lower = 4
+# CoordBase::boundary_size_x_upper = 4
+# CoordBase::boundary_size_y_upper = 4
+# CoordBase::boundary_size_z_upper = 4
+# 
+# ReflectionSymmetry::avoid_origin_x = no
+# ReflectionSymmetry::avoid_origin_y = no
+# ReflectionSymmetry::avoid_origin_z = no
+# 
+# CoordBase::domainsize = "minmax"
+# CoordBase::xmax = 5120.001785714286
+# CoordBase::ymax = 5120.001785714286
+# CoordBase::zmax = 5120.001785714286
+# CoordBase::dx = 102.4
+# CoordBase::dy = 102.4
+# CoordBase::dz = 102.4
+# CoordBase::xmin = -5119.998214285714
+# CoordBase::ymin = -5119.998214285714
+# CoordBase::zmin = -5119.998214285714
+# 
+# CarpetRegrid2::num_centres = 3
+# Carpet::max_refinement_levels = 14
+# Carpet::time_refinement_factors = "[1,1,1,1,1,1,1,1,1,2,4,8,16,32]"
+# 
+# CarpetRegrid2::num_levels_1 = 14
+# CarpetRegrid2::position_x_1 = -6.5
+# CarpetRegrid2::position_y_1 = 0
+# CarpetRegrid2::position_z_1 = 0
+# CarpetRegrid2::radius_1[1] = 2539.52
+# CarpetRegrid2::radius_1[2] = 1269.76
+# CarpetRegrid2::radius_1[3] = 634.88
+# CarpetRegrid2::radius_1[4] = 317.44
+# CarpetRegrid2::radius_1[5] = 158.72
+# CarpetRegrid2::radius_1[6] = 79.36
+# CarpetRegrid2::radius_1[7] = 39.68
+# CarpetRegrid2::radius_1[8] = 19.84
+# CarpetRegrid2::radius_1[9] = 9.92
+# CarpetRegrid2::radius_1[10] = 4.96
+# CarpetRegrid2::radius_1[11] = 2.48
+# CarpetRegrid2::radius_1[12] = 1.24
+# CarpetRegrid2::radius_1[13] = 0.62
+# CarpetRegrid2::num_levels_2 = 14
+# CarpetRegrid2::position_x_2 = 6.5
+# CarpetRegrid2::position_y_2 = 0
+# CarpetRegrid2::position_z_2 = 0
+# CarpetRegrid2::radius_2[1] = 2539.52
+# CarpetRegrid2::radius_2[2] = 1269.76
+# CarpetRegrid2::radius_2[3] = 634.88
+# CarpetRegrid2::radius_2[4] = 317.44
+# CarpetRegrid2::radius_2[5] = 158.72
+# CarpetRegrid2::radius_2[6] = 79.36
+# CarpetRegrid2::radius_2[7] = 39.68
+# CarpetRegrid2::radius_2[8] = 19.84
+# CarpetRegrid2::radius_2[9] = 9.92
+# CarpetRegrid2::radius_2[10] = 4.96
+# CarpetRegrid2::radius_2[11] = 2.48
+# CarpetRegrid2::radius_2[12] = 1.24
+# CarpetRegrid2::radius_2[13] = 0.62
+# CarpetRegrid2::num_levels_3 = 11
+# CarpetRegrid2::position_x_3 = 0
+# CarpetRegrid2::position_y_3 = 0
+# CarpetRegrid2::position_z_3 = 0
+# CarpetRegrid2::radius_3[1] = 2539.52
+# CarpetRegrid2::radius_3[2] = 1269.76
+# CarpetRegrid2::radius_3[3] = 634.88
+# CarpetRegrid2::radius_3[4] = 317.44
+# CarpetRegrid2::radius_3[5] = 158.72
+# CarpetRegrid2::radius_3[6] = 79.36
+# CarpetRegrid2::radius_3[7] = 39.68
+# CarpetRegrid2::radius_3[8] = 19.84
+# CarpetRegrid2::radius_3[9] = 9.92
+# CarpetRegrid2::radius_3[10] = 4.96
+# cfl_condition                  = 1.5
+# cfl_num                        = 0.45
+# cfl_num_on_disk                = 0.45
+# col_width                      = 30
+# damp_lorenz                    = 8
+# diss_str                       = Dissipation::order = 7
+# Dissipation::vars  = "LeanBSSNMoL::conf_fac
+# LeanBSSNMoL::hmetric
+# LeanBSSNMoL::hcurv
+# LeanBSSNMoL::trk
+# LeanBSSNMoL::gammat
+# ADMBase::lapse
+# ADMBase::shift
+# LeanBSSNMoL::conf_fac
+# LeanBSSNMoL::hmetric
+# LeanBSSNMoL::hcurv
+# LeanBSSNMoL::trk
+# LeanBSSNMoL::gammat"
+# Dissipation::epsdis_for_level[0] = 1.953125e-05
+# Dissipation::epsdis_for_level[1] = 3.90625e-05
+# Dissipation::epsdis_for_level[2] = 7.8125e-05
+# Dissipation::epsdis_for_level[3] = 0.00015625
+# Dissipation::epsdis_for_level[4] = 0.0003125
+# Dissipation::epsdis_for_level[5] = 0.000625
+# Dissipation::epsdis_for_level[6] = 0.00125
+# Dissipation::epsdis_for_level[7] = 0.0025
+# Dissipation::epsdis_for_level[8] = 0.005
+# Dissipation::epsdis_for_level[9] = 0.01
+# Dissipation::epsdis_for_level[10] = 0.01
+# Dissipation::epsdis_for_level[11] = 0.01
+# Dissipation::epsdis_for_level[12] = 0.01
+# Dissipation::epsdis_for_level[13] = 0.01
+# Dissipation::epsdis_for_level[14] = 0.01
+# dx_coarse                      = 102.4
+# dx_fine                        = 0.0125
+# dx_fine_on_disk                = 3.2
+# e                              = 2.718281828459045
+# effective_cfl                  = 0.0017578125
+# eps_dis                        = 0.01
+# eta_beta                       = 2
+# evolution_order                = 6
+# expected_ah_radius_minus       = 0.5
+# expected_ah_radius_plus        = 0.5
+# expected_final_ah_radius       = 1.0
+# expected_merger_time           = 2000
+# extr_radius                    = 200.0
+# final_time                     = 4000
+# ghosts                         = 4
+# gw_radii_str                   = Multipole::radius[0]    = 100.0
+# Multipole::radius[1]    = 114.28571428571429
+# Multipole::radius[2]    = 128.57142857142858
+# Multipole::radius[3]    = 142.85714285714286
+# Multipole::radius[4]    = 157.14285714285714
+# Multipole::radius[5]    = 171.42857142857144
+# Multipole::radius[6]    = 185.71428571428572
+# Multipole::radius[7]    = 200.0
+# horizon_every                  = 64
+# i                              = 7
+# inf                            = inf
+# int_outer_boundary             = 50
+# key                            = xp
+# lorenz_condition               = 1.5
+# max_dt_allowed                 = 0.1875
+# max_gw_radius                  = 200
+# min_gw_radius                  = 100
+# nan                            = nan
+# num_gw_radii                   = 8
+# num_ref_radii                  = 13
+# number_of_synced_levels        = 9
+# out_every_2D                   = 256
+# out_every_3D                   = 1024
+# outer_boundary                 = 5120.0
+# outer_boundary_factor          = 2
+# outflow_radii_str              = Outflow::surface_index[0]    = 5
+# Outflow::override_radius[0]  = "yes"
+# Outflow::radius[0]           = 100.0
+# Outflow::surface_index[1]    = 5
+# Outflow::override_radius[1]  = "yes"
+# Outflow::radius[1]           = 114.28571428571429
+# Outflow::surface_index[2]    = 5
+# Outflow::override_radius[2]  = "yes"
+# Outflow::radius[2]           = 128.57142857142858
+# Outflow::surface_index[3]    = 5
+# Outflow::override_radius[3]  = "yes"
+# Outflow::radius[3]           = 142.85714285714286
+# Outflow::surface_index[4]    = 5
+# Outflow::override_radius[4]  = "yes"
+# Outflow::radius[4]           = 157.14285714285714
+# Outflow::surface_index[5]    = 5
+# Outflow::override_radius[5]  = "yes"
+# Outflow::radius[5]           = 171.42857142857144
+# Outflow::surface_index[6]    = 5
+# Outflow::override_radius[6]  = "yes"
+# Outflow::radius[6]           = 185.71428571428572
+# Outflow::surface_index[7]    = 5
+# Outflow::override_radius[7]  = "yes"
+# Outflow::radius[7]           = 200.0
+# par_b                          = 6.5
+# pi                             = 3.141592653589793
+# radius                         = 2539.52
+# radius0                        = 0.62
+# radius_number                  = 1
+# refinement_level_radius_factor = 2
+# regrid_every                   = 256
+# rl_synced_every                = 32
+# rlrf                           = 2
+# skip_radii                     = 3
+# step_gw_radius                 = 14.285714285714286
+# tau                            = 6.283185307179586
+# timers_every                   = 1024
+# tp_str                         = ADMBase::initial_data = "twopuncturespowerlaw"
+# ADMBase::initial_lapse = "twopunctures-averaged"
+# ADMBase::initial_shift = "zero"
+# ADMBase::initial_dtlapse = "zero"
+# ADMBase::initial_dtshift = "zero"
+# 
+# TwoPuncturesPowerLaw::give_bare_mass = "no"
+# TwoPuncturesPowerLaw::par_b = 6.5
+# TwoPuncturesPowerLaw::target_m_plus = 0.5
+# TwoPuncturesPowerLaw::target_m_minus = 0.5
+# TwoPuncturesPowerLaw::par_m_plus = 0.5
+# TwoPuncturesPowerLaw::par_m_minus = 0.5
+# TwoPuncturesPowerLaw::par_P_plus[0] = -0.000413874209381327
+# TwoPuncturesPowerLaw::par_P_plus[1] = 0.0807444483485998
+# TwoPuncturesPowerLaw::par_P_plus[2] = 0
+# TwoPuncturesPowerLaw::par_P_minus[0] = 0.000413874209381327
+# TwoPuncturesPowerLaw::par_P_minus[1] = -0.0807444483485998
+# TwoPuncturesPowerLaw::par_P_minus[2] = 0
+# TwoPuncturesPowerLaw::par_S_plus[0] = 0.0
+# TwoPuncturesPowerLaw::par_S_plus[1] = 0.0
+# TwoPuncturesPowerLaw::par_S_plus[2] = 0.0
+# TwoPuncturesPowerLaw::par_S_minus[0] = 0.0
+# TwoPuncturesPowerLaw::par_S_minus[1] = 0.0
+# TwoPuncturesPowerLaw::par_S_minus[2] = 0.0
+# TwoPuncturesPowerLaw::center_offset[0] = 0.0
+# TwoPuncturesPowerLaw::center_offset[1] = 0.0
+# TwoPuncturesPowerLaw::center_offset[2] = 0.0
+# val                            = 6.5
+# wave_extract_every             = 32
+# xm                             = -6.5
+# xp                             = 6.5
+
+################################################################################
+# Par file
+################################################################################
+
+ActiveThorns = "
+ADMBase
+ADMCoupling
+ADMMacros
+AEILocalInterp
+AHFinderDirect
+Boundary
+Carpet
+CarpetIOASCII
+CarpetIOBasic
+CarpetIOHDF5
+CarpetIOScalar
+CarpetInterp
+CarpetLib
+# CarpetMask
+CarpetReduce
+CarpetRegrid2
+CarpetSlab
+CarpetTracker
+CartGrid3D
+# Christoffel
+Convert_to_HydroBase
+CoordBase
+CoordGauge
+CycleClock
+# DiskDiagnostics
+Dissipation
+EOS_Base
+EOS_Omni
+Fortran
+GenericFD
+GSL
+ID_converter_ILGRMHD
+IllinoisGRMHD
+HydroBase
+HDF5
+hwloc
+IOUtil
+InitBase
+LeanBSSNMoL
+LocalInterp
+LoopControl
+MoL
+MPI
+Multipole
+NaNChecker
+NewRad
+NPScalars
+PunctureTracker
+QuasiLocalMeasures
+OpenBLAS
+Outflow
+Seed_Magnetic_Fields
+Slab
+SpaceMask
+SphericalSurface
+StaticConformal
+SummationByParts
+SymBase
+SystemStatistics
+SystemTopology
+TerminationTrigger
+TensorTypes
+TGRTensor
+Time
+Timers
+TimerReport
+TmunuBase
+TwoPuncturesPowerLaw
+Vectors
+VolumeIntegrals_GRMHD
+zlib
+ReflectionSymmetry
+"
+
+# # Cactus::presync_mode                  = "mixed-error"
+
+####################################################################
+# Grid details
+####################################################################
+
+Carpet::use_buffer_zones             = "yes"
+Carpet::init_3_timelevels            = "no"
+Carpet::init_fill_timelevels         = "yes"
+Carpet::verbose                      = "no"
+Carpet::veryverbose                  = "no"
+Carpet::schedule_barriers            = "no"
+Carpet::storage_verbose              = "no"
+Grid::avoid_origin                   = "no"
+
+Time::dtfac                             = 0.0017578125
+Cactus::terminate                       = time
+Cactus::cctk_final_time                 = 4000
+
+MoL::ODE_Method                      = "rk4"
+MoL::MoL_Intermediate_Steps          = 4
+MoL::MoL_Num_Scratch_Levels          = 1
+
+Carpet::prolongation_order_space     = 5
+Carpet::prolongation_order_time      = 2
+Cactus::cctk_full_warnings           = "yes"
+Cactus::highlight_warning_messages   = "no"
+
+CarpetLib::poison_new_memory          = "yes"
+CarpetLib::poison_value               = 113
+CarpetLib::output_bboxes              = "no"
+CarpetLib::interleave_communications  = "yes"
+CarpetLib::combine_sends              = "yes"
+CarpetLib::support_staggered_operators = "yes" # IllinoisGRMHD requires staggered operators
+
+CarpetRegrid2::freeze_unaligned_levels        = "yes"
+CarpetRegrid2::freeze_unaligned_parent_levels = "yes"
+CarpetRegrid2::verbose                        = "yes"
+CarpetRegrid2::regrid_every                   = 256
+
+CartGrid3D::type = "coordbase"
+Carpet::domain_from_coordbase = "yes"
+
+Driver::ghost_size = 4
+CoordBase::boundary_size_x_lower = 4
+CoordBase::boundary_size_y_lower = 4
+CoordBase::boundary_size_z_lower = 4
+CoordBase::boundary_size_x_upper = 4
+CoordBase::boundary_size_y_upper = 4
+CoordBase::boundary_size_z_upper = 4
+
+ReflectionSymmetry::avoid_origin_x = no
+ReflectionSymmetry::avoid_origin_y = no
+ReflectionSymmetry::avoid_origin_z = no
+
+CoordBase::domainsize = "minmax"
+CoordBase::xmax = 5120.001785714286
+CoordBase::ymax = 5120.001785714286
+CoordBase::zmax = 5120.001785714286
+CoordBase::dx = 102.4
+CoordBase::dy = 102.4
+CoordBase::dz = 102.4
+CoordBase::xmin = -5119.998214285714
+CoordBase::ymin = -5119.998214285714
+CoordBase::zmin = -5119.998214285714
+
+CarpetRegrid2::num_centres = 3
+Carpet::max_refinement_levels = 14
+Carpet::time_refinement_factors = "[1,1,1,1,1,1,1,1,1,2,4,8,16,32]"
+
+CarpetRegrid2::num_levels_1 = 14
+CarpetRegrid2::position_x_1 = -6.5
+CarpetRegrid2::position_y_1 = 0
+CarpetRegrid2::position_z_1 = 0
+CarpetRegrid2::radius_1[1] = 2539.52
+CarpetRegrid2::radius_1[2] = 1269.76
+CarpetRegrid2::radius_1[3] = 634.88
+CarpetRegrid2::radius_1[4] = 317.44
+CarpetRegrid2::radius_1[5] = 158.72
+CarpetRegrid2::radius_1[6] = 79.36
+CarpetRegrid2::radius_1[7] = 39.68
+CarpetRegrid2::radius_1[8] = 19.84
+CarpetRegrid2::radius_1[9] = 9.92
+CarpetRegrid2::radius_1[10] = 4.96
+CarpetRegrid2::radius_1[11] = 2.48
+CarpetRegrid2::radius_1[12] = 1.24
+CarpetRegrid2::radius_1[13] = 0.62
+CarpetRegrid2::num_levels_2 = 14
+CarpetRegrid2::position_x_2 = 6.5
+CarpetRegrid2::position_y_2 = 0
+CarpetRegrid2::position_z_2 = 0
+CarpetRegrid2::radius_2[1] = 2539.52
+CarpetRegrid2::radius_2[2] = 1269.76
+CarpetRegrid2::radius_2[3] = 634.88
+CarpetRegrid2::radius_2[4] = 317.44
+CarpetRegrid2::radius_2[5] = 158.72
+CarpetRegrid2::radius_2[6] = 79.36
+CarpetRegrid2::radius_2[7] = 39.68
+CarpetRegrid2::radius_2[8] = 19.84
+CarpetRegrid2::radius_2[9] = 9.92
+CarpetRegrid2::radius_2[10] = 4.96
+CarpetRegrid2::radius_2[11] = 2.48
+CarpetRegrid2::radius_2[12] = 1.24
+CarpetRegrid2::radius_2[13] = 0.62
+CarpetRegrid2::num_levels_3 = 11
+CarpetRegrid2::position_x_3 = 0
+CarpetRegrid2::position_y_3 = 0
+CarpetRegrid2::position_z_3 = 0
+CarpetRegrid2::radius_3[1] = 2539.52
+CarpetRegrid2::radius_3[2] = 1269.76
+CarpetRegrid2::radius_3[3] = 634.88
+CarpetRegrid2::radius_3[4] = 317.44
+CarpetRegrid2::radius_3[5] = 158.72
+CarpetRegrid2::radius_3[6] = 79.36
+CarpetRegrid2::radius_3[7] = 39.68
+CarpetRegrid2::radius_3[8] = 19.84
+CarpetRegrid2::radius_3[9] = 9.92
+CarpetRegrid2::radius_3[10] = 4.96
+
+CarpetRegrid2::movement_threshold_1     =   0.124
+CarpetRegrid2::movement_threshold_2     =   0.124
+CarpetRegrid2::movement_threshold_3     =   0.124
+
+####################################################################
+# Initial Data
+####################################################################
+
+InitBase::initial_data_setup_method  = "init_some_levels"
+HydroBase::initial_Avec              = "zero"
+HydroBase::initial_Aphi              = "zero"
+HydroBase::initial_Bvec              = "zero"
+HydroBase::initial_hydro             = "twopuncturespowerlaw"
+
+TwoPuncturesPowerLaw::ell_inner      = 5.15
+TwoPuncturesPowerLaw::sam_disk       = 0.0
+TwoPuncturesPowerLaw::RoM_inner      = 18.0
+
+IllinoisGRMHD::gamma_th              = 1.333333333333333333333333333
+ID_converter_ILGRMHD::Gamma_Initial  = 1.333333333333333333333333333
+
+# rho_max = 1
+IllinoisGRMHD::K_poly                = 7.98742131429e-4
+ID_converter_ILGRMHD::K_Initial      = 7.98742131429e-4
+
+IllinoisGRMHD::rho_b_atm             = 1e-8
+IllinoisGRMHD::tau_atm               = 1e-7
+
+
+IllinoisGRMHD::compute_extra_diagnostics = "yes"
+ADMBase::initial_data = "twopuncturespowerlaw"
+ADMBase::initial_lapse = "twopunctures-averaged"
+ADMBase::initial_shift = "zero"
+ADMBase::initial_dtlapse = "zero"
+ADMBase::initial_dtshift = "zero"
+
+TwoPuncturesPowerLaw::give_bare_mass = "no"
+TwoPuncturesPowerLaw::par_b = 6.5
+TwoPuncturesPowerLaw::target_m_plus = 0.5
+TwoPuncturesPowerLaw::target_m_minus = 0.5
+TwoPuncturesPowerLaw::par_m_plus = 0.5
+TwoPuncturesPowerLaw::par_m_minus = 0.5
+TwoPuncturesPowerLaw::par_P_plus[0] = -0.000413874209381327
+TwoPuncturesPowerLaw::par_P_plus[1] = 0.0807444483485998
+TwoPuncturesPowerLaw::par_P_plus[2] = 0
+TwoPuncturesPowerLaw::par_P_minus[0] = 0.000413874209381327
+TwoPuncturesPowerLaw::par_P_minus[1] = -0.0807444483485998
+TwoPuncturesPowerLaw::par_P_minus[2] = 0
+TwoPuncturesPowerLaw::par_S_plus[0] = 0.0
+TwoPuncturesPowerLaw::par_S_plus[1] = 0.0
+TwoPuncturesPowerLaw::par_S_plus[2] = 0.0
+TwoPuncturesPowerLaw::par_S_minus[0] = 0.0
+TwoPuncturesPowerLaw::par_S_minus[1] = 0.0
+TwoPuncturesPowerLaw::par_S_minus[2] = 0.0
+TwoPuncturesPowerLaw::center_offset[0] = 0.0
+TwoPuncturesPowerLaw::center_offset[1] = 0.0
+TwoPuncturesPowerLaw::center_offset[2] = 0.0
+
+TwoPuncturesPowerLaw::npoints_A               = 32
+TwoPuncturesPowerLaw::npoints_B               = 32
+TwoPuncturesPowerLaw::npoints_phi             = 32
+
+TwoPuncturesPowerLaw::Newton_maxit            = 20
+
+TwoPuncturesPowerLaw::verbose                 = yes
+# TwoPuncturesPowerLaw::TP_epsilon              = 1.0e-6
+# TwoPuncturesPowerLaw::TP_Tiny                 = 1.0e-10
+
+TwoPuncturesPowerLaw::grid_setup_method       = "evaluation"
+
+
+####################################################################
+# Evolution
+####################################################################
+
+ADMBase::evolution_method               = "LeanBSSNMoL"
+ADMBase::lapse_evolution_method         = "LeanBSSNMoL"
+ADMBase::shift_evolution_method         = "LeanBSSNMoL"
+ADMBase::dtlapse_evolution_method       = "LeanBSSNMoL"
+ADMBase::dtshift_evolution_method       = "LeanBSSNMoL"
+
+ADMMacros::spatial_order              = 4
+
+ADMBase::lapse_timelevels             = 3
+ADMBase::shift_timelevels             = 3
+ADMBase::metric_timelevels            = 3
+HydroBase::timelevels                 = 3
+TmunuBase::stress_energy_storage      = "yes"
+TmunuBase::stress_energy_at_RHS       = "no"
+TmunuBase::prolongation_type          = "none"
+
+LeanBSSNMoL::impose_conf_fac_floor_at_initial  = yes
+LeanBSSNMoL::eta_beta                     = 2
+# LeanBSSNMoL::eta_beta_dynamic             = no
+LeanBSSNMoL::conf_fac_floor               = 1.0d-04
+LeanBSSNMoL::derivs_order                 = 6
+LeanBSSNMoL::use_advection_stencils       = yes
+LeanBSSNMoL::calculate_constraints        = yes
+LeanBSSNMoL::calculate_constraints_every  = 32
+
+# Psi6threshold activates tricks to deplete black holes of matter to
+# stabilize the evolution
+IllinoisGRMHD::conserv_to_prims_debug     = 0
+IllinoisGRMHD::verbose                    = "no"
+IllinoisGRMHD::Psi6threshold              = 50
+IllinoisGRMHD::neos                       = 1
+IllinoisGRMHD::damp_lorenz                = 8
+IllinoisGRMHD::update_Tmunu               = "no"
+
+NaNChecker::check_every              = 32
+NaNChecker::action_if_found          = "terminate"
+NaNChecker::check_vars               = "
+LeanBSSNMoL::conf_fac
+IllinoisGRMHD::rho_b
+"
+
+Dissipation::order = 7
+Dissipation::vars  = "LeanBSSNMoL::conf_fac
+LeanBSSNMoL::hmetric
+LeanBSSNMoL::hcurv
+LeanBSSNMoL::trk
+LeanBSSNMoL::gammat
+ADMBase::lapse
+ADMBase::shift
+LeanBSSNMoL::conf_fac
+LeanBSSNMoL::hmetric
+LeanBSSNMoL::hcurv
+LeanBSSNMoL::trk
+LeanBSSNMoL::gammat"
+Dissipation::epsdis_for_level[0] = 1.953125e-05
+Dissipation::epsdis_for_level[1] = 3.90625e-05
+Dissipation::epsdis_for_level[2] = 7.8125e-05
+Dissipation::epsdis_for_level[3] = 0.00015625
+Dissipation::epsdis_for_level[4] = 0.0003125
+Dissipation::epsdis_for_level[5] = 0.000625
+Dissipation::epsdis_for_level[6] = 0.00125
+Dissipation::epsdis_for_level[7] = 0.0025
+Dissipation::epsdis_for_level[8] = 0.005
+Dissipation::epsdis_for_level[9] = 0.01
+Dissipation::epsdis_for_level[10] = 0.01
+Dissipation::epsdis_for_level[11] = 0.01
+Dissipation::epsdis_for_level[12] = 0.01
+Dissipation::epsdis_for_level[13] = 0.01
+Dissipation::epsdis_for_level[14] = 0.01
+
+####################################################################
+# Horizons
+####################################################################
+
+SpaceMask::use_mask      = "yes"
+
+SphericalSurface::nsurfaces             = 6
+SphericalSurface::maxntheta             = 66
+SphericalSurface::maxnphi               = 124
+SphericalSurface::verbose               = no
+
+# Surfaces 4 and 5 are used by PunctureTracker
+# Surface 6 is used by Outflow
+SphericalSurface::set_spherical     [5] = "yes"
+# Radius doesn't really matter, we are going to override it
+SphericalSurface::radius            [5] = 10
+SphericalSurface::ntheta            [5] = 65
+SphericalSurface::nphi              [5] = 124
+SphericalSurface::nghoststheta      [5] = 2
+SphericalSurface::nghostsphi        [5] = 2
+SphericalSurface::origin_x          [0] = 0.
+SphericalSurface::origin_y          [0] = 0.
+SphericalSurface::origin_z          [0] = 0.
+
+# Horizon 1
+SphericalSurface::ntheta            [0] = 65
+SphericalSurface::nphi              [0] = 124
+SphericalSurface::nghoststheta      [0] = 2
+SphericalSurface::nghostsphi        [0] = 2
+# CarpetMask::excluded_surface        [0] = 0
+# CarpetMask::excluded_surface_factor [0] = 1.0
+
+# Horizon 2
+SphericalSurface::ntheta            [1] = 65
+SphericalSurface::nphi              [1] = 124
+SphericalSurface::nghoststheta      [1] = 2
+SphericalSurface::nghostsphi        [1] = 2
+# CarpetMask::excluded_surface        [1] = 1
+# CarpetMask::excluded_surface_factor [1] = 1.0
+
+# Common horizon
+SphericalSurface::ntheta            [2] = 65
+SphericalSurface::nphi              [2] = 124
+SphericalSurface::nghoststheta      [2] = 2
+SphericalSurface::nghostsphi        [2] = 2
+# CarpetMask::excluded_surface        [2] = 2
+# CarpetMask::excluded_surface_factor [2] = 1.0
+
+# CarpetMask::verbose = no
+
+# CarpetMask::verbose = no
+
+Seed_Magnetic_Fields::enable_IllinoisGRMHD_staggered_A_fields = "true"
+Seed_Magnetic_Fields::Afield_type = "Pressure_prescription"
+# Seed_Magnetic_Fields::enable_varpi_squared_multiplication = "false"
+Seed_Magnetic_Fields::P_cut = 3.19680877496e-5
+Seed_Magnetic_Fields::A_b     = 4.4766386445
+# Seed_Magnetic_Fields::A_b = 0
+
+# ID_converter_ILGRMHD::rho_atm_threshold  = 10
+
+################################################################################
+# Apparent Horizons
+################################################################################
+
+AHFinderDirect::N_horizons                               = 3
+AHFinderDirect::find_every                               = 64
+AHFinderDirect::output_h_every                           = 64
+AHFinderDirect::output_ASCII_files                       = yes
+AHFinderDirect::output_HDF5_files                        = yes
+AHFinderDirect::max_Newton_iterations__initial           = 50
+AHFinderDirect::max_Newton_iterations__subsequent        = 50
+AHFinderDirect::max_allowable_Theta_growth_iterations    = 10
+AHFinderDirect::max_allowable_Theta_nonshrink_iterations = 10
+AHFinderDirect::geometry_interpolator_name               = "Lagrange polynomial interpolation"
+AHFinderDirect::geometry_interpolator_pars               = "order=4"
+AHFinderDirect::surface_interpolator_name                = "Lagrange polynomial interpolation"
+AHFinderDirect::surface_interpolator_pars                = "order=4"
+AHFinderDirect::verbose_level                            = "physics details"
+AHFinderDirect::move_origins                             = "yes"
+AHFinderDirect::run_at_CCTK_POST_RECOVER_VARIABLES       = "no"
+
+AHFinderDirect::origin_x                             [1] = 6.5
+AHFinderDirect::initial_guess__coord_sphere__x_center[1] = 6.5
+AHFinderDirect::initial_guess__coord_sphere__radius  [1] = 0.5
+AHFinderDirect::which_surface_to_store_info          [1] = 0
+AHFinderDirect::set_mask_for_individual_horizon      [1] = no
+AHFinderDirect::reset_horizon_after_not_finding      [1] = no
+AHFinderDirect::track_origin_from_grid_scalar        [1] = yes
+AHFinderDirect::track_origin_source_x                [1] = "PunctureTracker::pt_loc_x[0]"
+AHFinderDirect::track_origin_source_y                [1] = "PunctureTracker::pt_loc_y[0]"
+AHFinderDirect::track_origin_source_z                [1] = "PunctureTracker::pt_loc_z[0]"
+AHFinderDirect::max_allowable_horizon_radius         [1] = 3
+
+AHFinderDirect::origin_x                             [2] = -6.5
+AHFinderDirect::initial_guess__coord_sphere__x_center[2] = -6.5
+AHFinderDirect::initial_guess__coord_sphere__radius  [2] = 0.5
+AHFinderDirect::which_surface_to_store_info          [2] = 1
+AHFinderDirect::set_mask_for_individual_horizon      [2] = no
+AHFinderDirect::reset_horizon_after_not_finding      [2] = no
+AHFinderDirect::track_origin_from_grid_scalar        [2] = yes
+AHFinderDirect::track_origin_source_x                [2] = "PunctureTracker::pt_loc_x[1]"
+AHFinderDirect::track_origin_source_y                [2] = "PunctureTracker::pt_loc_y[1]"
+AHFinderDirect::track_origin_source_z                [2] = "PunctureTracker::pt_loc_z[1]"
+AHFinderDirect::max_allowable_horizon_radius         [2] = 3
+
+AHFinderDirect::origin_x                             [3] = 0
+AHFinderDirect::origin_z                             [3] = 1
+AHFinderDirect::initial_guess__coord_sphere__z_center[3] = 1
+AHFinderDirect::find_after_individual_time           [3] = 2000
+AHFinderDirect::initial_guess__coord_sphere__x_center[3] = 0
+AHFinderDirect::initial_guess__coord_sphere__radius  [3] = 1.0
+AHFinderDirect::which_surface_to_store_info          [3] = 2
+AHFinderDirect::track_origin_from_grid_scalar        [3] = yes
+AHFinderDirect::track_origin_source_x                [3] = "PunctureTracker::pt_loc_x[0]"
+AHFinderDirect::track_origin_source_y                [3] = "PunctureTracker::pt_loc_y[0]"
+AHFinderDirect::track_origin_source_z                [3] = "PunctureTracker::pt_loc_z[0]"
+AHFinderDirect::set_mask_for_individual_horizon      [3] = no
+AHFinderDirect::max_allowable_horizon_radius         [3] = 3
+
+QuasiLocalMeasures::verbose                = yes
+QuasiLocalMeasures::veryverbose            = no
+QuasiLocalMeasures::interpolator           = "Lagrange polynomial interpolation"
+QuasiLocalMeasures::interpolator_options   = "order=4"
+QuasiLocalMeasures::spatial_order          = 4
+QuasiLocalMeasures::num_surfaces           = 3
+QuasiLocalMeasures::surface_index      [0] = 0
+QuasiLocalMeasures::surface_index      [1] = 1
+QuasiLocalMeasures::surface_index      [2] = 2
+QuasiLocalMeasures::output_vtk_every       = 0
+
+CarpetTracker::surface                      [0] = 3
+CarpetTracker::surface                      [1] = 4
+PunctureTracker::track                      [0] = yes
+PunctureTracker::initial_x                  [0] = 6.5
+PunctureTracker::which_surface_to_store_info[0] = 3
+PunctureTracker::track                      [1] = yes
+PunctureTracker::initial_x                  [1] = -6.5
+PunctureTracker::which_surface_to_store_info[1] = 4
+
+################################################################################
+# GW Extraction
+################################################################################
+
+NPScalars::NP_order                     = 6
+NPScalars::calculate_NP_every           = 32
+
+Multipole::nradii       = 8
+Multipole::radius[0]    = 100.0
+Multipole::radius[1]    = 114.28571428571429
+Multipole::radius[2]    = 128.57142857142858
+Multipole::radius[3]    = 142.85714285714286
+Multipole::radius[4]    = 157.14285714285714
+Multipole::radius[5]    = 171.42857142857144
+Multipole::radius[6]    = 185.71428571428572
+Multipole::radius[7]    = 200.0
+
+Multipole::ntheta       = 120
+Multipole::nphi         = 240
+Multipole::variables    = "
+NPScalars::psi4re{sw=-2 cmplx='NPScalars::psi4im' name='Psi4'}
+"
+Multipole::out_every    = 32
+Multipole::l_max        = 6
+Multipole::integration_method = "Simpson"
+Multipole::output_hdf5  = yes
+Multipole::output_ascii = no
+
+####################################################
+# Analysis
+####################################################
+
+# Christoffel::compute_every                             = 1024
+# Christoffel::save_dgab                                 = yes
+
+# DiskDiagnostics::compute_every                         = 1024
+# DiskDiagnostics::x_num_points                          = 100
+# DiskDiagnostics::y_num_points                          = 100
+# DiskDiagnostics::z_num_points                          = 150
+# DiskDiagnostics::zmax_int                              = 50
+# DiskDiagnostics::num_horizons                          = 3
+# DiskDiagnostics::horizon_numbers                       = [1,2,3]
+# DiskDiagnostics::Gamma                                 = 1.33333333333333
+
+Convert_to_HydroBase::Convert_to_HydroBase_every       = 32
+
+Outflow::num_detectors                                 = 8
+Outflow::compute_every                                 = 32
+Outflow::output_2d_data                                = "yes"
+
+Outflow::surface_index[0]    = 5
+Outflow::override_radius[0]  = "yes"
+Outflow::radius[0]           = 100.0
+Outflow::surface_index[1]    = 5
+Outflow::override_radius[1]  = "yes"
+Outflow::radius[1]           = 114.28571428571429
+Outflow::surface_index[2]    = 5
+Outflow::override_radius[2]  = "yes"
+Outflow::radius[2]           = 128.57142857142858
+Outflow::surface_index[3]    = 5
+Outflow::override_radius[3]  = "yes"
+Outflow::radius[3]           = 142.85714285714286
+Outflow::surface_index[4]    = 5
+Outflow::override_radius[4]  = "yes"
+Outflow::radius[4]           = 157.14285714285714
+Outflow::surface_index[5]    = 5
+Outflow::override_radius[5]  = "yes"
+Outflow::radius[5]           = 171.42857142857144
+Outflow::surface_index[6]    = 5
+Outflow::override_radius[6]  = "yes"
+Outflow::radius[6]           = 185.71428571428572
+Outflow::surface_index[7]    = 5
+Outflow::override_radius[7]  = "yes"
+Outflow::radius[7]           = 200.0
+
+VolumeIntegrals_GRMHD::VolIntegral_out_every           = 32
+VolumeIntegrals_GRMHD::NumIntegrals                    = 1
+
+VolumeIntegrals_GRMHD::Integration_quantity_keyword[1]       = "restmass"
+VolumeIntegrals_GRMHD::volintegral_outside_sphere__radius[1] = 0
+
+####################################################
+# Output
+####################################################
+
+IOUtil::checkpoint_dir                  = "../checkpoints"
+IOUtil::checkpoint_every_walltime_hours = 12
+IOUtil::checkpoint_keep                 = 1
+IOUtil::checkpoint_on_terminate         = "yes"
+IOUtil::checkpoint_ID                   = "no"
+Cactus::cctk_run_title                  = "$parfile"
+IOUtil::out_dir                         = "$parfile"
+IOUtil::parfile_write                   = "generate"
+IOUtil::recover                         = "autoprobe"
+IOUtil::recover_dir                     = "../checkpoints"
+IOUtil::abort_on_io_errors              = "yes"
+IOHDF5::checkpoint                      = "yes"
+IOScalar::one_file_per_group            = "yes"
+IOASCII::one_file_per_group             = "yes"
+IOHDF5::one_file_per_group              = "no"
+
+TerminationTrigger::max_walltime            = @WALLTIME_HOURS@
+TerminationTrigger::on_remaining_walltime   = 15   # minutes
+TerminationTrigger::termination_from_file   = "yes"
+TerminationTrigger::create_termination_file = "yes"
+TerminationTrigger::termination_file        = "../TERMINATE"
+
+TimerReport::out_every                      = 1024
+TimerReport::out_filename                   = "TimerReport"
+# TimerReport::output_all_timers              = "yes"
+# TimerReport::output_all_timers_together     = "yes"
+# TimerReport::output_all_timers_readable     = "yes"
+TimerReport::n_top_timers                   = 40
+# Cactus::cctk_timer_output                   = "full"
+# Carpet::output_xml_timer_tree               = "yes"
+# Carpet::output_timer_tree_every             = 1024
+
+IOBasic::outInfo_every = 32
+IOBasic::outInfo_vars  = "
+IllinoisGRMHD::rho_b
+ADMBase::alp
+Carpet::physical_time_per_hour
+"
+
+# 2D HDF5
+
+CarpetIOHDF5::out2D_every = 256
+CarpetIOHDF5::out2D_xy    = "yes"
+CarpetIOHDF5::out2D_xz    = "yes"
+CarpetIOHDF5::out2D_yz    = "no"
+CarpetIOHDF5::out2D_vars  = "
+IllinoisGRMHD::magP_gasP_ratio
+IllinoisGRMHD::grmhd_primitives_allbutBi
+ADMBase::lapse
+LeanBSSNMoL::ham
+LeanBSSNMoL::mom
+IllinoisGRMHD::smallb2
+Outflow::fluxdens_poyn_projected
+Outflow::fluxdens_projected
+Outflow::fluxdens_poyn_projected{out_every=32}
+Outflow::fluxdens_projected{out_every=32}
+# DiskDiagnostics::integrated_quantities{out_every=1024}
+# DiskDiagnostics::disk_diagnostics{out_every=1024}
+"
+
+CarpetIOHDF5::out3D_every = 1024
+CarpetIOHDF5::out3D_vars = "
+IllinoisGRMHD::rho_b
+IllinoisGRMHD::P
+IllinoisGRMHD::vx
+IllinoisGRMHD::vy
+IllinoisGRMHD::vz
+ADMBase::lapse
+ADMBase::shift
+ADMBase::metric
+# Christoffel::Gammas
+IllinoisGRMHD::smallbt
+IllinoisGRMHD::smallbx
+IllinoisGRMHD::smallby
+IllinoisGRMHD::smallbz
+# IllinoisGRMHD::smallb2
+IllinoisGRMHD::Bx
+IllinoisGRMHD::By
+IllinoisGRMHD::Bz
+"
+
+
+# Scalar ASCII
+
+CarpetIOScalar::outScalar_every            = 32
+CarpetIOScalar::all_reductions_in_one_file = "no"
+CarpetIOScalar::outScalar_reductions       = "minimum maximum average norm1 norm2"
+CarpetIOScalar::outScalar_vars             = "
+# DiskDiagnostics::integrated_quantities
+IllinoisGRMHD::grmhd_primitives_allbutBi
+IllinoisGRMHD::smallb2
+IllinoisGRMHD::magP_gasP_ratio
+LeanBSSNMoL::ham
+LeanBSSNMoL::mom"
+
+CarpetIOASCII::out0D_every                 = 32
+CarpetIOASCII::out0D_vars                  = "
+# DiskDiagnostics::hor_fluxes{out_every=1024}
+Outflow::outflow_poyn_flux{out_every=32}
+Outflow::outflow_flux{out_every=32}
+QuasiLocalMeasures::qlm_scalars{out_every=64}
+Carpet::timing"
+
+### Local Variables:
+### mode: sh
+### End:
+

@@ -1,0 +1,28 @@
+From 47d6e69b2798f0674326b04db22c5f346c14410e Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Sat, 28 Apr 2012 13:52:02 +0200
+Subject: [PATCH 2/2] Carpet: Add a timer around the scheduled functions
+ barrier
+
+---
+ Carpet/Carpet/src/CallFunction.cc |    3 +++
+ 1 files changed, 3 insertions(+), 0 deletions(-)
+
+diff --git a/Carpet/Carpet/src/CallFunction.cc b/Carpet/Carpet/src/CallFunction.cc
+index fdb0bb7..65be1f2 100644
+--- a/Carpet/Carpet/src/CallFunction.cc
++++ b/Carpet/Carpet/src/CallFunction.cc
+@@ -320,7 +320,10 @@ namespace Carpet {
+       buf << attribute->routine << "\n";
+       string const str = buf.str();
+       int const id = adler32(str.c_str(), str.length());
++      static Timer barrier_timer  ("barrier");
++      barrier_timer.start();
+       Carpet::NamedBarrier (NULL, id, "Carpet::CallFunction");
++      barrier_timer.stop();
+     }
+     
+     total_timer.stop();
+-- 
+1.7.5.4
+

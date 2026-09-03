@@ -1,0 +1,94 @@
+From: Erik Schnetter <eschnetter@perimeterinstitute.ca>
+Date: 2012-05-05
+Subject: Ensure that the scratch directory does not yet exist
+
+Ensure that the scratch directory does not exist when a restart is
+created.
+
+Clean up the code handling scratch directories.
+
+
+Index: simfactory/lib/simrestart.py
+===================================================================
+--- simfactory/lib/simrestart.py	(revision 1655)
++++ simfactory/lib/simrestart.py	(working copy)
+@@ -455,34 +455,25 @@
+     def makeScratchdir(self, DefineDatabase):
+         """Create a restart's scratch directory"""
+         
+-        scratchdir = DefineDatabase.SubAll(simlib.GetMachineOption('scratchdir'))
++        defaultscratchdir = simlib.BuildPath(self.RestartDir, 'scratch')
++        scratchdir = simlib.GetMachineOption('scratchdir', defaultscratchdir)
++        scratchdir = DefineDatabase.SubAll(scratchdir)
+         
+-        if not(os.path.exists(scratchdir)):
+-            
+-            if not(scratchdir.startswith("/")):
+-                sspath = simlib.BuildPath(self.RestartDir, scratchdir)
+-                
+-                if not(os.path.exists(sspath)):
+-                    try:
+-                        # have to rely on os.system due to the possibility of shell expansion 
+-                        # annoying.
+-                        os.system("mkdir -p %s" % sspath)
+-                    except OSError, e:
+-                        fatal("Error: could not make scratch directory \"%s\", %s" % (sspath, e))
+-                scratchdir = sspath
+-            else:
+-                try:
+-                    os.system("mkdir -p %s" % scratchdir)
+-                except OSError, e:
+-                    fatal("Error: could not make scratch directory \"%s\", %s" % (scratchdir, e))
+-
+-                sspath = simlib.BuildPath(self.RestartDir, "scratch")
+-                
+-                try:
+-                    os.system("ln -s %s %s 2>&1" % (scratchdir, sspath))
+-                except OSError, e:
+-                    pass
++        if not(scratchdir.startswith('/')):
++            fatal("The scratch directory \"%s\" is not an absolute pathname (does not start with a slash)" %
++                  scratchdir)
+         
++        if os.path.exists(scratchdir):
++            fatal("The scratch directory \"%s\" exists already. Scratch directories must be unique to the restart, and will be deleted after the restart finishes. Aborting, because we don't want to risk deleting the wrong directory later on." % scratchdir)
++        
++        try:
++            # Have to use os.system because there may be shell
++            # metacharacters -- unsafe
++            os.system("mkdir -p %s" % scratchdir)
++        except OSError, e:
++            fatal("Could not create scratch directory \"%s\": Error %s" %
++                  (scratchdir, e))
++        
+         DefineDatabase.Set("SCRATCHDIR", scratchdir)
+ 
+     def copyTestsuiteData(self):
+@@ -1614,22 +1605,16 @@
+             
+         # step 4. remove scratch dir
+         machineEntry = simenv.LocalMachineEntry
+-        
+         scratchdir = machineEntry.GetKey('scratchdir')
+-        
+-        # TODO: This looks like a logic error -- the scratch dir is
+-        # only removed if its path does not start with a slash.
++        try:
++            shutil.rmtree(sspath, True)
++        except:
++            pass
++
+         # TODO: This looks like a pattern -- calling BuildPath only if
+         # a path does not start with a slash. This could be abstracted
+         # into a function, e.g. "create-an-absolute-path-name".
+-        if not(scratchdir.startswith("/")):
+-            sspath = simlib.BuildPath(self.RestartDir, scratchdir)
+-        else:
+-            sspath = scratchdir
+             
+-        if os.path.exists(sspath):
+-            shutil.rmtree(sspath, True)
+-            
+         # step 5. remove half written checkpoint files
+         try:
+             os.system("find %s -name *.chkpt.tmp.it_*.* -exec rm -rf {} \;" % self.RestartDir)

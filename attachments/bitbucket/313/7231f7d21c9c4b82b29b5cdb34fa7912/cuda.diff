@@ -1,0 +1,585 @@
+Index: make/make.config.rules.in
+===================================================================
+--- make/make.config.rules.in	(revision 4685)
++++ make/make.config.rules.in	(working copy)
+@@ -53,6 +53,11 @@
+ 	$(DEPENDENCY_FIXER)
+ endef
+ 
++define CU_DEPENDENCIES
++        $(CU_DEPEND) $< $(INCLUDE_LINE) $(EXTRA_DEFINES:%=-D%) -DCCODE $(CU_DEPEND_OUT)
++        $(DEPENDENCY_FIXER)
++endef
++
+ define F77_DEPENDENCIES
+ 	$(F77_DEPEND) $(INCLUDE_LINE) $(EXTRA_DEFINES:%=-D%) -DFCODE $< $(F77_DEPEND_OUT)
+ 	$(DEPENDENCY_FIXER)
+@@ -70,11 +75,6 @@
+ 	current_wd=`$(GET_WD)` ; { if test $(F_LINE_DIRECTIVES) = 'yes'; then echo '#line 1 "'$<'"'; fi; cat $<; } | $(PERL) -p -e 's.//.CCTK_AUTOMATICALLY_GENERATED_CONCATENATION_PROTECTION.g' | $(FPP) $(FPPFLAGS) $(INCLUDE_LINE) $(EXTRA_DEFINES:%=-D%) -DFCODE -DF90CODE | $(PERL) -p -e 's.CCTK_AUTOMATICALLY_GENERATED_CONCATENATION_PROTECTION.//.g' | $(PERL) $(F_DEPEND_MODULES) $< $(basename $(notdir $<)).F90.o $(SRCDIR) $(USESTHORNS:%=$$current_wd/../%) $(F_DEPEND_MODULES_OUT) || { rm $@; exit 1; }
+ endef
+ 
+-define CU_DEPENDENCIES
+-        $(CU_DEPEND) $< $(INCLUDE_LINE) $(EXTRA_DEFINES:%=-D%) -DCCODE $(CU_DEPEND_OUT)
+-        $(DEPENDENCY_FIXER)
+-endef
+-
+ # No preprocessing, just create empty dependency file
+ define f77_DEPENDENCIES
+ 	echo "" > $@
+@@ -91,22 +91,8 @@
+ 	current_wd=`$(GET_WD)` ; cat $< | $(PERL) $(F_DEPEND_MODULES) $< $(basename $(notdir $<)).f90.o $(SRCDIR) $(USESTHORNS:%=$$current_wd/../%) $(F_DEPEND_MODULES_OUT) || { rm $@; exit 1; }
+ endef
+ 
+-#####################################################################
+-# Define how to do a CUDA compilation
+-# preporcess and postprocess are currently set the same as C.
+-define PREPROCESS_CU
+-{ if test $(C_LINE_DIRECTIVES) = 'yes'; then echo '#line 1 "'$<'"'; fi; cat $<; } | $(PERL) -s $(C_FILE_PROCESSOR) -line_directives=$(C_LINE_DIRECTIVES) -source_file_name=$< $(CONFIG) > $(notdir $<)
+-#{ if test $(C_LINE_DIRECTIVES) = 'yes'; then echo '#line 1 "'$<'"'; fi; cat $<; } | $(CUCC) -E $< $(INCLUDE_LINE) > $(notdir $<)
+-endef
+ 
+-define COMPILE_CU
+-current_wd=`$(GET_WD)` ; cd $(SCRATCH_BUILD) ; $(CUCC) $(CUCCFLAGS) $(CCOMPILEONLY)$(OPTIONSEP)$$current_wd$(DIRSEP)$@ $$current_wd$(DIRSEP)$(notdir $<) $(INCLUDE_LINE) $(EXTRA_DEFINES:%=-D%) -DCCODE 
+-endef
+ 
+-define POSTPROCESS_CU
+-$(CU_POSTPROCESSING)
+-endef
+-
+ # Define how to do a C compilation
+ define PREPROCESS_C
+ { if test $(C_LINE_DIRECTIVES) = 'yes'; then echo '#line 1 "'$<'"'; fi; cat $<; } | $(PERL) -s $(C_FILE_PROCESSOR) -line_directives=$(C_LINE_DIRECTIVES) -source_file_name=$< $(CONFIG) > $(notdir $<)
+@@ -133,6 +119,19 @@
+ $(CXX_POSTPROCESSING)
+ endef
+ 
++# Define how to do a CUDA compilation
++define PREPROCESS_CU
++{ if test $(C_LINE_DIRECTIVES) = 'yes'; then echo '#line 1 "'$<'"'; fi; cat $<; } | $(PERL) -s $(C_FILE_PROCESSOR) -line_directives=$(C_LINE_DIRECTIVES) -source_file_name=$< $(CONFIG) > $(notdir $<)
++endef
++
++define COMPILE_CU
++current_wd=`$(GET_WD)` ; cd $(SCRATCH_BUILD) ; $(CUCC) $(CUCCFLAGS) $(CCOMPILEONLY)$(OPTIONSEP)$$current_wd$(DIRSEP)$@ $$current_wd$(DIRSEP)$(notdir $<) $(INCLUDE_LINE) $(EXTRA_DEFINES:%=-D%) -DCCODE 
++endef
++
++define POSTPROCESS_CU
++$(CU_POSTPROCESSING)
++endef
++
+ # Define how to do a F77 compilation
+ define PREPROCESS_F77
+ { if test $(F_LINE_DIRECTIVES) = 'yes'; then echo '#line 1 "'$<'"'; fi; cat $<; } | $(PERL) -p -e 's.//.CCTK_AUTOMATICALLY_GENERATED_CONCATENATION_PROTECTION.g' | $(FPP) $(FPPFLAGS) $(INCLUDE_LINE) $(EXTRA_DEFINES:%=-D%) -DFCODE | $(PERL) -p -e 's.CCTK_AUTOMATICALLY_GENERATED_CONCATENATION_PROTECTION.//.g' | $(PERL) -p -e 's/__FORTRANFILE__/\"$(basename $(notdir $<)).F77\"/g' | $(PERL) -s $(F_FILE_PROCESSOR) -line_directives=$(F_LINE_DIRECTIVES) -source_file_name=$< > $(basename $(notdir $<)).f
+@@ -172,7 +171,6 @@
+ $(F90_POSTPROCESSING)
+ endef
+ 
+-
+ # Define how to do a f77 compilation
+ define PREPROCESS_f77
+ cat $< > $(basename $(notdir $<)).f
+@@ -188,20 +186,8 @@
+ cat $< > $(basename $(notdir $<)).$(F90_SUFFIX)
+ endef
+ 
+-# Build rules for CUDA
+ 
+-%.cu.o: $(SRCDIR)/%.cu
+-	@echo Preprocessing $<
+-	$(PREPROCESS_CU)
+-	@echo Compiling $<
+-	$(COMPILE_CU)
+-	@echo Postprocessing $<
+-	$(POSTPROCESS_CU)
+-	@echo $(DIVIDER)
+ 
+-%.cu.d: $(SRCDIR)/%.cu
+-	$(CU_DEPENDENCIES)
+-
+ # Build rules for C
+ 
+ %.c.o: $(SRCDIR)/%.c
+@@ -239,7 +225,6 @@
+ 	$(POSTPROCESS_CXX)
+ 	@echo $(DIVIDER)
+ 
+-
+ %.C.d: $(SRCDIR)/%.C
+ 	$(CXX_DEPENDENCIES)
+ 
+@@ -265,10 +250,23 @@
+ 	$(POSTPROCESS_CXX)
+ 	@echo $(DIVIDER)
+ 
+-
+ %.cxx.d: $(SRCDIR)/%.cxx
+ 	$(CXX_DEPENDENCIES)
+ 
++# Build rules for CUDA
++
++%.cu.o: $(SRCDIR)/%.cu
++	@echo Preprocessing $<
++	$(PREPROCESS_CU)
++	@echo Compiling $<
++	$(COMPILE_CU)
++	@echo Postprocessing $<
++	$(POSTPROCESS_CU)
++	@echo $(DIVIDER)
++
++%.cu.d: $(SRCDIR)/%.cu
++	$(CU_DEPENDENCIES)
++
+ # Build rules for F77
+ 
+ %.F77.o: $(SRCDIR)/%.F77
+Index: make/configure.in
+===================================================================
+--- make/configure.in	(revision 4685)
++++ make/configure.in	(working copy)
+@@ -177,6 +177,10 @@
+   AC_PROG_CXX_GNU
+ fi
+ 
++if test -z "$CUCC" ; then
++  AC_CHECK_PROGS(CUCC, nvcc)
++fi
++
+ if test -z "$RANLIB" ; then
+   AC_PROG_RANLIB
+ fi
+@@ -193,10 +197,6 @@
+   AC_PATH_PROGS(FPP, cpp, echo, /lib:/usr/lib:/usr/local/lib:$PATH)
+ fi
+ 
+-if test -z "$CUCC" ; then
+-  AC_CHECK_PROGS(CUCC, nvcc)
+-fi
+-
+ if test -z "$PERL" ; then
+   AC_CHECK_PROGS(PERL, perl)
+ fi
+@@ -297,6 +297,10 @@
+   : ${CXX_WARN_FLAGS=''}
+ fi
+ 
++# nvcc itself doesn't have warning flags. warnings will be given by C compilers.
++AC_SUBST(CUCC_WARN_FLAGS)
++  : ${CUCC_WARN_FLAGS=''}
++
+ AC_SUBST(F77_WARN_FLAGS)
+ if test "$F77" = 'g77' ; then
+   : ${F77_WARN_FLAGS='-Wall'}
+@@ -311,10 +315,6 @@
+   : ${F90_WARN_FLAGS=''}
+ fi
+ 
+-# nvcc itself doesn't have warning flags. warnings will be given by C compilers.
+-AC_SUBST(CUCC_WARN_FLAGS)
+-  : ${CUCC_WARN_FLAGS=''}
+-
+ AC_SUBST(DEBUG_MODE)
+ DEBUG_MODE='no'
+ if test -n "$DEBUG_FLAGS"; then
+@@ -335,15 +335,15 @@
+ AC_SUBST(CXX_DEBUG_FLAGS)
+ : ${CXX_DEBUG_FLAGS='-g'}
+ 
++AC_SUBST(CUCC_DEBUG_FLAGS)
++: ${CUCC_DEBUG_FLAGS='-g'}
++
+ AC_SUBST(F77_DEBUG_FLAGS)
+ : ${F77_DEBUG_FLAGS='-g'}
+ 
+ AC_SUBST(F90_DEBUG_FLAGS)
+ : ${F90_DEBUG_FLAGS='-g'}
+ 
+-AC_SUBST(CUCC_DEBUG_FLAGS)
+-: ${CUCC_DEBUG_FLAGS='-g'}
+-
+ # Set the optimization flags if they've not been set by now
+ # (using '-O2' as a reasonable default)
+ AC_SUBST(OPTIMISE_MODE)
+@@ -360,6 +360,9 @@
+ AC_SUBST(CXX_OPTIMISE_FLAGS)
+ : ${CXX_OPTIMISE_FLAGS='-O2'}
+ 
++AC_SUBST(CUCC_OPTIMISE_FLAGS)
++: ${CUCC_OPTIMISE_FLAGS='-O2'}
++
+ AC_SUBST(F77_OPTIMISE_FLAGS)
+ if test -z "$F77_OPTIMISE_FLAGS" -a "$F77" = 'g77' ; then
+   F77_OPTIMISE_FLAGS='-O2'
+@@ -368,23 +371,26 @@
+ fi
+ 
+ AC_SUBST(F90_OPTIMISE_FLAGS)
+-: ${F90_OPTIMISE_FLAGS=''}
++: ${F90_OPTIMISE_FLAGS='-O2'}
+ 
++# Set the no-optimization flags if they've not been set by now
++# (using '-O0' as a reasonable default)
++
+ AC_SUBST(C_NO_OPTIMISE_FLAGS)
+ : ${C_NO_OPTIMISE_FLAGS='-O0'}
+ 
+ AC_SUBST(CXX_NO_OPTIMISE_FLAGS)
+ : ${CXX_NO_OPTIMISE_FLAGS='-O0'}
+ 
++AC_SUBST(CUCC_NO_OPTIMISE_FLAGS)
++: ${CUCC_NO_OPTIMISE_FLAGS='-O0'}
++
+ AC_SUBST(F77_NO_OPTIMISE_FLAGS)
+ : ${F77_NO_OPTIMISE_FLAGS='-O0'}
+ 
+ AC_SUBST(F90_NO_OPTIMISE_FLAGS)
+ : ${F90_NO_OPTIMISE_FLAGS='-O0'}
+ 
+-AC_SUBST(CUCC_OPTIMISE_FLAGS)
+-: ${CUCC_OPTIMISE_FLAGS='-O2'}
+-
+ # Set the profiling flags if they've not been set by now
+ # (using '-pg' as a reasonable default)
+ AC_SUBST(PROFILE_MODE)
+@@ -401,15 +407,15 @@
+ AC_SUBST(CXX_PROFILE_FLAGS)
+ : ${CXX_PROFILE_FLAGS='-pg'}
+ 
++AC_SUBST(CUCC_PROFILE_FLAGS)
++: ${CUCC_PROFILE_FLAGS=''}
++
+ AC_SUBST(F77_PROFILE_FLAGS)
+ : ${F77_PROFILE_FLAGS='-pg'}
+ 
+ AC_SUBST(F90_PROFILE_FLAGS)
+ : ${F90_PROFILE_FLAGS='-pg'}
+ 
+-AC_SUBST(CUCC_PROFILE_FLAGS)
+-: ${CUCC_PROFILE_FLAGS='-pg'}
+-
+ # Set the OpenMP flags if they've not been set by now
+ AC_SUBST(OPENMP_MODE)
+ 
+@@ -417,9 +423,9 @@
+ AC_SUBST(FPP_OPENMP_FLAGS)
+ AC_SUBST(C_OPENMP_FLAGS)
+ AC_SUBST(CXX_OPENMP_FLAGS)
++AC_SUBST(CUCC_OPENMP_FLAGS)
+ AC_SUBST(F77_OPENMP_FLAGS)
+ AC_SUBST(F90_OPENMP_FLAGS)
+-AC_SUBST(CUCC_OPENMP_FLAGS)
+ 
+ ##########################################################################
+ 
+@@ -573,9 +579,9 @@
+ AC_SUBST(RANLIBFLAGS)
+ : ${RANLIBFLAGS=-cs}
+ 
++AC_SUBST(CUCCFLAGS)
+ AC_SUBST(F90FLAGS)
+ AC_SUBST(F77FLAGS)
+-AC_SUBST(CUCCFLAGS)
+ 
+ #: ${F90FLAGS="$CFLAGS"}
+ #: ${F77FLAGS="$CFLAGS"}
+@@ -583,10 +589,10 @@
+ AC_SUBST(CPP_VERSION)
+ AC_SUBST(CC_VERSION)
+ AC_SUBST(CXX_VERSION)
++AC_SUBST(CUCC_VERSION)
+ AC_SUBST(FPP_VERSION)
+ AC_SUBST(F77_VERSION)
+ AC_SUBST(F90_VERSION)
+-AC_SUBST(CUCC_VERSION)
+ 
+ dnl Checks for library functions.
+ 
+@@ -1179,6 +1185,11 @@
+ AC_SUBST(CXX_DEPEND_OUT)
+ : ${CXX_DEPEND_OUT=' > $@'}
+ 
++AC_SUBST(CU_DEPEND)
++: ${CU_DEPEND='$(CUCC) -M'}
++AC_SUBST(CU_DEPEND_OUT)
++: ${CU_DEPEND_OUT=' > $@'}
++
+ AC_SUBST(F77_DEPEND)
+ : ${F77_DEPEND='$(FPP) -M $(FPPFLAGS)'}
+ AC_SUBST(F77_DEPEND_OUT)
+@@ -1189,12 +1200,6 @@
+ AC_SUBST(F_DEPEND_OUT)
+ : ${F_DEPEND_OUT=' > $@'}
+ 
+-AC_SUBST(CU_DEPEND)
+-: ${CU_DEPEND='$(CUCC) -M'}
+-AC_SUBST(CU_DEPEND_OUT)
+-: ${CU_DEPEND_OUT=' > $@'}
+-
+-
+ # How to generate F90 dependency info for modules
+ AC_SUBST(F_DEPEND_MODULES)
+ : ${F_DEPEND_MODULES='$(CCTK_HOME)/lib/sbin/f_depend_modules.pl'}
+@@ -1206,14 +1211,14 @@
+ : ${C_POSTPROCESSING=''}
+ AC_SUBST(CXX_POSTPROCESSING)
+ : ${CXX_POSTPROCESSING=''}
++AC_SUBST(CUCC_POSTPROCESSING)
++: ${CUCC_POSTPROCESSING=''}
+ AC_SUBST(F77_POSTPROCESSING)
+ : ${F77_POSTPROCESSING=''}
+ AC_SUBST(F_POSTPROCESSING)
+ : ${F_POSTPROCESSING=''}
+ AC_SUBST(F90_POSTPROCESSING)
+ : ${F90_POSTPROCESSING=''}
+-AC_SUBST(CUCC_POSTPROCESSING)
+-: ${CUCC_POSTPROCESSING=''}
+ 
+ # How to generate an intermediate C++ name (some compilers are very picky).
+ AC_SUBST(CXX_WORKING_NAME)
+Index: make/make.config.defn.in
+===================================================================
+--- make/make.config.defn.in	(revision 4685)
++++ make/make.config.defn.in	(working copy)
+@@ -23,9 +23,9 @@
+ export MKDIR       = @MKDIR@
+ export CC          = @CC@
+ export CXX         = @CXX@
++export CUCC        = @CUCC@
+ export F90         = @F90@
+ export F77         = @F77@
+-export CUCC        = @CUCC@
+ export CPP         = @CPP@
+ export FPP         = @FPP@
+ export LD          = @LD@
+@@ -35,9 +35,9 @@
+ 
+ export CFLAGS      = @CFLAGS@
+ export CXXFLAGS    = @CXXFLAGS@
++export CUCCFLAGS   = @CUCCFLAGS@
+ export F90FLAGS    = @F90FLAGS@
+ export F77FLAGS    = @F77FLAGS@
+-export CUCCFLAGS   = @CUCCFLAGS@
+ export CPPFLAGS    = @CPPFLAGS@
+ export FPPFLAGS    = @FPPFLAGS@
+ 
+@@ -45,13 +45,13 @@
+ export F_LINE_DIRECTIVES = @F_LINE_DIRECTIVES@
+ 
+ # Compiler versions as detected at configure time
+-# CPP: @CPP_VERSION@
+-# CC:  @CC_VERSION@
+-# CXX: @CXX_VERSION@
+-# FPP: @FPP_VERSION@
+-# F77: @F77_VERSION@
+-# F90: @F90_VERSION@
++# CPP:  @CPP_VERSION@
++# FPP:  @FPP_VERSION@
++# CC:   @CC_VERSION@
++# CXX:  @CXX_VERSION@
+ # CUCC: @CUCC_VERSION@
++# F77:  @F77_VERSION@
++# F90:  @F90_VERSION@
+ 
+ export MKDIRFLAGS  = @MKDIRFLAGS@
+ 
+@@ -64,56 +64,56 @@
+ export LIBLINK_PREFIX = @LIBLINK_PREFIX@
+ 
+ # Debug flags
+-export CPP_DEBUG_FLAGS = @CPP_DEBUG_FLAGS@
+-export FPP_DEBUG_FLAGS = @FPP_DEBUG_FLAGS@
+-export C_DEBUG_FLAGS   = @C_DEBUG_FLAGS@
+-export CXX_DEBUG_FLAGS = @CXX_DEBUG_FLAGS@
+-export F90_DEBUG_FLAGS = @F90_DEBUG_FLAGS@
+-export F77_DEBUG_FLAGS = @F77_DEBUG_FLAGS@
++export CPP_DEBUG_FLAGS  = @CPP_DEBUG_FLAGS@
++export FPP_DEBUG_FLAGS  = @FPP_DEBUG_FLAGS@
++export C_DEBUG_FLAGS    = @C_DEBUG_FLAGS@
++export CXX_DEBUG_FLAGS  = @CXX_DEBUG_FLAGS@
+ export CUCC_DEBUG_FLAGS = @CUCC_DEBUG_FLAGS@
++export F90_DEBUG_FLAGS  = @F90_DEBUG_FLAGS@
++export F77_DEBUG_FLAGS  = @F77_DEBUG_FLAGS@
+ 
+ # Optimisation flags
+-export CPP_OPTIMISE_FLAGS = @CPP_OPTIMISE_FLAGS@
+-export FPP_OPTIMISE_FLAGS = @FPP_OPTIMISE_FLAGS@
+-export C_OPTIMISE_FLAGS   = @C_OPTIMISE_FLAGS@
+-export CXX_OPTIMISE_FLAGS = @CXX_OPTIMISE_FLAGS@
+-export F90_OPTIMISE_FLAGS = @F90_OPTIMISE_FLAGS@
+-export F77_OPTIMISE_FLAGS = @F77_OPTIMISE_FLAGS@
++export CPP_OPTIMISE_FLAGS  = @CPP_OPTIMISE_FLAGS@
++export FPP_OPTIMISE_FLAGS  = @FPP_OPTIMISE_FLAGS@
++export C_OPTIMISE_FLAGS    = @C_OPTIMISE_FLAGS@
++export CXX_OPTIMISE_FLAGS  = @CXX_OPTIMISE_FLAGS@
+ export CUCC_OPTIMISE_FLAGS = @CUCC_OPTIMISE_FLAGS@
++export F90_OPTIMISE_FLAGS  = @F90_OPTIMISE_FLAGS@
++export F77_OPTIMISE_FLAGS  = @F77_OPTIMISE_FLAGS@
+ 
+ # No-optimisation flags
+-export C_NO_OPTIMISE_FLAGS   = @C_NO_OPTIMISE_FLAGS@
+-export CXX_NO_OPTIMISE_FLAGS = @CXX_NO_OPTIMISE_FLAGS@
+-export F90_NO_OPTIMISE_FLAGS = @F90_NO_OPTIMISE_FLAGS@
+-export F77_NO_OPTIMISE_FLAGS = @F77_NO_OPTIMISE_FLAGS@
++export C_NO_OPTIMISE_FLAGS    = @C_NO_OPTIMISE_FLAGS@
++export CXX_NO_OPTIMISE_FLAGS  = @CXX_NO_OPTIMISE_FLAGS@
+ export CUCC_NO_OPTIMISE_FLAGS = @CUCC_NO_OPTIMISE_FLAGS@
++export F90_NO_OPTIMISE_FLAGS  = @F90_NO_OPTIMISE_FLAGS@
++export F77_NO_OPTIMISE_FLAGS  = @F77_NO_OPTIMISE_FLAGS@
+ 
+ # Profiling flags
+-export CPP_PROFILE_FLAGS = @CPP_PROFILE_FLAGS@
+-export FPP_PROFILE_FLAGS = @FPP_PROFILE_FLAGS@
+-export C_PROFILE_FLAGS   = @C_PROFILE_FLAGS@
+-export CXX_PROFILE_FLAGS = @CXX_PROFILE_FLAGS@
+-export F90_PROFILE_FLAGS = @F90_PROFILE_FLAGS@
+-export F77_PROFILE_FLAGS = @F77_PROFILE_FLAGS@
++export CPP_PROFILE_FLAGS  = @CPP_PROFILE_FLAGS@
++export FPP_PROFILE_FLAGS  = @FPP_PROFILE_FLAGS@
++export C_PROFILE_FLAGS    = @C_PROFILE_FLAGS@
++export CXX_PROFILE_FLAGS  = @CXX_PROFILE_FLAGS@
+ export CUCC_PROFILE_FLAGS = @CUCC_PROFILE_FLAGS@
++export F90_PROFILE_FLAGS  = @F90_PROFILE_FLAGS@
++export F77_PROFILE_FLAGS  = @F77_PROFILE_FLAGS@
+ 
+ # OpenMP flags
+ export CPP_OPENMP_FLAGS = @CPP_OPENMP_FLAGS@
+ export FPP_OPENMP_FLAGS = @FPP_OPENMP_FLAGS@
+ export C_OPENMP_FLAGS   = @C_OPENMP_FLAGS@
+ export CXX_OPENMP_FLAGS = @CXX_OPENMP_FLAGS@
++export CUCC_OPENMP_FLAGS = @CUCC_OPENMP_FLAGS@
+ export F90_OPENMP_FLAGS = @F90_OPENMP_FLAGS@
+ export F77_OPENMP_FLAGS = @F77_OPENMP_FLAGS@
+-export CUCC_OPENMP_FLAGS = @CUCC_OPENMP_FLAGS@
+ 
+ # Warning flags
+-export CPP_WARN_FLAGS = @CPP_WARN_FLAGS@
+-export FPP_WARN_FLAGS = @FPP_WARN_FLAGS@
+-export C_WARN_FLAGS   = @C_WARN_FLAGS@
+-export CXX_WARN_FLAGS = @CXX_WARN_FLAGS@
+-export F90_WARN_FLAGS = @F90_WARN_FLAGS@
+-export F77_WARN_FLAGS = @F77_WARN_FLAGS@
++export CPP_WARN_FLAGS  = @CPP_WARN_FLAGS@
++export FPP_WARN_FLAGS  = @FPP_WARN_FLAGS@
++export C_WARN_FLAGS    = @C_WARN_FLAGS@
++export CXX_WARN_FLAGS  = @CXX_WARN_FLAGS@
+ export CUCC_WARN_FLAGS = @CUCC_WARN_FLAGS@
++export F90_WARN_FLAGS  = @F90_WARN_FLAGS@
++export F77_WARN_FLAGS  = @F77_WARN_FLAGS@
+ 
+ # Most compilers use -c -o to compile only, some do something different
+ export CCOMPILEONLY = @CCOMPILEONLY@
+@@ -158,12 +158,12 @@
+ export F90_SUFFIX = @F90_SUFFIX@
+ 
+ # How to postprocess object files
+-export C_POSTPROCESSING   = @C_POSTPROCESSING@
+-export CXX_POSTPROCESSING = @CXX_POSTPROCESSING@
+-export F77_POSTPROCESSING = @F77_POSTPROCESSING@
+-export F_POSTPROCESSING   = @F_POSTPROCESSING@
+-export F90_POSTPROCESSING = @F90_POSTPROCESSING@
++export C_POSTPROCESSING    = @C_POSTPROCESSING@
++export CXX_POSTPROCESSING  = @CXX_POSTPROCESSING@
+ export CUCC_POSTPROCESSING = @CUCC_POSTPROCESSING@
++export F77_POSTPROCESSING  = @F77_POSTPROCESSING@
++export F_POSTPROCESSING    = @F_POSTPROCESSING@
++export F90_POSTPROCESSING  = @F90_POSTPROCESSING@
+ 
+ # Do we need to use ranlib ?
+ export USE_RANLIB = @USE_RANLIB@
+@@ -228,45 +228,45 @@
+ export CCTK_DEBUG_MODE = @DEBUG_MODE@
+ 
+ ifeq ($(strip $(CCTK_DEBUG_MODE)),yes)
+-  CPPFLAGS += $(CPP_DEBUG_FLAGS)
+-  FPPFLAGS += $(FPP_DEBUG_FLAGS)
+-  CFLAGS   += $(C_DEBUG_FLAGS)
+-  CXXFLAGS += $(CXX_DEBUG_FLAGS)
+-  F77FLAGS += $(F77_DEBUG_FLAGS)
+-  F90FLAGS += $(F90_DEBUG_FLAGS)
++  CPPFLAGS  += $(CPP_DEBUG_FLAGS)
++  FPPFLAGS  += $(FPP_DEBUG_FLAGS)
++  CFLAGS    += $(C_DEBUG_FLAGS)
++  CXXFLAGS  += $(CXX_DEBUG_FLAGS)
+   CUCCFLAGS += $(CUCC_DEBUG_FLAGS)
++  F77FLAGS  += $(F77_DEBUG_FLAGS)
++  F90FLAGS  += $(F90_DEBUG_FLAGS)
+ endif
+ 
+ # Is this an optimising configuration ?
+ CCTK_OPTIMISE_MODE = @OPTIMISE_MODE@
+ 
+ ifeq ($(strip $(CCTK_OPTIMISE_MODE)),yes)
+-  CPPFLAGS += $(CPP_OPTIMISE_FLAGS)
+-  FPPFLAGS += $(FPP_OPTIMISE_FLAGS)
+-  CFLAGS   += $(C_OPTIMISE_FLAGS)
+-  CXXFLAGS += $(CXX_OPTIMISE_FLAGS)
+-  F77FLAGS += $(F77_OPTIMISE_FLAGS)
+-  F90FLAGS += $(F90_OPTIMISE_FLAGS)
++  CPPFLAGS  += $(CPP_OPTIMISE_FLAGS)
++  FPPFLAGS  += $(FPP_OPTIMISE_FLAGS)
++  CFLAGS    += $(C_OPTIMISE_FLAGS)
++  CXXFLAGS  += $(CXX_OPTIMISE_FLAGS)
+   CUCCFLAGS += $(CUCC_OPTIMISE_FLAGS)
++  F77FLAGS  += $(F77_OPTIMISE_FLAGS)
++  F90FLAGS  += $(F90_OPTIMISE_FLAGS)
+ else
+-  CFLAGS   += $(C_NO_OPTIMISE_FLAGS)
+-  CXXFLAGS += $(CXX_NO_OPTIMISE_FLAGS)
+-  F77FLAGS += $(F77_NO_OPTIMISE_FLAGS)
+-  F90FLAGS += $(F90_NO_OPTIMISE_FLAGS)
++  CFLAGS    += $(C_NO_OPTIMISE_FLAGS)
++  CXXFLAGS  += $(CXX_NO_OPTIMISE_FLAGS)
+   CUCCFLAGS += $(CUCC_NO_OPTIMISE_FLAGS)
++  F77FLAGS  += $(F77_NO_OPTIMISE_FLAGS)
++  F90FLAGS  += $(F90_NO_OPTIMISE_FLAGS)
+ endif
+ 
+ # Is this a profiling configuration ?
+ CCTK_PROFILE_MODE = @PROFILE_MODE@
+ 
+ ifeq ($(strip $(CCTK_PROFILE_MODE)),yes)
+-  CPPFLAGS += $(CPP_PROFILE_FLAGS)
+-  FPPFLAGS += $(FPP_PROFILE_FLAGS)
+-  CFLAGS   += $(C_PROFILE_FLAGS)
+-  CXXFLAGS += $(CXX_PROFILE_FLAGS)
+-  F77FLAGS += $(F77_PROFILE_FLAGS)
+-  F90FLAGS += $(F90_PROFILE_FLAGS)
++  CPPFLAGS  += $(CPP_PROFILE_FLAGS)
++  FPPFLAGS  += $(FPP_PROFILE_FLAGS)
++  CFLAGS    += $(C_PROFILE_FLAGS)
++  CXXFLAGS  += $(CXX_PROFILE_FLAGS)
+   CUCCFLAGS += $(CUCC_PROFILE_FLAGS)
++  F77FLAGS  += $(F77_PROFILE_FLAGS)
++  F90FLAGS  += $(F90_PROFILE_FLAGS)
+ endif
+ 
+ # Are we building with OpenMP support ?
+@@ -277,9 +277,9 @@
+   FPPFLAGS += $(FPP_OPENMP_FLAGS)
+   CFLAGS   += $(C_OPENMP_FLAGS)
+   CXXFLAGS += $(CXX_OPENMP_FLAGS)
++  CUCCFLAGS += $(CUCC_OPENMP_FLAGS)
+   F77FLAGS += $(F77_OPENMP_FLAGS)
+   F90FLAGS += $(F90_OPENMP_FLAGS)
+-  CUCCFLAGS += $(CUCC_OPENMP_FLAGS)
+ endif
+ 
+ # Are we building with all warnings switched on ?
+@@ -291,13 +291,13 @@
+ endif
+ 
+ ifeq ($(strip $(CCTK_WARN_MODE)),yes)
+-  CPPFLAGS += $(CPP_WARN_FLAGS)
+-  FPPFLAGS += $(FPP_WARN_FLAGS)
+-  CFLAGS   += $(C_WARN_FLAGS)
+-  CXXFLAGS += $(CXX_WARN_FLAGS)
+-  F77FLAGS += $(F77_WARN_FLAGS)
+-  F90FLAGS += $(F90_WARN_FLAGS)
++  CPPFLAGS  += $(CPP_WARN_FLAGS)
++  FPPFLAGS  += $(FPP_WARN_FLAGS)
++  CFLAGS    += $(C_WARN_FLAGS)
++  CXXFLAGS  += $(CXX_WARN_FLAGS)
+   CUCCFLAGS += $(CUCC_WARN_FLAGS)
++  F77FLAGS  += $(F77_WARN_FLAGS)
++  F90FLAGS  += $(F90_WARN_FLAGS)
+ endif
+ 
+ # Stuff specific to an architecture.

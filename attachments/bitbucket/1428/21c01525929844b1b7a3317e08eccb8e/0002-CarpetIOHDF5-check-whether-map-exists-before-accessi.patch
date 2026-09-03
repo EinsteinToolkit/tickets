@@ -1,0 +1,53 @@
+From 493f90970931ccdc8421bf5882bb14237508f70c Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Tue, 13 Aug 2013 13:29:38 -0700
+Subject: [PATCH 2/3] CarpetIOHDF5: check whether map exists before accessing
+ it
+
+this allows data files from multipatch runs to be read in with the file
+reader into cartesian runs if only the inner cartesian patch is
+required.CarpetIOHDF5: check wehter map exists before accessing it
+
+this allows data files from multipatch runs to be read in with the file
+reader into cartesian runs if only the inner cartesian patch is
+required.
+---
+ Carpet/CarpetIOHDF5/src/Input.cc |   15 ++++++++-------
+ 1 file changed, 8 insertions(+), 7 deletions(-)
+
+diff --git a/Carpet/CarpetIOHDF5/src/Input.cc b/Carpet/CarpetIOHDF5/src/Input.cc
+index e3114e9..ff0ec64 100644
+--- a/Carpet/CarpetIOHDF5/src/Input.cc
++++ b/Carpet/CarpetIOHDF5/src/Input.cc
+@@ -1371,13 +1371,6 @@ static int ReadVar (const cGH* const cctkGH,
+   }
+   const hid_t datatype = CCTKtoHDF5_Datatype (cctkGH, group.vartype, 0);
+ 
+-  const ivect stride =
+-    group.grouptype == CCTK_GF ?
+-    arrdata.AT(gindex).AT(patch->map).hh->baseextent(mglevel,reflevel).stride() : 1;
+-  assert (all (stride % patch->ioffsetdenom == 0));
+-  ivect lower = patch->iorigin * stride + patch->ioffset * stride / patch->ioffsetdenom;
+-  ivect upper = lower + (shape - 1) * stride;
+-
+   // Traverse all local components on all maps
+   hid_t filespace = -1, dataset = -1;
+   hid_t xfer = H5P_DEFAULT;
+@@ -1390,6 +1383,14 @@ static int ReadVar (const cGH* const cctkGH,
+       continue;
+     }
+ 
++    // map patch into simulation grid, needs existing map
++    const ivect stride =
++      group.grouptype == CCTK_GF ?
++      arrdata.AT(gindex).AT(patch->map).hh->baseextent(mglevel,reflevel).stride() : 1;
++    assert (all (stride % patch->ioffsetdenom == 0));
++    ivect lower = patch->iorigin * stride + patch->ioffset * stride / patch->ioffsetdenom;
++    ivect upper = lower + (shape - 1) * stride;
++
+     struct arrdesc& data = arrdata.at(gindex).at(Carpet::map);
+ 
+     BEGIN_LOCAL_COMPONENT_LOOP (cctkGH, group.grouptype) {
+-- 
+1.7.10.4
+

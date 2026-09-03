@@ -1,0 +1,85 @@
+From 4ffcb052037f8e1c9f8f3dc7e6805b8171eb7c26 Mon Sep 17 00:00:00 2001
+From: Bruno Coutinho Mundim <bcmsma@astro.rit.edu>
+Date: Wed, 5 Sep 2012 13:08:15 -0500
+Subject: [PATCH 03/13] GRHydro_InitData: improve error messages for
+ find_bondi_solution_bracket func.
+
+---
+ src/GRHydro_Bondi_new.F90 |   22 ++++++++++++++--------
+ 1 file changed, 14 insertions(+), 8 deletions(-)
+
+diff --git a/src/GRHydro_Bondi_new.F90 b/src/GRHydro_Bondi_new.F90
+index e161043..c8e2755 100644
+--- a/src/GRHydro_Bondi_new.F90
++++ b/src/GRHydro_Bondi_new.F90
+@@ -164,7 +164,8 @@ subroutine GRHydro_Bondi_Iso(CCTK_ARGUMENTS)
+ 
+ !!$    // find the derivative near r=M
+   rnew = 2.25 * M
+-  j = floor ((log10(rnew) - logrmin) / dlogr )+1.0
++  j = floor ((log10(rnew) - logrmin) / dlogr + 1.0)
++!!$  j = NINT((log10(rnew) - logrmin) / dlogr + 1.0)
+   rhocheck = rho_bondi(j)
+   call find_bondi_solution_bracket(rnew,rhocheck, ucheck, vcheck, rs, rhos, M, Mdot, Kval, gam, Qdot, &
+        rho_bondi(j),rho_bondi(j+1))
+@@ -172,7 +173,8 @@ subroutine GRHydro_Bondi_Iso(CCTK_ARGUMENTS)
+   
+ !!$ the previous point was r=M in isotropic coords = r=9/4M in schwarzschild;  this one is r=1.01M in isotropic
+   rnew = 0.25 * 3.02**2 * M/1.01
+-  j = floor((log10(rnew) - logrmin) / dlogr )+1.0
++  j = floor((log10(rnew) - logrmin) / dlogr + 1.0)
++!!$ j = NINT((log10(rnew) - logrmin) / dlogr + 1.0)
+   rhocheck2 = rho_bondi(j)
+   call find_bondi_solution_bracket( rnew, rhocheck2, ucheck2, vcheck2, rs, rhos, M, Mdot, Kval, gam, Qdot, &
+        rho_bondi(j),rho_bondi(j+1))
+@@ -215,11 +217,13 @@ subroutine GRHydro_Bondi_Iso(CCTK_ARGUMENTS)
+            if(roverm > ONEmTINY) then
+               rsch = 0.25 * ( 2.*riso + M)**2 / riso
+ !!$              jb = floor( 0.5 +  (log10(rsch) - logrmin) / dlogr ) 
+-              jb = floor( (log10(rsch) - logrmin) / dlogr ) +1.0
++              jb = floor( (log10(rsch) - logrmin) / dlogr  + 1.0)
++!!$              jb = NINT((log10(rsch) - logrmin) / dlogr + 1.0)
+ 
+-              if(jb >= N_points)jb = N_points-1
++              if(jb >= N_points) jb = N_points-1
+ 
+-              rhotmp = rho_bondi(jb)+(rho_bondi(jb+1)-rho_bondi(jb))*(rsch-r_bondi(jb))/(r_bondi(jb+1)-r_bondi(jb))
++              rhotmp = rho_bondi(jb)+(rho_bondi(jb+1)-rho_bondi(jb))*&
++                  (rsch-r_bondi(jb))/(r_bondi(jb+1)-r_bondi(jb))
+               call find_bondi_solution_bracket( rsch,rhotmp, utmp, vtmp, rs, rhos, M, Mdot, Kval, gam, Qdot, &
+                    rho_bondi(jb),rho_bondi(jb+1)) 
+               rho(i,j,k) = rhotmp
+@@ -424,9 +428,11 @@ end subroutine find_bondi_solution
+       CCTK_INT :: max_newt_iter_b, extra_newt_iter_b
+ 
+       if(rho.gt.rho1.or.rho.lt.rho2) then
+-         write(6,*)'Very Bad rho! ',rho1,rho2,rho
++         write(6,*)'find_bondi_solution_bracket: Very bad rho! (rholow,rhoup,rho) = ',rho1,rho2,rho
+          stop
+       endif
++
++         write(6,*)'find_bondi_solution_bracket: (rholow,rhoup,rho) = ',rho1,rho2,rho
+     
+       max_newt_iter_b = 30
+       newt_tol_b = 1.0e-15
+@@ -498,7 +504,7 @@ end subroutine find_bondi_solution
+          endif
+ 
+          if(x.gt.rho1.or.x.lt.rho2) then
+-            write(6,*)'Bad rho, bad! ',rho1,rho2,rho
++            write(6,*)'find_bondi_solution_bracket: Bad rho, bad! (rholow,rhoup,rho) = ',rho1,rho2,rho
+             stop
+          endif
+          
+@@ -533,7 +539,7 @@ end subroutine find_bondi_solution
+          if( ((abs(errx) <= newt_tol_b).and.(doing_extra == 0)) .or. &
+               (i_extra > extra_newt_iter_b) .or. (n_iter >= (max_newt_iter_b-1)) ) then
+             keep_iterating = 0
+-            if(n_iter>=(max_newt_iter_b-1))write(6,*)'Extra iterations!'
++            if(n_iter>=(max_newt_iter_b-1))write(6,*)'find_bondi_solution_bracket: Extra iterations!'
+          endif
+          
+ !!$     if(r>8.1043 .and. r<8.1044)write(*,*)'iter4:',errx,newt_tol_b,keep_iterating, &
+-- 
+1.7.10.4
+

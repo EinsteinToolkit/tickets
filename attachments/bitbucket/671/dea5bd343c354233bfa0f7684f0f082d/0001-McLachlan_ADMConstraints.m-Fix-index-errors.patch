@@ -1,0 +1,25 @@
+From 299c2e9ff055350e7a2c668128347e1b924277f6 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Thu, 17 Nov 2011 17:47:43 +0100
+Subject: [PATCH] McLachlan_ADMConstraints.m: Fix index errors
+
+---
+ m/McLachlan_ADMConstraints.m |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/m/McLachlan_ADMConstraints.m b/m/McLachlan_ADMConstraints.m
+index 8a63258..9d26a2b 100644
+--- a/m/McLachlan_ADMConstraints.m
++++ b/m/McLachlan_ADMConstraints.m
+@@ -144,7 +144,7 @@ ADMConstraintsCalc =
+     gu[ua,ub] -> 1/detg detgExpr MatrixInverse[g[ua,ub]],
+     G[ua,lb,lc] -> 1/2 gu[ua,ud]
+                    (PD[g[lb,ld],lc] + PD[g[lc,ld],lb] - PD[g[lb,lc],ld]),
+-    R[la,lb] -> G[uc,ld,la] G[lc,lb,ud] - G[uc,la,lb] G[lc,ld,ud]
++    R[la,lb] -> gu[us,ur](G[um,la,lr] G[uk,ls,lb] g[lk,lm] - G[um,la,lb] G[uk,ls,lr] g[lk,lm])
+                 + 1/2 gu[uc,ud] (- PD[g[lc,ld],la,lb] + PD[g[lc,la],ld,lb]
+                                  - PD[g[la,lb],lc,ld] + PD[g[ld,lb],lc,la]),
+     trR -> R[la,lb] gu[ua,ub],
+-- 
+1.7.5.4
+

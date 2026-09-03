@@ -1,0 +1,53 @@
+From da23770bd00845c225c819112d8db2f451fc4aff Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Mon, 16 Sep 2013 09:56:08 -0700
+Subject: [PATCH] add routine to check svn version
+
+---
+ GetComponents | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/GetComponents b/GetComponents
+index 19f0922..c04713a 100755
+--- a/GetComponents
++++ b/GetComponents
+@@ -947,6 +947,20 @@ sub prompt_for_update {
+     $DO_UPDATES = 1 if ( $answer =~ /^y/ );
+ }
+ 
++sub check_svn_version {
++  my $ret = run_command("$svn --version");
++  $ret =~ m/svn, version (\d+)\.(\d+)/;
++  my ($major, $minor) = ($1,$2);
++  print "maj: $major $minor\n";
++
++  if ($major == 1 and $minor >= 7) {
++    WARN("Your subversion version ($major.$minor) is known to have problems ".
++         "with parallel checkouts. I am attempting to work around, if you ".
++          "receive error messages from subversion, try a serial ".
++          "'--no-parallel' checkout");
++  }
++}
++
+ sub checkout {
+     my @components : shared = @_;
+     if ($PARALLEL and scalar(@components) > 1) {
+@@ -954,6 +968,7 @@ sub checkout {
+         # component containing other components, and parallel checkouts here
+         # might run into problems just because of that.
+         # This happens for instance with svn version 1.7 through 1.8
++        check_svn_version();
+         process_component( $components[0]->{TYPE}, 'checkout', %{$components[0]} );
+         no warnings 'threads';
+         $QUEUE->enqueue(@components[1..$#components]);
+@@ -979,6 +994,7 @@ sub update {
+         # component containing other components, and parallel updates here
+         # might run into problems just because of that.
+         # This happens for instance with svn version 1.7 through 1.8
++        check_svn_version();
+         process_component( $components[0]->{TYPE}, 'update', %{$components[0]} );
+         no warnings 'threads';
+         $QUEUE->enqueue(@components[1..$#components]);
+-- 
+1.8.4.rc3
+

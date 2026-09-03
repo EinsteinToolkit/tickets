@@ -1,0 +1,36 @@
+From fb6d6f267a237c0980e4f9acf269c3c58991edbd Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Thu, 11 Oct 2012 09:42:43 -0700
+Subject: [PATCH] CarpetIOASCII: do not output coordinate column labels for
+ grid arrays in compact_format
+
+since the coordinates themselves are not output either.
+
+Actually *only* output coordinate column labels for grid functions.
+---
+ Carpet/CarpetIOASCII/src/ioascii.cc |    6 +-----
+ 1 file changed, 1 insertion(+), 5 deletions(-)
+
+diff --git a/Carpet/CarpetIOASCII/src/ioascii.cc b/Carpet/CarpetIOASCII/src/ioascii.cc
+index 0a966d5..9c420b8 100644
+--- a/Carpet/CarpetIOASCII/src/ioascii.cc
++++ b/Carpet/CarpetIOASCII/src/ioascii.cc
+@@ -1377,14 +1377,10 @@ namespace CarpetIOASCII {
+           }
+         }
+         os << "\t" << col++ << ":time";
+-        if (not compact_format) {
++        if (not compact_format or grouptype == CCTK_GF) {
+           for (int d=0; d<dim; ++d) {
+             os << (d==0 ? "\t" : " ") << col++ << ":" << coords[d];
+           }
+-        } else {
+-          for (int d=0; d<min(dim,groupdim); ++d) {
+-            os << (d==0 ? "\t" : " ") << col++ << ":" << coords[d];
+-          }
+         }
+         os << "\t" << col << ":data" << eol;
+         if (one_file_per_group) {
+-- 
+1.7.10.4
+

@@ -1,0 +1,607 @@
+Index: src/http.c
+===================================================================
+--- src/http.c	(revision 250)
++++ src/http.c	(working copy)
+@@ -11,8 +11,8 @@
+ #include "cctk.h"
+ #include "cctk_Parameters.h"
+ 
+-#include <stdio.h>
+-#include <stdlib.h>
++#include <cstdio>
++#include <cstdlib>
+ 
+ #ifdef HAVE_SYS_TIME_H
+ #include <sys/time.h>
+@@ -32,7 +32,7 @@
+ #include "util_String.h"
+ 
+ #include "httpd.h"
+-#include "util_Hash.h"
++#include <map>
+ #include "SString_Namespace.h"
+ 
+ static const char *rcsid = "$Header$";
+@@ -55,6 +55,8 @@
+ } httpArg_PLACEHOLDER;
+ 
+ /* This is the main structure for storing data about a request. */
++typedef std::map<std::string, struct httpHeader*> headers_database;
++typedef std::map<std::string, httpArg*> arguments_database;
+ typedef struct httpRequestTag
+ {
+   /* Public members of the structure. */
+@@ -78,12 +80,12 @@
+   void *connection;
+ 
+   /* The request header lines */
+-  uHash *headers;
++  headers_database headers;
+ 
+   /* Stuff for arguments */
+ 
+   /* First a hash table to look the data up quickly */
+-  uHash *arguments;
++  arguments_database arguments;
+ 
+   /* Now a linked list to allow walking. */
+   httpArg *firstarg;
+@@ -92,7 +94,7 @@
+ 
+ } httpRequest_PLACEHOLDER;
+ 
+-#define BLANK_HTTPREQUEST {NULL, 0, NULL, NULL, NULL, 0, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL } 
++#define BLANK_HTTPREQUEST {NULL, 0, NULL, NULL, NULL, 0, 0, 0, NULL, headers_database(), arguments_database(), NULL, NULL, NULL } 
+   /* Accessors for the httpRequest structure */
+ unsigned int HTTP_MajorVersion( const httpRequest *request )
+ {
+@@ -136,7 +138,7 @@
+ 
+ httpSocket * HTTP_Connection( const httpRequest *request )
+ {
+-  return request->connection;
++  return static_cast<httpSocket*>(request->connection);
+ }
+ 
+ SSBOOL HTTP_GetHeaderValueString(const httpRequest *request,
+@@ -325,14 +327,11 @@
+ @@*/
+ const char *HTTP_ArgumentValue(const httpRequest *request, const char *arg)
+ {
+-  if(request->arguments)
+-  {
+-    const httpArg *value = (httpArg *)Util_HashData(request->arguments, strlen(arg), arg, 0);
++  const arguments_database::const_iterator value = request->arguments.find(arg);
+ 
+-    if(value)
+-    {
+-      return value->value;
+-    }
++  if(value != request->arguments.end())
++  {
++    return value->second->value;
+   }
+ 
+   return NULL;
+@@ -382,16 +381,13 @@
+ @@*/
+ const char *HTTP_HeaderValue(const httpRequest *request, const char *header)
+ {
+-  struct httpHeader *header_line;
++  headers_database::const_iterator header_line;
+ 
+-  if(request->headers)
+-  {
+-    header_line = Util_HashData(request->headers, strlen(header), header, 0);
++  header_line = request->headers.find(header);
+ 
+-    if(header_line)
+-    {
+-      return header_line->line;
+-    }
++  if(header_line != request->headers.end())
++  {
++    return header_line->second->line;
+   }
+ 
+   return NULL;
+@@ -614,7 +610,7 @@
+   int keylength = -1;
+   struct httpHeader *header_line;
+   /* Split the string */
+-  char *value = strchr(line, ':');
++  const char *value = strchr(line, ':');
+ 
+   if(value)
+   {
+@@ -634,46 +630,37 @@
+   
+   if(value)
+   {
+-    if(!request->headers)
+-    {
+-      /* Need to create the hash table */
+-      request->headers = Util_HashCreate(INITIAL_SIZE);
+-    }
++    /* Does the line already exist ? */
++    header_line = request->headers[std::string(line).substr( 0, keylength)];
+ 
+-    if(request->headers)
++    if(header_line)
+     {
+-      /* Does the line already exist ? */
+-      header_line = (struct httpHeader *)Util_HashData(request->headers, keylength, line, 0);
++      char *temp = (char *)realloc(header_line->line, strlen(header_line->line)+strlen(value)+2);
+ 
+-      if(header_line)
++      if(temp)
+       {
+-        char *temp = (char *)realloc(header_line->line, strlen(header_line->line)+strlen(value)+2);
+-
+-        if(temp)
+-        {
+-          header_line->line = temp;
+-          sprintf(header_line->line,"%s,%s", header_line->line,value);
+-        }
+-        else
+-        {
+-          CCTK_WARN( 0, "Out of memory!\n" );
+-        }
++        header_line->line = temp;
++        sprintf(header_line->line,"%s,%s", header_line->line,value);
+       }
+       else
+       {
+-        /* Ok, must create it */
+-        header_line = (struct httpHeader *)malloc(sizeof(struct httpHeader));
++        CCTK_WARN( 0, "Out of memory!\n" );
++      }
++    }
++    else
++    {
++      /* Ok, must create it */
++      header_line = (struct httpHeader *)malloc(sizeof(struct httpHeader));
+ 
+-        if(header_line)
++      if(header_line)
++      {
++        header_line->line = (char *)malloc(strlen(value)+1);
++
++        if(header_line->line)
+         {
+-          header_line->line = (char *)malloc(strlen(value)+1);
++          strcpy(header_line->line, value);
+ 
+-          if(header_line->line)
+-          {
+-            strcpy(header_line->line, value);
+-
+-            Util_HashStore(request->headers, keylength, line, 0, (void *)header_line);
+-          }
++          request->headers[std::string(line).substr( 0, keylength)] = header_line;
+         }
+       }
+     }
+@@ -707,9 +694,6 @@
+     /* Mark the end of the URI */
+     *position = 0;
+ 
+-    /* Create the hash table */
+-    request->arguments = Util_HashCreate(INITIAL_SIZE);
+-
+     /* Parse the argument list */
+     position++;
+ 
+@@ -743,7 +727,7 @@
+           argument->arg   = Util_Strdup(token);
+           argument->value = Util_Strdup(value);
+ 
+-          if((stored = (httpArg *)Util_HashData(request->arguments, strlen(token), token, 0)))
++          if((stored = request->arguments[token]))
+           {
+             /* Argument already exists */
+ 
+@@ -759,7 +743,7 @@
+           }
+           else
+           {
+-            Util_HashStore(request->arguments, strlen(token), token, 0, (void *)argument);
++            request->arguments[token] = argument;
+             request->n_arguments++;
+           }
+           /* Append to global list. */
+@@ -786,10 +770,6 @@
+       token=strtok(NULL, "&");  
+     }
+   }
+-  else
+-  {
+-    request->arguments = NULL;
+-  }
+ 
+   /* Finally remove any encoding in the URI */
+   Decode(request_uri);
+@@ -829,8 +809,6 @@
+   /* Initialise the private data */
+ 
+   request->connection  = NULL;
+-  request->headers     = NULL;
+-  request->arguments   = NULL;
+   
+   request->firstarg    = NULL;
+   request->lastarg     = NULL;
+@@ -855,14 +833,18 @@
+ @@*/
+ static int ClearRequest(httpRequest *request)
+ {
+-  if(request->arguments)
++  for (arguments_database::iterator it = request->arguments.begin();
++       it != request->arguments.end();
++       ++it)
+   {
+-    Util_HashDestroy(request->arguments, (void (*)(void *))DestroyArgument);
++    DestroyArgument(it->second);
+   }
+ 
+-  if(request->headers)
++  for (headers_database::iterator it = request->headers.begin();
++       it != request->headers.end();
++       ++it)
+   {
+-    Util_HashDestroy(request->headers, (void (*)(void *))DestroyHeader);
++    DestroyHeader(it->second);
+   }
+ 
+   return 0;
+Index: src/Authorisation.c
+===================================================================
+--- src/Authorisation.c	(revision 250)
++++ src/Authorisation.c	(working copy)
+@@ -10,9 +10,9 @@
+ 
+ #include "cctk.h"
+ 
+-#include <stdio.h>
+-#include <stdlib.h>
+-#include <string.h>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
+ 
+ #ifdef HAVE_UNISTD_H
+ #include <unistd.h>
+@@ -22,7 +22,7 @@
+ #include <crypt.h>
+ #endif
+ 
+-#include "util_Hash.h"
++#include <map>
+ #include "util_String.h"
+ 
+ #include "httpRequest.h"
+@@ -39,6 +39,8 @@
+  *********************     Local Data Types   ***********************
+  ********************************************************************/
+ 
++typedef std::map<std::string, struct httpUserData*> users_database;
++typedef std::map<std::string, users_database*> auths_database;
+ struct httpUserData
+ {
+   char *password;
+@@ -49,7 +51,7 @@
+  ********************* Local Routine Prototypes *********************
+  ********************************************************************/
+ 
+-static int AddUser(uHash *database, 
++static int AddUser(users_database& database, 
+                    const char *name,
+                    const char *password,
+                    const char *encryption_scheme);
+@@ -66,7 +68,7 @@
+  *********************     Local Data   *****************************
+  ********************************************************************/
+ 
+-static uHash *AuthDatabase = NULL;
++auths_database AuthDatabase;
+ 
+ #define INITIAL_SIZE 32
+ #define DECODED_SIZE 100
+@@ -95,38 +97,29 @@
+                      const char *encryption_scheme)
+ {
+   int retcode = -1;
+-  uHash *this_database = NULL;
++  users_database *this_database = NULL;
+ 
+-  /* Create the master database if necessary */
+-  if(!AuthDatabase)
+-  {
+-    AuthDatabase = Util_HashCreate(INITIAL_SIZE);
+-  }
++  /* Does this database exist ? */
++  this_database = AuthDatabase[database];
+ 
+-  if(AuthDatabase)
++  if(!this_database)
+   {
+-    /* Does this database exist ? */
+-    this_database = (uHash *)Util_HashData(AuthDatabase, strlen(database), database, 0);
++    this_database = new users_database;
+ 
+-    if(!this_database)
++    if(this_database)
+     {
+-      this_database = Util_HashCreate(INITIAL_SIZE);
+-
+-      if(this_database)
+-      {
+-        Util_HashStore(AuthDatabase, strlen(database), database, 0, (void *)this_database);
+-      }
+-      else
+-      {
+-        retcode = -2;
+-      }
++      AuthDatabase[database] = this_database;
+     }
++    else
++    {
++      retcode = -2;
++    }
+   }
+ 
+   /* Now add the user to the database */
+   if(this_database)
+   {
+-    retcode = AddUser(this_database, name, password, encryption_scheme);
++    retcode = AddUser(*this_database, name, password, encryption_scheme);
+   }
+ 
+   return retcode;
+@@ -254,7 +247,7 @@
+    @endhistory 
+ 
+ @@*/
+-static int AddUser(uHash *database, 
++static int AddUser(users_database& database, 
+                    const char *name,
+                    const char *password,
+                    const char *encryption_scheme)
+@@ -262,8 +255,7 @@
+   int retcode = -1;
+ 
+   /* Does this user already exist ? */
+-  struct httpUserData * this_user = (struct httpUserData *)Util_HashData(
+-                                              database, strlen(name), name, 0);
++  struct httpUserData * this_user = database[name];
+ 
+   if(!this_user)
+   {
+@@ -276,7 +268,8 @@
+       this_user->password          = Util_Strdup(password);
+       this_user->encryption_scheme = Util_Strdup(encryption_scheme);
+ 
+-      retcode = Util_HashStore(database, strlen(name), name, 0, (void *)this_user);
++      database[name] = this_user;
++      retcode = 0;
+     }
+   }
+   else
+@@ -314,45 +307,40 @@
+ {
+   int retcode = 0;
+ 
+-  if(AuthDatabase)
++  /* Does this database exist ? */
++
++  if(AuthDatabase.count(database))
+   {
+-    /* Does this database exist ? */
+-    uHash *this_database = (uHash *)Util_HashData(AuthDatabase,
+-                                              strlen(database), database, 0);
++    users_database& this_database = *AuthDatabase[database];
++    struct httpUserData *data = this_database[user];
+ 
+-    if(this_database)
++    if(data)
+     {
+-      struct httpUserData *data = (struct httpUserData *) Util_HashData(
+-                                         this_database, strlen(user), user, 0);
+-
+-      if(data)
++      /* Ok, now verify the password. */
++      if(CCTK_Equals(data->encryption_scheme, "none"))
+       {
+-        /* Ok, now verify the password. */
+-        if(CCTK_Equals(data->encryption_scheme, "none"))
++        if(!strcmp(data->password, password))
+         {
+-          if(!strcmp(data->password, password))
+-          {
+-            retcode = 1;
+-          }
++          retcode = 1;
+         }
+-        else if(CCTK_Equals(data->encryption_scheme, "crypt"))
+-        {
++      }
++      else if(CCTK_Equals(data->encryption_scheme, "crypt"))
++      {
+ #ifdef HAVE_CRYPT
+-          if(!strcmp(data->password, crypt(password, data->password)))
+-          {
+-            retcode = 1;
+-          }
++        if(!strcmp(data->password, crypt(password, data->password)))
++        {
++          retcode = 1;
++        }
+ #else
+-	  CCTK_WARN( 1, "Sorry, crypt(3) not supported in this configuration." );
++        CCTK_WARN( 1, "Sorry, crypt(3) not supported in this configuration." );
+ #endif
+-        }
+-        else
+-        {
+-          CCTK_VWarn(1, __LINE__,__FILE__,CCTK_THORNSTRING,
+-                     "Unknown encryption algorithm: %s",
+-                     data->encryption_scheme  );
+-        } 
+       }
++      else
++      {
++        CCTK_VWarn(1, __LINE__,__FILE__,CCTK_THORNSTRING,
++                   "Unknown encryption algorithm: %s",
++                   data->encryption_scheme  );
++      } 
+     }
+   }
+ 
+Index: src/make.code.defn
+===================================================================
+--- src/make.code.defn	(revision 250)
++++ src/make.code.defn	(working copy)
+@@ -5,13 +5,13 @@
+ 
+ MISC_SRC = Startup.c Expression.c
+ 
+-SERVER_SRC = Server.c Sockets.c http.c
++SERVER_SRC = Server.cc Sockets.c http.cc
+ 
+ CONTENT_SRC = Content.c Headers.c Groups.c Parameters.c Thorns.c
+ 
+ STEERING_SRC = Steer.c
+ 
+-AUTHENTICATION_SRC = Authorisation.c base64.c 
++AUTHENTICATION_SRC = Authorisation.cc base64.c 
+ 
+ COOKIES_SRC = Cookies.c
+ 
+Index: src/Server.c
+===================================================================
+--- src/Server.c	(revision 250)
++++ src/Server.c	(working copy)
+@@ -8,20 +8,21 @@
+    @version  $Header$
+  @@*/
+ 
+-#include <stdlib.h>
+-#include <string.h>
++#include <cstdlib>
++#include <cstring>
++#include <cstdio>
+ 
+ #include "cctk.h"
+ 
+ #include "cctk_Parameters.h"
+ 
+-#include "util_Hash.h"
+ #include "util_String.h"
+ 
+ #include "httpd.h"
+ 
+ #include "Steer.h"
+ #include "Expression.h"
++#include <map>
+ 
+ #include "SString_Namespace.h"
+ 
+@@ -38,6 +39,7 @@
+   int (*function)(const cGH *, httpRequest *, void *);
+   void *data;
+ } httpPage;
++typedef std::map<std::string, httpPage*> pages_database;
+ 
+ /********************************************************************
+  ********************* Local Routine Prototypes *********************
+@@ -61,7 +63,7 @@
+  *********************     Local Data   *****************************
+  ********************************************************************/
+ 
+-static uHash *pages = NULL;
++static pages_database pages;
+ 
+ static const char *notfound_page =
+ "<html>\n<head>\n<title>Error 404: Not Found</title>\n</head>\n"
+@@ -161,14 +163,8 @@
+ {
+   int retval = -1;
+ 
+-  /* Create the hash table if it's not already been created */
+-  if(! pages)
++  if(pages.count(path))
+   {
+-    pages = Util_HashCreate(INITIAL_SIZE);
+-  }
+-
+-  if(Util_HashData(pages, strlen(path), path, 0))
+-  {
+     CCTK_VWarn(1, __LINE__,__FILE__,CCTK_THORNSTRING,
+                "Page exists already:\n\"%s\"", path);
+   }
+@@ -178,7 +174,8 @@
+ 
+     if(pagedata)
+     {
+-      retval = Util_HashStore(pages, strlen(path), path, 0, (void *)pagedata);
++      pages[path] = pagedata;
++      retval = 0;
+     }
+     else
+     {
+@@ -343,7 +340,7 @@
+   printf ("Searching for '%s'\n", path);
+ #endif
+ 
+-  if(pages && path)
++  if(path)
+   {
+     String *temp = String_New();
+     /* Check for index.html */
+@@ -355,11 +352,13 @@
+       SetToCString( temp, path);
+       ConcatCString( temp,"index.html");
+ 
+-      pagedata = Util_HashData(pages, Length(temp), GetBuffer(temp), 0);
++      if(pages.count(GetBuffer(temp)))
++        pagedata = pages[GetBuffer( temp)];
+     }
+-    else if((pagedata = Util_HashData(pages, strlen(path), path, 0)))
++    else if(pages.count(path))
+     {
+       /* Or exact path */
++      pagedata = pages[path];
+     }
+     else
+     {
+@@ -369,7 +368,8 @@
+       SetToCString( temp, path);
+       ConcatCString( temp,"/index.html");
+ 
+-      pagedata = Util_HashData(pages, Length(temp), GetBuffer(temp), 0);
++      if(pages.count(path))
++        pagedata = pages[path];
+ 
+     }
+     *residual = NULL;
+@@ -385,8 +385,11 @@
+ #ifdef HTTP_DEBUG
+           printf("Looking for '%s' less '%s' \n", path, position);
+ #endif
+-          if((pagedata = Util_HashData(pages, position-path, path, 0)))
++          pages_database::const_iterator page =
++              pages.find( std::string(path).substr( 0, position-path));
++          if(page != pages.end())
+           {
++            pagedata = page->second;
+             *residual = position+1;
+             break;
+           }
+@@ -520,7 +523,7 @@
+   if(varindex > -1)
+   {
+     int vartype  = CCTK_VarTypeI(varindex);
+-    int *pointer = CCTK_VarDataPtrI(cctkGH, 0, varindex);
++    int *pointer = (int*)CCTK_VarDataPtrI(cctkGH, 0, varindex);
+     
+     switch(vartype)
+     {

@@ -1,0 +1,180 @@
+From aeb24a8fed7ad4784f37f4ecc4de39af97210199 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Tue, 12 Nov 2013 18:09:06 -0800
+Subject: [PATCH 13/18] EOS_Omni: always set anyerr when an error is detected
+
+consistently abort the EOS call when checkbounds fails
+---
+ src/nuc_eos_cxx/nuc_eos_dpdrhoe_dpderho.cc |  4 ++--
+ src/nuc_eos_cxx/nuc_eos_full.cc            | 11 ++++++++---
+ src/nuc_eos_cxx/nuc_eos_press.cc           |  7 ++++++-
+ src/nuc_eos_cxx/nuc_eos_press_cs2.cc       | 10 +++++++---
+ src/nuc_eos_cxx/nuc_eos_short.cc           | 16 ++++++++++++----
+ 5 files changed, 35 insertions(+), 13 deletions(-)
+
+diff --git a/src/nuc_eos_cxx/nuc_eos_dpdrhoe_dpderho.cc b/src/nuc_eos_cxx/nuc_eos_dpdrhoe_dpderho.cc
+index ace3670..1ff15eb 100644
+--- a/src/nuc_eos_cxx/nuc_eos_dpdrhoe_dpderho.cc
++++ b/src/nuc_eos_cxx/nuc_eos_dpdrhoe_dpderho.cc
+@@ -57,11 +57,11 @@ void CCTK_FNAME(nuc_eos_m_kt0_dpdrhoe_dpderho)(const int *restrict n_in,
+       nuc_eos_findtemp(lr,lt,ye[i],lxeps,*prec,
+ 		       (double *restrict)(&ltout),&keyerr[i]);
+     } else {
++      // will be overwritten further down, only marks error
+       keyerr[i] = 667;
+-      *anyerr = 1;
+     } // epstot > 0.0
+ 
+-    if(keyerr[i] != 0) {
++    if(keyerr[i]) {
+       // now try negative temperature treatment
+       double eps0, eps1;
+       int idx[8];
+diff --git a/src/nuc_eos_cxx/nuc_eos_full.cc b/src/nuc_eos_cxx/nuc_eos_full.cc
+index d1f511d..57f0776 100644
+--- a/src/nuc_eos_cxx/nuc_eos_full.cc
++++ b/src/nuc_eos_cxx/nuc_eos_full.cc
+@@ -41,10 +41,14 @@ void CCTK_FNAME(nuc_eos_m_kt1_full)(const int *restrict n_in,
+     keyerr[i] = checkbounds(rho[i], temp[i], ye[i]);
+     if(keyerr[i] != 0) {
+       *anyerr = 1;
+-      return;
+     }
+   }
+ 
++  // Abort if there is any error in checkbounds.
++  // This should never happen and the program should abort with
++  // a fatal error anyway. No point in doing any further EOS calculations.
++  if(*anyerr) return;
++
+   for(int i=0;i<n;i++) {
+   
+     int idx[8];
+@@ -218,11 +222,12 @@ void CCTK_FNAME(nuc_eos_m_kt0_full)(const int *restrict n_in,
+ 		       (double *restrict)(&ltout),&keyerr[i]);
+     } else {
+       keyerr[i] = 667;
+-      *anyerr=1;
+     } // epstot > 0.0
+ 
+ 
+-    if(!keyerr[i]) {
++    if(keyerr[i]) {
++      *anyerr=1;
++    } else {
+       temp[i] = exp(ltout);
+       int idx[8];
+       double delx,dely,delz;
+diff --git a/src/nuc_eos_cxx/nuc_eos_press.cc b/src/nuc_eos_cxx/nuc_eos_press.cc
+index 13b0558..52c3168 100644
+--- a/src/nuc_eos_cxx/nuc_eos_press.cc
++++ b/src/nuc_eos_cxx/nuc_eos_press.cc
+@@ -27,10 +27,14 @@ void CCTK_FNAME(nuc_eos_m_kt1_press_eps)(const int *restrict n_in,
+     keyerr[i] = checkbounds(rho[i], temp[i], ye[i]);
+     if(keyerr[i] != 0) {
+       *anyerr = 1;
+-      return;
+     }
+   }
+ 
++  // Abort if there is any error in checkbounds.
++  // This should never happen and the program should abort with
++  // a fatal error anyway. No point in doing any further EOS calculations.
++  if(*anyerr) return;
++
+   for(int i=0;i<n;i++) {
+     int idx[8];
+     double delx,dely,delz;
+@@ -111,6 +115,7 @@ void CCTK_FNAME(nuc_eos_m_kt0_press)(const int *restrict n_in,
+       nuc_eos_findtemp(lr,lt,ye[i],lxeps,*prec,
+ 		       (double *restrict)(&ltout),&keyerr[i]);
+     } else {
++      // will be overwritten further down, only marks error
+       keyerr[i] = 667;
+     } // epstot > 0.0
+ 
+diff --git a/src/nuc_eos_cxx/nuc_eos_press_cs2.cc b/src/nuc_eos_cxx/nuc_eos_press_cs2.cc
+index 08ab8c2..2652ac5 100644
+--- a/src/nuc_eos_cxx/nuc_eos_press_cs2.cc
++++ b/src/nuc_eos_cxx/nuc_eos_press_cs2.cc
+@@ -28,10 +28,14 @@ void CCTK_FNAME(nuc_eos_m_kt1_press_eps_cs2)(const int *restrict n_in,
+     keyerr[i] = checkbounds(rho[i], temp[i], ye[i]);
+     if(keyerr[i] != 0) {
+       *anyerr = 1;
+-      return;
+     }
+   }
+   
++  // Abort if there is any error in checkbounds.
++  // This should never happen and the program should abort with
++  // a fatal error anyway. No point in doing any further EOS calculations.
++  if(*anyerr) return;
++
+   for(int i=0;i<n;i++) {
+     int idx[8];
+     double delx,dely,delz;
+@@ -116,11 +120,11 @@ void CCTK_FNAME(nuc_eos_m_kt0_press_cs2)(const int *restrict n_in,
+       nuc_eos_findtemp(lr,lt,ye[i],lxeps,*prec,
+ 		       (double *restrict)(&ltout),&keyerr[i]);
+     } else {
++      // will be overwritten further down, only marks error
+       keyerr[i] = 667;
+-      *anyerr = 1;
+     } // epstot > 0.0
+ 
+-    if(keyerr[i] != 0) {
++    if(keyerr[i]) {
+       // now try negative temperature treatment
+       double eps0, eps1;
+       int idx[8];
+diff --git a/src/nuc_eos_cxx/nuc_eos_short.cc b/src/nuc_eos_cxx/nuc_eos_short.cc
+index 06e66d8..0e6347e 100644
+--- a/src/nuc_eos_cxx/nuc_eos_short.cc
++++ b/src/nuc_eos_cxx/nuc_eos_short.cc
+@@ -33,10 +33,14 @@ void CCTK_FNAME(nuc_eos_m_kt1_short)(const int *restrict n_in,
+     keyerr[i] = checkbounds(rho[i], temp[i], ye[i]);
+     if(keyerr[i] != 0) {
+       *anyerr = 1;
+-      return;
+     }
+   }
+ 
++  // Abort if there is any error in checkbounds.
++  // This should never happen and the program should abort with
++  // a fatal error anyway. No point in doing any further EOS calculations.
++  if(*anyerr) return;
++
+   for(int i=0;i<n;i++) {
+   
+     int idx[8];
+@@ -154,12 +158,14 @@ extern "C"
+       nuc_eos_findtemp(lr,lt,ye[i],lxeps,*prec,
+ 		       (double *restrict)(&ltout),&keyerr[i]);
+     } else {
++      // will be overwritten further down, only marks error
+       keyerr[i] = 667;
+-      *anyerr=1;
+     } // epstot > 0.0
+ 
+ 
+-    if(!keyerr[i]) {
++    if(keyerr[i]) {
++      *anyerr = 1;
++    } else {
+       temp[i] = exp(ltout);
+       int idx[8];
+       double delx,dely,delz;
+@@ -258,7 +264,9 @@ extern "C"
+       nuc_eos_findtemp_entropy(lr,lt,ye[i],ent[i],*prec,
+ 			       (double *restrict)(&ltout),&keyerr[i]);
+ 
+-      if(!keyerr[i]) {
++      if(keyerr[i]) {
++        *anyerr = 1;
++      } else {
+ 	temp[i] = exp(ltout);
+ 	int idx[8];
+ 	double delx,dely,delz;
+-- 
+1.8.5.3
+

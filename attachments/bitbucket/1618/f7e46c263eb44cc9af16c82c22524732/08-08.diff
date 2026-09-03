@@ -1,0 +1,1051 @@
+Index: lib/sbin/GridFuncStuff.pl
+===================================================================
+--- lib/sbin/GridFuncStuff.pl	(revision 5122)
++++ lib/sbin/GridFuncStuff.pl	(working copy)
+@@ -606,14 +606,14 @@
+   {
+     next if ($arguments{$argument} =~ m:STORAGESIZE|GROUPLENGTH:);
+ 
+-    push(@declarations, "static int CCTKARGNUM_$argument = -1;");
++    push(@declarations, "static CCTK_TLS int CCTKARGNUM_$argument = -1;");
+     $arguments{$argument} =~ /::([^!]+)![0-9]+/;
+     my $group = $1;
+ 
+     if ($allgroups !~ / $group /)
+     {
+       $allgroups .= " $group ";
+-      push(@declarations, "static int CCTKGROUPNUM_$group = -1;");
++      push(@declarations, "static CCTK_TLS int CCTKGROUPNUM_$group = -1;");
+     }
+   }
+ 
+Index: lib/sbin/create_c_stuff.pl
+===================================================================
+--- lib/sbin/create_c_stuff.pl	(revision 5122)
++++ lib/sbin/create_c_stuff.pl	(working copy)
+@@ -35,7 +35,7 @@
+   }
+ 
+   # Create the structure
+-  push(@data, 'struct');
++  push(@data, 'CCTK_TLS struct');
+   push(@data, '{');
+ 
+   foreach $parameter (&order_params($rhparameters,$rhparameter_db))
+@@ -189,7 +189,7 @@
+   push(@data, '{');
+   push(@data, '#endif');
+   push(@data, '');
+-  push(@data, 'extern struct');
++  push(@data, 'extern CCTK_TLS struct');
+   push(@data, '{');
+ 
+   foreach $parameter (&order_params($rhparameters, $rhparameter_db))
+Index: lib/sbin/CreateFunctionBindings.pl
+===================================================================
+--- lib/sbin/CreateFunctionBindings.pl	(revision 5122)
++++ lib/sbin/CreateFunctionBindings.pl	(working copy)
+@@ -1183,7 +1183,7 @@
+   {
+     $name = $Function{"Name"}."_C_Wrapper";
+   }
+-  push(@data,"static $rettype (*$name) (@args) = NULL;");
++  push(@data,"static CCTK_TLS $rettype (*$name) (@args) = NULL;");
+ 
+   return join ("\n",@data);
+ }
+Index: src/include/cctk_ParamCheck.h
+===================================================================
+--- src/include/cctk_ParamCheck.h	(revision 5122)
++++ src/include/cctk_ParamCheck.h	(working copy)
+@@ -15,8 +15,8 @@
+  * directly outside the flesh.
+  */
+ 
+-extern int cctki_paramchecking;
+-extern int cctki_paramcheck_nprocs;
++extern CCTK_TLS int cctki_paramchecking;
++extern CCTK_TLS int cctki_paramcheck_nprocs;
+ 
+ /* Define these as macros for the moment, but give them an
+  * interface like a function so they can can be changed 
+Index: src/include/cctk_tls.h
+===================================================================
+--- src/include/cctk_tls.h	(revision 0)
++++ src/include/cctk_tls.h	(revision 0)
+@@ -0,0 +1,25 @@
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++void CmiEnableTLS();
++void CmiDisableTLS();
++
++#ifdef __cplusplus
++}
++#endif
++
++static void CCTK_DisableThreadLocal()
++{
++#ifdef CCTK_HAVE_AMPI
++     CmiDisableTLS();
++#endif
++}
++
++static void CCTK_EnableThreadLocal()
++{
++#ifdef CCTK_HAVE_AMPI
++     CmiEnableTLS();
++#endif
++}
+Index: src/include/OverloadMacros.h
+===================================================================
+--- src/include/OverloadMacros.h	(revision 5122)
++++ src/include/OverloadMacros.h	(working copy)
+@@ -46,7 +46,7 @@
+ int call##Overload##name(RETURN_TYPE (*func)(ARGUMENTS))            \
+ {                                                                   \
+   int return_code;                                                  \
+-  static int overloaded = 0;                                        \
++  static CCTK_TLS int overloaded = 0;                                        \
+   if (func)                                                         \
+   {                                                                 \
+     if(overloaded < 2)                                              \
+Index: src/main/RecordImplementation.c
+===================================================================
+--- src/main/RecordImplementation.c	(revision 5122)
++++ src/main/RecordImplementation.c	(working copy)
+@@ -42,7 +42,7 @@
+  *********************     Local Data   *****************************
+  ********************************************************************/
+ 
+-static pNamedData *implementation_data = NULL;
++static CCTK_TLS pNamedData *implementation_data = NULL;
+ 
+ /********************************************************************
+  *********************     External Routines   **********************
+Index: src/main/ProcessCommandLine.c
+===================================================================
+--- src/main/ProcessCommandLine.c	(revision 5122)
++++ src/main/ProcessCommandLine.c	(working copy)
+@@ -41,13 +41,13 @@
+  *********************     Local Data   *****************************
+  ********************************************************************/
+ 
+-static int exit_after_param_check = 0;
++static CCTK_TLS int exit_after_param_check = 0;
+ 
+-static char *parameter_file_name=NULL;
++static CCTK_TLS char *parameter_file_name=NULL;
+ 
+-static int argc = 0;
++static CCTK_TLS int argc = 0;
+ 
+-static char **argv = NULL;
++static CCTK_TLS char **argv = NULL;
+ 
+ /********************************************************************
+  *********************     External Routines   **********************
+Index: src/main/Termination.c
+===================================================================
+--- src/main/Termination.c	(revision 5122)
++++ src/main/Termination.c	(working copy)
+@@ -18,7 +18,7 @@
+ /********************************************************************
+  *********************     Local Data   *****************************
+  ********************************************************************/
+-static int termination_reached = 0;
++static CCTK_TLS int termination_reached = 0;
+ 
+ /********************************************************************
+  *********************     External Routines   **********************
+Index: src/main/InitialiseCactus.c
+===================================================================
+--- src/main/InitialiseCactus.c	(revision 5122)
++++ src/main/InitialiseCactus.c	(working copy)
+@@ -43,7 +43,7 @@
+ /********************************************************************
+  *********************     Local Data   *****************************
+  ********************************************************************/
+-static time_t startuptime;
++static CCTK_TLS time_t startuptime;
+ 
+ 
+  /*@@
+Index: src/main/FortranWrappers.c
+===================================================================
+--- src/main/FortranWrappers.c	(revision 5122)
++++ src/main/FortranWrappers.c	(working copy)
+@@ -35,7 +35,7 @@
+  *********************     Local Data   *****************************
+  ********************************************************************/
+ 
+-static pNamedData *registry = NULL;
++static CCTK_TLS pNamedData *registry = NULL;
+ 
+ /********************************************************************
+  *********************     External Routines   **********************
+Index: src/main/WarnLevel.c
+===================================================================
+--- src/main/WarnLevel.c	(revision 5122)
++++ src/main/WarnLevel.c	(working copy)
+@@ -149,33 +149,33 @@
+  ********************************************************************/
+ 
+ /* Store the parameter checking level */
+-static int parameter_level = CCTK_PARAMETER_STRICT;
++static CCTK_TLS int parameter_level = CCTK_PARAMETER_STRICT;
+ 
+ /* Store the number of parameter errors */
+-static int param_errors = 0;
++static CCTK_TLS int param_errors = 0;
+ 
+ /* Store the logging level - warnings of this severity or worse will
+  * be reported on stdout
+  */
+-static int logging_level = 0;
++static CCTK_TLS int logging_level = 0;
+ 
+ /* Store the warning level - warnings of this severity or worse will
+  * be reported on stderr
+  */
+-static int warning_level = 1;
++static CCTK_TLS int warning_level = 1;
+ 
+ /* Store the error level - warnings of this severity or worse will stop
+  * the code.
+  */
+-static int error_level = 0;
++static CCTK_TLS int error_level = 0;
+ 
+ /* Store a list of format strings */
+-static int n_formats = 0;
+-static pKeyedData *formatlist = NULL;
++static CCTK_TLS int n_formats = 0;
++static CCTK_TLS pKeyedData *formatlist = NULL;
+ 
+ /* Store registered warn and info methods */
+-static t_warncallback *warncallbacks = NULL;
+-static t_infocallback *infocallbacks = NULL;
++static CCTK_TLS t_warncallback *warncallbacks = NULL;
++static CCTK_TLS t_infocallback *infocallbacks = NULL;
+ 
+ 
+ /*@@
+@@ -255,10 +255,10 @@
+ int CCTK_VInfo (const char *thorn, const char *format, ...)
+ {
+   va_list ap;
+-  static int info_format_decoded = 0;   /* are the following two flags valid? */
++  static CCTK_TLS int info_format_decoded = 0;   /* are the following two flags valid? */
+   /* Boolean flags decoded from  cactus::info_format */
+-  static int info_format_numeric = 0;         /* print a numeric timestamp? */
+-  static int info_format_human_readable = 0;  /* print a human-readable timestamp? */
++  static CCTK_TLS int info_format_numeric = 0;         /* print a numeric timestamp? */
++  static CCTK_TLS int info_format_human_readable = 0;  /* print a human-readable timestamp? */
+ 
+   /* necessary for wrapping up the final message */
+   int msg_size;
+Index: src/main/Names.c
+===================================================================
+--- src/main/Names.c	(revision 5122)
++++ src/main/Names.c	(working copy)
+@@ -50,8 +50,8 @@
+ #define INITIAL_GROUP_HASH_SIZE    64
+ #define INITIAL_VARIABLE_HASH_SIZE 64
+ 
+-static uHash *GroupData    = NULL;
+-static uHash *VariableData = NULL;
++static CCTK_TLS uHash *GroupData    = NULL;
++static CCTK_TLS uHash *VariableData = NULL;
+ 
+ /********************************************************************
+  *********************     External Routines   **********************
+Index: src/main/ActiveThorns.c
+===================================================================
+--- src/main/ActiveThorns.c	(revision 5122)
++++ src/main/ActiveThorns.c	(working copy)
+@@ -86,11 +86,11 @@
+  *********************     Local Data   *****************************
+  ********************************************************************/
+ 
+-static t_sktree *thornlist = NULL;
+-static t_sktree *implist   = NULL;
++static CCTK_TLS t_sktree *thornlist = NULL;
++static CCTK_TLS t_sktree *implist   = NULL;
+ 
+-static int n_thorns = 0;
+-static int n_imps   = 0;
++static CCTK_TLS int n_thorns = 0;
++static CCTK_TLS int n_imps   = 0;
+ 
+ /********************************************************************
+  *********************     External Routines   **********************
+Index: src/main/ScheduleInterface.c
+===================================================================
+--- src/main/ScheduleInterface.c	(revision 5122)
++++ src/main/ScheduleInterface.c	(working copy)
+@@ -221,17 +221,17 @@
+  ********************************************************************/
+ 
+ 
+-static int indent_level = 0;
++static CCTK_TLS int indent_level = 0;
+ 
+-static int n_scheduled_comm_groups = 0;
+-static int *scheduled_comm_groups = NULL;
++static CCTK_TLS int n_scheduled_comm_groups = 0;
++static CCTK_TLS int *scheduled_comm_groups = NULL;
+ 
+-static int n_scheduled_storage_groups = 0;
+-static int *scheduled_storage_groups = NULL;
+-static int *scheduled_storage_groups_timelevels = NULL;
++static CCTK_TLS int n_scheduled_storage_groups = 0;
++static CCTK_TLS int *scheduled_storage_groups = NULL;
++static CCTK_TLS int *scheduled_storage_groups_timelevels = NULL;
+ 
+-static cTimerData *timerinfo = NULL;
+-static int total_timer = -1;
++static CCTK_TLS cTimerData *timerinfo = NULL;
++static CCTK_TLS int total_timer = -1;
+ 
+ static const cFunctionData *current_scheduled_function = NULL;
+ 
+@@ -844,8 +844,8 @@
+   int special;
+   const char *current;
+ 
+-  static char *current_point = NULL;
+-  static unsigned int current_length = 0;
++  static CCTK_TLS char *current_point = NULL;
++  static CCTK_TLS unsigned int current_length = 0;
+   char *temp;
+ 
+   special=0;
+@@ -2993,7 +2993,7 @@
+     }
+     else
+     {
+-      static int timernum = 0;
++      static CCTK_TLS int timernum = 0;
+       sprintf (timername, "[%04d] %s: %s in %s", timernum++, thorn, name,where);
+       const int timer_handle = CCTK_TimerCreate(timername);
+       if (timer_handle < 0)
+Index: src/main/GHExtensions.c
+===================================================================
+--- src/main/GHExtensions.c	(revision 5122)
++++ src/main/GHExtensions.c	(working copy)
+@@ -80,8 +80,8 @@
+ 
+ /* Local data holding info on extensions..*/
+ 
+-static cHandledData *GHExtensions = NULL;
+-static int num_extensions = 0;
++static CCTK_TLS cHandledData *GHExtensions = NULL;
++static CCTK_TLS int num_extensions = 0;
+ 
+ 
+ /********************************************************************
+Index: src/main/CactusDefaultMainLoopIndex.c
+===================================================================
+--- src/main/CactusDefaultMainLoopIndex.c	(revision 5122)
++++ src/main/CactusDefaultMainLoopIndex.c	(working copy)
+@@ -14,7 +14,7 @@
+ 
+ CCTK_FILEVERSION(main_CactusDefaultMainLoopIndex_c);
+ 
+-static int iteration = 0;
++static CCTK_TLS int iteration = 0;
+ 
+ int CactusDefaultMainLoopIndex (void);
+ int CactusDefaultSetMainLoopIndex (int main_loop_index);
+Index: src/main/CommandLine.c
+===================================================================
+--- src/main/CommandLine.c	(revision 5122)
++++ src/main/CommandLine.c	(working copy)
+@@ -48,21 +48,21 @@
+ /********************************************************************
+  *********************     Local Data   *****************************
+  ********************************************************************/
+-static char* logdir = NULL;
+-static int requested_stdout_redirection = 0;
+-static int requested_stderr_redirection = 0;
+-static int buffering_type = 0;
++static CCTK_TLS char* logdir = NULL;
++static CCTK_TLS int requested_stdout_redirection = 0;
++static CCTK_TLS int requested_stderr_redirection = 0;
++static CCTK_TLS int buffering_type = 0;
+ /* buffering: 0=default, 1=unbuffered, 2=line, 3=fully */
+-static int paramchecking = 0;
++static CCTK_TLS int paramchecking = 0;
+ 
+ 
+ /********************************************************************
+  *********************     Global Data   *****************************
+  ********************************************************************/
+-int cctki_paramchecking;
+-int cctki_paramcheck_nprocs;
++CCTK_TLS int cctki_paramchecking;
++CCTK_TLS int cctki_paramcheck_nprocs;
+ 
+-int cctki_onlyprintschedule = 0;
++CCTK_TLS int cctki_onlyprintschedule = 0;
+ 
+ /********************************************************************
+  *********************        Defines          **********************
+@@ -753,7 +753,17 @@
+                     "Could not redirect stdout to logfile '%s'", logfilename);
+       }
+     }
++#ifdef CCTK_HAVE_AMPI
++    /* 
++       avoid redirecting stdout to NULL device. This does not work
++       for AMPI because of any other non-zero ranked thread on proc 0 
++       disable the stdout.
++       A better fix for Cactus output is desired to support multi-threading.
++    */
++    else if (0)
++#else
+     else
++#endif
+     {
+       newfile = freopen (NULL_DEVICE, "w", stdout);
+       if (! newfile)
+Index: src/main/SetParams.c
+===================================================================
+--- src/main/SetParams.c	(revision 5122)
++++ src/main/SetParams.c	(working copy)
+@@ -34,8 +34,8 @@
+ /********************************************************************
+  *********************     Local Data   *****************************
+  ********************************************************************/
+-static int num_0errors = 0; /* number of level 0 errors in parameter file */
+-static int num_1errors = 0; /* number of level 1 errors in parameter file */
++static CCTK_TLS int num_0errors = 0; /* number of level 0 errors in parameter file */
++static CCTK_TLS int num_1errors = 0; /* number of level 1 errors in parameter file */
+ 
+ 
+ /********************************************************************
+Index: src/main/Parameters.c
+===================================================================
+--- src/main/Parameters.c	(revision 5122)
++++ src/main/Parameters.c	(working copy)
+@@ -96,13 +96,13 @@
+  ********************************************************************/
+ 
+ /* mask for CCTK_ParameterSet() */
+-static int cctk_parameter_set_mask;
++static CCTK_TLS int cctk_parameter_set_mask;
+ 
+ /* list of registered parameter set notify callbacks */
+-static cHandledData *notifyCallbackList = NULL;
++static CCTK_TLS cHandledData *notifyCallbackList = NULL;
+ 
+ /* number of registered callbacks */
+-static int num_notify_callbacks = 0;
++static CCTK_TLS int num_notify_callbacks = 0;
+ 
+ /********************************************************************
+  ********************* Fortran Wrapper Prototypes *******************
+@@ -209,7 +209,7 @@
+  *********************     Local Data   *****************************
+  ********************************************************************/
+ 
+-static t_sktree *paramtree = NULL;
++static CCTK_TLS t_sktree *paramtree = NULL;
+ 
+ /********************************************************************
+  *********************     External Routines   **********************
+@@ -1004,9 +1004,9 @@
+   t_paramtreenode *node;
+   t_paramlist     *paramlist;
+   t_param         *startpoint;
+-  static t_param  *prev_startpoint_all = NULL;
+-  static t_param  *prev_startpoint_thorn = NULL;
+-  static int      next_index = 0;
++  static CCTK_TLS t_param  *prev_startpoint_all = NULL;
++  static CCTK_TLS t_param  *prev_startpoint_thorn = NULL;
++  static CCTK_TLS int      next_index = 0;
+   /* FIXME : This routine has become extremely ugly:
+    *         It should only have one return in it.
+    *         The malloc failure should be flagged.
+Index: src/main/flesh.cc
+===================================================================
+--- src/main/flesh.cc	(revision 5122)
++++ src/main/flesh.cc	(working copy)
+@@ -16,7 +16,7 @@
+ CCTK_FILEVERSION(main_flesh_cc);
+ 
+ 
+-extern "C" int cctki_onlyprintschedule;
++extern "C" CCTK_TLS int cctki_onlyprintschedule;
+  /*@@
+    @routine    main
+    @date       Fri Sep 18 14:17:37 1998
+@@ -53,6 +53,10 @@
+    @endreturndesc
+ 
+ @@*/
++#ifdef CCTK_HAVE_AMPI
++#include <mpi.h>
++#endif
++
+ int main(int argc, char **argv)
+ {
+   tFleshConfig ConfigData;
+Index: src/main/Banner.c
+===================================================================
+--- src/main/Banner.c	(revision 5122)
++++ src/main/Banner.c	(working copy)
+@@ -51,8 +51,8 @@
+  *********************     Local Data   *****************************
+  ********************************************************************/
+ 
+-static int number_banners = 0;
+-static char **banner_strings = NULL;
++static CCTK_TLS int number_banners = 0;
++static CCTK_TLS char **banner_strings = NULL;
+ static const char *delimiter = "--------------------------------------------------------------------------------\n";
+ 
+ /********************************************************************
+Index: src/main/Coord.c
+===================================================================
+--- src/main/Coord.c	(revision 5122)
++++ src/main/Coord.c	(working copy)
+@@ -77,8 +77,8 @@
+  *********************     Local Data   *****************************
+  ********************************************************************/
+ 
+-static cHandledData *CoordSystems = NULL;
+-static int num_systems = 0;
++static CCTK_TLS cHandledData *CoordSystems = NULL;
++static CCTK_TLS int num_systems = 0;
+ 
+ /********************************************************************
+  *********************     Fortran Wrappers    **********************
+Index: src/main/CactusDefaultEvolve.c
+===================================================================
+--- src/main/CactusDefaultEvolve.c	(revision 5122)
++++ src/main/CactusDefaultEvolve.c	(working copy)
+@@ -206,7 +206,7 @@
+   int retval;
+ #ifdef HAVE_TIME_GETTIMEOFDAY
+   struct timeval runtime;
+-  static struct timeval starttime = {0, 0};
++  static CCTK_TLS struct timeval starttime = {0, 0};
+ #endif
+   DECLARE_CCTK_PARAMETERS
+ 
+Index: src/main/Groups.c
+===================================================================
+--- src/main/Groups.c	(revision 5122)
++++ src/main/Groups.c	(working copy)
+@@ -26,6 +26,8 @@
+ 
+ #include "cctki_Groups.h"
+ 
++#include "cctk_tls.h"
++
+ #include "util_Expression.h"
+ #include "util_Table.h"
+ 
+@@ -198,15 +200,15 @@
+  ********************************************************************/
+ /* Static variables needed to hold group and variable data. */
+ 
+-static int n_groups = 0;
+-static cGroupDefinition *groups = NULL;
++static CCTK_TLS int n_groups = 0;
++static CCTK_TLS cGroupDefinition *groups = NULL;
+ 
+-static int total_variables = 0;
++static CCTK_TLS int total_variables = 0;
+ 
+-static int *group_of_variable = NULL;
++static CCTK_TLS int *group_of_variable = NULL;
+ 
+-static int maxdim = 0;
+-static int gfdim = 0;
++static CCTK_TLS int maxdim = 0;
++static CCTK_TLS int gfdim = 0;
+ 
+ 
+ /********************************************************************
+@@ -2104,6 +2106,7 @@
+   while (string && *string)
+   {
+ 
++    CCTK_DisableThreadLocal();
+     /* skip leading spaces */
+     while (*string && isspace (*string))
+     {
+@@ -2113,11 +2116,13 @@
+     {
+       break;
+     }
++    CCTK_EnableThreadLocal();
+ 
+     /* find end of group/varname string (can be either EOS,
+        space before next token, or following option string) */
+     group_var_string = string;
+     options_start = '{'; options_end = '}';
++    CCTK_DisableThreadLocal();
+     while (*string)
+     {
+       if (! *string || isspace (*string) || *string == '{')
+@@ -2149,6 +2154,7 @@
+       }
+       string++;
+     }
++    CCTK_EnableThreadLocal();
+ 
+     /* mark end of group/varname string */
+     delimiter = *string;
+Index: src/comm/Reduction.c
+===================================================================
+--- src/comm/Reduction.c	(revision 5122)
++++ src/comm/Reduction.c	(working copy)
+@@ -217,25 +217,25 @@
+ /********************************************************************
+  ********************    Static Variables   *************************
+  ********************************************************************/
+-static cHandledData *ReductionOperators = NULL;
+-static int num_reductions = 0;
+-static cHandledData *ReductionArrayOperators = NULL;
+-static int num_reductions_array = 0;
++static CCTK_TLS cHandledData *ReductionOperators = NULL;
++static CCTK_TLS int num_reductions = 0;
++static CCTK_TLS cHandledData *ReductionArrayOperators = NULL;
++static CCTK_TLS int num_reductions_array = 0;
+ 
+-static cHandledData *LocalArrayReductionOperators = NULL;
+-static int num_local_array_reductions = 0;
++static CCTK_TLS cHandledData *LocalArrayReductionOperators = NULL;
++static CCTK_TLS int num_local_array_reductions = 0;
+ 
+-static cHandledData *GridArrayReductionOperators = NULL;
+-static int num_GA_reductions = 0;
++static CCTK_TLS cHandledData *GridArrayReductionOperators = NULL;
++static CCTK_TLS int num_GA_reductions = 0;
+ 
+-static cGridArrayReduceOperator GA_reduc = NULL;
+-static char global[] ="c";
++static CCTK_TLS cGridArrayReduceOperator GA_reduc = NULL;
++static CCTK_TLS char global[] ="c";
+ 
+-static cHandledData *ReductionArraysGloballyOperators = NULL;
+-static int num_reductions_arrays_globally = 0;
++static CCTK_TLS cHandledData *ReductionArraysGloballyOperators = NULL;
++static CCTK_TLS int num_reductions_arrays_globally = 0;
+ 
+-static cReduceArraysGloballyOperator ArraysGlobally_reduc = NULL;
+-static char reduction_arrays_globally_global[] ="Y";
++static CCTK_TLS cReduceArraysGloballyOperator ArraysGlobally_reduc = NULL;
++static CCTK_TLS char reduction_arrays_globally_global[] ="Y";
+ 
+  /*@@
+    @routine    CCTKi_RegisterReductionOperator
+Index: src/schedule/ScheduleCreater.c
+===================================================================
+--- src/schedule/ScheduleCreater.c	(revision 5122)
++++ src/schedule/ScheduleCreater.c	(working copy)
+@@ -68,8 +68,8 @@
+  *********************     Local Data   *****************************
+  ********************************************************************/
+ 
+-static int n_schedule_groups = 0;
+-static cHandledData *schedule_groups = NULL;
++static CCTK_TLS int n_schedule_groups = 0;
++static CCTK_TLS cHandledData *schedule_groups = NULL;
+ 
+ 
+ /********************************************************************
+Index: src/util/Network.c
+===================================================================
+--- src/util/Network.c	(revision 5122)
++++ src/util/Network.c	(working copy)
+@@ -10,6 +10,7 @@
+ 
+ #include "cctk.h"
+ #include "util_Network.h"
++#include "cctk_tls.h"
+ 
+ #include <string.h>
+ 
+@@ -75,9 +76,9 @@
+ @@*/
+ void Util_GetHostName (char *returned_name, int length)
+ {
+-  static int have_name = 0;
++  static CCTK_TLS int have_name = 0;
+   static char name[100];
+-  
++
+   if (! have_name)
+   {
+     gethostname (name, sizeof name);
+@@ -88,7 +89,9 @@
+ #ifdef HAVE_GETHOSTBYNAME
+       struct hostent *thishostent = 0;
+ #ifndef CRAY_XT
++      CCTK_DisableThreadLocal();
+       thishostent = gethostbyname (name);
++      CCTK_EnableThreadLocal();
+ #endif
+       
+       if (thishostent)
+Index: src/util/snprintf.c
+===================================================================
+--- src/util/snprintf.c	(revision 5122)
++++ src/util/snprintf.c	(working copy)
+@@ -117,6 +117,8 @@
+ # endif
+ #endif
+ 
++#include "cctk_tls.h"
++
+ #ifdef HAVE_LONG_DOUBLE
+ #define LDOUBLE long double
+ #else
+@@ -233,6 +235,7 @@
+       }
+       break;
+     case DP_S_MIN:
++      CCTK_DisableThreadLocal();
+       if (isdigit(ch)) 
+       {
+ 	min = 10*min + char_to_int (ch);
+@@ -246,6 +249,7 @@
+       } 
+       else 
+ 	state = DP_S_DOT;
++      CCTK_EnableThreadLocal();
+       break;
+     case DP_S_DOT:
+       if (ch == '.') 
+Index: src/util/CactusTimers.c
+===================================================================
+--- src/util/CactusTimers.c	(revision 5122)
++++ src/util/CactusTimers.c	(working copy)
+@@ -84,14 +84,14 @@
+ /********************************************************************
+  *********************     Local Data   *****************************
+  ********************************************************************/
+-static int n_clocks = 0;
+-static cHandledData *clocks = NULL;
++static CCTK_TLS int n_clocks = 0;
++static CCTK_TLS cHandledData *clocks = NULL;
+ 
+ /* The total number of clock values. */
+-static int n_clock_vals = 0;
++static CCTK_TLS int n_clock_vals = 0;
+ 
+-static int n_timers = 0;
+-static cHandledData *timers = NULL;
++static CCTK_TLS int n_timers = 0;
++static CCTK_TLS cHandledData *timers = NULL;
+ 
+ 
+  /*@@
+Index: simfactory/mdb/optionlists/shelob-ampi-gcc.cfg
+===================================================================
+--- simfactory/mdb/optionlists/shelob-ampi-gcc.cfg	(revision 0)
++++ simfactory/mdb/optionlists/shelob-ampi-gcc.cfg	(revision 0)
+@@ -0,0 +1,130 @@
++# Whenever this version string changes, the application is configured
++# and rebuilt from scratch
++VERSION = 2014-05-20-shelob-ampi
++
++AMPI = yes
++
++CPP =  cpp
++FPP =  cpp
++#CC  =  /home/gzheng/charm/net-linux-x86_64-icc/bin/ampicc -default-to-aout
++#CXX =  /home/gzheng/charm/net-linux-x86_64-icc/bin/ampicxx
++#CUCC = /usr/local/packages/cuda/5.0/bin/nvcc
++#F77 =  /home/gzheng/charm/net-linux-x86_64-icc/bin/ampif77
++#F90 =  /home/gzheng/charm/net-linux-x86_64-icc/bin/ampif90
++CC  =  /usr/bin/gcc
++CXX =  /usr/bin/g++
++CUCC = /usr/local/packages/cuda/5.0/bin/nvcc
++F77 =  gfortran
++F90 =  gfortran
++
++CPPFLAGS  = -DMPICH_IGNORE_CXX_SEEK
++FPPFLAGS  = -traditional
++CFLAGS    = -g3 -m64 -std=gnu99  -mno-tls-direct-seg-refs -DCCTK_HAVE_AMPI -DCCTK_TLS=__thread
++CXXFLAGS  = -g3 -m64 -std=gnu++0x -mno-tls-direct-seg-refs -DCCTK_HAVE_AMPI -DCCTK_TLS=__thread
++CUCCFLAGS = --maxrregcount 60 -Xcompiler -march=native -Drestrict=__restrict__
++F77FLAGS = -g3 -m128bit-long-double -ffixed-line-length-none
++F90FLAGS = -g3 -m128bit-long-double -ffixed-line-length-none
++
++LD = /home/gzheng/git/charm/net-linux-x86_64/bin/ampicxx -tlsglobals -save
++LDFLAGS = 
++#LIBDIRS = /usr/local/compilers/Intel/composer_xe_2013.0.079/compiler/lib/intel64
++
++C_LINE_DIRECTIVES = yes
++F_LINE_DIRECTIVES = yes
++
++VECTORISE                = yes
++VECTORISE_ALIGNED_ARRAYS = no
++VECTORISE_INLINE         = no
++
++# -check-uninit fails for asm output operands
++DEBUG            = yes
++CPP_DEBUG_FLAGS  = -DCARPET_DEBUG
++FPP_DEBUG_FLAGS  = -DCARPET_DEBUG
++C_DEBUG_FLAGS    = -O0 -g # -check-uninit
++CXX_DEBUG_FLAGS  = -O0 -g # -check-uninit
++CUCC_DEBUG_FLAGS = 
++F77_DEBUG_FLAGS  = -check bounds -check format # -check all
++F90_DEBUG_FLAGS  = -check bounds -check format # -check all
++
++OPTIMISE            = no
++CPP_OPTIMISE_FLAGS  = # -DCARPET_OPTIMISE
++FPP_OPTIMISE_FLAGS  = # -DCARPET_OPTIMISE
++CUCC_OPTIMISE_FLAGS = -O3
++C_OPTIMISE_FLAGS = 
++CXX_OPTIMISE_FLAGS = 
++F77_OPTIMISE_FLAGS = 
++F90_OPTIMISE_FLAGS = 
++#C_OPTIMISE_FLAGS   = -O3 -funsafe-loop-optimizations -fsee -ftree-loop-linear -ftree-loop-im -fivopts -fvect-cost-model -funroll-loops -funroll-all-loops -fvariable-expansion-in-unroller -ffast-math -fassociative-math -freciprocal-math -fno-trapping-math
++#CXX_OPTIMISE_FLAGS = -O3 -funsafe-loop-optimizations -fsee -ftree-loop-linear -ftree-loop-im -fivopts -fvect-cost-model -funroll-loops -funroll-all-loops -fvariable-expansion-in-unroller -ffast-math -fassociative-math -freciprocal-math -fno-trapping-math
++#F77_OPTIMISE_FLAGS = -O3 -funsafe-loop-optimizations -fsee -ftree-loop-linear -ftree-loop-im -fivopts -fvect-cost-model -funroll-loops -funroll-all-loops -fvariable-expansion-in-unroller -ffast-math -fassociative-math -freciprocal-math -fno-trapping-math -fno-protect-parens
++#F90_OPTIMISE_FLAGS = -O3 -funsafe-loop-optimizations -fsee -ftree-loop-linear -ftree-loop-im -fivopts -fvect-cost-model -funroll-loops -funroll-all-loops -fvariable-expansion-in-unroller -ffast-math -fassociative-math -freciprocal-math -fno-trapping-math -fno-protect-parens
++
++C_NO_OPTIMISE_FLAGS    = -O0
++CXX_NO_OPTIMISE_FLAGS  = -O0
++CUCC_NO_OPTIMISE_FLAGS =
++F77_NO_OPTIMISE_FLAGS  = -O0
++F90_NO_OPTIMISE_FLAGS  = -O0
++
++PROFILE           = no
++CPP_PROFILE_FLAGS =
++FPP_PROFILE_FLAGS =
++C_PROFILE_FLAGS   = -pg
++CXX_PROFILE_FLAGS = -pg
++F77_PROFILE_FLAGS = -pg
++F90_PROFILE_FLAGS = -pg
++
++OPENMP           = no
++CPP_OPENMP_FLAGS = -fopenmp
++FPP_OPENMP_FLAGS = -D_OPENMP
++C_OPENMP_FLAGS   = -fopenmp
++CXX_OPENMP_FLAGS = -fopenmp
++F77_OPENMP_FLAGS = -fopenmp
++F90_OPENMP_FLAGS = -fopenmp
++
++WARN            = yes
++CPP_WARN_FLAGS  = 
++FPP_WARN_FLAGS  = -Wall
++C_WARN_FLAGS    = 
++CXX_WARN_FLAGS  = 
++CUCC_WARN_FLAGS = -Xcompiler -Wall
++F77_WARN_FLAGS  = 
++F90_WARN_FLAGS  = 
++
++
++
++BLAS_DIR  = NO_BUILD
++BLAS_LIBS = -mkl
++
++FFTW3_DIR = /usr/local/packages/fftw/3.3.3/Intel-13.0.0
++
++GSL_DIR = /usr/local/packages/gsl/1.15/Intel-13.0.0
++
++# This doesn't work -- its headers require "mpi.h" which is not found
++#HDF5_DIR = /usr/local/packages/hdf5/1.8.10/Intel-13.0.0-openmpi-1.6.2
++HDF5_DIR = BUILD
++
++LAPACK_DIR  = NO_BUILD
++LAPACK_LIBS = -mkl
++
++MPI = CUSTOM
++MPI_DIR      = /home/gzheng/git/charm/net-linux-x86_64/
++MPI_INC_DIRS = /home/gzheng/git/charm/net-linux-x86_64/include
++MPI_LIB_DIRS = /home/gzheng/git/charm/net-linux-x86_64/lib
++MPI_LIBS     = moduleampi
++
++#MPI_INC_DIRS = /usr/local/packages/mvapich2/1.9a/Intel-13.0.0/include
++#MPI_LIB_DIRS = /usr/local/packages/mvapich2/1.9a/Intel-13.0.0/lib /usr/lib64
++#MPI_LIBS     = mpich mpl ibverbs ibumad rdmacm   bfd iberty rt
++
++PAPI_DIR = /home/diener/papi-5.1.0.2-intel
++PAPI_LIBS = papi
++
++#PETSC_DIR       = /usr/local/packages/petsc-2.3.3-intel9.1-mvapich2
++#PETSC_ARCH      = linux-64
++#PETSC_ARCH_LIBS = X11
++
++PTHREADS = no
++
++HDF5_ENABLE_FORTRAN = no
++HDF5_ENABLE_CXX = no
++
+Index: arrangements/CactusBase/Boundary/src/Boundary.c
+===================================================================
+--- arrangements/CactusBase/Boundary/src/Boundary.c	(revision 329)
++++ arrangements/CactusBase/Boundary/src/Boundary.c	(working copy)
+@@ -129,18 +129,18 @@
+  *        key   = boundary condition name (eg "Radiation")
+  *        value = a CCTK_FPOINTER pointing to a function to implement that BC
+  */
+-static int physbc_table_handle = -1;
++static CCTK_TLS int physbc_table_handle = -1;
+ 
+ /* Linked list for storing data associated with selections list itself */
+-static struct BCDATA *bcdata_list = NULL;
++static CCTK_TLS struct BCDATA *bcdata_list = NULL;
+ 
+ /* Array of (number of variables) faces specifications, for checking
+    for duplicate bc selection */
+-static CCTK_INT *selected_faces = NULL;
+-static int num_cctk_vars = 0;
++static CCTK_TLS CCTK_INT *selected_faces = NULL;
++static CCTK_TLS int num_cctk_vars = 0;
+ 
+ /* 'The' GH, i.e. to check that there is not more than one... */
+-static CCTK_POINTER_TO_CONST theGH = NULL;
++static CCTK_TLS CCTK_POINTER_TO_CONST theGH = NULL;
+ 
+ /********************************************************************
+  *********************     Aliased Routines   **********************
+Index: arrangements/CactusBase/Boundary/src/StaticBoundary.c
+===================================================================
+--- arrangements/CactusBase/Boundary/src/StaticBoundary.c	(revision 329)
++++ arrangements/CactusBase/Boundary/src/StaticBoundary.c	(working copy)
+@@ -1132,7 +1132,7 @@
+ {
+   int retval, dim, i;
+   CCTK_INT *boundary_widths;
+-  static int warned;
++  static CCTK_TLS int warned;
+ 
+   /* Convert stencil_alldirs to new format */
+   dim = CCTK_GroupDimFromVarI (first_var);
+Index: arrangements/CactusBase/IOBasic/src/OutputInfo.c
+===================================================================
+--- arrangements/CactusBase/IOBasic/src/OutputInfo.c	(revision 202)
++++ arrangements/CactusBase/IOBasic/src/OutputInfo.c	(working copy)
+@@ -94,8 +94,8 @@
+     }
+     if (myGH->outInfo_dt > 0)
+     {
+-      static int output_iteration = -1;
+-      static int output_this_iteration;
++      static CCTK_TLS int output_iteration = -1;
++      static CCTK_TLS int output_this_iteration;
+       if(! (cctk_iteration >= output_iteration))
+         CCTK_VWarn ( 0, __LINE__, __FILE__, "IOBasic", "cctk_iteration out of bounds");
+       if (cctk_iteration > output_iteration)
+@@ -362,8 +362,8 @@
+   int vindex, out_old, times_set, update_reductions_list;
+   CCTK_REAL outdt_old;
+   iobasic_reduction_t *reduction, *next;
+-  static int outInfo_vars_lastset       = -1;
+-  static int outInfo_reductions_lastset = -1;
++  static CCTK_TLS int outInfo_vars_lastset       = -1;
++  static CCTK_TLS int outInfo_reductions_lastset = -1;
+   iobasic_parseinfo_t info;
+   DECLARE_CCTK_PARAMETERS
+ 
+Index: arrangements/CactusBase/IOBasic/src/Startup.c
+===================================================================
+--- arrangements/CactusBase/IOBasic/src/Startup.c	(revision 202)
++++ arrangements/CactusBase/IOBasic/src/Startup.c	(working copy)
+@@ -20,6 +20,7 @@
+ #include "util_Table.h"
+ #include "CactusBase/IOUtil/src/ioutil_Utils.h"
+ #include "iobasicGH.h"
++#include "cctk_tls.h"
+ 
+ static const char *rcsid = "$Header$";
+ 
+@@ -370,22 +371,26 @@
+   reduction_op = malloc (strlen (string_start) + 1);
+   while (string_start && *string_start)
+   {
++    CCTK_DisableThreadLocal();
+     /* skip leading spaces */
+     while (isspace ((int) *string_start))
+     {
+       string_start++;
+     }
++    CCTK_EnableThreadLocal();
+     if (! *string_start)
+     {
+       break;
+     }
+ 
++    CCTK_DisableThreadLocal();
+     /* advance to end of the operator string */
+     string_end = string_start + 1;
+     while (*string_end && ! isspace ((int) *string_end))
+     {
+       string_end++;
+     }
++    CCTK_EnableThreadLocal();
+ 
+     /* copy the operator string */
+     strncpy (reduction_op, string_start, string_end - string_start);
+Index: arrangements/CactusBase/IOBasic/src/OutputScalar.c
+===================================================================
+--- arrangements/CactusBase/IOBasic/src/OutputScalar.c	(revision 202)
++++ arrangements/CactusBase/IOBasic/src/OutputScalar.c	(working copy)
+@@ -332,8 +332,8 @@
+   int vindex, out_old, times_set, update_reductions_list, num_vars;
+   CCTK_REAL outdt_old;
+   iobasic_reduction_t *reduction, *next;
+-  static int outScalar_vars_lastset       = -1;
+-  static int outScalar_reductions_lastset = -1;
++  static CCTK_TLS int outScalar_vars_lastset       = -1;
++  static CCTK_TLS int outScalar_reductions_lastset = -1;
+   iobasic_parseinfo_t info;
+   char *msg, *oldmsg, *fullname;
+   DECLARE_CCTK_PARAMETERS
+@@ -510,8 +510,8 @@
+     }
+     if (myGH->outScalar_dt > 0)
+     {
+-      static int output_iteration = -1;
+-      static int output_this_iteration;
++      static CCTK_TLS int output_iteration = -1;
++      static CCTK_TLS int output_this_iteration;
+       if(! (cctk_iteration >= output_iteration))
+         CCTK_VWarn ( 0, __LINE__, __FILE__, "IOBasic", "cctk_iteration out of bounds");
+       if (cctk_iteration > output_iteration)
+Index: arrangements/CactusBase/SymBase/src/SymBase.h
+===================================================================
+--- arrangements/CactusBase/SymBase/src/SymBase.h	(revision 67)
++++ arrangements/CactusBase/SymBase/src/SymBase.h	(working copy)
+@@ -69,10 +69,10 @@
+ 
+ 
+ /* Number of registered symmetries */
+-extern int SymBase_num_symmetries;
++extern CCTK_TLS int SymBase_num_symmetries;
+ 
+ /* The names of these symmetries */
+-extern const char **SymBase_symmetry_names;
++extern CCTK_TLS const char **SymBase_symmetry_names;
+ 
+ 
+ 
+Index: arrangements/CactusBase/SymBase/src/Handles.c
+===================================================================
+--- arrangements/CactusBase/SymBase/src/Handles.c	(revision 67)
++++ arrangements/CactusBase/SymBase/src/Handles.c	(working copy)
+@@ -24,10 +24,10 @@
+ 
+ 
+ /* Number of registered symmetries */
+-int SymBase_num_symmetries;
++CCTK_TLS int SymBase_num_symmetries;
+ 
+ /* The names of these symmetries */
+-const char **SymBase_symmetry_names;
++CCTK_TLS const char **SymBase_symmetry_names;
+ 
+ 
+ 

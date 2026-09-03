@@ -1,0 +1,165 @@
+From 7571f5f57ee863b1ec46fcd4ebb2266962cf24e8 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Thu, 21 Mar 2013 18:56:02 -0700
+Subject: [PATCH 09/12] GRHydro_Init_Data: add routine to force boundary data
+ to Bondi
+
+---
+ param.ccl            |    4 ++++
+ schedule.ccl         |   10 ++++++++++
+ src/GRHydro_BondiM.c |   54 ++++++++++++++++++++++++++++++++++++++++++--------
+ 3 files changed, 60 insertions(+), 8 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index 7594bc8..cf0138f 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -420,6 +420,10 @@ CCTK_REAL bondi_freeze_outer_radius "reset to initial at radii above this"
+   *:* :: "any value"
+ } 1e300
+ 
++CCTK_BOOLEAN bondi_overwrite_boundary "reset data to initial data in outer boundary in boundary condition"
++{
++} "no"
++
+ # For Poloidal Magnetic field test:
+ 
+ CCTK_REAL poloidal_A_b  "Vector potential strength"
+diff --git a/schedule.ccl b/schedule.ccl
+index d5aa21a..b0a1dbb 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -257,6 +257,16 @@ SCHEDULE GRHydro_BondiM_Range IN HydroBase_Con2Prim BEFORE Con2Prim
+ } "force analytic solution outside anulus"
+ }
+ 
++if(bondi_overwrite_boundary ) {
++# this is a terrible HACK. We really should at least schedule ourselves in
++# Boundaries and look at cctk_bbox and the symmetry flags
++# by now Cactus is convenient CCTK_LOOP macros for this...
++SCHEDULE GRHydro_BondiM_Boundary IN HydroBase_Boundaries BEFORE HydroBase_Select_Boundaries
++{
++  LANG: C
++} "force analytic solution in boundaries"
++}
++
+ if (CCTK_EQUALS(initial_Bvec, "poloidalmagfield") || CCTK_EQUALS(initial_Avec, "poloidalmagfield"))
+ {
+ #  SCHEDULE GRHydro_PoloidalMagFieldM AT CCTK_INITIAL AFTER IN HydroBase_Initial AFTER rnsid_init AFTER TOV_Initial_Data after CCCC_StarMapper_InitialData
+diff --git a/src/GRHydro_BondiM.c b/src/GRHydro_BondiM.c
+index c59f612..2ff8bc5 100644
+--- a/src/GRHydro_BondiM.c
++++ b/src/GRHydro_BondiM.c
+@@ -890,22 +890,41 @@ static void  calc_vel_bondi( CCTK_REAL vtmp, CCTK_REAL x[NDIM], CCTK_REAL x_sphe
+    -- driver routine for the Bondi solution;
+ 
+ ***********************************************************************************/
+-static void GRHydro_BondiM_Internal(CCTK_ARGUMENTS, CCTK_REAL range_min, CCTK_REAL range_max);
++static void GRHydro_BondiM_Internal(CCTK_ARGUMENTS, 
++  CCTK_REAL range_min, CCTK_REAL range_max, 
++  const int range_imin[], const int range_imax[]);
+ 
+ void GRHydro_BondiM(CCTK_ARGUMENTS)
+ {
+-  GRHydro_BondiM_Internal(CCTK_PASS_CTOC, 1e100, -1e100);
++  DECLARE_CCTK_ARGUMENTS;
++  const int null[3] = {0,0,0};
++  GRHydro_BondiM_Internal(CCTK_PASS_CTOC, 1e100, -1e100, cctk_lsh, null);
+ }
+ 
+ void GRHydro_BondiM_Range(CCTK_ARGUMENTS)
+ {
+   DECLARE_CCTK_PARAMETERS;
++  DECLARE_CCTK_ARGUMENTS;
++  const int null[3] = {0,0,0};
+   GRHydro_BondiM_Internal(CCTK_PASS_CTOC, bondi_freeze_inner_radius,
+-                          bondi_freeze_outer_radius);
++                          bondi_freeze_outer_radius,
++                          cctk_lsh, null);
+ }
+ 
++void GRHydro_BondiM_Boundary(CCTK_ARGUMENTS)
++{
++  DECLARE_CCTK_PARAMETERS;
++  DECLARE_CCTK_ARGUMENTS;
++  const int imax[3] = {cctk_lsh[0]-cctk_nghostzones[0],
++                       cctk_lsh[1]-cctk_nghostzones[1],
++                       cctk_lsh[2]-cctk_nghostzones[2]};
++  GRHydro_BondiM_Internal(CCTK_PASS_CTOC, 1e100, -1e100, 
++                          cctk_nghostzones, imax);
++}
+ 
+-static void GRHydro_BondiM_Internal(CCTK_ARGUMENTS, CCTK_REAL range_min, CCTK_REAL range_max)
++static void GRHydro_BondiM_Internal(CCTK_ARGUMENTS, 
++  CCTK_REAL range_min, CCTK_REAL range_max,
++  const int range_imin[], const int range_imax[])
+ {
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+@@ -920,7 +939,7 @@ static void GRHydro_BondiM_Internal(CCTK_ARGUMENTS, CCTK_REAL range_min, CCTK_RE
+ 
+   int nbondi; 
+   
+-  const int size = cctk_lsh[0] * cctk_lsh[1] * cctk_lsh[2];
++  const int size = cctk_ash[0] * cctk_ash[1] * cctk_ash[2];
+   int i, imin, j;
+ 
+ #    define velx(i_)  vel[i_ + 0*size]
+@@ -952,7 +971,7 @@ static void GRHydro_BondiM_Internal(CCTK_ARGUMENTS, CCTK_REAL range_min, CCTK_RE
+   } else if( CCTK_EQUALS(bondi_Bvec_method, "transform")) {
+     bvec_method = BVEC_TRANSFORM;
+   } else {
+-    CCTK_VWarn(CCTK_WARN_ABORT, __LINE__, __FILE__, CCTK_THORNSTRING,
++    CCTK_VError(__LINE__, __FILE__, CCTK_THORNSTRING,
+                "Unknown bvec setup method '%s'", bondi_Bvec_method);
+   }
+ 
+@@ -1109,7 +1128,11 @@ static void GRHydro_BondiM_Internal(CCTK_ARGUMENTS, CCTK_REAL range_min, CCTK_RE
+   *********************************************************************************/
+   xpos[TT] = 0.;
+   
+-  for(i=0; i < size; i++) {
++  for(int kk = 0 ; kk < cctk_lsh[2] ; kk++) {
++  for(int jj = 0 ; jj < cctk_lsh[1] ; jj++) {
++  for(int ii = 0 ; ii < cctk_lsh[0] ; ii++) {
++
++    i = CCTK_GFINDEX3D(cctkGH, ii,jj,kk);
+ 
+     xpos[XX] = x[i] ;
+     xpos[YY] = y[i] ;
+@@ -1152,8 +1175,21 @@ static void GRHydro_BondiM_Internal(CCTK_ARGUMENTS, CCTK_REAL range_min, CCTK_RE
+ 
+     rspher = x_spher[RR]; 
+ 
++    // the conditions here are a bit strange. The logic goes like this:
++    // range_min,range_max (and range_imin, range_imax) are radii (and indices)
++    // bounding the volume where we want to evolve the fields. So during
++    // evolution we only reset to ID data if we are NOT inside this volume. For
++    // ID we pass special values for min/max such that these conditions never
++    // trigger. 
++    // TODO: do this more nicely. The fact that a comment is needed should tell
++    // me that this is getting too complex.
+     if(rspher > range_min && rspher < range_max)
+       continue;
++    if(ii >= range_imin[0] && ii < range_imax[0] &&
++       jj >= range_imin[1] && jj < range_imax[1] &&
++       kk >= range_imin[2] && kk < range_imax[2]) {
++      continue;
++    }
+ 
+     /* Find nearest point in the Bondi solution : */
+     j = (int)  ( 0.5 +  (log10(rspher) - logrmin) / dlogr ) ; 
+@@ -1266,7 +1302,9 @@ static void GRHydro_BondiM_Internal(CCTK_ARGUMENTS, CCTK_REAL range_min, CCTK_RE
+     if(psidc)
+       psidc[i] = 0.;
+                  
+-  }
++  } // ii
++  } // jj
++  } // kk
+ 
+   free(r_bondi);      free(logr_bondi);      free(rho_bondi);     free(u_bondi);   free(v_bondi);
+ 
+-- 
+1.7.10.4
+

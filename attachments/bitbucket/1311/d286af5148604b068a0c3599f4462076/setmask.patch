@@ -1,0 +1,36 @@
+Index: SetMask.c
+===================================================================
+--- SetMask.c	(revision 117)
++++ SetMask.c	(working copy)
+@@ -15,6 +15,20 @@
+   if (!mask)
+     CCTK_WARN(0, "No such variable, or no storage enabled");
+ 
++  /* Delete mask first!  */
++  #pragma omp parallel
++      {
++        LC_LOOP3(mask_zero, i,j,k, 0,0,0,
++                 cctk_lsh[0], cctk_lsh[1], cctk_lsh[2],
++                 cctk_lsh[0], cctk_lsh[1], cctk_lsh[2])
++        {
++          CCTK_INT i3D = CCTK_GFINDEX3D(cctkGH, i, j, k);
++          mask[i3D] = HYDRO_EXCISION_NORMAL;
++        }
++        LC_ENDLOOP3(mask_zero);
++      }
++
++  /* Now set excision! */
+   for (int smi = 0; smi < 10; smi++)
+   {
+     CCTK_INT sfi = sf_IdFromName(SetMask_SurfaceIndex[smi], SetMask_SurfaceName[smi]);
+@@ -35,10 +49,6 @@
+           {
+             mask[i3D] = HYDRO_EXCISION_EXCISED;
+           }
+-          else// if (SetMask_ResetAll)
+-          {
+-            mask[i3D] = HYDRO_EXCISION_NORMAL;
+-          }
+         }
+         LC_ENDLOOP3(setsurface);
+       }

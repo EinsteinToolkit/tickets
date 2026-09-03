@@ -1,0 +1,53 @@
+From d81d99ef3ebddd85855afa67923e5557c27def51 Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Thu, 13 Dec 2012 23:38:15 -0800
+Subject: [PATCH 22/25] GRHydro: use distinct dummys for calc_vlow_blow
+
+also check actual timelevels information for storage of bcom
+---
+ src/GRHydro_CalcBcom.F90 |   12 +++++++-----
+ 1 file changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/src/GRHydro_CalcBcom.F90 b/src/GRHydro_CalcBcom.F90
+index 78bbae7..d6bbe23 100644
+--- a/src/GRHydro_CalcBcom.F90
++++ b/src/GRHydro_CalcBcom.F90
+@@ -30,12 +30,14 @@
+ 
+    CCTK_REAL :: velxlow, velylow, velzlow
+    CCTK_REAL :: Bvecxlow,Bvecylow,Bveczlow
+-   CCTK_REAL :: bdotv,b2,bxlow,bylow,bzlow,dum
++   CCTK_REAL :: bdotv,b2,bxlow,bylow,bzlow,dum1,dum2
+    CCTK_INT :: i,j,k
+    CCTK_INT :: GRHydro_UseGeneralCoordinates
++   integer :: timelevels
+ 
+-   if(stress_energy_state.ne.0) then
+-     return
++   call CCTK_ActiveTimeLevels(timelevels, cctkGH, "GRHydro::bcom")
++   if(timelevels.eq.0) then
++     call CCTK_WARN(0,"No storage for GRHydro::bcom")
+    end if
+ 
+    if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+@@ -43,7 +45,7 @@
+    end if
+ 
+    !$OMP PARALLEL DO PRIVATE(i,j,k,velxlow, velylow, velzlow,&
+-   !$OMP Bvecxlow,Bvecylow,Bveczlow, bdotv,dum,b2,bxlow,bylow,bzlow)
++   !$OMP Bvecxlow,Bvecylow,Bveczlow, bdotv,dum1,dum2,b2,bxlow,bylow,bzlow)
+ 
+    do k = 1, cctk_lsh(3)
+      do j = 1, cctk_lsh(2)
+@@ -53,7 +55,7 @@
+                gyy(i,j,k),gyz(i,j,k),gzz(i,j,k), &
+                velx(i,j,k),vely(i,j,k),velz(i,j,k),Bvecx(i,j,k),Bvecy(i,j,k),Bvecz(i,j,k), &
+                velxlow,velylow,velzlow,Bvecxlow,Bvecylow,Bveczlow, &
+-               bdotv,b2,dum,dum,bxlow,bylow,bzlow)
++               bdotv,b2,dum1,dum2,bxlow,bylow,bzlow)
+ 
+            bcom_sq(i,j,k) = b2 
+            bcom0(i,j,k) = w_lorentz(i,j,k)*bdotv/alp(i,j,k)
+-- 
+1.7.10.4
+

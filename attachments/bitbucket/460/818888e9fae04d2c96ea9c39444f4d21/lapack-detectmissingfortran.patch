@@ -1,0 +1,30 @@
+From 83eb4cbde35bd1953805b28f25143d9adb935216 Mon Sep 17 00:00:00 2001
+From: Ian Hinder <ian.hinder@aei.mpg.de>
+Date: Tue, 28 Jun 2011 16:13:27 +0200
+Subject: [PATCH] Abort on missing Fortran compiler
+
+---
+ LAPACK.sh |    7 +++++++
+ 1 files changed, 7 insertions(+), 0 deletions(-)
+
+diff --git a/LAPACK.sh b/LAPACK.sh
+index 6598090..3c22386 100644
+--- a/LAPACK.sh
++++ b/LAPACK.sh
+@@ -60,6 +60,13 @@ if [ -z "${LAPACK_DIR}" -o "${LAPACK_DIR}" = 'BUILD' ]; then
+     INSTALL_DIR=${SCRATCH_BUILD}/external/${THORN}
+     DONE_FILE=${SCRATCH_BUILD}/done/${THORN}
+     LAPACK_DIR=${INSTALL_DIR}
++
++    if [ "${F77}" = "none" ]; then
++        echo 'BEGIN ERROR'
++        echo "Building LAPACK requires a fortran compiler, but there is none configured: F77 = $F77.  Aborting."
++        echo 'END ERROR'
++        exit 1
++    fi
+     
+ (
+     exec >&2                    # Redirect stdout to stderr
+-- 
+1.7.5.4
+

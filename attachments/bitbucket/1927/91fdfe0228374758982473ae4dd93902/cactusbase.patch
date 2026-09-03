@@ -1,0 +1,27 @@
+diff --git a/CartGrid3D/schedule.ccl b/CartGrid3D/schedule.ccl
+index e7730f2..0dbb3a1 100644
+--- a/CartGrid3D/schedule.ccl
++++ b/CartGrid3D/schedule.ccl
+@@ -52,19 +52,19 @@ else if (CCTK_EQUALS (set_coordinate_ranges_on, "first level"))
+ schedule CartGrid3D_SetCoordinates as SpatialCoordinates at CCTK_BASEGRID
+ {
+   LANG:C
+-  WRITES: grid::coordinates
++  WRITES: grid::coordinates(everywhere)
+ } "Set up spatial 3D Cartesian coordinates on the GH"
+ 
+ schedule CartGrid3D_SetCoordinates as SpatialCoordinates at CCTK_POSTREGRIDINITIAL
+ {
+   LANG: C
+-  WRITES: grid::coordinates
++  WRITES: grid::coordinates(everywhere)
+ } "Set Coordinates after regridding"
+ 
+ schedule CartGrid3D_SetCoordinates as SpatialCoordinates at CCTK_POSTREGRID
+ {
+   LANG: C
+-  WRITES: grid::coordinates
++  WRITES: grid::coordinates(everywhere)
+ } "Set Coordinates after regridding"
+ 
+ schedule CartGrid3D_ApplyBC in BoundaryConditions

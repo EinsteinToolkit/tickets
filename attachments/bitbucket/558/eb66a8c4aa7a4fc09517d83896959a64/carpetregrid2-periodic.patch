@@ -1,0 +1,168 @@
+Subject: CarpetRegrid2: Add periodic boundary conditions
+From: Erik Schnetter <eschnetter@perimeterinstitute.ca>
+Date: 2011-09-15
+
+Add new parameters symmetry_periodic_x, symmetry_periodic_y, and
+symmetry_periodic_z that ensure that the generated grid structure has
+the corresponding symmetry.
+
+
+diff -r 9e10c091d192 Carpet/CarpetRegrid2/param.ccl
+--- repos/carpet/Carpet/CarpetRegrid2/param.ccl	Thu Sep 15 09:12:23 2011 -0400
++++ repos/carpet/Carpet/CarpetRegrid2/param.ccl	Thu Sep 15 15:33:43 2011 -0400
+@@ -62,6 +62,18 @@
+ {
+ } no
+ 
++BOOLEAN symmetry_periodic_x "Ensure a periodicity symmetry in the x direction"
++{
++} no
++
++BOOLEAN symmetry_periodic_y "Ensure a periodicity symmetry in the y direction"
++{
++} no
++
++BOOLEAN symmetry_periodic_z "Ensure a periodicity symmetry in the z direction"
++{
++} no
++
+ 
+ 
+ BOOLEAN adaptive_refinement "Use level_mask for adaptive refinement" STEERABLE=always
+diff -r 9e10c091d192 Carpet/CarpetRegrid2/src/property.cc
+--- repos/carpet/Carpet/CarpetRegrid2/src/property.cc	Thu Sep 15 09:12:23 2011 -0400
++++ repos/carpet/Carpet/CarpetRegrid2/src/property.cc	Thu Sep 15 15:33:43 2011 -0400
+@@ -556,6 +556,94 @@
+   
+   
+   //////////////////////////////////////////////////////////////////////////////
++  // Make the boxes periodic in one direction
++  //////////////////////////////////////////////////////////////////////////////
++  
++  template<int dir>
++  ibset periodic<dir>::
++  symmetrised_regions (gh const& hh, dh const& dd,
++                       level_boundary const& bnd,
++                       vector<ibset> const& regions, int const rl)
++  {
++    ibbox const& baseextent = hh.baseextent(0,rl);
++    
++    rvect const domainsize (bnd.physical_upper - bnd.physical_lower);
++    ivect const ioffset =
++      ivect::dir(dir) * rpos2ipos (domainsize, bnd.origin, bnd.scale, hh, rl);
++    assert (all (ioffset % baseextent.stride() == 0));
++    
++    ibset symmetrised = regions.at(rl);
++    for (ibset::const_iterator
++           ibb = regions.at(rl).begin(); ibb != regions.at(rl).end(); ++ ibb)
++    {
++      ibbox const& bb = *ibb;
++      
++      // Shift boxes upwards and downwards by one period
++      symmetrised |= bb.shift(+ioffset);
++      symmetrised |= bb.shift(-ioffset);
++    }
++    
++    return symmetrised;
++  }
++  
++  template<int dir>
++  bool periodic<dir>::
++  test_impl (gh const& hh, dh const& dd,
++             level_boundary const& bnd,
++             vector<ibset> const& regions, int const rl)
++  {
++    DECLARE_CCTK_PARAMETERS;
++    
++    ivect const symmetry_periodic
++      (symmetry_periodic_x, symmetry_periodic_y, symmetry_periodic_z);
++    if (not symmetry_periodic[dir]) return true;
++    
++    ibset const symmetrised = symmetrised_regions (hh, dd, bnd, regions, rl);
++    
++    // We cannot test for equality, since the difference may be
++    // outside of the domain (and hence irrelevant)
++    // return regions.AT(rl) == symmetrised;
++    
++    // Test whether any part of the difference (i.e. that part of the
++    // level that would be added by symmetrising) is inside the
++    // domain. If the difference is outside, we can safely ignore it.
++    ibbox const& baseextent = hh.baseextent(0,rl);
++    ibset const difference = symmetrised - regions.AT(rl);
++    return (difference & baseextent).empty();
++  }
++  
++  template<int dir>
++  void periodic<dir>::
++  enforce_impl (gh const& hh, dh const& dd,
++                level_boundary const& bnd,
++                vector<ibset>& regions, int const rl)
++  {
++    DECLARE_CCTK_PARAMETERS;
++    
++    ivect const symmetry_periodic
++      (symmetry_periodic_x, symmetry_periodic_y, symmetry_periodic_z);
++    assert (symmetry_periodic[dir]);
++    
++    if (veryverbose) {
++      cout << "Refinement level " << rl << ": making regions periodic in the " << "xyz"[dir] << " direction...\n";
++    }
++    
++    regions.AT(rl) = symmetrised_regions (hh, dd, bnd, regions, rl);
++    
++    if (veryverbose) {
++      cout << "   New regions are " << regions.at(rl) << "\n";
++    }
++  }
++  
++  
++  
++  template class periodic<0>;
++  template class periodic<1>;
++  template class periodic<2>;
++  
++  
++  
++  //////////////////////////////////////////////////////////////////////////////
+   // Clip at the outer boundary
+   //////////////////////////////////////////////////////////////////////////////
+   
+diff -r 9e10c091d192 Carpet/CarpetRegrid2/src/property.hh
+--- repos/carpet/Carpet/CarpetRegrid2/src/property.hh	Thu Sep 15 09:12:23 2011 -0400
++++ repos/carpet/Carpet/CarpetRegrid2/src/property.hh	Thu Sep 15 15:33:43 2011 -0400
+@@ -128,6 +128,22 @@
+   
+   
+   
++  // Make the boxes periodic in one direction
++  template<int dir>
++  class periodic: public property {
++    ibset symmetrised_regions (gh const& hh, dh const& dd,
++                               level_boundary const& bnd,
++                               vector<ibset> const& regions, int rl);
++    bool test_impl (gh const& hh, dh const& dd,
++                    level_boundary const& bnd,
++                    vector<ibset> const& regions, int rl);
++    void enforce_impl (gh const& hh, dh const& dd,
++                       level_boundary const& bnd,
++                       vector<ibset>& regions, int rl);
++  };
++  
++  
++  
+   // Clip at the outer boundary
+   class boundary_clip: public property {
+     ibset clipped_regions (gh const& hh, dh const& dd,
+diff -r 9e10c091d192 Carpet/CarpetRegrid2/src/regrid.cc
+--- repos/carpet/Carpet/CarpetRegrid2/src/regrid.cc	Thu Sep 15 09:12:23 2011 -0400
++++ repos/carpet/Carpet/CarpetRegrid2/src/regrid.cc	Thu Sep 15 15:33:43 2011 -0400
+@@ -332,6 +332,9 @@
+     properties.push_back (new snap_coarse());
+     properties.push_back (new rotsym90());
+     properties.push_back (new rotsym180());
++    properties.push_back (new periodic<0>());
++    properties.push_back (new periodic<1>());
++    properties.push_back (new periodic<2>());
+     properties.push_back (new boundary_clip());
+     
+     // Properties to be tested (and not enforced) in the end

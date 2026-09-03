@@ -1,0 +1,133 @@
+Index: interface.ccl
+===================================================================
+--- interface.ccl	(revision 9)
++++ interface.ccl	(working copy)
+@@ -25,7 +25,11 @@
+ 
+ USES FUNCTION GetExtractionParameters
+ 
++CCTK_INT FUNCTION IO_TruncateOutputFiles \
++  (CCTK_POINTER_TO_CONST IN GH)
+ 
++USES FUNCTION IO_TruncateOutputFiles
++
+ private:
+ 
+ CCTK_REAL NYlm[(l_max+1)*(l_max+1)] TYPE=ARRAY dim=2 size=\
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 9)
++++ param.ccl	(working copy)
+@@ -104,11 +104,11 @@
+ {
+ } "no"
+ 
+-BOOLEAN WT_spherical_harmonics "Output the spherical harmonics of the Worldtube to a file?"
++BOOLEAN WT_spherical_harmonics "Output the spherical harmonics of the Worldtube to a file?" STEERABLE=ALWAYS
+ {
+ } "no"
+ 
+-BOOLEAN WT_spherical_harmonics_on_nullgrid "Output the spherical harmonics on the nullgrid just off the Worldtube to a file?"
++BOOLEAN WT_spherical_harmonics_on_nullgrid "Output the spherical harmonics on the nullgrid just off the Worldtube to a file?" STEERABLE=ALWAYS
+ {
+ } "no"
+ 
+Index: src/NullSHRE_WTSphHarm.F90
+===================================================================
+--- src/NullSHRE_WTSphHarm.F90	(revision 9)
++++ src/NullSHRE_WTSphHarm.F90	(working copy)
+@@ -42,6 +42,9 @@
+   CCTK_COMPLEX, dimension(1:lmax, -lmax:lmax) :: NUwtSphCoeff
+   CCTK_COMPLEX, dimension(1:lmax, -lmax:lmax) :: NUwt_xSphCoeff
+ 
++  logical, save :: first_time = .TRUE.
++  logical :: truncate
++
+   DECLARE_CCTK_FUNCTIONS
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+@@ -117,20 +120,22 @@
+ 
+   ! NullDecomp_WriteCoefFile(FieldName, TruncateFile, Lmin, Lmax, YlmCoef, time)
+ 
+-  call  NullDecomp_WriteCoefFile('J_wt',   cctk_iteration.eq.0, 2, Lmax, JwtSphCoeff, cctk_time)
+-  call  NullDecomp_WriteCoefFile('Jl_wt',  cctk_iteration.eq.0, 2, Lmax, Jwt_lSphCoeff, cctk_time)
++  truncate = (IO_TruncateOutputFiles(cctkGH) .ne. 0) .and. first_time
+ 
+-  call  NullDecomp_WriteCoefFile('Q_wt',   cctk_iteration.eq.0, 1, Lmax, QwtSphCoeff, cctk_time)
++  call  NullDecomp_WriteCoefFile('J_wt',   truncate, 2, Lmax, JwtSphCoeff, cctk_time)
++  call  NullDecomp_WriteCoefFile('Jl_wt',  truncate, 2, Lmax, Jwt_lSphCoeff, cctk_time)
+ 
+-  call  NullDecomp_WriteCoefFile('U_wt',   cctk_iteration.eq.0, 1, Lmax, UwtSphCoeff, cctk_time)
+-  call  NullDecomp_WriteCoefFile('Ul_wt',  cctk_iteration.eq.0, 1, Lmax, Uwt_lSphCoeff, cctk_time)
++  call  NullDecomp_WriteCoefFile('Q_wt',   truncate, 1, Lmax, QwtSphCoeff, cctk_time)
+ 
+-  call  NullDecomp_WriteCoefFile('B_wt',   cctk_iteration.eq.0, 0, Lmax, BwtSphCoeff, cctk_time)
+-  call  NullDecomp_WriteCoefFile('Bl_wt',  cctk_iteration.eq.0, 0, Lmax, Bwt_lSphCoeff, cctk_time)
++  call  NullDecomp_WriteCoefFile('U_wt',   truncate, 1, Lmax, UwtSphCoeff, cctk_time)
++  call  NullDecomp_WriteCoefFile('Ul_wt',  truncate, 1, Lmax, Uwt_lSphCoeff, cctk_time)
+ 
+-  call  NullDecomp_WriteCoefFile('W_wt',   cctk_iteration.eq.0, 0, Lmax, WwtSphCoeff, cctk_time)
+-  call  NullDecomp_WriteCoefFile('Wl_wt',  cctk_iteration.eq.0, 0, Lmax, Wwt_lSphCoeff, cctk_time)
++  call  NullDecomp_WriteCoefFile('B_wt',   truncate, 0, Lmax, BwtSphCoeff, cctk_time)
++  call  NullDecomp_WriteCoefFile('Bl_wt',  truncate, 0, Lmax, Bwt_lSphCoeff, cctk_time)
+ 
++  call  NullDecomp_WriteCoefFile('W_wt',   truncate, 0, Lmax, WwtSphCoeff, cctk_time)
++  call  NullDecomp_WriteCoefFile('Wl_wt',  truncate, 0, Lmax, Wwt_lSphCoeff, cctk_time)
++
+ ! if(first_order_scheme.ne.0) then
+ !   call  NullDecomp_WriteCoefFile('NU_wt',   cctk_iteration.eq.0, 1, Lmax, NUwtSphCoeff, cctk_time)
+ !   write (*,*) 'NUwtSphCoeff=',maxval(abs(NUwtSphCoeff))
+@@ -143,10 +148,12 @@
+ !   call  NullDecomp_WriteCoefFile('CBx_wt',  cctk_iteration.eq.0, 1, Lmax, CBwt_xSphCoeff, cctk_time)
+ ! end if
+ 
+-  call  NullDecomp_WriteCoefFile('X_wt',    cctk_iteration.eq.0, 0, Lmax, XwtSphCoeff, cctk_time)
+-  call  NullDecomp_WriteCoefFile('r0_wt',   cctk_iteration.eq.0, 0, Lmax, r0wtSphCoeff, cctk_time)
+-  call  NullDecomp_WriteCoefFile('detg_wt', cctk_iteration.eq.0, 0, Lmax, detgwtSphCoeff, cctk_time)
++  call  NullDecomp_WriteCoefFile('X_wt',    truncate, 0, Lmax, XwtSphCoeff, cctk_time)
++  call  NullDecomp_WriteCoefFile('r0_wt',   truncate, 0, Lmax, r0wtSphCoeff, cctk_time)
++  call  NullDecomp_WriteCoefFile('detg_wt', truncate, 0, Lmax, detgwtSphCoeff, cctk_time)
+ 
++  first_time = .FALSE.
++
+ end subroutine NullSHRE_WTSphHarm
+ 
+ 
+Index: src/wt_SphHarmDecomp.F90
+===================================================================
+--- src/wt_SphHarmDecomp.F90	(revision 9)
++++ src/wt_SphHarmDecomp.F90	(working copy)
+@@ -23,6 +23,8 @@
+   CCTK_INT :: i_max, gi_max, i_min, gi_min, retval
+   CCTK_INT, save :: reduce_handle
+   character(len=500) :: message
++  logical, save :: first_time = .TRUE.
++  logical :: truncate
+   
+   DECLARE_CCTK_FUNCTIONS
+   DECLARE_CCTK_ARGUMENTS
+@@ -90,16 +92,19 @@
+ 
+   ! NullDecomp_WriteCoefFile(FieldName, TruncateFile, Lmin, Lmax, YlmCoef, time)
+ 
+-  call  NullDecomp_WriteCoefRadiusFile('J_wt',   cctk_iteration.eq.0, 2, lmax, JSphCoeff, cctk_time, null_rb(Nradial))
++  truncate = (IO_TruncateOutputFiles(cctkGH) .ne. 0) .and. first_time
+ 
+-  call  NullDecomp_WriteCoefRadiusFile('U_wt',   cctk_iteration.eq.0, 1, lmax, USphCoeff, cctk_time, null_rb(Nradial))
++  call  NullDecomp_WriteCoefRadiusFile('nullgridJ_wt',   truncate, 2, lmax, JSphCoeff, cctk_time, null_rb(Nradial))
+ 
+-  call  NullDecomp_WriteCoefRadiusFile('B_wt',   cctk_iteration.eq.0, 0, lmax, betaSphCoeff, cctk_time, null_rb(Nradial))
++  call  NullDecomp_WriteCoefRadiusFile('nullgridU_wt',   truncate, 1, lmax, USphCoeff, cctk_time, null_rb(Nradial))
+ 
+-  call  NullDecomp_WriteCoefRadiusFile('W_wt',   cctk_iteration.eq.0, 0, lmax, WSphCoeff, cctk_time, null_rb(Nradial))
++  call  NullDecomp_WriteCoefRadiusFile('nullgridB_wt',   truncate, 0, lmax, betaSphCoeff, cctk_time, null_rb(Nradial))
+ 
++  call  NullDecomp_WriteCoefRadiusFile('nullgridW_wt',   truncate, 0, lmax, WSphCoeff, cctk_time, null_rb(Nradial))
+ 
++  first_time = .FALSE.
+ 
++
+ end subroutine wt_WriteSphHarmWT
+ 
+ 

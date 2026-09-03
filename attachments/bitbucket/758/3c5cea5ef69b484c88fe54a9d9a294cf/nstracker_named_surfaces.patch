@@ -1,0 +1,164 @@
+add support for named spherical surfaces
+Index: interface.ccl
+===================================================================
+--- interface.ccl	(revision 10)
++++ interface.ccl	(working copy)
+@@ -1,6 +1,12 @@
+ implements: NSTracker
+ inherits: Hydro_Analysis SphericalSurface
+ 
++# translate SphericalSurface name into ID
++CCTK_INT \
++FUNCTION sf_IdFromName (CCTK_INT IN id, CCTK_POINTER_TO_CONST IN name)
++USES FUNCTION sf_IdFromName
++
+ private:
+ 
+ CCTK_INT nstracker_has_been_called_before type = SCALAR "non-zero if the thorn has been called before - to keep that information across checkpoints"
++
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 10)
++++ param.ccl	(working copy)
+@@ -3,11 +3,23 @@
+   -1:* :: "-1 to disable (default), >=0 index of the moved spherical surface"
+ } -1
+ 
++STRING NSTracker_SF_Name "Name of the sperical surface which should be moved around" STEERABLE=always
++{
++""   :: "use NSTracker_SF_Index"
++".*" :: "any string"
++} ""
++
+ INT NSTracker_SF_Index_Opposite "Index of the sperical surface which should be moved around, at (-x, -y, z) where (x,y,z) is the location of NSTracker_SF_Index" STEERABLE=always
+ {
+   -1:* :: "-1 to disable (default), >=0 index of the moved spherical surface"
+ } -1
+ 
++STRING NSTracker_SF_Name_Opposite "Name of the sperical surface which should be moved around, at (-x, -y, z) where (x,y,z) is the location of NSTracker_SF_Index" STEERABLE=always
++{
++""   :: "use NSTracker_SF_Index_Opposite"
++".*" :: "any string"
++} ""
++
+ CCTK_REAL NSTracker_stop_time "Time after which to stop updating the SF" STEERABLE=always
+ {
+   * :: "positive, negative values disable this feature (default)"
+Index: src/NSTracker.c
+===================================================================
+--- src/NSTracker.c	(revision 10)
++++ src/NSTracker.c	(working copy)
+@@ -1,6 +1,7 @@
+ #include <cctk.h>
+ #include <cctk_Arguments.h>
+ #include <cctk_Parameters.h>
++#include <cctk_Functions.h>
+ 
+ void NSTracker(CCTK_ARGUMENTS)
+ {
+@@ -8,7 +9,8 @@
+   DECLARE_CCTK_PARAMETERS
+ 
+   // Only update, if there was a surface index set
+-  if ( (NSTracker_SF_Index >= 0) && (*Hydro_Analysis_rho_max > 0.0) )
++  const int sn = sf_IdFromName(NSTracker_SF_Index, NSTracker_SF_Name);
++  if ( (sn >= 0) && (*Hydro_Analysis_rho_max > 0.0) )
+   {
+     // Stop after some time, if requested
+     if ((NSTracker_stop_time < 0) ||
+@@ -18,25 +20,27 @@
+       CCTK_REAL loc[3];
+       for (int i=0; i<3; i++)
+         loc[i] = Hydro_Analysis_rho_max_loc[i];
+-      if (sf_valid[NSTracker_SF_Index])
++      if (sf_valid[sn])
+       {
+-        dist2 = (sf_centroid_x[NSTracker_SF_Index]-loc[0])*
+-                (sf_centroid_x[NSTracker_SF_Index]-loc[0])+
+-                (sf_centroid_y[NSTracker_SF_Index]-loc[1])*
+-                (sf_centroid_y[NSTracker_SF_Index]-loc[1])+
+-                (sf_centroid_z[NSTracker_SF_Index]-loc[2])*
+-                (sf_centroid_z[NSTracker_SF_Index]-loc[2]);
++        dist2 = (sf_centroid_x[sn]-loc[0])*
++                (sf_centroid_x[sn]-loc[0])+
++                (sf_centroid_y[sn]-loc[1])*
++                (sf_centroid_y[sn]-loc[1])+
++                (sf_centroid_z[sn]-loc[2])*
++                (sf_centroid_z[sn]-loc[2]);
+         // Try to handle two equal maxima
+-        if (NSTracker_SF_Index_Opposite >= 0)
++        const int sno = sf_IdFromName(NSTracker_SF_Index_Opposite,
++                                      NSTracker_SF_Name_Opposite);
++        if (sno >= 0)
+         {
+           // Choose the closest (one of the two) maxima to the old location
+           CCTK_REAL dist2_2 =
+-                  (sf_centroid_x[NSTracker_SF_Index]+loc[0])*
+-                  (sf_centroid_x[NSTracker_SF_Index]+loc[0])+
+-                  (sf_centroid_y[NSTracker_SF_Index]+loc[1])*
+-                  (sf_centroid_y[NSTracker_SF_Index]+loc[1])+
+-                  (sf_centroid_z[NSTracker_SF_Index]-loc[2])*
+-                  (sf_centroid_z[NSTracker_SF_Index]-loc[2]);
++                  (sf_centroid_x[sn]+loc[0])*
++                  (sf_centroid_x[sn]+loc[0])+
++                  (sf_centroid_y[sn]+loc[1])*
++                  (sf_centroid_y[sn]+loc[1])+
++                  (sf_centroid_z[sn]-loc[2])*
++                  (sf_centroid_z[sn]-loc[2]);
+           if (dist2_2 < dist2)
+           {
+             loc[0] = -loc[0];
+@@ -50,24 +54,26 @@
+       if ((NSTracker_max_distance < 0) ||
+           (dist2 <= NSTracker_max_distance*NSTracker_max_distance))
+       {
+-        sf_valid     [NSTracker_SF_Index] = 1;
+-        sf_active    [NSTracker_SF_Index] = 1;
+-        sf_centroid_x[NSTracker_SF_Index] = loc[0];
+-        sf_centroid_y[NSTracker_SF_Index] = loc[1];
+-        sf_centroid_z[NSTracker_SF_Index] = loc[2];
+-        if (NSTracker_SF_Index_Opposite >= 0)
++        sf_valid     [sn] = 1;
++        sf_active    [sn] = 1;
++        sf_centroid_x[sn] = loc[0];
++        sf_centroid_y[sn] = loc[1];
++        sf_centroid_z[sn] = loc[2];
++        const int sno = sf_IdFromName(NSTracker_SF_Index_Opposite,
++                                      NSTracker_SF_Name_Opposite);
++        if (sno >= 0)
+         {
+-          sf_valid     [NSTracker_SF_Index_Opposite] = 1;
+-          sf_active    [NSTracker_SF_Index_Opposite] = 1;
+-          sf_centroid_x[NSTracker_SF_Index_Opposite] = -loc[0];
+-          sf_centroid_y[NSTracker_SF_Index_Opposite] = -loc[1];
+-          sf_centroid_z[NSTracker_SF_Index_Opposite] = loc[2];
++          sf_valid     [sno] = 1;
++          sf_active    [sno] = 1;
++          sf_centroid_x[sno] = -loc[0];
++          sf_centroid_y[sno] = -loc[1];
++          sf_centroid_z[sno] = loc[2];
+         }
+         if (NSTracker_verbose)
+           CCTK_VInfo(CCTK_THORNSTRING, "Found star at (%g,%g,%g)",
+-            sf_centroid_x[NSTracker_SF_Index],
+-            sf_centroid_y[NSTracker_SF_Index],
+-            sf_centroid_z[NSTracker_SF_Index]);
++            sf_centroid_x[sn],
++            sf_centroid_y[sn],
++            sf_centroid_z[sn]);
+       }
+       else
+         if (NSTracker_verbose)
+@@ -76,9 +82,9 @@
+             Hydro_Analysis_rho_max_loc[0],
+             Hydro_Analysis_rho_max_loc[1],
+             Hydro_Analysis_rho_max_loc[2],
+-            sf_centroid_x[NSTracker_SF_Index],
+-            sf_centroid_y[NSTracker_SF_Index],
+-            sf_centroid_z[NSTracker_SF_Index]);
++            sf_centroid_x[sn],
++            sf_centroid_y[sn],
++            sf_centroid_z[sn]);
+     }
+     else
+       if (NSTracker_verbose)

@@ -1,0 +1,418 @@
+From d2401e2985d5afd7be6490e33709215e65868d7f Mon Sep 17 00:00:00 2001
+From: Christian Reisswig <reisswig@scriwalker.(none)>
+Date: Mon, 5 Nov 2012 09:07:13 -0800
+Subject: [PATCH 12/25] GRHydro: Introduce variable atmopshere level /
+ tolerance as function of radius. Off by default.
+
+---
+ param.ccl                   |   20 ++++++++++++++++++
+ src/GRHydro_Con2Prim.F90    |   48 +++++++++++++++++++++++++------------------
+ src/GRHydro_Macros.h        |   28 +++++++++++++++++++++++++
+ src/GRHydro_Minima.F90      |    8 ++++++--
+ src/GRHydro_Reconstruct.F90 |   10 +++++----
+ src/GRHydro_UpdateMask.F90  |   32 ++++++++++++++++-------------
+ 6 files changed, 106 insertions(+), 40 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index 56c8aea..ba612d9 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -455,6 +455,26 @@ REAL GRHydro_atmo_tolerance "A point is set to atmosphere in the Con2Prim's if i
+    0.0: :: "Zero or larger. A useful value could be 0.0001"
+ }  0.0
+ 
++REAL atmo_falloff_radius "The radius for which the atmosphere starts to falloff as (atmo_falloff_radius/r)**atmo_falloff_power"
++{
++  0:* :: "Anything positive"
++} 50.0
++
++REAL atmo_falloff_power "The power at which the atmosphere level falls off as (atmo_falloof_radius/r)**atmo_falloff_power"
++{
++  0:* :: "Anything positive"
++} 0.0
++
++REAL atmo_tolerance_radius "The radius for which the atmosphere tolerance starts to increase as (r/atmo_tolerance_radius)**atmo_tolerance_power"
++{
++  0:* :: "Anything positive"
++} 50.0
++
++REAL atmo_tolerance_power "The power at which the atmosphere tolerance increases as (r/atmo_tolerance_radius)**atmo_tolerance_power"
++{
++  0:* :: "Anything positive"
++} 0.0
++
+ BOOLEAN wk_atmosphere "Use some of Wolfgang Kastauns atmosphere tricks"
+ {
+ } "no"
+diff --git a/src/GRHydro_Con2Prim.F90 b/src/GRHydro_Con2Prim.F90
+index cf726f0..a0a21cf 100644
+--- a/src/GRHydro_Con2Prim.F90
++++ b/src/GRHydro_Con2Prim.F90
+@@ -56,7 +56,7 @@ subroutine Conservative2Primitive(CCTK_ARGUMENTS)
+   
+   integer :: CCTK_MyProc
+   integer :: i, j, k, itracer, nx, ny, nz
+-  CCTK_REAL :: uxx, uxy, uxz, uyy, uyz, uzz, det, pmin, epsmin
++  CCTK_REAL :: uxx, uxy, uxz, uyy, uyz, uzz, det, pmin, epsmin, dummy1, dummy2
+   logical :: epsnegative
+   character*256 :: warnline
+   
+@@ -112,7 +112,7 @@ subroutine Conservative2Primitive(CCTK_ARGUMENTS)
+ 
+   !$OMP PARALLEL DO PRIVATE(i,j,k,itracer,&
+   !$OMP uxx, uxy, uxz, uyy, uyz, uzz, det, epsnegative, anyerr, keyerr, keytemp,&
+-  !$OMP warnline)
++  !$OMP warnline, dummy1, dummy2)
+   do k = 1, nz 
+     do j = 1, ny 
+       do i = 1, nx
+@@ -168,10 +168,11 @@ subroutine Conservative2Primitive(CCTK_ARGUMENTS)
+                 GRHydro_Y_e_min)
+         endif
+ 
+-         if ( dens(i,j,k) .le. sqrt(det)*GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance) ) then
++         !if ( dens(i,j,k) .le. sqrt(det)*GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance) ) then
++         IF_BELOW_ATMO(dens(i,j,k), sqrt(det)*GRHydro_rho_min, GRHydro_atmo_tolerance, r(i,j,k)) then
+ 
+-           dens(i,j,k) = sqrt(det)*GRHydro_rho_min !/(1.d0+GRHydro_atmo_tolerance)
+-           rho(i,j,k) = GRHydro_rho_min
++           SET_ATMO_MIN(dens(i,j,k), sqrt(det)*GRHydro_rho_min, r(i,j,k)) !sqrt(det)*GRHydro_rho_min !/(1.d0+GRHydro_atmo_tolerance)
++           SET_ATMO_MIN(rho(i,j,k), GRHydro_rho_min, r(i,j,k)) !GRHydro_rho_min
+            scon(i,j,k,:) = 0.d0
+            vup(i,j,k,:) = 0.d0
+            w_lorentz(i,j,k) = 1.d0
+@@ -272,8 +273,8 @@ subroutine Conservative2Primitive(CCTK_ARGUMENTS)
+           !$OMP END CRITICAL
+ 
+           ! for safety, let's set the point to atmosphere
+-          dens(i,j,k) = sqrt(det)*GRHydro_rho_min !/(1.d0+GRHydro_atmo_tolerance)
+-          rho(i,j,k) = GRHydro_rho_min
++          dens(i,j,k) = ATMOMIN(sqrt(det)*GRHydro_rho_min, r(i,j,k)) !sqrt(det)*GRHydro_rho_min !/(1.d0+GRHydro_atmo_tolerance)
++          rho(i,j,k) = ATMOMIN(GRHydro_rho_min, r(i,j,k)) !GRHydro_rho_min
+           scon(i,j,k,:) = 0.d0
+           vup(i,j,k,:) = 0.d0
+           w_lorentz(i,j,k) = 1.d0
+@@ -413,7 +414,7 @@ subroutine Con2Prim_pt(handle, dens, sx, sy, sz, tau, rho, velx, vely, &
+   
+   CCTK_REAL s2, c0, c1, c2, c3, c4, f, df, ftol, v2, w, vlowx, vlowy, vlowz
+   CCTK_INT count, i, handle, GRHydro_reflevel
+-  CCTK_REAL GRHydro_C2P_failed
++  CCTK_REAL GRHydro_C2P_failed, dummy1, dummy2
+   CCTK_REAL udens, usx, usy, usz, utau, pold, pnew, epsold, epsnew, w2, &
+        w2mhalf, temp1, drhobydpress, depsbydpress, dpressbydeps, dpressbydrho, pmin, epsmin
+   character(len=200) warnline
+@@ -511,7 +512,7 @@ subroutine Con2Prim_pt(handle, dens, sx, sy, sz, tau, rho, velx, vely, &
+ 
+ 
+       ! for safety, let's set the point to atmosphere
+-      rho = GRHydro_rho_min
++      SET_ATMO_MIN(rho, GRHydro_rho_min, r)
+       udens = rho
+       dens = sqrt(det) * rho
+       pnew = pmin
+@@ -682,8 +683,9 @@ subroutine Con2Prim_pt(handle, dens, sx, sy, sz, tau, rho, velx, vely, &
+ 
+ !!$  Calculate primitive variables from root
+ 
+-  if (rho .le. GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance) ) then
+-    rho = GRHydro_rho_min
++  !if (rho .le. GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance) ) then
++  IF_BELOW_ATMO(rho, GRHydro_rho_min, GRHydro_atmo_tolerance, r) then
++    SET_ATMO_MIN(rho, GRHydro_rho_min, r) !GRHydro_rho_min
+     udens = rho
+     dens = sqrt(det) * rho
+ !    epsilon = (sqrt( (utau + pnew + udens)**2) - pnew -  udens)/udens
+@@ -777,7 +779,7 @@ subroutine Con2Prim_pt_hot(cctk_iteration, ii,jj,kk,handle, dens, &
+   CCTK_REAL GRHydro_C2P_failed
+   CCTK_REAL udens, usx, usy, usz, utau, pold, pnew, epsold, epsnew, w2, &
+        w2mhalf, temp1, drhobydpress, depsbydpress, dpressbydeps, dpressbydrho, pmin, epsmin
+-  CCTK_REAL epsminl,pminl,plow,tmp
++  CCTK_REAL epsminl,pminl,plow,tmp, dummy1, dummy2
+   CCTK_REAL local_perc_ptol
+ 
+   character(len=256) warnline
+@@ -1218,8 +1220,9 @@ subroutine Con2Prim_pt_hot(cctk_iteration, ii,jj,kk,handle, dens, &
+ 
+ !!$  Calculate primitive variables from root
+ 
+-  if (rho .le. GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance) ) then
+-    rho = GRHydro_rho_min
++  !if (rho .le. GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance) ) then
++  IF_BELOW_ATMO(rho, GRHydro_rho_min, GRHydro_atmo_tolerance, r) then
++    SET_ATMO_MIN(rho, GRHydro_rho_min, r) !GRHydro_rho_min
+     udens = rho
+     dens = sqrt(det) * rho
+     temp = GRHydro_hot_atmo_temp
+@@ -1660,7 +1663,7 @@ subroutine Con2Prim_ptPolytype(handle, dens, sx, sy, sz, tau, rho, &
+   CCTK_REAL s2, f, df, vlowx, vlowy, vlowz
+   CCTK_INT count, handle, GRHydro_reflevel
+   CCTK_REAL udens, usx, usy, usz, rhoold, rhonew, epsold, epsnew, &
+-       enthalpy, denthalpy, sqrtdet, invsqrtdet, invfac, GRHydro_C2P_failed
++       enthalpy, denthalpy, sqrtdet, invsqrtdet, invfac, GRHydro_C2P_failed, dummy1, dummy2
+   character(len=200) warnline
+ 
+ ! begin EOS Omni vars
+@@ -1727,7 +1730,7 @@ subroutine Con2Prim_ptPolytype(handle, dens, sx, sy, sz, tau, rho, &
+       !$OMP END CRITICAL
+ 
+       ! for safety, let's set the point to atmosphere
+-      rhonew = GRHydro_rho_min
++      SET_ATMO_MIN(rhonew, GRHydro_rho_min, r)
+       udens = rhonew
+       dens = sqrtdet * rhonew
+ 
+@@ -1792,8 +1795,10 @@ subroutine Con2Prim_ptPolytype(handle, dens, sx, sy, sz, tau, rho, &
+ 
+ !!$  Calculate primitive variables from root
+ 
+-  if (rhonew .le. GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance) ) then
+-    rhonew = GRHydro_rho_min
++
++  !if (rhonew .le. GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance) ) then
++  IF_BELOW_ATMO(rhonew, GRHydro_rho_min, GRHydro_atmo_tolerance, r) then
++    SET_ATMO_MIN(rhonew, GRHydro_rho_min, r) !GRHydro_rho_min
+     udens = rhonew
+     ! before 2009/10/07 dens was not reset and was used with its negative 
+     ! value below; this has since been changed, but the change produces 
+@@ -2232,6 +2237,8 @@ subroutine check_GRHydro_C2P_failed(CCTK_ARGUMENTS)
+ 
+   integer :: i, j, k, nx, ny, nz
+   character(len=300) warnline
++  CCTK_REAL :: dummy1, dummy2
++  
+ 
+ !  call CCTK_INFO("Checking the C2P failure mask.")
+ 
+@@ -2242,7 +2249,7 @@ subroutine check_GRHydro_C2P_failed(CCTK_ARGUMENTS)
+   ! do not check if told not to
+   if(GRHydro_reflevel .lt. GRHydro_c2p_warn_from_reflevel) return
+ 
+-  !$OMP PARALLEL DO PRIVATE(i,j,k)
++  !$OMP PARALLEL DO PRIVATE(i,j,k, dummy1, dummy2)
+   do k = 1, nz 
+     do j = 1, ny 
+       do i = 1, nx
+@@ -2256,7 +2263,8 @@ subroutine check_GRHydro_C2P_failed(CCTK_ARGUMENTS)
+               cycle
+            endif
+ 
+-           if ( rho(i,j,k) .le. GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance) ) then
++           !if ( rho(i,j,k) .le. GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance) ) then
++           IF_BELOW_ATMO(rho(i,j,k), GRHydro_rho_min, GRHydro_atmo_tolerance, r(i,j,k)) then
+                cycle
+            end if 
+ 
+diff --git a/src/GRHydro_Macros.h b/src/GRHydro_Macros.h
+index 7009b86..5a02a58 100644
+--- a/src/GRHydro_Macros.h
++++ b/src/GRHydro_Macros.h
+@@ -10,3 +10,31 @@
+ #define DOTP2(gxx_,gxy_,gxz_,gyy_,gyz_,gzz_,x_,y_,z_)	\
+  ( (gxx_)*(x_)**2+(gyy_)*(y_)**2+(gzz_)*(z_)**2+ \
+   2.0*( (gxy_)*(x_)*(y_)+(gxz_)*(x_)*(z_)+(gyz_)*(y_)*(z_) ) )
++
++
++#define IF_BELOW_ATMO(rho, rho_min, rho_tol, r)  \
++  dummy1 = atmo_tolerance_radius &&\
++  dummy2 = atmo_falloff_radius &&\
++  if (r .gt. atmo_tolerance_radius) then &&\
++     dummy1 = r &&\
++  endif &&\
++  if (r .gt. atmo_falloff_radius) then &&\
++     dummy2 = r &&\
++  endif &&\
++  if (rho .le. rho_min*(1.0d0 + rho_tol * (dummy1/atmo_tolerance_radius)**atmo_tolerance_power) * (atmo_falloff_radius/dummy2)**atmo_falloff_power)
++
++
++
++!#define ATMOCHECK(rho, rho_min, rho_tol, r)  \
++!  (atmo_type .eq. 0 .and. rho .le. rho_min*(1.0d0 + rho_tol)) .or. \
++!  (atmo_type .eq. 1 .and. rho .le. rho_min*(1.0d0 + rho_tol * (atmo_tolerance_radius/r)**atmo_tolerance_power)) .or. \
++!  (atmo_type .eq. 2 .and. rho .le. rho_min*(1.d00 + rho_tol) * (atmo_falloff_radius/r)**atmo_falloff_power) .or. \
++!  (atmo_type .eq. 3 .and. rho .le. rho_min*(1.0d0 + rho_tol * (r/atmo_tolerance_radius)**atmo_tolerance_power) * (r/atmo_falloff_radius)**atmo_falloff_power)
++
++
++#define SET_ATMO_MIN(rho_, rho_min, r) &&\
++  dummy1 = atmo_falloff_radius &&\
++  if (r .gt. atmo_falloff_radius) then &&\
++     dummy1 = r &&\
++  endif &&\
++  rho_ = rho_min * (atmo_falloff_radius/dummy1)**atmo_falloff_power
+diff --git a/src/GRHydro_Minima.F90 b/src/GRHydro_Minima.F90
+index 5f870cd..905a65c 100644
+--- a/src/GRHydro_Minima.F90
++++ b/src/GRHydro_Minima.F90
+@@ -11,6 +11,8 @@
+ #include "cctk_Parameters.h"
+ #include "cctk_Arguments.h"
+ 
++#include "GRHydro_Macros.h"
++
+  /*@@
+    @routine    GRHydro_Minima_Setup
+    @date       Mon Feb 25 11:25:27 2002
+@@ -74,17 +76,19 @@ subroutine GRHydro_Check_Rho_Minimum(CCTK_ARGUMENTS)
+   DECLARE_CCTK_PARAMETERS
+ 
+   CCTK_INT i,j,k
++  CCTK_REAL dummy1
+   character(len=100) warnline
+ 
+   do i=1,cctk_lsh(1)
+     do j=1,cctk_lsh(2)
+       do k=1,cctk_lsh(3)
+ 
+-        if (rho(i,j,k) < GRHydro_rho_min) then
++        SET_ATMO_MIN(dummy1, GRHydro_rho_min, r(i,j,k))
++        if (rho(i,j,k) < dummy1) then
+           call CCTK_WARN(2,"rho<GRHydro_rho_min!!!")
+           write(warnline,'(a28,i2)') 'on carpet reflevel: ',GRHydro_reflevel
+           call CCTK_WARN(2,warnline)
+-          write(warnline,'(a25,g15.6)') 'GRHydro_rho_min: ',GRHydro_rho_min
++          write(warnline,'(a25,g15.6)') 'GRHydro_rho_min: ', dummy1
+           call CCTK_WARN(2,warnline)
+           write(warnline,'(a25,g15.6)') 'rho: ',rho(i,j,k)
+           call CCTK_WARN(2,warnline)
+diff --git a/src/GRHydro_Reconstruct.F90 b/src/GRHydro_Reconstruct.F90
+index b0db4b5..7168523 100644
+--- a/src/GRHydro_Reconstruct.F90
++++ b/src/GRHydro_Reconstruct.F90
+@@ -12,6 +12,7 @@
+ #include "cctk_Parameters.h"
+ #include "cctk_Functions.h"
+ 
++#include "GRHydro_Macros.h"
+ #include "SpaceMask.h"
+ 
+  /*@@
+@@ -45,7 +46,7 @@ subroutine Reconstruction(CCTK_ARGUMENTS)
+   DECLARE_CCTK_FUNCTIONS
+ 
+   CCTK_INT  :: i,j,k
+-  CCTK_REAL :: local_min_tracer
++  CCTK_REAL :: local_min_tracer, dummy1, dummy2
+   CCTK_INT :: type_bits, not_trivial
+   CCTK_REAL :: agxx, agxy, agxz, agyy, agyz, agzz, w
+ 
+@@ -117,12 +118,13 @@ subroutine Reconstruction(CCTK_ARGUMENTS)
+     call CCTK_WARN(0, "Flux direction not x,y,z")
+   end if
+ 
+-  !$OMP PARALLEL DO PRIVATE(i,j,k, agxx, agxy, agxz, agyy, agyz, agzz, w)
++  !$OMP PARALLEL DO PRIVATE(i,j,k, agxx, agxy, agxz, agyy, agyz, agzz, w, dummy1, dummy2)
+   do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil + 1
+     do j = GRHydro_stencil, cctk_lsh(2) - GRHydro_stencil + 1
+       do i = GRHydro_stencil, cctk_lsh(1) - GRHydro_stencil + 1
+-         if(rhoplus(i,j,k).lt.GRHydro_rho_min .or. &
+-            rhominus(i,j,k).lt.GRHydro_rho_min) then
++         SET_ATMO_MIN(dummy2, GRHydro_rho_min, r(i,j,k))
++         if(rhoplus(i,j,k).lt.dummy2 .or. &
++            rhominus(i,j,k).lt.dummy2) then
+ 
+                  rhoplus(i,j,k)  = rho(i,j,k)
+                  rhominus(i,j,k) = rho(i,j,k)
+diff --git a/src/GRHydro_UpdateMask.F90 b/src/GRHydro_UpdateMask.F90
+index 67a42cb..a93872b 100644
+--- a/src/GRHydro_UpdateMask.F90
++++ b/src/GRHydro_UpdateMask.F90
+@@ -198,14 +198,17 @@ subroutine GRHydro_InitAtmosMask(CCTK_ARGUMENTS)
+   implicit none
+ 
+   DECLARE_CCTK_ARGUMENTS
++  DECLARE_CCTK_PARAMETERS
+ 
+   CCTK_INT :: i,j,k
+-
+-  !$OMP PARALLEL DO PRIVATE(i,j,k)
++  CCTK_REAL :: dummy1, dummy2
++  
++  !$OMP PARALLEL DO PRIVATE(i,j,k, dummy1,dummy2)
+   do k = 1, cctk_lsh(3)
+     do j = 1, cctk_lsh(2)
+       do i = 1, cctk_lsh(1)
+-        if (rho(i,j,k) .le. GRHydro_rho_min) then
++        !if (rho(i,j,k) .le. GRHydro_rho_min) then
++        IF_BELOW_ATMO(rho(i,j,k), GRHydro_rho_min, 0.0, r(i,j,k)) then
+           atmosphere_mask(i,j,k) = 1
+           atmosphere_mask_real(i,j,k) = 1
+         end if
+@@ -247,7 +250,7 @@ subroutine GRHydro_AtmosphereReset(CCTK_ARGUMENTS)
+   DECLARE_CCTK_PARAMETERS
+ 
+   CCTK_INT :: i, j, k
+-  CCTK_REAL :: det
++  CCTK_REAL :: det, dummy1, dummy2
+ 
+ 
+   ! save memory when MP is not used
+@@ -283,14 +286,14 @@ subroutine GRHydro_AtmosphereReset(CCTK_ARGUMENTS)
+ 
+   if (verbose.eq.1) call CCTK_INFO("Entering AtmosphereReset.")
+ 
+-!$OMP PARALLEL DO PRIVATE(det,keytemp,i,j,k,anyerr,keyerr)
++!$OMP PARALLEL DO PRIVATE(det,keytemp,i,j,k,anyerr,keyerr, dummy1, dummy2)
+   do k = 1, cctk_lsh(3)
+     do j = 1, cctk_lsh(2)
+       do i = 1, cctk_lsh(1)
+         
+         if (atmosphere_mask(i, j, k) .ne. 0) then
+ 
+-          rho(i,j,k) = GRHydro_rho_min
++          SET_ATMO_MIN(rho(i,j,k), GRHydro_rho_min, r(i,j,k))
+           velx(i,j,k) = 0.0d0
+           vely(i,j,k) = 0.0d0
+           velz(i,j,k) = 0.0d0
+@@ -359,7 +362,7 @@ subroutine GRHydro_InitialAtmosphereReset(CCTK_ARGUMENTS)
+ 
+   CCTK_INT :: i, j, k
+   CCTK_REAL :: det
+-  CCTK_REAL :: rho_min
++  CCTK_REAL :: rho_min, dummy1, dummy2
+ 
+   CCTK_INT :: eos_handle
+ 
+@@ -447,15 +450,16 @@ subroutine GRHydro_InitialAtmosphereReset(CCTK_ARGUMENTS)
+     rho_min = rho_min * initial_atmosphere_factor
+   endif
+ 
+-!$OMP PARALLEL DO PRIVATE(det,keytemp,i,j,k,anyerr,keyerr)
++!$OMP PARALLEL DO PRIVATE(det,keytemp,i,j,k,anyerr,keyerr, dummy1, dummy2)
+   do k = 1, cctk_lsh(3)
+     do j = 1, cctk_lsh(2)
+       do i = 1, cctk_lsh(1)
+         
+-        if (rho(i,j,k) .le. rho_min .or. &
++        SET_ATMO_MIN(dummy2, rho_min, r(i,j,k))
++        if (rho(i,j,k) .le. dummy2 .or. &
+             GRHydro_enable_internal_excision /= 0 .and. &
+             hydro_excision_mask(i,j,k) .ne. 0) then 
+-          rho(i,j,k) = rho_min
++          SET_ATMO_MIN(rho(i,j,k), dummy2, r(i,j,k))
+           det = SPATIAL_DETERMINANT(g11(i,j,k), g12(i,j,k), g13(i,j,k), \
+                 g22(i,j,k), g23(i,j,k), g33(i,j,k))
+ 
+@@ -496,8 +500,8 @@ subroutine GRHydro_InitialAtmosphereReset(CCTK_ARGUMENTS)
+           endif
+         end if
+         if (timelevels .gt. 1) then
+-          if (rho_p(i,j,k) .le. rho_min) then
+-            rho_p(i,j,k) = rho_min
++          if (rho_p(i,j,k) .le. dummy2) then
++            SET_ATMO_MIN(rho_p(i,j,k), dummy2, r(i,j,k))
+             velx_p(i,j,k) = 0.0d0
+             vely_p(i,j,k) = 0.0d0
+             velz_p(i,j,k) = 0.0d0
+@@ -540,8 +544,8 @@ subroutine GRHydro_InitialAtmosphereReset(CCTK_ARGUMENTS)
+           endif
+         end if
+         if (timelevels .gt. 2) then
+-          if (rho_p_p(i,j,k) .le. rho_min) then
+-            rho_p_p(i,j,k) = rho_min
++          if (rho_p_p(i,j,k) .le. dummy2) then
++            SET_ATMO_MIN(rho_p_p(i,j,k), dummy2, r(i,j,k))
+             velx_p_p(i,j,k) = 0.0d0
+             vely_p_p(i,j,k) = 0.0d0
+             velz_p_p(i,j,k) = 0.0d0
+-- 
+1.7.10.4
+

@@ -1,0 +1,1049 @@
+Index: arrangements/CactusNumerical/MoL/interface.ccl
+===================================================================
+--- arrangements/CactusNumerical/MoL/interface.ccl	(revision 189)
++++ arrangements/CactusNumerical/MoL/interface.ccl	(working copy)
+@@ -206,11 +206,29 @@
+ # PROVIDES FUNCTION MoLChangeToNoneComplexArray WITH \
+ #                   MoL_ChangeToNoneComplexArray LANGUAGE C
+ 
+-##################################################
+-### Functions provided by devices              ###
+-##################################################
++##############################################################
++### Aliased functions that can be provided by other thorns ###
++### to override low-level grid variable operations.        ###
++##############################################################
+ 
++CCTK_INT FUNCTION LinearCombination             \
++    (CCTK_POINTER_TO_CONST IN cctkGH,           \
++     CCTK_INT              IN var,              \
++     CCTK_REAL             IN scale,            \
++     CCTK_INT  ARRAY       IN srcs,             \
++     CCTK_INT  ARRAY       IN tls,              \
++     CCTK_REAL ARRAY       IN facts,            \
++     CCTK_INT              IN nsrcs)
++USES FUNCTION LinearCombination
+ 
++CCTK_INT FUNCTION Accelerator_NotifyDataModified \
++  (CCTK_POINTER_TO_CONST IN cctkGH,              \
++   CCTK_INT ARRAY        IN variables,           \
++   CCTK_INT ARRAY        IN tls,                 \
++   CCTK_INT              IN nvariables,          \
++   CCTK_INT              IN on_device)
++USES FUNCTION Accelerator_NotifyDataModified
++
+ private:
+ 
+ CCTK_REAL RKAlphaCoefficients \
+Index: arrangements/CactusNumerical/MoL/src/InitialCopy.c
+===================================================================
+--- arrangements/CactusNumerical/MoL/src/InitialCopy.c	(revision 189)
++++ arrangements/CactusNumerical/MoL/src/InitialCopy.c	(working copy)
+@@ -20,6 +20,7 @@
+ #include "cctk_Parameters.h"
+ 
+ #include "ExternalVariables.h"
++#include "Operators.h"
+ 
+ static const char *rcsid = "$Header$";
+ 
+@@ -104,11 +105,15 @@
+ 
+   for (var = 0; var < MoLNumEvolvedVariables; var++)
+   {
++    const int       nsrc = 1;
++    const int       srcs[1] = {EvolvedVariableIndex[var]};
++    const int       tls[1] = {1};
++    const CCTK_REAL facts[1] = {1.0};
+     
+     StorageOn = CCTK_QueryGroupStorageI(cctkGH,
+                                        CCTK_GroupIndexFromVarI(EvolvedVariableIndex[var]));
+@@ -130,20 +135,8 @@
+       CCTK_WARN(0, "The grid function does not have storage assigned.");
+     }
+     
+-    PreviousVar = (CCTK_REAL const*)CCTK_VarDataPtrI(cctkGH, 1, 
+-                                               EvolvedVariableIndex[var]);
+-    CurrentVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                              EvolvedVariableIndex[var]);
+-    if (PreviousVar && CurrentVar)
+-    {      
+-      memcpy(CurrentVar, PreviousVar, totalsize * sizeof(CCTK_REAL));
+-    }
+-    else
+-    {
+-      CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,"Null pointer for variable %s", 
+-                 CCTK_VarName(EvolvedVariableIndex[var]));
+-    }
+-
++    MoL_LinearCombination(cctkGH, EvolvedVariableIndex[var], 0.0,
++                          srcs, tls, facts, nsrc);
+   }
+     
+   /* Set up the array sizes */
+@@ -552,22 +544,8 @@
+       CCTK_WARN(0, "The grid function does not have storage assigned.");
+     }
+     
+-    RHSVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                          RHSVariableIndex[var]);
+-    if (RHSVar)
+-    {
+-#pragma omp parallel for
+-      for (index = 0; index < totalsize; index++)
+-      {
+-        RHSVar[index] = 0;
+-      }
+-    }
+-    else
+-    {
+-      CCTK_VWarn(0,__LINE__,__FILE__,CCTK_THORNSTRING,"Null pointer for variable %s", 
+-                 CCTK_VarName(RHSVariableIndex[var]));
+-    }
+-
++    MoL_LinearCombination(cctkGH, RHSVariableIndex[var], 0.0,
++                          NULL, NULL, NULL, 0);
+   }
+     
+   for (var = 0; var < MoLNumEvolvedArrayVariables; var++)
+Index: arrangements/CactusNumerical/MoL/src/RK2.c
+===================================================================
+--- arrangements/CactusNumerical/MoL/src/RK2.c	(revision 189)
++++ arrangements/CactusNumerical/MoL/src/RK2.c	(working copy)
+@@ -16,6 +16,7 @@
+ #include "cctk_Parameters.h"
+ 
+ #include "ExternalVariables.h"
++#include "Operators.h"
+ 
+ static const char *rcsid = "$Header$";
+ 
+@@ -68,15 +69,10 @@
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+ 
+-  cGroupDynamicData arraydata;
+-  CCTK_INT groupindex, ierr;
+-  CCTK_INT arraytotalsize, arraydim;
++  CCTK_INT arraydim;
+   
+-  CCTK_INT index, var;
++  CCTK_INT var;
+   CCTK_INT totalsize;
+-  CCTK_REAL const * restrict OldVar;
+-  CCTK_REAL       * restrict UpdateVar;
+-  CCTK_REAL const * restrict RHSVar;
+   
+   /* FIXME */
+ 
+@@ -113,45 +109,24 @@
+       {
+         for (var = 0; var < MoLNumEvolvedVariables; var++)
+         {
+-          UpdateVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0,
+-                                                   EvolvedVariableIndex[var]);
+-          RHSVar = (CCTK_REAL const*)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                                RHSVariableIndex[var]);
+-          
+-#pragma omp parallel for
+-          for (index = 0; index < totalsize; index++)
+-          {
+-            UpdateVar[index] += CCTK_DELTA_TIME * RHSVar[index];
+-          }
++          int const nsrcs = 1;
++          CCTK_INT const srcs[] = {RHSVariableIndex[var]};
++          CCTK_INT const tls[] = {0};
++          CCTK_REAL const facts[] = {CCTK_DELTA_TIME};
++          MoL_LinearCombination(cctkGH,
++                                EvolvedVariableIndex[var], 1.0,
++                                srcs, tls, facts, nsrcs);
+         }
+ 
+         for (var = 0; var < MoLNumEvolvedArrayVariables; var++)
+         {
+-          UpdateVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0,
+-                                                   EvolvedArrayVariableIndex[var]);
+-          RHSVar = (CCTK_REAL const*)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                                RHSArrayVariableIndex[var]);
+-          groupindex = CCTK_GroupIndexFromVarI(EvolvedArrayVariableIndex[var]);
+-          ierr = CCTK_GroupDynamicData(cctkGH, groupindex,
+-                                       &arraydata);
+-          if (ierr)
+-          {
+-            CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING, 
+-                       "The driver does not return group information "
+-                       "for group '%s'.", 
+-                       CCTK_GroupName(groupindex));
+-          }
+-          arraytotalsize = 1;
+-          for (arraydim = 0; arraydim < arraydata.dim; arraydim++)
+-          {
+-            arraytotalsize *= arraydata.lsh[arraydim];
+-          }
+-
+-#pragma omp parallel for
+-          for (index = 0; index < arraytotalsize; index++)
+-          {
+-            UpdateVar[index] += CCTK_DELTA_TIME * RHSVar[index];
+-          }
++          int const nsrcs = 1;
++          CCTK_INT const srcs[] = {RHSArrayVariableIndex[var]};
++          CCTK_INT const tls[] = {0};
++          CCTK_REAL const facts[] = {CCTK_DELTA_TIME};
++          MoL_LinearCombination(cctkGH,
++                                EvolvedArrayVariableIndex[var], 1.0,
++                                srcs, tls, facts, nsrcs);
+         }
+ 
+   /* FIXME */
+@@ -160,18 +135,13 @@
+ 
+         for (var = 0; var < MoLNumEvolvedComplexVariables; var++)
+         {
+-          UpdateComplexVar = (CCTK_COMPLEX*)CCTK_VarDataPtrI(cctkGH, 0,
+-                                                             EvolvedComplexVariableIndex[var]);
+-          RHSComplexVar = (CCTK_COMPLEX const*)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                                          RHSComplexVariableIndex[var]);
+-          
+-#pragma omp parallel for
+-          for (index = 0; index < totalsize; index++)
+-          {
+-            UpdateComplexVar[index] = CCTK_CmplxAdd(UpdateComplexVar[index],
+-                                                    CCTK_CmplxMul(Complex_Delta_Time,
+-                                                                  RHSComplexVar[index]));
+-          }
++          int const nsrcs = 1;
++          CCTK_INT const srcs[] = {RHSComplexVariableIndex[var]};
++          CCTK_INT const tls[] = {0};
++          CCTK_REAL const facts[] = {CCTK_DELTA_TIME};
++          MoL_LinearCombination(cctkGH,
++                                EvolvedComplexVariableIndex[var], 1.0,
++                                srcs, tls, facts, nsrcs);
+         }
+ 
+ #endif
+@@ -182,52 +152,26 @@
+       {
+         for (var = 0; var < MoLNumEvolvedVariables; var++)
+         {
+-          OldVar = (CCTK_REAL const*)CCTK_VarDataPtrI(cctkGH, 1,
+-                                                EvolvedVariableIndex[var]);
+-          UpdateVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0,
+-                                                   EvolvedVariableIndex[var]);
+-          RHSVar = (CCTK_REAL const*)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                                RHSVariableIndex[var]);
+-          
+-#pragma omp parallel for
+-          for (index = 0; index < totalsize; index++)
+-          {
+-            UpdateVar[index] = 0.5 * (OldVar[index] + UpdateVar[index]) + 
+-                                      CCTK_DELTA_TIME * RHSVar[index];
+-          }
++          int const nsrcs = 2;
++          CCTK_INT const srcs[] =
++            {EvolvedVariableIndex[var], RHSVariableIndex[var]};
++          CCTK_INT const tls[] = {1, 0};
++          CCTK_REAL const facts[] = {0.5, CCTK_DELTA_TIME};
++          MoL_LinearCombination(cctkGH,
++                                EvolvedVariableIndex[var], 0.5,
++                                srcs, tls, facts, nsrcs);
+         }
+ 
+         for (var = 0; var < MoLNumEvolvedArrayVariables; var++)
+         {
+-          OldVar = (CCTK_REAL const*)CCTK_VarDataPtrI(cctkGH, 1,
+-                                                   EvolvedArrayVariableIndex[var]);
+-          UpdateVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0,
+-                                                   EvolvedArrayVariableIndex[var]);
+-          RHSVar = (CCTK_REAL const*)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                                RHSArrayVariableIndex[var]);
+-
+-          groupindex = CCTK_GroupIndexFromVarI(EvolvedArrayVariableIndex[var]);
+-          ierr = CCTK_GroupDynamicData(cctkGH, groupindex,
+-                                       &arraydata);
+-          if (ierr)
+-          {
+-            CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING, 
+-                       "The driver does not return group information "
+-                       "for group '%s'.", 
+-                       CCTK_GroupName(groupindex));
+-          }
+-          arraytotalsize = 1;
+-          for (arraydim = 0; arraydim < arraydata.dim; arraydim++)
+-          {
+-            arraytotalsize *= arraydata.lsh[arraydim];
+-          }
+-          
+-#pragma omp parallel for
+-          for (index = 0; index < arraytotalsize; index++)
+-          {
+-            UpdateVar[index] = 0.5 * (OldVar[index] + UpdateVar[index]) + 
+-                                      CCTK_DELTA_TIME * RHSVar[index];
+-          }
++          int const nsrcs = 2;
++          CCTK_INT const srcs[] =
++            {EvolvedArrayVariableIndex[var], RHSArrayVariableIndex[var]};
++          CCTK_INT const tls[] = {1, 0};
++          CCTK_REAL const facts[] = {0.5, CCTK_DELTA_TIME};
++          MoL_LinearCombination(cctkGH,
++                                EvolvedArrayVariableIndex[var], 0.5,
++                                srcs, tls, facts, nsrcs);
+         }
+ 
+   /* FIXME */
+@@ -236,23 +180,14 @@
+ 
+         for (var = 0; var < MoLNumEvolvedComplexVariables; var++)
+         {
+-          OldComplexVar = (CCTK_COMPLEX const*)CCTK_VarDataPtrI(cctkGH, 1,
+-                                                       EvolvedComplexVariableIndex[var]);
+-          UpdateComplexVar = (CCTK_COMPLEX*)CCTK_VarDataPtrI(cctkGH, 0,
+-                                                             EvolvedComplexVariableIndex[var]);
+-          RHSComplexVar = (CCTK_COMPLEX const*)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                                          RHSComplexVariableIndex[var]);
+-          
+-#pragma omp parallel for
+-          for (index = 0; index < totalsize; index++)
+-          {
+-            UpdateComplexVar[index] =
+-              CCTK_CmplxAdd(CCTK_CmplxMul(Complex_Half,
+-                                          (CCTK_CmplxAdd(OldComplexVar[index],
+-                                                         UpdateComplexVar[index]))), 
+-                            CCTK_CmplxMul(Complex_Delta_Time, 
+-                                          RHSComplexVar[index])); 
+-          }
++          int const nsrcs = 2;
++          CCTK_INT const srcs[] =
++            {EvolvedComplexVariableIndex[var], RHSComplexVariableIndex[var]};
++          CCTK_INT const tls[] = {1, 0};
++          CCTK_REAL const facts[] = {0.5, CCTK_DELTA_TIME};
++          MoL_LinearCombination(cctkGH,
++                                EvolvedComplexVariableIndex[var], 0.5,
++                                srcs, tls, facts, nsrcs);
+         }
+ 
+ #endif
+Index: arrangements/CactusNumerical/MoL/src/RK3.c
+===================================================================
+--- arrangements/CactusNumerical/MoL/src/RK3.c	(revision 189)
++++ arrangements/CactusNumerical/MoL/src/RK3.c	(working copy)
+@@ -15,6 +15,7 @@
+ #include "cctk_Parameters.h"
+ 
+ #include "ExternalVariables.h"
++#include "Operators.h"
+ 
+ static const char *rcsid = "$Header$";
+ 
+@@ -67,15 +68,10 @@
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+ 
+-  cGroupDynamicData arraydata;
+-  CCTK_INT groupindex, ierr;
+-  CCTK_INT arraytotalsize, arraydim;
++  CCTK_INT arraydim;
+   
+-  CCTK_INT index, var;
++  CCTK_INT var;
+   CCTK_INT totalsize;
+-  CCTK_REAL const * restrict OldVar;
+-  CCTK_REAL       * restrict UpdateVar;
+-  CCTK_REAL const * restrict RHSVar;
+   
+   /* FIXME */
+ 
+@@ -116,45 +112,24 @@
+       {
+         for (var = 0; var < MoLNumEvolvedVariables; var++)
+         {
+-          UpdateVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0,
+-                                                   EvolvedVariableIndex[var]);
+-          RHSVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                                RHSVariableIndex[var]);
+-          
+-#pragma omp parallel for
+-          for (index = 0; index < totalsize; index++)
+-          {
+-            UpdateVar[index] += CCTK_DELTA_TIME * RHSVar[index];
+-          }
++          int const nsrcs = 1;
++          CCTK_INT const srcs[] = {RHSVariableIndex[var]};
++          CCTK_INT const tls[] = {0};
++          CCTK_REAL const facts[] = {CCTK_DELTA_TIME};
++          MoL_LinearCombination(cctkGH,
++                                EvolvedVariableIndex[var], 1.0,
++                                srcs, tls, facts, nsrcs);
+         }
+ 
+         for (var = 0; var < MoLNumEvolvedArrayVariables; var++)
+         {
+-          UpdateVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0,
+-                                                   EvolvedArrayVariableIndex[var]);
+-          RHSVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                                RHSArrayVariableIndex[var]);
+-          groupindex = CCTK_GroupIndexFromVarI(EvolvedArrayVariableIndex[var]);
+-          ierr = CCTK_GroupDynamicData(cctkGH, groupindex,
+-                                       &arraydata);
+-          if (ierr)
+-          {
+-            CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING, 
+-                       "The driver does not return group information "
+-                       "for group '%s'.", 
+-                       CCTK_GroupName(groupindex));
+-          }
+-          arraytotalsize = 1;
+-          for (arraydim = 0; arraydim < arraydata.dim; arraydim++)
+-          {
+-            arraytotalsize *= arraydata.lsh[arraydim];
+-          }
+-
+-#pragma omp parallel for
+-          for (index = 0; index < arraytotalsize; index++)
+-          {
+-            UpdateVar[index] += CCTK_DELTA_TIME * RHSVar[index];
+-          }
++          int const nsrcs = 1;
++          CCTK_INT const srcs[] = {RHSArrayVariableIndex[var]};
++          CCTK_INT const tls[] = {0};
++          CCTK_REAL const facts[] = {CCTK_DELTA_TIME};
++          MoL_LinearCombination(cctkGH,
++                                EvolvedArrayVariableIndex[var], 1.0,
++                                srcs, tls, facts, nsrcs);
+         }
+ 
+   /* FIXME */
+@@ -163,18 +138,13 @@
+ 
+         for (var = 0; var < MoLNumEvolvedComplexVariables; var++)
+         {
+-          UpdateComplexVar = (CCTK_COMPLEX*)CCTK_VarDataPtrI(cctkGH, 0,
+-                                                             EvolvedComplexVariableIndex[var]);
+-          RHSComplexVar = (CCTK_COMPLEX*)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                                          RHSComplexVariableIndex[var]);
+-          
+-#pragma omp parallel for
+-          for (index = 0; index < totalsize; index++)
+-          {
+-            UpdateComplexVar[index] = CCTK_CmplxAdd(UpdateComplexVar[index],
+-                                                    CCTK_CmplxMul(Complex_Delta_Time,
+-                                                                  RHSComplexVar[index]));
+-          }
++          int const nsrcs = 1;
++          CCTK_INT const srcs[] = {RHSComplexVariableIndex[var]};
++          CCTK_INT const tls[] = {0};
++          CCTK_REAL const facts[] = {CCTK_DELTA_TIME};
++          MoL_LinearCombination(cctkGH,
++                                EvolvedComplexVariableIndex[var], 1.0,
++                                srcs, tls, facts, nsrcs);
+         }
+ 
+ #endif
+@@ -186,52 +156,26 @@
+       {
+         for (var = 0; var < MoLNumEvolvedVariables; var++)
+         {
+-          OldVar = (CCTK_REAL const*)CCTK_VarDataPtrI(cctkGH, 1,
+-                                                EvolvedVariableIndex[var]);
+-          UpdateVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0,
+-                                                   EvolvedVariableIndex[var]);
+-          RHSVar = (CCTK_REAL const*)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                                RHSVariableIndex[var]);
+-          
+-#pragma omp parallel for
+-          for (index = 0; index < totalsize; index++)
+-          {
+-            UpdateVar[index] = 0.25 * (3*OldVar[index] +
+-                                       UpdateVar[index]) + 
+-              CCTK_DELTA_TIME * RHSVar[index]; 
+-          }
++          int const nsrcs = 2;
++          CCTK_INT const srcs[] =
++            {EvolvedVariableIndex[var], RHSVariableIndex[var]};
++          CCTK_INT const tls[] = {1, 0};
++          CCTK_REAL const facts[] = {0.75, CCTK_DELTA_TIME};
++          MoL_LinearCombination(cctkGH,
++                                EvolvedVariableIndex[var], 0.25,
++                                srcs, tls, facts, nsrcs);
+         }
+ 
+         for (var = 0; var < MoLNumEvolvedArrayVariables; var++)
+         {
+-          OldVar = (CCTK_REAL const*)CCTK_VarDataPtrI(cctkGH, 1,
+-                                                EvolvedArrayVariableIndex[var]);
+-          UpdateVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0,
+-                                                   EvolvedArrayVariableIndex[var]);
+-          RHSVar = (CCTK_REAL const*)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                                RHSArrayVariableIndex[var]);
+-          groupindex = CCTK_GroupIndexFromVarI(EvolvedArrayVariableIndex[var]);
+-          ierr = CCTK_GroupDynamicData(cctkGH, groupindex,
+-                                       &arraydata);
+-          if (ierr)
+-          {
+-            CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING, 
+-                       "The driver does not return group information "
+-                       "for group '%s'.", 
+-                       CCTK_GroupName(groupindex));
+-          }
+-          arraytotalsize = 1;
+-          for (arraydim = 0; arraydim < arraydata.dim; arraydim++)
+-          {
+-            arraytotalsize *= arraydata.lsh[arraydim];
+-          }
+-
+-#pragma omp parallel for
+-          for (index = 0; index < arraytotalsize; index++)
+-          {
+-            UpdateVar[index] = 0.25*(3*OldVar[index] + UpdateVar[index]) +
+-              CCTK_DELTA_TIME * RHSVar[index]; 
+-          }
++          int const nsrcs = 2;
++          CCTK_INT const srcs[] =
++            {EvolvedArrayVariableIndex[var], RHSArrayVariableIndex[var]};
++          CCTK_INT const tls[] = {1, 0};
++          CCTK_REAL const facts[] = {0.75, CCTK_DELTA_TIME};
++          MoL_LinearCombination(cctkGH,
++                                EvolvedArrayVariableIndex[var], 0.25,
++                                srcs, tls, facts, nsrcs);
+         }
+ 
+   /* FIXME */
+@@ -240,24 +184,14 @@
+ 
+         for (var = 0; var < MoLNumEvolvedComplexVariables; var++)
+         {
+-          OldComplexVar = (CCTK_COMPLEX const*)CCTK_VarDataPtrI(cctkGH, 1,
+-                                                          EvolvedComplexVariableIndex[var]);
+-          UpdateComplexVar = (CCTK_COMPLEX*)CCTK_VarDataPtrI(cctkGH, 0,
+-                                                             EvolvedComplexVariableIndex[var]);
+-          RHSComplexVar = (CCTK_COMPLEX const*)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                                          RHSComplexVariableIndex[var]);
+-          
+-#pragma omp parallel for
+-          for (index = 0; index < totalsize; index++)
+-          {
+-            UpdateComplexVar[index] =
+-              CCTK_CmplxAdd(CCTK_CmplxAdd(CCTK_CmplxMul(Complex_ThreeQuarter,
+-                                                        OldComplexVar[index]),
+-                                          CCTK_CmplxMul(ComplexQuarter,
+-                                                        UpdateComplexVar[index])), 
+-                            CCTK_CmplxMul(CCTK_CmplxMul(Complex_Delta_Time, 
+-                                                        RHSComplexVar[index]))); 
+-          }
++          int const nsrcs = 2;
++          CCTK_INT const srcs[] =
++            {EvolvedComplexVariableIndex[var], RHSComplexVariableIndex[var]};
++          CCTK_INT const tls[] = {1, 0};
++          CCTK_REAL const facts[] = {0.75, CCTK_DELTA_TIME};
++          MoL_LinearCombination(cctkGH,
++                                EvolvedComplexVariableIndex[var], 0.25,
++                                srcs, tls, facts, nsrcs);
+         }
+ 
+ #endif
+@@ -266,56 +200,28 @@
+       }
+     case 1:
+       {
+-        const CCTK_REAL one_third = 1.0 / 3.0;
+-
+         for (var = 0; var < MoLNumEvolvedVariables; var++)
+         {
+-          OldVar = (CCTK_REAL const*)CCTK_VarDataPtrI(cctkGH, 1,
+-                                                EvolvedVariableIndex[var]);
+-          UpdateVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0,
+-                                                   EvolvedVariableIndex[var]);
+-          RHSVar = (CCTK_REAL const*)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                                RHSVariableIndex[var]);
+-          
+-#pragma omp parallel for
+-          for (index = 0; index < totalsize; index++)
+-          {
+-            UpdateVar[index] = (OldVar[index] + 2*UpdateVar[index]) * one_third
+-              + CCTK_DELTA_TIME * RHSVar[index];
+-          }
++          int const nsrcs = 2;
++          CCTK_INT const srcs[] =
++            {EvolvedVariableIndex[var], RHSVariableIndex[var]};
++          CCTK_INT const tls[] = {1, 0};
++          CCTK_REAL const facts[] = {1.0/3.0, CCTK_DELTA_TIME};
++          MoL_LinearCombination(cctkGH,
++                                EvolvedVariableIndex[var], 2.0/3.0,
++                                srcs, tls, facts, nsrcs);
+         }
+ 
+         for (var = 0; var < MoLNumEvolvedArrayVariables; var++)
+         {
+-          OldVar = (CCTK_REAL const*)CCTK_VarDataPtrI(cctkGH, 1,
+-                                                   EvolvedArrayVariableIndex[var]);
+-          UpdateVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0,
+-                                                   EvolvedArrayVariableIndex[var]);
+-          RHSVar = (CCTK_REAL const*)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                                RHSArrayVariableIndex[var]);
+-
+-          groupindex = CCTK_GroupIndexFromVarI(EvolvedArrayVariableIndex[var]);
+-          ierr = CCTK_GroupDynamicData(cctkGH, groupindex,
+-                                       &arraydata);
+-          if (ierr)
+-          {
+-            CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING, 
+-                       "The driver does not return group information "
+-                       "for group '%s'.", 
+-                       CCTK_GroupName(groupindex));
+-          }
+-          arraytotalsize = 1;
+-          for (arraydim = 0; arraydim < arraydata.dim; arraydim++)
+-          {
+-            arraytotalsize *= arraydata.lsh[arraydim];
+-          }
+-          
+-#pragma omp parallel for
+-          for (index = 0; index < arraytotalsize; index++)
+-          {
+-            UpdateVar[index] = (OldVar[index] + 2*UpdateVar[index]) * one_third
+-              + CCTK_DELTA_TIME * RHSVar[index];
+-          }
++          int const nsrcs = 2;
++          CCTK_INT const srcs[] =
++            {EvolvedArrayVariableIndex[var], RHSArrayVariableIndex[var]};
++          CCTK_INT const tls[] = {1, 0};
++          CCTK_REAL const facts[] = {1.0/3.0, CCTK_DELTA_TIME};
++          MoL_LinearCombination(cctkGH,
++                                EvolvedArrayVariableIndex[var], 2.0/3.0,
++                                srcs, tls, facts, nsrcs);
+         }
+ 
+   /* FIXME */
+@@ -324,24 +230,14 @@
+ 
+         for (var = 0; var < MoLNumEvolvedComplexVariables; var++)
+         {
+-          OldComplexVar = (CCTK_COMPLEX const*)CCTK_VarDataPtrI(cctkGH, 1,
+-                                                          EvolvedComplexVariableIndex[var]);
+-          UpdateComplexVar = (CCTK_COMPLEX*)CCTK_VarDataPtrI(cctkGH, 0,
+-                                                             EvolvedComplexVariableIndex[var]);
+-          RHSComplexVar = (CCTK_COMPLEX const*)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                                          RHSComplexVariableIndex[var]);
+-          
+-#pragma omp parallel for
+-          for (index = 0; index < totalsize; index++)
+-          {
+-            UpdateComplexVar[index] =
+-              CCTK_CmplxAdd(CCTK_CmplxAdd(CCTK_CmplxMul(Complex_Third,
+-                                                        OldComplexVar[index]),
+-                                          CCTK_CmplxMul(ComplexTwoThird,
+-                                                        UpdateComplexVar[index])), 
+-                            CCTK_CmplxMul(Complex_Delta_Time, 
+-                                          RHSComplexVar[index])); 
+-          }
++          int const nsrcs = 2;
++          CCTK_INT const srcs[] =
++            {EvolvedComplexVariableIndex[var], RHSComplexVariableIndex[var]};
++          CCTK_INT const tls[] = {1, 0};
++          CCTK_REAL const facts[] = {1.0/3.0, CCTK_DELTA_TIME};
++          MoL_LinearCombination(cctkGH,
++                                EvolvedComplexVariableIndex[var], 2.0/3.0,
++                                srcs, tls, facts, nsrcs);
+         }
+ 
+ #endif
+Index: arrangements/CactusNumerical/MoL/src/RK4.c
+===================================================================
+--- arrangements/CactusNumerical/MoL/src/RK4.c	(revision 189)
++++ arrangements/CactusNumerical/MoL/src/RK4.c	(working copy)
+@@ -13,8 +13,8 @@
+ #include "cctk_Arguments.h"
+ #include "cctk_Parameters.h"
+ 
+-#include <stdio.h>
+ #include "ExternalVariables.h"
++#include "Operators.h"
+ 
+ static const char *rcsid = "$Header$";
+ 
+@@ -99,14 +99,14 @@
+   /* Keep a running total of alpha as we perform the substeps, so that
+      we know the "real" alpha (including round-off errors) when we
+      calculate the final result. */
+-  static CCTK_REAL sum_alpha;
+-  /* the last MoL intermediate step that was summed */
+-  static CCTK_INT last_sum_step;
+-
++  CCTK_REAL const time_rhs = 1.0;
++  CCTK_REAL const old_time = 0.0;
++  static CCTK_REAL time, scratch_time;
++  
+   totalsize = 1;
+   for (arraydim = 0; arraydim < cctk_dim; arraydim++)
+   {
+@@ -131,21 +131,14 @@
+     case 3:
+       alpha = 1.0;
+       beta  = 1.0 / 6.0;
++      break;
+   }
+ 
+-  /* Initialise alpha before the first intermediate step */
+   if (MoL_Intermediate_Steps == (*MoL_Intermediate_Step))
+   {
+-    sum_alpha = 0.0;
+-    last_sum_step = -1;
++    time = 0.0;
+   }
+-  /* Add alpha once per intermediate step */
+-  if (last_sum_step != (*MoL_Intermediate_Step))
+-  {
+-    sum_alpha += alpha;
+-    last_sum_step = (*MoL_Intermediate_Step);
+-  }
+-
++  
+   /* FIXME */
+ 
+ #ifdef MOLDOESCOMPLEX
+@@ -159,71 +152,53 @@
+ 
+   for (var = 0; var < MoLNumEvolvedVariables; var++)
+   {
+-    
+-    UpdateVar = (CCTK_REAL *)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                              EvolvedVariableIndex[var]);
+-    OldVar = (CCTK_REAL *)CCTK_VarDataPtrI(cctkGH, 1, 
+-                                              EvolvedVariableIndex[var]);
+-    RHSVar = (CCTK_REAL const *)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                                 RHSVariableIndex[var]);
+-/* #define MOLDEBUG 1 */
+-#ifdef MOLDEBUG
+-    printf("In generic RK. Variable %d (%s). RHS %d (%s). beta %g.\n",
+-           EvolvedVariableIndex[var],
+-           CCTK_VarName(EvolvedVariableIndex[var]),
+-           RHSVariableIndex[var],
+-           CCTK_VarName(RHSVariableIndex[var]),
+-           beta);
+-#endif
+-
+-#pragma omp parallel for
+-    for (index = 0; index < totalsize; index++)
+     {
+-      UpdateVar[index] = OldVar[index] + 
+-        (*Original_Delta_Time) / cctkGH->cctk_timefac * beta * RHSVar[index];
+-#ifdef MOLDEBUG
+-      if (CCTK_EQUALS(verbose,"extreme"))
+-      {
+-        printf("Variable: %d. Index: %d. dt: %f. beta %f. RHS: %f. q: %f.\n",
+-               var, index, (*Original_Delta_Time) / cctkGH->cctk_timefac, beta, RHSVar[index], 
+-               UpdateVar[index]);
+-      }
+-#endif
++      int const nsrcs = 2;
++      CCTK_INT const srcs[] =
++        {EvolvedVariableIndex[var], RHSVariableIndex[var]};
++      CCTK_INT const tls[] = {1, 0};
++      CCTK_REAL const facts[] =
++        {1.0, (*Original_Delta_Time) / cctkGH->cctk_timefac * beta};
++      MoL_LinearCombination(cctkGH,
++                            EvolvedVariableIndex[var], 0.0,
++                            srcs, tls, facts, nsrcs);
++      time = facts[0] * old_time + facts[1] * time_rhs;
+     }
+-    ScratchVar = CCTK_VarDataPtrI(cctkGH, 0, 
+-                                      scratchspace_firstindex
+-                                      + var );
+-    
++
+     /* scratch storage */
+     if ((*MoL_Intermediate_Step) == MoL_Intermediate_Steps)
+     {
+-#pragma omp parallel for
+-      for (index = 0; index < totalsize; index++)
+-      {
+-        ScratchVar[index] = 0;
+-      }
++      MoL_LinearCombination(cctkGH,
++                            scratchspace_firstindex + var, 0.0,
++                            NULL, NULL, NULL, 0);
++      scratch_time = 0.0;
+     }
+ 
+     if ((*MoL_Intermediate_Step)>1)
+     {
+-#pragma omp parallel for
+-      for (index = 0; index < totalsize; index++)
+-      {
+-        ScratchVar[index] += alpha * UpdateVar[index];
+-      }
++      int const nsrcs = 1;
++      CCTK_INT const srcs[] = {EvolvedVariableIndex[var]};
++      CCTK_INT const tls[] = {0};
++      CCTK_REAL const facts[] = {alpha};
++      MoL_LinearCombination(cctkGH,
++                            scratchspace_firstindex + var, 1.0,
++                            srcs, tls, facts, nsrcs);
++      scratch_time += facts[0] * time;
+     }
+     else
+     {
+-#pragma omp parallel for
+-      for (index = 0; index < totalsize; index++)
+-      {
+-        UpdateVar[index] += ScratchVar[index] - (sum_alpha - 1.0) * OldVar[index];
+-      }
++      int const nsrcs = 2;
++      CCTK_INT const srcs[] =
++        {scratchspace_firstindex + var, EvolvedVariableIndex[var]};
++      CCTK_INT const tls[] = {0, 1};
++      CCTK_REAL const facts[] = {1.0, -4.0/3.0};
++      MoL_LinearCombination(cctkGH,
++                            EvolvedVariableIndex[var], 1.0,
++                            srcs, tls, facts, nsrcs);
++      time += facts[0] * scratch_time + facts[1] * old_time;
+     }
+-
+   }
+ 
+-
+   /* Complex GFs */
+ 
+   /* FIXME */
+@@ -293,7 +268,7 @@
+ #pragma omp parallel for
+       for (index = 0; index < arraytotalsize; index++)
+       {
+-        UpdateVar[index] += ScratchVar[index] - (sum_alpha - 1.0) * OldVar[index];
++        UpdateVar[index] += ScratchVar[index] - 4.0 / 3.0 * OldVar[index];
+       }
+     }
+     arrayscratchlocation += arraytotalsize;
+Index: arrangements/CactusNumerical/MoL/src/RK87.c
+===================================================================
+--- arrangements/CactusNumerical/MoL/src/RK87.c	(revision 189)
++++ arrangements/CactusNumerical/MoL/src/RK87.c	(working copy)
+@@ -14,6 +14,7 @@
+ #include "cctk_Parameters.h"
+ 
+ #include "ExternalVariables.h"
++#include "Operators.h"
+ 
+ static const char *rcsid = "$Header$";
+ 
+@@ -70,17 +71,9 @@
+   CCTK_INT arraydim;
+ 
+   static CCTK_INT scratchspace_firstindex = -99;
+-  CCTK_INT index, var, scratchstep;
++  CCTK_INT var, scratchstep;
+   CCTK_INT totalsize;
+ 
+-  CCTK_REAL       * restrict UpdateVar;
+-  CCTK_REAL const * restrict RHSVar;
+-  CCTK_REAL       * restrict ScratchVar;
+-  CCTK_REAL       * restrict ErrorVar;
+-  CCTK_REAL const * restrict OldVar;
+-
+-  CCTK_REAL beta, gamma, gamma_error;
+-
+   static const CCTK_REAL beta_array[12][12] = {
+     { 1.0/18.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 },
+     { 1.0/48.0, 1.0/16.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 },
+@@ -145,122 +138,101 @@
+ 
+   for (var = 0; var < MoLNumEvolvedVariables; var++)
+   {
+-    const CCTK_REAL tmp = (*Original_Delta_Time) / cctkGH->cctk_timefac;
++    int const step = MoL_Intermediate_Steps - (*MoL_Intermediate_Step);
++    int const scratchvarindex =
++      scratchspace_firstindex + MoL_Num_Evolved_Vars * step + var;
+ 
+-    UpdateVar = (CCTK_REAL *)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                              EvolvedVariableIndex[var]);
+-    RHSVar = (CCTK_REAL const *)CCTK_VarDataPtrI(cctkGH, 0, 
+-						 RHSVariableIndex[var]);
+-    ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                              CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+-                                              + var 
+-                                              + MoL_Num_Evolved_Vars * 
+-                                              (MoL_Intermediate_Steps - 
+-                                               (*MoL_Intermediate_Step)));
+-#pragma omp parallel for
+-    for (index = 0; index < totalsize; index++)
+-    {
+-      ScratchVar[index] = tmp * RHSVar[index];
+-    }
+-
++    int const nsrcs = 1;
++    CCTK_INT const srcs[] = {RHSVariableIndex[var]};
++    CCTK_INT const tls[] = {0};
++    CCTK_REAL const facts[] = {(*Original_Delta_Time) / cctkGH->cctk_timefac};
++    MoL_LinearCombination(cctkGH,
++                          scratchvarindex, 1.0,
++                          srcs, tls, facts, nsrcs);
+   }
+ 
+-
+   for (var = 0; var < MoLNumEvolvedVariables; var++)
+   {
+-    OldVar = (CCTK_REAL const *)CCTK_VarDataPtrI(cctkGH, 1, 
+-						 EvolvedVariableIndex[var]);
+-    UpdateVar = (CCTK_REAL *)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                              EvolvedVariableIndex[var]);
+-    RHSVar = (CCTK_REAL const *)CCTK_VarDataPtrI(cctkGH, 0, 
+-						 CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+-						 + var 
+-						 + MoL_Num_Evolved_Vars * 
+-						 (MoL_Intermediate_Steps - 
+-						  (*MoL_Intermediate_Step)));
+-    ErrorVar =  (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                             CCTK_FirstVarIndex("MOL::ERRORESTIMATE")
+-                                             + var);
++    int const error_firstindex = CCTK_FirstVarIndex("MOL::ERRORESTIMATE");
++    int const step = MoL_Intermediate_Steps - (*MoL_Intermediate_Step);
+ 
+     if (*MoL_Intermediate_Step - 1)
+-    { 
++    {
++      int const nsrcs = step + 2;
++      CCTK_INT srcs[nsrcs];
++      CCTK_INT tls[nsrcs];
++      CCTK_REAL facts[nsrcs];
++      srcs[0]  = EvolvedVariableIndex[var];
++      tls[0]   = 1;
++      facts[0] = 1.0;
+ 
+-#pragma omp parallel for
+-      for (index = 0; index < totalsize; index++)
++      for (scratchstep = 0; scratchstep < step + 1; scratchstep++)
+       {
+-        UpdateVar[index] = OldVar[index];
++        int const scratchvarindex =
++          scratchspace_firstindex + MoL_Num_Evolved_Vars * scratchstep + var;
++        srcs [scratchstep+1] = scratchvarindex;
++        tls  [scratchstep+1] = 0;
++        facts[scratchstep+1] = beta_array[step][scratchstep];
+       }
+ 
+-      for (scratchstep = 0; 
+-           scratchstep < MoL_Intermediate_Steps - (*MoL_Intermediate_Step) + 1;
+-           scratchstep++)
++      MoL_LinearCombination(cctkGH,
++                            EvolvedVariableIndex[var], 0.0,
++                            srcs, tls, facts, nsrcs);
++    }
++    else
++    {
+       {
++        int const nsrcs = 14;
++        CCTK_INT srcs[nsrcs];
++        CCTK_INT tls[nsrcs];
++        CCTK_REAL facts[nsrcs];
++        srcs[0]  = EvolvedVariableIndex[var];
++        tls[0]   = 1;
++        facts[0] = 1.0;
+         
+-        ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                                  CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+-                                                  + var 
+-                                                  + MoL_Num_Evolved_Vars * scratchstep);
+-        
+-        beta = beta_array[MoL_Intermediate_Steps - (*MoL_Intermediate_Step)][scratchstep];
+-        
+-        if ( (beta > MoL_Tiny)||(beta < -MoL_Tiny) )
++        for (scratchstep = 0; scratchstep < 13; scratchstep++)
+         {
+-#pragma omp parallel for
+-          for (index = 0; index < totalsize; index++)
+-          {
+-            UpdateVar[index] += beta * ScratchVar[index];
+-          }
++          int const scratchvarindex =
++            scratchspace_firstindex + MoL_Num_Evolved_Vars * scratchstep + var;
++          srcs [scratchstep+1] = scratchvarindex;
++          tls  [scratchstep+1] = 0;
++          facts[scratchstep+1] = gamma_array[scratchstep];
+         }
+-        
++
++        MoL_LinearCombination(cctkGH,
++                              EvolvedVariableIndex[var], 0.0,
++                              srcs, tls, facts, nsrcs);
+       }
+-      
+-    }
+-    else
+-    {
+ 
+-#pragma omp parallel for
+-      for (index = 0; index < totalsize; index++)
+       {
+-        UpdateVar[index] = OldVar[index];
+-        ErrorVar[index] = 0;
+-      }
+-    
+-      for (scratchstep = 0; scratchstep < 13; scratchstep++)
+-      {
++        int const nsrcs = 13;
++        CCTK_INT srcs[nsrcs];
++        CCTK_INT tls[nsrcs];
++        CCTK_REAL facts[nsrcs];
+         
+-        ScratchVar = (CCTK_REAL*)CCTK_VarDataPtrI(cctkGH, 0, 
+-                                                  CCTK_FirstVarIndex("MOL::SCRATCHSPACE")
+-                                                  + var 
+-                                                  + MoL_Num_Evolved_Vars * scratchstep);
+-        
+-        gamma = gamma_array[scratchstep];
+-        gamma_error = gamma - gammastar_array[scratchstep];
+-        
+-        if ( (gamma > MoL_Tiny)||(gamma < -MoL_Tiny) )
++        for (scratchstep = 0; scratchstep < 13; scratchstep++)
+         {
+-#pragma omp parallel for
+-          for (index = 0; index < totalsize; index++)
+-          {
+-            UpdateVar[index] += gamma * ScratchVar[index];
+-            ErrorVar[index] += gamma_error * ScratchVar[index];
+-          }
++          int const scratchvarindex =
++            scratchspace_firstindex + MoL_Num_Evolved_Vars * scratchstep + var;
++          srcs [scratchstep] = scratchvarindex;
++          tls  [scratchstep] = 0;
++          facts[scratchstep] =
++            gamma_array[scratchstep] - gammastar_array[scratchstep];
+         }
+ 
++        MoL_LinearCombination(cctkGH,
++                              error_firstindex + var, 0.0,
++                              srcs, tls, facts, nsrcs);
+       }
+-      
++
+     }
+-    
++
+   }
+ 
+   /* Real arrays */
+ 
+-  for (var = 0; var < MoLNumEvolvedArrayVariables; var++)
+-  {
+-
+-    CCTK_WARN(0, "Peter has been too lazy to write the RK87 routine "
+-              "out for array variables. Better send him an email...");
+-
+-  }
++  CCTK_WARN(0, "Peter has been too lazy to write the RK87 routine "
++            "out for array variables. Better send him an email...");
+         
+   return;
+ }
+Index: arrangements/CactusNumerical/MoL/src/make.code.defn
+===================================================================
+--- arrangements/CactusNumerical/MoL/src/make.code.defn	(revision 189)
++++ arrangements/CactusNumerical/MoL/src/make.code.defn	(working copy)
+@@ -2,14 +2,20 @@
+ 	ICN.c \
+ 	IndexArrays.c \
+ 	InitialCopy.c \
++	Operators.c \
+ 	ParamCheck.c \
+ 	RK2.c \
+ 	RK3.c \

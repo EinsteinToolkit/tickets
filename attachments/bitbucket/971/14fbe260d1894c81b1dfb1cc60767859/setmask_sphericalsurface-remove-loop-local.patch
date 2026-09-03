@@ -1,0 +1,22 @@
+Index: arrangements/EinsteinUtils/SetMask_SphericalSurface/schedule.ccl
+===================================================================
+--- arrangements/EinsteinUtils/SetMask_SphericalSurface/schedule.ccl	(revision 115)
++++ arrangements/EinsteinUtils/SetMask_SphericalSurface/schedule.ccl	(working copy)
+@@ -1,13 +1,15 @@
+ # Schedule definitions for thorn SetMask_SphericalSurface
+ 
++# we need global loop-local since SphericalSurface_Set and AHFinderDirect run in global mode
+ schedule SetMask_SphericalSurface AT CCTK_POSTSTEP after SphericalSurface_HasBeenSet before HydroBase_ExcisionHasBeenSet
+ {
+   LANG: C
+   options: global loop-local
+ } "Set hydro_excision_mask according to spherical surface information"
+ 
++# these must be local mode since they relate to HydroBase_InitExcisionMask
++# which must be local in PostRegrid
+ schedule SetMask_SphericalSurface IN HydroBase_ExcisionMaskSetup after HydroBase_InitExcisionMask
+ {
+   LANG: C
+-  options: global loop-local
+ } "Set hydro_excision_mask according to spherical surface information"
+

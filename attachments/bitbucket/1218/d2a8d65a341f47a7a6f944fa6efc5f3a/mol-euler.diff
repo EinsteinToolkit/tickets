@@ -1,0 +1,106 @@
+Index: arrangements/CactusNumerical/MoL/param.ccl
+===================================================================
+--- arrangements/CactusNumerical/MoL/param.ccl	(revision 189)
++++ arrangements/CactusNumerical/MoL/param.ccl	(working copy)
+@@ -91,6 +91,7 @@
+   "Generic"	:: "Generic Shu-Osher Runga-Kutta type"
+   "ICN"		:: "Iterative Crank Nicholson"
+   "ICN-avg"	:: "Iterative Crank Nicholson with averaging"
++  "Euler"	:: "Euler"
+   "RK2"		:: "Efficient RK2"
+   "RK3"		:: "Efficient RK3"
+   "RK4"		:: "Efficient RK4"
+Index: arrangements/CactusNumerical/MoL/schedule.ccl
+===================================================================
+--- arrangements/CactusNumerical/MoL/schedule.ccl	(revision 189)
++++ arrangements/CactusNumerical/MoL/schedule.ccl	(working copy)
+@@ -551,6 +551,13 @@
+     LANG: C
+   } "Updates calculated with a generic method"
+ }
++else if (CCTK_Equals(ODE_Method,"Euler")) 
++{
++  schedule MoL_EulerAdd AS MoL_Add IN MoL_Step AFTER MoL_CalcRHS BEFORE MoL_PostStep
++  {
++    LANG: C
++  } "Updates calculated with the Euler method"
++}
+ else if (CCTK_Equals(ODE_Method,"RK2")) 
+ {
+   schedule MoL_RK2Add AS MoL_Add IN MoL_Step AFTER MoL_CalcRHS BEFORE MoL_PostStep
+Index: arrangements/CactusNumerical/MoL/src/IndexArrays.c
+===================================================================
+--- arrangements/CactusNumerical/MoL/src/IndexArrays.c	(revision 189)
++++ arrangements/CactusNumerical/MoL/src/IndexArrays.c	(working copy)
+@@ -313,6 +314,10 @@
+       CCTK_WARN(0, "Generic_Type not recognized!");
+     }
+   }
++  else if (CCTK_EQUALS(ODE_Method,"Euler")) 
++  {
++    sprintf(infoline, "Euler");
++  }
+   else if (CCTK_EQUALS(ODE_Method,"RK2")) 
+   {
+     sprintf(infoline, "Runge-Kutta 2");
+Index: arrangements/CactusNumerical/MoL/src/ParamCheck.c
+===================================================================
+--- arrangements/CactusNumerical/MoL/src/ParamCheck.c	(revision 189)
++++ arrangements/CactusNumerical/MoL/src/ParamCheck.c	(working copy)
+@@ -116,6 +116,12 @@
+     }
+   }
+ 
++  if ( (CCTK_Equals(ODE_Method, "Euler"))&&(!(MoL_Intermediate_Steps == 1)) )
++  {
++    CCTK_PARAMWARN("When using the Euler evolver the "
++                   "number of intermediate steps must be 1");
++  }
++
+   if ( (CCTK_Equals(ODE_Method, "RK2"))&&(!(MoL_Intermediate_Steps == 2)) )
+   {
+     CCTK_PARAMWARN("When using the efficient RK2 evolver the "
+Index: arrangements/CactusNumerical/MoL/src/SetTime.c
+===================================================================
+--- arrangements/CactusNumerical/MoL/src/SetTime.c	(revision 189)
++++ arrangements/CactusNumerical/MoL/src/SetTime.c	(working copy)
+@@ -234,6 +234,13 @@
+     cctkGH->cctk_time = previous_times[MoL_Intermediate_Steps - 
+                                       *MoL_Intermediate_Step];
+   }
++  else if (CCTK_EQUALS(ODE_Method,"Euler"))
++  {
++    if (*MoL_Intermediate_Step == 1)
++    {
++      cctkGH->cctk_time = (*Original_Time);
++    }
++  }
+   else if (CCTK_EQUALS(ODE_Method,"RK2"))
+   {
+     if (*MoL_Intermediate_Step == 1)
+@@ -433,6 +440,13 @@
+                                                 (*MoL_Intermediate_Step)] *
+       (*Original_Delta_Time);
+   }
++  else if (CCTK_EQUALS(ODE_Method,"Euler"))
++  {
++    if (*MoL_Intermediate_Step == 1)
++    {
++      cctkGH->cctk_delta_time = (*Original_Delta_Time);
++    }
++  }
+   else if (CCTK_EQUALS(ODE_Method,"RK2"))
+   {
+     if (*MoL_Intermediate_Step == 1)
+Index: arrangements/CactusNumerical/MoL/src/make.code.defn
+===================================================================
+--- arrangements/CactusNumerical/MoL/src/make.code.defn	(revision 189)
++++ arrangements/CactusNumerical/MoL/src/make.code.defn	(working copy)
+@@ -2,14 +2,20 @@
+ # Source files in this directory
+ SRCS = 	ChangeType.c \
+ 	Counter.c \
++	Euler.c \
+ 	GenericRK.c \
+ 	ICN.c \
+ 	IndexArrays.c \

@@ -1,0 +1,80 @@
+From 6e037fb77f17b7d9d47bd0efba09b7bc22fea1f4 Mon Sep 17 00:00:00 2001
+From: Christian Reisswig <reisswig@tapir.caltech.edu>
+Date: Fri, 10 May 2013 10:40:58 -0700
+Subject: [PATCH 10/24] GRHydro: Make "CalcBcom" compatible with multipatch by
+ enforcing scheduling after local->global trafo of
+ primitives.
+
+---
+ schedule.ccl             |   32 +++++++++++++++++++++++++++++++-
+ src/GRHydro_CalcBcom.F90 |    4 ----
+ 2 files changed, 31 insertions(+), 5 deletions(-)
+
+diff --git a/schedule.ccl b/schedule.ccl
+index 7ca61d3..e01be59 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -1363,6 +1363,36 @@ else
+ 
+ }  # sync_conserved_only
+ 
++
++#SCHEDULE GRHydro_TestSync in HydroBase_PostStep AFTER HydroBase_Boundaries BEFORE HydroBase_Con2Prim
++#{
++#  LANG: C
++#  OPTIONS: LEVEL
++#} "Sync test variables"
++
++#SCHEDULE GROUP Bla in HydroBase_PostStep AFTER HydroBase_Boundaries AFTER HydroBase_Con2Prim
++#{
++#} "bla"
++
++#SCHEDULE GRHydro_TestSync in Bla
++#{
++#  LANG: C
++#  OPTIONS: LEVEL
++#} "Sync test variables"
++
++#SCHEDULE GRHydro_TestSync in CCTK_POSTRESTRICT AFTER Refluxing_CorrectState BEFORE MoL_PostStep
++#{
++#  LANG: C
++#  OPTIONS: LEVEL
++#} "Sync test variables"
++
++#SCHEDULE GRHydro_TestSync in CCTK_POSTREGRID AFTER Refluxing_Reset
++#{
++#  LANG: C
++#  OPTIONS: LEVEL
++#} "Sync test variables"
++
++
+ ############################################################
+ ### Compute first differences of rho for mesh refinement ###
+ ############################################################
+@@ -1509,7 +1539,7 @@ if (CCTK_Equals(Bvec_evolution_method,"GRHydro") || CCTK_Equals(Bvec_evolution_m
+ # When Tmunu is not calculated, then the following 
+ # routine is used to evaluate bcom, if requested.
+   if (calculate_bcom){
+-    schedule GRHydro_CalcBcom IN HydroBase_PostStep
++    schedule GRHydro_CalcBcom IN HydroBase_PostStep AFTER GRHydroTransformPrimToGlobalBasis
+     {
+       LANG: Fortran
+     } "Compute comoving magnetic field, pressure, etc..."
+diff --git a/src/GRHydro_CalcBcom.F90 b/src/GRHydro_CalcBcom.F90
+index d6bbe23..fc46eea 100644
+--- a/src/GRHydro_CalcBcom.F90
++++ b/src/GRHydro_CalcBcom.F90
+@@ -40,10 +40,6 @@
+      call CCTK_WARN(0,"No storage for GRHydro::bcom")
+    end if
+ 
+-   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
+-     call CCTK_WARN(0,"MP not yet supported in GRHydro_CalcBcom")
+-   end if
+-
+    !$OMP PARALLEL DO PRIVATE(i,j,k,velxlow, velylow, velzlow,&
+    !$OMP Bvecxlow,Bvecylow,Bveczlow, bdotv,dum1,dum2,b2,bxlow,bylow,bzlow)
+ 
+-- 
+1.7.10.4
+

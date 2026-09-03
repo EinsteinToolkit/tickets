@@ -1,0 +1,139 @@
+Index: test/nancount/NaNsFound.xg
+===================================================================
+--- test/nancount/NaNsFound.xg	(revision 0)
++++ test/nancount/NaNsFound.xg	(revision 0)
+@@ -0,0 +1,2 @@
++"NaNsFound v time
++0.0000000000000	1000
+Index: test/nancount.par
+===================================================================
+--- test/nancount.par	(revision 0)
++++ test/nancount.par	(revision 0)
+@@ -0,0 +1,18 @@
++ActiveThorns = "boundary idscalarwavec wavetoyc time CartGrid3D CoordBase SymBase ioutil iobasic localreduce PUGH PUGHReduce PUGHSlab nanchecker"
++ 
++idscalarwave::radius = inf
++idscalarwave::sigma = inf
++
++cactus::cctk_itlast = 0
++driver::ghost_size = 0
++
++IO::out_fileinfo  = "none"
++IO::parfile_write = "no"
++IO::out_dir = $parfile
++
++NaNChecker::check_vars = "all"
++NaNChecker::check_every = 1
++
++IOBasic::outScalar_vars = "NaNChecker::NaNsFound"
++IOBasic::outScalar_reductions = "maximum"
++IOBasic::outScalar_every = 1
+Index: src/NaNCheck.c
+===================================================================
+--- src/NaNCheck.c	(revision 100)
++++ src/NaNCheck.c	(working copy)
+@@ -127,12 +127,12 @@
+    @vio        in
+    @endvar
+ @@*/
+-void NaNChecker_NaNCheck (CCTK_ARGUMENTS)
++static t_nanchecker_info info;
++void NaNChecker_NaNCheck_Prepare (CCTK_ARGUMENTS)
+ {
+   DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+   int i, nelems;
+-  t_nanchecker_info info;
+ 
+ 
+   if (cctk_iteration < check_after || cctk_iteration % check_every)
+@@ -179,17 +179,37 @@
+     info.check_for = CHECK_FOR_BOTH;
+   }
+ #endif
++}
++void NaNChecker_NaNCheck_Check (CCTK_ARGUMENTS)
++{
++  DECLARE_CCTK_ARGUMENTS;
++  DECLARE_CCTK_PARAMETERS;
+ 
++  if (cctk_iteration < check_after || cctk_iteration % check_every || 
++      (info.NaNmask && cctk_iteration == last_iteration_output))
++  {
++    return;
++  }
++
+   CCTK_TraverseString (check_vars, CheckForNaN, &info, CCTK_GROUP_OR_VAR);
++}
++void NaNChecker_NaNCheck_Finish (CCTK_ARGUMENTS)
++{
++  DECLARE_CCTK_ARGUMENTS;
++  DECLARE_CCTK_PARAMETERS;
+ 
+-  /* reduce the NaN counter globally and accumulate in NaNChecker::NaNsFound */
++  if (cctk_iteration < check_after || cctk_iteration % check_every || 
++      (info.NaNmask && cctk_iteration == last_iteration_output))
+   {
+-    int sum_handle = CCTK_ReductionHandle ("sum");
+-    CCTK_INT count = 0;
+-    CCTK_ReduceLocalScalar (cctkGH, -1, sum_handle, &info.count, &count,
+-                            CCTK_VARIABLE_INT);
+-    *NaNsFound += count;
++    return;
+   }
++
++  /* reduce the NaN counter globally and accumulate in NaNChecker::NaNsFound */
++  int sum_handle = CCTK_ReductionHandle ("sum");
++  CCTK_INT count = 0;
++  CCTK_ReduceLocalScalar (cctkGH, -1, sum_handle, &info.count, &count,
++                          CCTK_VARIABLE_INT);
++  *NaNsFound += count;
+ }
+ 
+ 
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 100)
++++ schedule.ccl	(working copy)
+@@ -17,22 +17,36 @@
+     OPTIONS: global
+   } "Reset the NaNChecker::NaNsFound counter"
+ 
+-  schedule NaNChecker_NaNCheck as zzz_NaNChecker_NaNCheck at POSTSTEP
++  schedule NaNChecker_NaNCheck_Prepare IN NaNChecker_NaNCheck
+   {
+     LANG:    C
+-    OPTIONS: local
++    OPTIONS: level
++  } "Prepare data structures to check for NaNs"
++
++  schedule GROUP NaNChecker_NaNCheck as zzz_NaNChecker_NaNCheck at POSTSTEP
++  {
+   } "Check for NaNs and count them in NaNChecker::NaNsFound"
+ 
++  schedule NaNChecker_NaNCheck_Check IN NaNChecker_NaNCheck AFTER NaNChecker_NaNCheck_Prepare
++  {
++    LANG:    C
++    OPTIONS: local
++  } "Check for NaNs"
++
++  schedule NaNChecker_NaNCheck_Finish IN NaNChecker_NaNCheck AFTER NaNChecker_NaNCheck_Check
++  {
++    LANG:    C
++    OPTIONS: level
++  } "Count NaNs in NaNChecker::NaNsFound"
++
+   schedule NaNChecker_TakeAction at POSTSTEP after zzz_NaNChecker_NaNCheck
+   {
+     LANG:    C
+     OPTIONS: global loop-level
+   } "Output NaNChecker::NaNmask and take action according to NaNChecker::action_if_found"
+ 
+-  schedule NaNChecker_NaNCheck as zzz_NaNChecker_NaNCheck at POST_RECOVER_VARIABLES
++  schedule GROUP NaNChecker_NaNCheck as zzz_NaNChecker_NaNCheck at POST_RECOVER_VARIABLES
+   {
+-    LANG:    C
+-    OPTIONS: local
+   } "Check for NaNs and count them in NaNChecker::NaNsFound"
+ 
+   schedule NaNChecker_TakeAction at POST_RECOVER_VARIABLES after zzz_NaNChecker_NaNCheck

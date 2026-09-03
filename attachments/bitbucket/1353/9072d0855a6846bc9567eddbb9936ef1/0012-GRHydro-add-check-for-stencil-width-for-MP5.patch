@@ -1,0 +1,27 @@
+From 5155bcbfc0721372c2108eb195bbd647453ba2c3 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Thu, 9 May 2013 16:56:58 -0700
+Subject: [PATCH 12/12] GRHydro: add check for stencil width for MP5
+
+---
+ src/GRHydro_ParamCheck.F90 |    4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/GRHydro_ParamCheck.F90 b/src/GRHydro_ParamCheck.F90
+index b2aaf37..6cf5ad1 100644
+--- a/src/GRHydro_ParamCheck.F90
++++ b/src/GRHydro_ParamCheck.F90
+@@ -57,6 +57,10 @@ subroutine GRHydro_ParamCheck(CCTK_ARGUMENTS)
+     call CCTK_PARAMWARN("The stencil size must be at least 3 to use WENO reconstruction.")
+   end if
+ 
++  if (CCTK_EQUALS(recon_method,"mp5").and.(GRHydro_stencil < 3)) then
++    call CCTK_PARAMWARN("The stencil size must be at least 3 to use MP5 reconstruction.")
++  end if
++
+   if (CCTK_EQUALS(recon_method,"eno").and.(GRHydro_stencil < eno_order)) then
+     call CCTK_PARAMWARN("The stencil size must be at least the order of the reconstruction to use ENO reconstruction")
+   end if
+-- 
+1.7.10.4
+

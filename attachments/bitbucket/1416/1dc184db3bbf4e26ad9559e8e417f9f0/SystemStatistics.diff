@@ -1,0 +1,116 @@
+Index: interface.ccl
+===================================================================
+--- interface.ccl	(revision 20)
++++ interface.ccl	(working copy)
+@@ -1,9 +1,19 @@
+ 
+ implements: SystemStatistics
+ 
+-INT process_memory TYPE=array DIM=1 SIZE=1 DISTRIB=constant TAGS='Checkpoint="no"'
++CCTK_INT FUNCTION Driver_TotalMemoryUsed( \
++    CCTK_REAL OUT metadata,               \
++    CCTK_REAL OUT grid_structure,         \
++    CCTK_REAL OUT grid_arrays,            \
++    CCTK_REAL OUT grid_functions)
++USES FUNCTION Driver_TotalMemoryUsed
++
++
++
++# Use REAL to prevent overflow
++REAL process_memory TYPE=array DIM=1 SIZE=1 DISTRIB=constant TAGS='Checkpoint="no"'
+ {
+-  maxrss, majflt, arena, ordblks, hblks, hblkhd, uordblks, fordblks, keepcost
++  maxrss, majflt, arena, ordblks, hblks, hblkhd, uordblks, fordblks, keepcost, swap_used
+ } "Process memory statistics"
+ 
+ INT process_memory_mb TYPE=array DIM=1 SIZE=1 DISTRIB=constant TAGS='Checkpoint="no"'
+@@ -13,5 +23,11 @@
+ 
+ INT process_memory_kb TYPE=array DIM=1 SIZE=1 DISTRIB=constant TAGS='Checkpoint="no"'
+ {
+-  maxrss_kb, majflt_kb, arena_kb, ordblks_kb, hblks_kb, hblkhd_kb, uordblks_kb, fordblks_kb, keepcost_kb
++  maxrss_kb, majflt_kb, arena_kb, ordblks_kb, hblks_kb, hblkhd_kb, uordblks_kb, fordblks_kb, keepcost_kb, swap_used_kb
+ } "Run memory statistics in KB"
++
++# Use REAL to prevent overflow
++REAL driver_memory TYPE=array DIM=1 SIZE=1 DISTRIB=constant TAGS='Checkpoint="no"'
++{
++  metadata grid_structure grid_arrays grid_functions
++} "Driver memory statistics"
+Index: par/sysstat.par
+===================================================================
+--- par/sysstat.par	(revision 20)
++++ par/sysstat.par	(working copy)
+@@ -80,12 +80,12 @@
+ 
+ IOBasic::outInfo_every = 256
+ IOBasic::outInfo_reductions          = "minimum maximum"
+-IOBasic::outInfo_vars = "SystemStatistics::maxrss_mb"
++IOBasic::outInfo_vars = "SystemStatistics::maxrss_mb SystemStatistics::driver_grid_structure"
+  
+ IOScalar::one_file_per_group         = yes
+ IOScalar::outScalar_every            = 256
+ IOScalar::outScalar_reductions       = "minimum maximum average"
+-IOScalar::outScalar_vars             = "SystemStatistics::process_memory_mb"
++IOScalar::outScalar_vars             = "SystemStatistics::process_memory_mb SystemStatistics::driver_memory"
+ 
+ #IOASCII::output_all_timelevels = yes
+ 
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 20)
++++ schedule.ccl	(working copy)
+@@ -1,4 +1,4 @@
+-STORAGE: process_memory, process_memory_mb, process_memory_kb
++STORAGE: process_memory, process_memory_mb, process_memory_kb, driver_memory
+ 
+ schedule SystemStatistics_Collect at CCTK_ANALYSIS
+ {
+Index: src/systemstatistics.cc
+===================================================================
+--- src/systemstatistics.cc	(revision 20)
++++ src/systemstatistics.cc	(working copy)
+@@ -141,7 +141,7 @@
+   return majflt * page_size;
+ }
+ 
+-long long int get_swap_kB()
++static long long int get_swap_kB()
+ {
+   FILE *f = fopen("/proc/meminfo", "r");
+   if (f == 0)
+@@ -200,6 +200,7 @@
+   *uordblks = mallinfo().uordblks;
+   *fordblks = mallinfo().fordblks;
+   *keepcost = mallinfo().keepcost;
++  *swap_used = get_swap_kB() / 1024.0;
+ 
+   *maxrss_mb = get_rss() / mb;
+   *majflt_mb = *majflt / mb;
+@@ -210,9 +211,8 @@
+   *uordblks_mb = *uordblks / mb;
+   *fordblks_mb = *fordblks / mb;
+   *keepcost_mb = *keepcost / mb;
++  *swap_used_mb = *swap_used / mb;
+ 
+-  *swap_used_mb = get_swap_kB() / 1024;
+-
+   *maxrss_kb = get_rss() / kb;
+   *majflt_kb = *majflt / kb;
+   *arena_kb = *arena / kb;
+@@ -222,4 +222,15 @@
+   *uordblks_kb = *uordblks / kb;
+   *fordblks_kb = *fordblks / kb;
+   *keepcost_kb = *keepcost / kb;
++  *swap_used_kb = *swap_used / kb;
++
++  *metadata = 0.0;
++  *grid_structure = 0.0;
++  *grid_arrays = 0.0;
++  *grid_functions = 0.0;
++  if (CCTK_IsFunctionAliased("Driver_TotalMemoryUsed")) {
++    Driver_TotalMemoryUsed
++      (metadata, grid_structure, grid_arrays, grid_functions);
++  }
++
+ }

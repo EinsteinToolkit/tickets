@@ -1,0 +1,81 @@
+diff -c -r -x '*~' ReflectionSymmetry.orig/src/apply.c ReflectionSymmetry/src/apply.c
+*** ReflectionSymmetry.orig/src/apply.c 2011-02-04 10:40:14.638220792 -0500
+--- ReflectionSymmetry/src/apply.c      2011-02-04 11:02:04.836291792 -0500
+***************
+*** 276,283 ****
+      char * groupname = CCTK_GroupName(gi);
+      assert (groupname);
+      CCTK_VWarn (0, __LINE__, __FILE__, CCTK_THORNSTRING,
+!                 "Error in tensor type alias declaration for group \"%s\"",
+!                 groupname);
+      free (groupname);
+    }
+    
+--- 276,283 ----
+      char * groupname = CCTK_GroupName(gi);
+      assert (groupname);
+      CCTK_VWarn (0, __LINE__, __FILE__, CCTK_THORNSTRING,
+!                 "Error in tensor type alias declaration for group \"%s\": %d",
+!                 groupname, ierr);
+      free (groupname);
+    }
+    
+***************
+*** 361,368 ****
+      char * groupname = CCTK_GroupName(gi);
+      assert (groupname);
+      CCTK_VWarn (0, __LINE__, __FILE__, CCTK_THORNSTRING,
+!                 "Illegal tensor type alias for group \"%s\"",
+!                 groupname);
+      free (groupname);
+    }
+    
+--- 361,368 ----
+      char * groupname = CCTK_GroupName(gi);
+      assert (groupname);
+      CCTK_VWarn (0, __LINE__, __FILE__, CCTK_THORNSTRING,
+!                 "Illegal tensor type alias \"%s\" for group \"%s\"",
+!                 tensortypealias, groupname);
+      free (groupname);
+    }
+    
+***************
+*** 401,408 ****
+      char * groupname = CCTK_GroupName(gi);
+      assert (groupname);
+      CCTK_VWarn (0, __LINE__, __FILE__, CCTK_THORNSTRING,
+!                 "Error in tensor parity declaration for group \"%s\"",
+!                 groupname);
+      free (groupname);
+    }
+    
+--- 401,408 ----
+      char * groupname = CCTK_GroupName(gi);
+      assert (groupname);
+      CCTK_VWarn (0, __LINE__, __FILE__, CCTK_THORNSTRING,
+!                 "Error in tensor parity declaration for group \"%s\": %d",
+!                 groupname, ierr);
+      free (groupname);
+    }
+    
+diff -c -r -x '*~' ReflectionSymmetry.orig/src/interpolate.c ReflectionSymmetry/src/interpolate.c
+*** ReflectionSymmetry.orig/src/interpolate.c   2011-02-04 10:23:40.597220792 -0500
+--- ReflectionSymmetry/src/interpolate.c        2011-02-04 10:48:33.013220792 -0500
+***************
+*** 296,303 ****
+          groupname = CCTK_GroupName(gi);
+          assert (groupname);
+          CCTK_VWarn (0, __LINE__, __FILE__, CCTK_THORNSTRING,
+!                     "Illegal tensor type alias for group \"%s\"",
+!                     groupname);
+          free (groupname);
+        }
+        
+--- 296,303 ----
+          groupname = CCTK_GroupName(gi);
+          assert (groupname);
+          CCTK_VWarn (0, __LINE__, __FILE__, CCTK_THORNSTRING,
+!                     "Illegal tensor type alias \"%s\" for group \"%s\"", 
+!                     tensortypealias, groupname);
+          free (groupname);
+        }

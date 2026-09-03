@@ -1,0 +1,500 @@
+From 4b55a136c97a4e1940c7a24dc88fa13d7ab15360 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Tue, 12 Nov 2013 14:40:17 -0800
+Subject: [PATCH 06/18] EOS_Omni: use CCTK_ERROR, add STOP after CCTK_ERROR
+
+---
+ src/EOS_Omni_BarotropicReadTable.F90 |  3 +-
+ src/EOS_Omni_ColdEOSReadTable.F90    | 12 ++++--
+ src/EOS_Omni_MultiVarCalls.F90       | 34 ++++++++++++-----
+ src/EOS_Omni_SingleVarCalls.F90      | 72 ++++++++++++++++++++++++------------
+ src/EOS_Omni_SingleVarCalls_harm.F90 | 36 ++++++++++++------
+ 5 files changed, 106 insertions(+), 51 deletions(-)
+
+diff --git a/src/EOS_Omni_BarotropicReadTable.F90 b/src/EOS_Omni_BarotropicReadTable.F90
+index fe040b3..99041bb 100644
+--- a/src/EOS_Omni_BarotropicReadTable.F90
++++ b/src/EOS_Omni_BarotropicReadTable.F90
+@@ -30,7 +30,8 @@ subroutine EOS_Omni_BarotropicReadTable(CCTK_ARGUMENTS)
+ 
+   if(.not.tablethere) then
+      write(warnline,"(A10,A,A15)") "EOS file ", trim(adjustl(eosfilename)), " does not exist!" 
+-     call CCTK_WARN(0,warnline)
++     call CCTK_ERROR(warnline)
++     STOP
+   endif
+ 
+   ! read header
+diff --git a/src/EOS_Omni_ColdEOSReadTable.F90 b/src/EOS_Omni_ColdEOSReadTable.F90
+index faee59d..b4c1db1 100644
+--- a/src/EOS_Omni_ColdEOSReadTable.F90
++++ b/src/EOS_Omni_ColdEOSReadTable.F90
+@@ -31,7 +31,8 @@ subroutine EOS_Omni_ReadColdTable(CCTK_ARGUMENTS)
+ 
+   if(.not.tablethere) then
+      write(warnline,"(A10,A,A15)") "EOS file ", trim(adjustl(eosfilename)), " does not exist!" 
+-     call CCTK_WARN(0,warnline)
++     call CCTK_ERROR(warnline)
++     STOP
+   endif
+ 
+   ! read header
+@@ -39,12 +40,14 @@ subroutine EOS_Omni_ReadColdTable(CCTK_ARGUMENTS)
+   read(667,"(A)") buffer1
+   ! check if okay
+   if(.not. (trim(adjustl(buffer1)).eq."EoSType = Tabulated")) then
+-     call CCTK_WARN(0,"Wrong EOS table format -- check header")
++     call CCTK_ERROR("Wrong EOS table format -- check header")
++     STOP
+   endif
+   ! now read number of rho entries
+   read(667,"(A7,i7,A6,i6,A5,i6)") buffer1,lnrho,buffer2,lnye,buffer3,lntemp
+   if(lnye.ne.1.or.lntemp.ne.1) then
+-     call CCTK_WARN(0,"Wrong EOS table format -- cannot handle Nye!=1 or NT!=`")
++     call CCTK_ERROR("Wrong EOS table format -- cannot handle Nye!=1 or NT!=`")
++     STOP
+   endif
+   coldeos_nrho = lnrho
+ 
+@@ -80,7 +83,8 @@ subroutine EOS_Omni_ReadColdTable(CCTK_ARGUMENTS)
+   ! make sure density is in log spacing
+   read(667,"(A30)") buffer1
+   if(.not.(trim(adjustl(buffer1)).eq."RhoSpacing = Log")) then
+-     call CCTK_WARN(0,"Density spacing not log? Check table format!")
++     call CCTK_ERROR("Density spacing not log? Check table format!")
++     STOP
+   endif
+ 
+   ! now read everything
+diff --git a/src/EOS_Omni_MultiVarCalls.F90 b/src/EOS_Omni_MultiVarCalls.F90
+index 84cfb71..1045ae4 100644
+--- a/src/EOS_Omni_MultiVarCalls.F90
++++ b/src/EOS_Omni_MultiVarCalls.F90
+@@ -33,19 +33,26 @@ subroutine EOS_Omni_EOS_short(eoskey,keytemp,rf_precision,npoints,&
+   CCTK_REAL, intent(out)   :: munu(npoints)
+ 
+   ! local vars
++#if 0
+   integer          :: i
++#endif
+   character(256)   :: warnstring
++#if 0
+   ! temporary vars for nuc_eos
+   real*8           :: xrho,xye,xtemp,xenr,xent
+   real*8           :: xprs,xmunu,xcs2
+   real*8           :: xdedt,xdpderho,xdpdrhoe
++#endif
+ 
+   if(eoskey.ne.4) then
+-     write(warnstring,"(A8,i5)") "eoskey: ", eoskey
++     ! CRITICAL is not really required but might prevent multiple threads from
++     ! outputting error messages at the same time and cluttering the log file
+      !$OMP CRITICAL
++     write(warnstring,"(A8,i5)") "eoskey: ", eoskey
+      call CCTK_WARN(1,warnstring)
+-     call CCTK_WARN(0,"EOS_Omni_EOS_short currently does not work for this eoskey")
++     call CCTK_ERROR("EOS_Omni_EOS_short currently does not work for this eoskey")
+      !$OMP END CRITICAL
++     STOP
+   endif
+ 
+   anyerr    = 0
+@@ -64,8 +71,9 @@ subroutine EOS_Omni_EOS_short(eoskey,keytemp,rf_precision,npoints,&
+           keyerr,anyerr)
+   else
+      !$OMP CRITICAL
+-     call CCTK_WARN(0,"This keytemp is not supported")
++     call CCTK_ERROR("This keytemp is not supported")
+      !$OMP END CRITICAL
++     STOP
+   endif
+ 
+ end subroutine EOS_Omni_EOS_short
+@@ -106,11 +114,12 @@ subroutine EOS_Omni_EOS_full(eoskey,keytemp,rf_precision,npoints,&
+   character(256)   :: warnstring
+ 
+   if(eoskey.ne.4) then
+-     write(warnstring,"(A8,i5)") "eoskey: ", eoskey
+      !$OMP CRITICAL
++     write(warnstring,"(A8,i5)") "eoskey: ", eoskey
+      call CCTK_WARN(1,warnstring)
+-     call CCTK_WARN(0,"EOS_Omni_EOS_full currently does not work for this eoskey")
++     call CCTK_ERROR("EOS_Omni_EOS_full currently does not work for this eoskey")
+      !$OMP END CRITICAL
++     STOP
+   endif
+ 
+   anyerr    = 0
+@@ -127,8 +136,9 @@ subroutine EOS_Omni_EOS_full(eoskey,keytemp,rf_precision,npoints,&
+           keyerr,anyerr)
+   else
+      !$OMP CRITICAL
+-     call CCTK_WARN(0,"This keytemp is not supported")
++     call CCTK_ERROR("This keytemp is not supported")
+      !$OMP END CRITICAL
++     STOP
+   endif
+ 
+ end subroutine EOS_Omni_EOS_full
+@@ -224,7 +234,8 @@ subroutine EOS_Omni_EOS_dpderho_dpdrhoe(eoskey,keytemp,rf_precision,npoints,&
+         enddo
+     case (4)
+        if(keytemp.ne.0) then
+-          call CCTK_WARN(0,"Keytemp other than 0 not supported for dpdrhoe, dpderho")
++          call CCTK_ERROR("Keytemp other than 0 not supported for dpdrhoe, dpderho")
++          STOP
+        else
+           call nuc_eos_m_kt0_dpdrhoe_dpderho(npoints,&
+                rho,temp,ye,eps,dpdrhoe,dpderho,rf_precision,&
+@@ -232,7 +243,8 @@ subroutine EOS_Omni_EOS_dpderho_dpdrhoe(eoskey,keytemp,rf_precision,npoints,&
+        endif
+    case DEFAULT
+       write(warnstring,*) "eoskey ",eoskey," not implemented!"
+-      call CCTK_WARN(0,warnstring)
++      call CCTK_ERROR(warnstring)
++      STOP
+    end select
+ 
+  end subroutine EOS_Omni_EOS_dpderho_dpdrhoe
+@@ -330,10 +342,12 @@ subroutine EOS_Omni_EOS_dpderho_dpdrhoe(eoskey,keytemp,rf_precision,npoints,&
+         enddo
+     case (4)
+       write(warnstring,*) "depsdrho and depsdpress not implemented yet for hot nuclear EOS"
+-      call CCTK_WARN(0,warnstring)
++      call CCTK_ERROR(warnstring)
++      STOP
+    case DEFAULT
+       write(warnstring,*) "eoskey ",eoskey," not implemented!"
+-      call CCTK_WARN(0,warnstring)
++      call CCTK_ERROR(warnstring)
++      STOP
+    end select
+ 
+  end subroutine EOS_Omni_EOS_DEpsByDRho_DEpsByDPress
+diff --git a/src/EOS_Omni_SingleVarCalls.F90 b/src/EOS_Omni_SingleVarCalls.F90
+index e812fc9..0a11cdc 100644
+--- a/src/EOS_Omni_SingleVarCalls.F90
++++ b/src/EOS_Omni_SingleVarCalls.F90
+@@ -102,7 +102,8 @@ subroutine EOS_Omni_EOS_Press(eoskey,keytemp,rf_precision,npoints,&
+            call nuc_eos_m_kt0_press(npoints,rho,temp,ye,eps,press,&
+                 rf_precision,keyerr,anyerr)
+         else
+-           call CCTK_WARN(0,"This keytemp is not suppported!")
++           call CCTK_ERROR("This keytemp is not suppported!")
++           STOP
+         endif
+      case (5)
+         ! cold tabular EOS with gamma law
+@@ -190,7 +191,8 @@ subroutine EOS_Omni_EOS_Press(eoskey,keytemp,rf_precision,npoints,&
+ 
+      case DEFAULT
+         write(warnstring,*) "eoskey ",eoskey," not implemented!"
+-        call CCTK_WARN(0,warnstring)
++        call CCTK_ERROR(warnstring)
++        STOP
+      end select
+ 
+ end subroutine EOS_Omni_EOS_Press
+@@ -424,7 +426,8 @@ subroutine EOS_Omni_EOS_PressOMP(eoskey,keytemp,rf_precision,npoints,&
+ 
+      case DEFAULT
+         write(warnstring,*) "eoskey ",eoskey," not implemented!"
+-        call CCTK_WARN(0,warnstring)
++        call CCTK_ERROR(warnstring)
++        STOP
+      end select
+ 
+ end subroutine EOS_Omni_EOS_PressOMP
+@@ -530,7 +533,8 @@ subroutine EOS_Omni_EOS_DPressByDRho(eoskey,keytemp,rf_precision,npoints,&
+                 eps,xent,xcs2,xdedt,xdpderho,dpdrhoe,xmunu,rf_precision,&
+                 keyerr,anyerr)
+         else
+-           call CCTK_WARN(0,"This keytemp is not supported!")
++           call CCTK_ERROR("This keytemp is not supported!")
++           STOP
+         endif
+         
+      case (5)
+@@ -583,7 +587,8 @@ subroutine EOS_Omni_EOS_DPressByDRho(eoskey,keytemp,rf_precision,npoints,&
+ 
+      case DEFAULT
+         write(warnstring,*) "eoskey ",eoskey," not implemented!"
+-        call CCTK_WARN(0,warnstring)
++        call CCTK_ERROR(warnstring)
++        STOP
+    end select
+      
+ end subroutine EOS_Omni_EOS_DPressByDRho
+@@ -658,7 +663,8 @@ subroutine EOS_Omni_EOS_DPressByDEps(eoskey,keytemp,rf_precision,npoints,&
+                 eps,xent,xcs2,xdedt,dpdepsrho,xdpdrhoe,xmunu,rf_precision,&
+                 keyerr,anyerr)
+         else 
+-           call CCTK_WARN(0,"This keytemp is not supported!")
++           call CCTK_ERROR("This keytemp is not supported!")
++           STOP
+         endif
+      case (5)
+         ! with the cold eos we have to assume P = P(rho), so
+@@ -692,7 +698,8 @@ subroutine EOS_Omni_EOS_DPressByDEps(eoskey,keytemp,rf_precision,npoints,&
+         enddo
+      case DEFAULT
+         write(warnstring,*) "eoskey ",eoskey," not implemented!"
+-        call CCTK_WARN(0,warnstring)
++        call CCTK_ERROR(warnstring)
++        STOP
+    end select
+      
+ end subroutine EOS_Omni_EOS_DPressByDEps
+@@ -798,7 +805,8 @@ subroutine EOS_Omni_EOS_cs2(eoskey,keytemp,rf_precision,npoints,&
+            call nuc_eos_m_kt0_press_cs2(npoints,rho,temp,ye,&
+                 eps,xprs,cs2,rf_precision,keyerr,anyerr)
+         else
+-           call CCTK_WARN(0,"This keytemp is not supported!")
++           call CCTK_ERROR("This keytemp is not supported!")
++           STOP
+         endif
+      case (5)
+         ! with the cold eos we have to assume P = P(rho), so
+@@ -856,7 +864,8 @@ subroutine EOS_Omni_EOS_cs2(eoskey,keytemp,rf_precision,npoints,&
+            
+      case DEFAULT
+         write(warnstring,*) "eoskey ",eoskey," not implemented!"
+-        call CCTK_WARN(0,warnstring)
++        call CCTK_ERROR(warnstring)
++        STOP
+    end select
+      
+ end subroutine EOS_Omni_EOS_cs2
+@@ -907,14 +916,17 @@ subroutine EOS_Omni_EOS_eps_from_press(eoskey,keytemp,rf_precision,npoints,&
+      case (3)
+         ! hybrid EOS
+         write(warnstring,*) "EOS_Omni_EpsFromPress call not supported for hybrid EOS"
+-        call CCTK_WARN(0,warnstring)
++        call CCTK_ERROR(warnstring)
++        STOP
+      case (4)
+         ! nuc EOS
+         write(warnstring,*) "EOS_Omni_EpsFromPress call not supported for nuc_eos yet"
+-        call CCTK_WARN(0,warnstring)
++        call CCTK_ERROR(warnstring)
++        STOP
+      case DEFAULT
+         write(warnstring,*) "eoskey ",eoskey," not implemented!"
+-        call CCTK_WARN(0,warnstring)
++        call CCTK_ERROR(warnstring)
++        STOP
+      end select
+ 
+ end subroutine EOS_Omni_EOS_eps_from_press
+@@ -980,18 +992,22 @@ subroutine EOS_Omni_EOS_RhoFromPressEpsTempEnt(eoskey,&
+      case (3)
+         ! hybrid EOS
+         write(warnstring,*) "EOS_Omni_RestMassDensityFromPressEpsTemp not supported for hybrid EOS"
+-        call CCTK_WARN(0,warnstring)
++        call CCTK_ERROR(warnstring)
++        STOP
+      case (4)
+         ! nuc EOS
+         if(ikeytemp.eq.2) then
+-           call CCTK_WARN(0,"This function does not work yet when coming in with entropy")
++           call CCTK_ERROR("This function does not work yet when coming in with entropy")
++           STOP
+         else if(ikeytemp.eq.1) then
+            keytemp = 1
+         else
+-           call CCTK_WARN(0,"This function does not work yet when coming in with this keytemp")
++           call CCTK_ERROR("This function does not work yet when coming in with this keytemp")
++           STOP
+         endif
+         
+-        call CCTK_WARN(0,"This routine does not work with the new nuc_eos_cxx [yet]")
++        call CCTK_ERROR("This routine does not work with the new nuc_eos_cxx [yet]")
++        STOP
+ 
+         keytemp = 1
+         do i=1,npoints
+@@ -1018,8 +1034,9 @@ subroutine EOS_Omni_EOS_RhoFromPressEpsTempEnt(eoskey,&
+                  !$OMP CRITICAL
+                  write(warnstring,"(A25,1P10E15.6)") "Issue with table, dpdrho.lt.0",&
+                       rho_guess,xtemp,xye
+-                 call CCTK_WARN(0,warnstring)
++                 call CCTK_ERROR(warnstring)
+                  !$OMP END CRITICAL
++                 STOP
+               endif
+               
+               if (abs(1.0d0-press_guess/xprs).lt.rf_precision) then
+@@ -1050,7 +1067,8 @@ subroutine EOS_Omni_EOS_RhoFromPressEpsTempEnt(eoskey,&
+         ! cold tabulated EOS
+         ! deal only with case in which thermal pressure is zero
+         if(keytemp.ne.1) then
+-           call CCTK_WARN(0,"finding rho(press) for tabulated cold EOS only possible if keytemp=1")
++           call CCTK_ERROR("finding rho(press) for tabulated cold EOS only possible if keytemp=1")
++           STOP
+         endif
+ 
+         do i=1,npoints
+@@ -1110,8 +1128,9 @@ subroutine EOS_Omni_EOS_RhoFromPressEpsTempEnt(eoskey,&
+                  !$OMP CRITICAL
+                  write(warnstring,"(A25,1P10E15.6)") "Issue with table, dpdrho.lt.0",&
+                       rho_guess,rho_guess2
+-                 call CCTK_WARN(0,warnstring)
++                 call CCTK_ERROR(warnstring)
+                  !$OMP END CRITICAL
++                 STOP
+               endif
+               
+               if (abs(1.0d0-press_guess/xprs).lt.rf_precision) then
+@@ -1145,7 +1164,8 @@ subroutine EOS_Omni_EOS_RhoFromPressEpsTempEnt(eoskey,&
+         ! barotropic tabulated EOS
+         ! deal only with case in which thermal pressure is zero
+         if(keytemp.ne.1) then
+-           call CCTK_WARN(0,"finding rho(press) for tabulated barotropic EOS only possible if keytemp=1")
++           call CCTK_ERROR("finding rho(press) for tabulated barotropic EOS only possible if keytemp=1")
++           STOP
+         endif
+ 
+         do i=1,npoints
+@@ -1206,8 +1226,9 @@ subroutine EOS_Omni_EOS_RhoFromPressEpsTempEnt(eoskey,&
+                  !$OMP CRITICAL
+                  write(warnstring,"(A25,1P10E15.6)") "Issue with table, dpdrho.lt.0",&
+                       rho_guess,rho_guess2
+-                 call CCTK_WARN(0,warnstring)
++                 call CCTK_ERROR(warnstring)
+                  !$OMP END CRITICAL
++                 STOP
+               endif
+               
+               if (abs(1.0d0-press_guess/press(i)).lt.rf_precision) then
+@@ -1232,7 +1253,8 @@ subroutine EOS_Omni_EOS_RhoFromPressEpsTempEnt(eoskey,&
+               if (rho_guess.lt.1.0d-15.or.counter.gt.100000) then
+ !                 !$OMP CRITICAL
+ !                 write(warnstring,"(A25,1P10E15.6)") "rho(p) issue", rho_guess,press(i),press_guess
+-!                 call CCTK_WARN(0,warnstring)
++!                 call CCTK_ERROR(warnstring)
++!                 STOP
+ !                 !$OMP END CRITICAL
+                  keyerr(i) = 473
+                  anyerr = 1
+@@ -1244,7 +1266,8 @@ subroutine EOS_Omni_EOS_RhoFromPressEpsTempEnt(eoskey,&
+ 
+      case DEFAULT
+         write(warnstring,*) "eoskey ",eoskey," not implemented!"
+-        call CCTK_WARN(0,warnstring)
++        call CCTK_ERROR(warnstring)
++        STOP
+      end select
+ 
+ end subroutine EOS_Omni_EOS_RhoFromPressEpsTempEnt
+@@ -1332,7 +1355,8 @@ subroutine EOS_Omni_EOS_PressEpsTempYe_from_Rho(eoskey,keytemp,rf_precision,npoi
+ 
+      case DEFAULT
+         write(warnstring,*) "eoskey ",eoskey," not implemented for EOS_Omni_EOS_PressEpsTempYe_from_Rho!"
+-        call CCTK_WARN(0,warnstring)
++        call CCTK_ERROR(warnstring)
++        STOP
+      end select
+ 
+    end subroutine EOS_Omni_EOS_PressEpsTempYe_from_Rho
+diff --git a/src/EOS_Omni_SingleVarCalls_harm.F90 b/src/EOS_Omni_SingleVarCalls_harm.F90
+index 635bee4..ad99a60 100644
+--- a/src/EOS_Omni_SingleVarCalls_harm.F90
++++ b/src/EOS_Omni_SingleVarCalls_harm.F90
+@@ -40,11 +40,13 @@ subroutine EOS_Omni_EOS_Press_f_hrho_v2_rhoW(eoskey,keytemp,rf_precision,npoints
+   select case (eoskey)
+      case (1)
+         ! polytropic EOS
+-        call CCTK_WARN(0,"Polytropic EOS not implemented for press_f_hro_v2_rhoW")
++        call CCTK_ERROR("Polytropic EOS not implemented for press_f_hro_v2_rhoW")
++        STOP
+      case (2)
+         ! gamma-law EOS
+         if(keytemp.eq.1) then
+-           call CCTK_WARN(0,"keytemp.eq.1 not implemented for press_f_hro_v2_rhoW")
++           call CCTK_ERROR("keytemp.eq.1 not implemented for press_f_hro_v2_rhoW")
++           STOP
+         endif
+         do i=1,npoints
+            gtmp1 = 1.0d0 - v2(i)
+@@ -55,11 +57,13 @@ subroutine EOS_Omni_EOS_Press_f_hrho_v2_rhoW(eoskey,keytemp,rf_precision,npoints
+         enddo
+      case (3)
+         ! hybrid EOS
+-        call CCTK_WARN(0,"Hybrid EOS not implemented for press_f_hro_v2_rhoW")
++        call CCTK_ERROR("Hybrid EOS not implemented for press_f_hro_v2_rhoW")
++        STOP
+ 
+      case DEFAULT
+         write(warnstring,*) "eoskey ",eoskey," not implemented!"
+-        call CCTK_WARN(0,warnstring)
++        call CCTK_ERROR(warnstring)
++        STOP
+      end select
+ 
+ end subroutine EOS_Omni_EOS_Press_f_hrho_v2_rhoW
+@@ -95,22 +99,26 @@ subroutine EOS_Omni_EOS_dpdhrho_f_hrho_v2_rhoW(eoskey,keytemp,rf_precision,npoin
+   select case (eoskey)
+      case (1)
+         ! polytropic EOS
+-        call CCTK_WARN(0,"Polytropic EOS not implemented for press_f_hro_v2_rhoW")
++        call CCTK_ERROR("Polytropic EOS not implemented for press_f_hro_v2_rhoW")
++        STOP
+      case (2)
+         ! gamma-law EOS
+         if(keytemp.eq.1) then
+-           call CCTK_WARN(0,"keytemp.eq.1 not implemented for press_f_hro_v2_rhoW")
++           call CCTK_ERROR("keytemp.eq.1 not implemented for press_f_hro_v2_rhoW")
++           STOP
+         endif
+         do i=1,npoints
+            dpdhrho(i) = (gl_gamma - 1.0d0) * (1.0d0 - v2(i)) / (gl_gamma)
+         enddo
+      case (3)
+         ! hybrid EOS
+-        call CCTK_WARN(0,"Hybrid EOS not implemented for press_f_hro_v2_rhoW")
++        call CCTK_ERROR("Hybrid EOS not implemented for press_f_hro_v2_rhoW")
++        STOP
+ 
+      case DEFAULT
+         write(warnstring,*) "eoskey ",eoskey," not implemented!"
+-        call CCTK_WARN(0,warnstring)
++        call CCTK_ERROR(warnstring)
++        STOP
+      end select
+ 
+ end subroutine EOS_Omni_EOS_dpdhrho_f_hrho_v2_rhoW
+@@ -146,11 +154,13 @@ subroutine EOS_Omni_EOS_dpdv2_f_hrho_v2_rhoW(eoskey,keytemp,rf_precision,npoints
+   select case (eoskey)
+      case (1)
+         ! polytropic EOS
+-        call CCTK_WARN(0,"Polytropic EOS not implemented for press_f_hro_v2_rhoW")
++        call CCTK_ERROR("Polytropic EOS not implemented for press_f_hro_v2_rhoW")
++        STOP
+      case (2)
+         ! gamma-law EOS
+         if(keytemp.eq.1) then
+-           call CCTK_WARN(0,"keytemp.eq.1 not implemented for press_f_hro_v2_rhoW")
++           call CCTK_ERROR("keytemp.eq.1 not implemented for press_f_hro_v2_rhoW")
++           STOP
+         endif
+         do i=1,npoints
+            dpdv2(i) = (gl_gamma - 1.0d0) * (0.5d0 * rhoW(i) &
+@@ -158,11 +168,13 @@ subroutine EOS_Omni_EOS_dpdv2_f_hrho_v2_rhoW(eoskey,keytemp,rf_precision,npoints
+         enddo
+      case (3)
+         ! hybrid EOS
+-        call CCTK_WARN(0,"Hybrid EOS not implemented for press_f_hro_v2_rhoW")
++        call CCTK_ERROR("Hybrid EOS not implemented for press_f_hro_v2_rhoW")
++        STOP
+ 
+      case DEFAULT
+         write(warnstring,*) "eoskey ",eoskey," not implemented!"
+-        call CCTK_WARN(0,warnstring)
++        call CCTK_ERROR(warnstring)
++        STOP
+      end select
+ 
+ end subroutine EOS_Omni_EOS_dpdv2_f_hrho_v2_rhoW
+-- 
+1.8.5.3
+

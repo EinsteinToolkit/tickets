@@ -1,0 +1,31 @@
+diff -r 3e72bcdb58d3 Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc
+--- a/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc	Sun Jul 10 12:19:01 2011 -0400
++++ b/Carpet/CarpetIOHDF5/src/CarpetIOHDF5.cc	Wed Aug 31 22:55:33 2011 -0500
+@@ -139,13 +139,16 @@
+ 
+ void CarpetIOHDF5_InitialDataCheckpoint (CCTK_ARGUMENTS)
+ {
++  DECLARE_CCTK_ARGUMENTS;
+   DECLARE_CCTK_PARAMETERS;
+ 
+ 
+   if (checkpoint and checkpoint_ID) {
+     if (not CCTK_Equals (verbose, "none")) {
+       CCTK_INFO ("---------------------------------------------------------");
+-      CCTK_INFO ("Dumping initial data checkpoint");
++      CCTK_VInfo (CCTK_THORNSTRING, "Dumping initial checkpoint at "
++                  "iteration %d, simulation time %g",
++                  cctk_iteration, double(cctk_time));
+       CCTK_INFO ("---------------------------------------------------------");
+     }
+     Checkpoint (cctkGH, CP_INITIAL_DATA);
+@@ -206,7 +209,8 @@
+       if (not CCTK_Equals (verbose, "none")) {
+         CCTK_INFO ("---------------------------------------------------------");
+         CCTK_VInfo (CCTK_THORNSTRING, "Dumping termination checkpoint at "
+-                    "iteration %d", cctk_iteration);
++                  "iteration %d, simulation time %g",
++                  cctk_iteration, double(cctk_time));
+         CCTK_INFO ("---------------------------------------------------------");
+       }
+       Checkpoint (cctkGH, CP_EVOLUTION_DATA);

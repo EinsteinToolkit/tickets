@@ -1,0 +1,26 @@
+Index: make.config.defn.in
+===================================================================
+--- make.config.defn.in	(revision 4687)
++++ make.config.defn.in	(working copy)
+@@ -157,6 +157,8 @@
+ # Some compilers are very picky about the suffix for fortran files
+ export F90_SUFFIX = @F90_SUFFIX@
+ 
++export CCTK_POINTER_SIZE = @SIZEOF_CHAR_P@
++
+ # How to postprocess object files
+ export C_POSTPROCESSING   = @C_POSTPROCESSING@
+ export CXX_POSTPROCESSING = @CXX_POSTPROCESSING@
+Index: configure.in
+===================================================================
+--- configure.in	(revision 4687)
++++ configure.in	(working copy)
+@@ -545,6 +545,8 @@
+ fi
+ 
+ AC_CHECK_SIZEOF(char *, $SIZEOF_POINTER)
++SIZEOF_CHAR_P=$ac_cv_sizeof_char_p
++AC_SUBST(SIZEOF_CHAR_P)
+ 
+ # See if there's a null device, and what it's called
+ 

@@ -1,0 +1,76 @@
+From 65404d2c4a231bd551922a85ebbe8f4266ac6d4f Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Thu, 13 Dec 2012 11:47:51 -0800
+Subject: [PATCH 3/8] GRHydro_InitData: sanity check four velocity in bondi
+ case
+
+to make sure Exact's spacetime metric is consistent with the one
+internally used by the Bondi solution
+---
+ src/GRHydro_BondiM.c |   43 +++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 43 insertions(+)
+
+diff --git a/src/GRHydro_BondiM.c b/src/GRHydro_BondiM.c
+index 4ff7e36..ef7c1c5 100644
+--- a/src/GRHydro_BondiM.c
++++ b/src/GRHydro_BondiM.c
+@@ -1147,6 +1147,42 @@ void GRHydro_BondiM(CCTK_ARGUMENTS)
+     eps[i] = utmp/rhotmp;
+     calc_b_bondi(bondi_bmag, vtmp, xpos, x_spher, ucon, bcon);
+ 
++    // verify normaliztion of ucon
++    {
++      CCTK_REAL gtt = -SQR(alp[i]) +
++                      gxx[i]*SQR(betax[i]) + gyy[i]*SQR(betay[i]) +
++                      gzz[i]*SQR(betaz[i]) + 
++                      2*gxy[i]*betax[i]*betay[i] + 2*gxz[i]*betax[i]*betaz[i] +
++                      2*gyz[i]*betay[i]*betaz[i];
++      CCTK_REAL gtx = gxx[i]*betax[i]+gxy[i]*betay[i]+gxz[i]*betaz[i];
++      CCTK_REAL gty = gxy[i]*betax[i]+gyy[i]*betay[i]+gyz[i]*betaz[i];
++      CCTK_REAL gtz = gxz[i]*betax[i]+gyz[i]*betay[i]+gzz[i]*betaz[i];
++      CCTK_REAL umag = gtt*SQR(ucon[TT]) +
++                       gxx[i]*SQR(ucon[XX]) + gyy[i]*SQR(ucon[YY]) + 
++                       gzz[i]*SQR(ucon[ZZ]) +
++                       2*(gtx*ucon[XX]*ucon[TT] + gty*ucon[YY]*ucon[TT] +
++                          gtz*ucon[ZZ]*ucon[TT]) +
++                       2*(gxy[i]*ucon[XX]*ucon[YY] + gxz[i]*ucon[XX]*ucon[ZZ] +
++                          gyz[i]*ucon[YY]*ucon[ZZ]);
++      CCTK_REAL abssum = fabs(gtt*SQR(ucon[TT])) + 
++                       fabs(gxx[i]*SQR(ucon[XX])) + fabs(gyy[i]*SQR(ucon[YY])) + 
++                       fabs(gzz[i]*SQR(ucon[ZZ])) +
++                       2*(fabs(gtx*ucon[XX]*ucon[TT]) + fabs(gty*ucon[YY]*ucon[TT]) +
++                          fabs(gtz*ucon[ZZ]*ucon[TT])) +
++                       2*(fabs(gxy[i]*ucon[XX]*ucon[YY]) + fabs(gxz[i]*ucon[XX]*ucon[ZZ]) +
++                          fabs(gyz[i]*ucon[YY]*ucon[ZZ]));
++      if(fabs(umag-(-1.0)) > 1e-13*abssum) {
++        CCTK_VWarn(CCTK_WARN_ALERT, __LINE__, __FILE__, CCTK_THORNSTRING,
++                   "Suspicious four velocity (%.16e,%.16e,%.16e,%.16e) with "
++                   "normalization %.16e at  i = %d x = (%g,%g,%g), r = %28.16e, "
++                   "3-metric = (%.16e,%.16e,%.16e,%.16e,%.16e,%.16e) "
++                   "gtt = %.16e, beta_i = (%.16e,%.16e,%.16e)",
++                   ucon[TT],ucon[XX],ucon[YY],ucon[ZZ],umag,i,
++                   x[i],y[i],z[i],rspher,
++                   gxx[i],gxy[i],gxz[i],gyy[i],gyz[i],gzz[i],gtt,gtx,gty,gtz);
++      }
++    }
++
+     det = 1./alp[i];   /* temp var */
+ 
+     velx(i) = (ucon[XX]/ucon[TT] + betax[i]) * det;
+@@ -1155,6 +1191,13 @@ void GRHydro_BondiM(CCTK_ARGUMENTS)
+ 
+     w_lorentz[i] = 1./sqrt(1-(gxx[i]*SQR(velx(i))+gyy[i]*SQR(vely(i))+gzz[i]*SQR(velz(i))+
+                               2*(gxy[i]*velx(i)*vely(i)+gxz[i]*velx(i)*velz(i)+gyz[i]*vely(i)*velz(i))) );
++    if(isnan(w_lorentz[i])) {
++      CCTK_VWarn(CCTK_WARN_ALERT, __LINE__, __FILE__, CCTK_THORNSTRING,
++                 "nan in w_lorentz at (%g,%g,%g): v2 = %g",
++                 x[i],y[i],z[i],(gxx[i]*SQR(velx(i))+gyy[i]*SQR(vely(i))+gzz[i]*SQR(velz(i))+
++                              2*(gxy[i]*velx(i)*vely(i)+gxz[i]*velx(i)*velz(i)+gyz[i]*vely(i)*velz(i))));
++    }
++
+ 
+     Bvecx(i) = w_lorentz[i]*bcon[XX] - alp[i]*bcon[TT]*ucon[XX];
+     Bvecy(i) = w_lorentz[i]*bcon[YY] - alp[i]*bcon[TT]*ucon[YY];
+-- 
+1.7.10.4
+

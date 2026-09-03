@@ -1,0 +1,68 @@
+From 52467d5978e3523eaa64ceef90275a0070f152a0 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Sun, 11 Aug 2013 20:15:28 -0700
+Subject: [PATCH] CarpetIOHDF5: use simple_extents rather than storage size on
+ disk
+
+storage size is literally the amount of space used on disk, so if eg
+compression is used, this is much smaller than the amount of space
+required to hold the data in memory.
+
+Also change type of data read in to what the memory dataspace is not
+what the dataspace on disk is. This way HDF5 actually converts from the
+on-disk representation to the in-memory one.
+---
+ Carpet/CarpetIOHDF5/src/Input.cc |   14 ++++++++++----
+ 1 file changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/Carpet/CarpetIOHDF5/src/Input.cc b/Carpet/CarpetIOHDF5/src/Input.cc
+index 4c1f0cb..14923cf 100644
+--- a/Carpet/CarpetIOHDF5/src/Input.cc
++++ b/Carpet/CarpetIOHDF5/src/Input.cc
+@@ -994,16 +994,19 @@ static list<fileset_t>::iterator OpenFileSet (const cGH* const cctkGH,
+     HDF5_ERROR (datatype = H5Dget_type(dataset));
+     HDF5_ERROR (old_data = H5Tequal(datatype, H5T_NATIVE_CHAR));
+     if (old_data) {
++        hid_t dataspace;
++        HDF5_ERROR (dataspace = H5Dget_space(dataset));
+         /* old data that stored this as an array of chars */
+         CCTK_WARN (CCTK_WARN_ALERT, "Old-style checkpoint data found.");
+-        HDF5_ERROR (len = H5Dget_storage_size(dataset) + 1);
++        HDF5_ERROR (len = H5Sget_simple_extent_npoints(dataspace) + 1);
++        HDF5_ERROR (H5Sclose(dataspace));
+     } else {
+         HDF5_ERROR (len = H5Tget_size(datatype));
+     }
+     vector<char> parameter_buf(len);
+     char* parameters = &parameter_buf[0];
+ 
+-    HDF5_ERROR (H5Dread (dataset, datatype, H5S_ALL, H5S_ALL,
++    HDF5_ERROR (H5Dread (dataset, H5T_NATIVE_CHAR, H5S_ALL, H5S_ALL,
+                          H5P_DEFAULT, parameters));
+     HDF5_ERROR (H5Dclose (dataset));
+     HDF5_ERROR (H5Tclose (datatype));
+@@ -1097,16 +1100,19 @@ static void ReadMetadata (fileset_t& fileset, hid_t file)
+     HDF5_ERROR (datatype = H5Dget_type(dataset));
+     HDF5_ERROR (old_data = H5Tequal(datatype, H5T_NATIVE_CHAR));
+     if (old_data) {
++        hid_t dataspace;
++        HDF5_ERROR (dataspace = H5Dget_space(dataset));
+         /* old data that stored this as an array of chars */
+         CCTK_WARN (CCTK_WARN_ALERT, "Old-style checkpoint data found.");
+-        HDF5_ERROR (len = H5Dget_storage_size(dataset) + 1);
++        HDF5_ERROR (len = H5Sget_simple_extent_npoints(dataspace) + 1);
++        HDF5_ERROR (H5Sclose(dataspace));
+     } else {
+         HDF5_ERROR (len = H5Tget_size(datatype));
+     }
+     vector<char> gs_str_buf(len);
+     char* gs_str = &gs_str_buf[0];
+ 
+-    HDF5_ERROR (H5Dread (dataset, datatype, H5S_ALL, H5S_ALL,
++    HDF5_ERROR (H5Dread (dataset, H5T_NATIVE_CHAR, H5S_ALL, H5S_ALL,
+                          H5P_DEFAULT, gs_str));
+     HDF5_ERROR (H5Dclose (dataset));
+     HDF5_ERROR (H5Tclose (datatype));
+-- 
+1.7.10.4
+

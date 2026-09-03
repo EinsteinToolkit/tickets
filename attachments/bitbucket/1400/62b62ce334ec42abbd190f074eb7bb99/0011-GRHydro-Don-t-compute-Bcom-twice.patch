@@ -1,0 +1,28 @@
+From b57d06f67e1559552ddc72ce9437748501cfe86f Mon Sep 17 00:00:00 2001
+From: Christian Reisswig <reisswig@tapir.caltech.edu>
+Date: Fri, 10 May 2013 13:12:59 -0700
+Subject: [PATCH 11/24] GRHydro: Don't compute Bcom twice.
+
+---
+ src/GRHydro_CalcBcom.F90 |    5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/GRHydro_CalcBcom.F90 b/src/GRHydro_CalcBcom.F90
+index fc46eea..234343d 100644
+--- a/src/GRHydro_CalcBcom.F90
++++ b/src/GRHydro_CalcBcom.F90
+@@ -40,6 +40,11 @@
+      call CCTK_WARN(0,"No storage for GRHydro::bcom")
+    end if
+ 
++! Only compute if Tmunu is not computed! (Bcom is also computed with Tmunu)
++   if (stress_energy_state .ne. 0) then
++      return
++   endif
++
+    !$OMP PARALLEL DO PRIVATE(i,j,k,velxlow, velylow, velzlow,&
+    !$OMP Bvecxlow,Bvecylow,Bveczlow, bdotv,dum1,dum2,b2,bxlow,bylow,bzlow)
+ 
+-- 
+1.7.10.4
+

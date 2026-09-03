@@ -1,0 +1,54 @@
+Index: src/ADMConstraints.F
+===================================================================
+--- src/ADMConstraints.F	(revision 153)
++++ src/ADMConstraints.F	(working copy)
+@@ -157,16 +157,29 @@
+ 
+ c                 Initialize stress-energy tensor components.
+ 
+-                  Ttt = 0.0D0
+-                  
+-                  Ttx = 0.0D0; Tty = 0.0D0; Ttz = 0.0D0
+-                  
+-                  Txx = 0.0D0; Tyy = 0.0D0; Tzz = 0.0D0
+-                  Txy = 0.0D0; Txz = 0.0D0; Tyz = 0.0D0
++                  if (stress_energy_state .ne. 0) then
+ 
+-c                 Include macro for stress energy tensor.
++                     Ttt = eTtt(i,j,k)
+ 
++                     Ttx = eTtx(i,j,k); Tty = eTty(i,j,k); Ttz = eTtz(i,j,k)
++
++                     Txx = eTxx(i,j,k); Tyy = eTyy(i,j,k); Tzz = eTzz(i,j,k)
++
++
++                  else
++
++                     Ttt = 0.0D0
++
++                     Ttx = 0.0D0; Tty = 0.0D0; Ttz = 0.0D0
++
++                     Txx = 0.0D0; Tyy = 0.0D0; Tzz = 0.0D0
++                     Txy = 0.0D0; Txz = 0.0D0; Tyz = 0.0D0
++
++c                    Include macro for stress energy tensor.
++
+ #include "CalcTmunu.inc"
++                  
++                  end if
+ 
+ c                 Calculate the hamiltonian constraint
+ c                 ------------------------------------
+Index: interface.ccl
+===================================================================
+--- interface.ccl	(revision 153)
++++ interface.ccl	(working copy)
+@@ -2,7 +2,7 @@
+ # $Header$
+ 
+ implements: admconstraints
+-inherits: ADMBase, StaticConformal, SpaceMask, grid, ADMMacros
++inherits: ADMBase, StaticConformal, SpaceMask, grid, ADMMacros, TmunuBase
+ friend: ADMCoupling
+ 
+ USES INCLUDE: CalcTmunu.inc

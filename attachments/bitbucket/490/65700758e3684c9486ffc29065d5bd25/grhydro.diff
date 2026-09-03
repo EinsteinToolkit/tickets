@@ -1,0 +1,67 @@
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 254)
++++ schedule.ccl	(working copy)
+@@ -270,11 +270,11 @@
+ 
+   if (CCTK_IsThornActive("PUGH" ))
+   {
+-     schedule GRHydro_Rho_Minima_Setup_Final_PUGH AT CCTK_PostInitial BEFORE MoL_PostStep
++     schedule GRHydro_Rho_Minima_Setup_Final_PUGH AT CCTK_PostInitial BEFORE (MoL_PostStepModify MoL_PostStep)
+      {
+        LANG: C
+      } "Set the value of the rest-mass density of the atmosphere which will be used during the evolution (PUGH)"
+-     schedule GRHydro_InitialAtmosphereResetM AT CCTK_PostInitial BEFORE MoL_PostStep AFTER GRHydro_Rho_Minima_Setup_Final_PUGH
++     schedule GRHydro_InitialAtmosphereResetM AT CCTK_PostInitial BEFORE (MoL_PostStepModify MoL_PostStep) AFTER GRHydro_Rho_Minima_Setup_Final_PUGH
+      {
+        LANG: Fortran
+      } "Use mask to enforce atmosphere at initial time"
+@@ -295,11 +295,11 @@
+ 
+   if (CCTK_IsThornActive("PUGH" ))
+   {
+-     schedule GRHydro_Rho_Minima_Setup_Final_PUGH AT CCTK_PostInitial BEFORE MoL_PostStep
++     schedule GRHydro_Rho_Minima_Setup_Final_PUGH AT CCTK_PostInitial BEFORE (MoL_PostStepModify MoL_PostStep)
+      {
+        LANG: C
+      } "Set the value of the rest-mass density of the atmosphere which will be used during the evolution (PUGH)"
+-     schedule GRHydro_InitialAtmosphereReset AT CCTK_PostInitial BEFORE MoL_PostStep AFTER GRHydro_Rho_Minima_Setup_Final_PUGH
++     schedule GRHydro_InitialAtmosphereReset AT CCTK_PostInitial BEFORE (MoL_PostStepModify MoL_PostStep) AFTER GRHydro_Rho_Minima_Setup_Final_PUGH
+      {
+        LANG: Fortran
+      } "Use mask to enforce atmosphere at initial time"
+@@ -972,18 +972,18 @@
+ 
+ if (CCTK_Equals(Bvec_evolution_method,"GRHydro"))
+ {
+-  schedule GRHydro_AtmosphereResetM IN MoL_Evolution AFTER MoL_Step BEFORE HydroBase_Boundaries AFTER MoL_RestoreSandR
++  schedule GRHydro_AtmosphereResetM AT EVOL AFTER MoL_Evolution
+   {
+     LANG: Fortran
+   } "Reset the atmosphere - MHD version"
+ } else {
+-  schedule GRHydro_AtmosphereReset IN MoL_Evolution AFTER MoL_Step BEFORE HydroBase_Boundaries AFTER MoL_RestoreSandR
++  schedule GRHydro_AtmosphereReset AT EVOL AFTER MoL_Evolution
+   {
+     LANG: Fortran
+   } "Reset the atmosphere"
+ }
+ 
+-schedule group HydroBase_Boundaries IN MoL_Evolution AFTER MoL_Step
++schedule group HydroBase_Boundaries AT EVOL AFTER (GRHydro_AtmosphereResetM GRHydro_AtmosphereReset)
+ {
+ } "HydroBase Boundary conditions group"
+ 
+@@ -1064,11 +1064,6 @@
+ {
+ } "Calculate the stress-energy tensor"
+ 
+-schedule GROUP SetTmunu AT POST_RECOVER_VARIABLES
++schedule GROUP SetTmunu AT EVOL AFTER HydroBase_Boundaries
+ {
+ } "Calculate the stress-energy tensor"
+-
+-schedule GROUP SetTmunu IN MoL_Evolution AFTER HydroBase_Boundaries
+-{
+-} "Calculate the stress-energy tensor"
+-

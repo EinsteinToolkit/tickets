@@ -1,0 +1,120 @@
+From 3e9984838f3991a31aac7cd9aefa4a7c0720ead5 Mon Sep 17 00:00:00 2001
+From: Christian Ott <cott@bethe.tapir.caltech.edu>
+Date: Mon, 9 Jul 2012 06:39:16 -0700
+Subject: [PATCH 04/10] GRHydro: improve error handling in C2P hot routine
+
+* improve error handling in C2P hot routine
+* further bugfix to tau reset treatment in hot part
+* fix an inconsistency in hot-EOS Con2Prim routine -- when resetting
+  utau, also reset tau for consistency
+---
+ src/GRHydro_Con2Prim.F90 |   26 ++++++++++++++++++--------
+ 1 file changed, 18 insertions(+), 8 deletions(-)
+
+diff --git a/src/GRHydro_Con2Prim.F90 b/src/GRHydro_Con2Prim.F90
+index 9f5e511..22afcd3 100644
+--- a/src/GRHydro_Con2Prim.F90
++++ b/src/GRHydro_Con2Prim.F90
+@@ -3,7 +3,6 @@
+    @date      Sat Jan 26 01:06:01 2002
+    @author    The GRHydro Developers
+    @desc 
+-   The routines for converting conservative to primitive variables.
+    @enddesc 
+  @@*/
+ 
+@@ -847,6 +846,7 @@ subroutine Con2Prim_pt_hot(cctk_iteration, ii,jj,kk,handle, dens, &
+            do while(anyerr.ne.0.and.nf.le.nfudgemax)
+               anyerr = 0
+               utau = utau + rho*abs(epsilon)*0.05d0*w_lorentz**2
++              tau = utau*sqrt(det)
+               epsilon = epsilon + abs(epsilon)*0.05d0
+               call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+                    rho,epsilon,temp,ye,xpress,keyerr,anyerr)
+@@ -872,12 +872,14 @@ subroutine Con2Prim_pt_hot(cctk_iteration, ii,jj,kk,handle, dens, &
+                  call CCTK_WARN(failinfomode,"EOS error in c2p 0: LAST RESORT -- reset eps and tau based on old temp")
+                  write(warnline,"(i8,4i5,1P10E15.6)") cctk_iteration,GRHydro_reflevel,ii,jj,kk,x,y,z
+                  call CCTK_WARN(failinfomode,warnline)
+-                 write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
++                 write(warnline,"(1P10E15.6)") rho,epsilon,temp0,temp,ye
+                  call CCTK_WARN(failinfomode,warnline)
+                  keytemp = 1
++                 temp = temp0
+                  call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+                       rho,epsilon,temp,ye,xpress,keyerr,anyerr)
+-                 tau = ( (rho + rho*epsilon) + xpress ) * w_lorentz**2 - xpress - rho*w_lorentz
++                 utau = ( (rho + rho*epsilon) + xpress ) * w_lorentz**2 - xpress - rho*w_lorentz
++                 tau = utau*sqrt(det)
+                  write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
+                  call CCTK_WARN(failinfomode,warnline)
+                  keytemp = 0
+@@ -897,6 +899,8 @@ subroutine Con2Prim_pt_hot(cctk_iteration, ii,jj,kk,handle, dens, &
+         endif
+      endif
+      !$OMP END CRITICAL
++     ! set pold to the 'corrected' value
++     pold = max(plow+1.d-10,xpress)
+   endif
+ 
+ !!$  Check that the variables have a chance of being physical
+@@ -940,6 +944,7 @@ subroutine Con2Prim_pt_hot(cctk_iteration, ii,jj,kk,handle, dens, &
+            do while(anyerr.ne.0.and.nf.le.nfudgemax)
+               anyerr = 0
+               utau = utau + rho*abs(epsilon)*0.05d0*w_lorentz**2
++              tau = utau*sqrt(det)
+               epsilon = epsilon + abs(epsilon)*0.05d0
+               call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+                    rho,epsilon,temp,ye,xpress,keyerr,anyerr)
+@@ -965,12 +970,14 @@ subroutine Con2Prim_pt_hot(cctk_iteration, ii,jj,kk,handle, dens, &
+                  call CCTK_WARN(failinfomode,"EOS error in c2p 1: LAST RESORT -- reset eps and tau based on old temp")
+                  write(warnline,"(i8,4i5,1P10E15.6)") cctk_iteration,GRHydro_reflevel,ii,jj,kk,x,y,z
+                  call CCTK_WARN(failinfomode,warnline)
+-                 write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
++                 write(warnline,"(1P10E15.6)") rho,epsilon,temp0,temp,ye
+                  call CCTK_WARN(failinfomode,warnline)
+                  keytemp = 1
++                 temp = temp0
+                  call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+                       rho,epsilon,temp,ye,xpress,keyerr,anyerr)
+-                 tau = ( (rho + rho*epsilon) + xpress ) * w_lorentz**2 - xpress - rho*w_lorentz
++                 utau = ( (rho + rho*epsilon) + xpress ) * w_lorentz**2 - xpress - rho*w_lorentz
++                 tau = utau*sqrt(det)
+                  write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
+                  call CCTK_WARN(failinfomode,warnline)
+                  keytemp = 0
+@@ -1093,6 +1100,7 @@ subroutine Con2Prim_pt_hot(cctk_iteration, ii,jj,kk,handle, dens, &
+              do while(anyerr.ne.0.and.nf.le.nfudgemax)
+                 anyerr = 0
+                 utau = utau + rho*abs(epsilon)*0.05d0*w_lorentz**2
++                tau = utau*sqrt(det)
+                 epsilon = epsilon + abs(epsilon)*0.05d0
+                 call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+                      rho,epsilon,temp,ye,xpress,keyerr,anyerr)
+@@ -1111,19 +1119,21 @@ subroutine Con2Prim_pt_hot(cctk_iteration, ii,jj,kk,handle, dens, &
+                    call CCTK_WARN(failinfomode,warnline)
+                    write(warnline,"(A7,i8)") "code: ",keyerr(1)
+                    call CCTK_WARN(failinfomode,warnline)
+-                   write(warnline,"(A10,i5,i5)") "reflevel, iteration: ", GRHydro_reflevel, cctk_iteration
++                   write(warnline,"(A10,i5,i8)") "reflevel, iteration: ", GRHydro_reflevel, cctk_iteration
+                    call CCTK_WARN(failinfomode,warnline)
+                    call CCTK_WARN(failwarnmode,"Aborting!!!")
+                 else
+                    call CCTK_WARN(failinfomode,"EOS error in c2p 2: LAST RESORT -- reset eps and tau based on old temp")
+                    write(warnline,"(i8,4i5,1P10E15.6)") cctk_iteration,GRHydro_reflevel,ii,jj,kk,x,y,z
+                    call CCTK_WARN(failinfomode,warnline)
+-                   write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
++                   write(warnline,"(1P10E15.6)") rho,epsilon,temp0,ye
+                    call CCTK_WARN(failinfomode,warnline)
+                    keytemp = 1
++                   temp = temp0
+                    call EOS_Omni_press(handle,keytemp,GRHydro_eos_rf_prec,n,&
+                         rho,epsilon,temp,ye,xpress,keyerr,anyerr)
+-                   tau = ( (rho + rho*epsilon) + xpress ) * w_lorentz**2 - xpress - rho*w_lorentz
++                   utau = ( (rho + rho*epsilon) + xpress ) * w_lorentz**2 - xpress - rho*w_lorentz
++                   tau = utau*sqrt(det)
+                    write(warnline,"(1P10E15.6)") rho,epsilon,temp,ye
+                    call CCTK_WARN(failinfomode,warnline)
+                    keytemp = 0
+-- 
+1.7.10.4
+

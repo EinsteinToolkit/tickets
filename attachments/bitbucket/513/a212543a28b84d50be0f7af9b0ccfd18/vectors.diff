@@ -1,0 +1,157 @@
+Index: src/vectors-4-Altivec.h
+===================================================================
+--- src/vectors-4-Altivec.h	(revision 28)
++++ src/vectors-4-Altivec.h	(working copy)
+@@ -161,5 +161,5 @@
+ #define k4pow(x,a) K4REPL2(pow,x,a)
+ #define k4sqrt(x)  K4REPL(sqrt,x)
+ 
+-#define k4ifpos(x,y,z) \
+-  vec_sel(vec_sra(vec_convert((x), &(vector int*)0, 31), (y), (z))
++#define k4ifpos(x,y,z)                                                  \
++  (vec_sel((y), (z), vec_sra(vec_convert((x), &(vector int*)0), 31)))
+Index: src/vectors-8-default.h
+===================================================================
+--- src/vectors-8-default.h	(revision 28)
++++ src/vectors-8-default.h	(working copy)
+@@ -85,9 +85,9 @@
+ #define k8sqrt(x)   (sqrt(x))
+ 
+ #ifdef __cplusplus
+-#  define Vectors_SGN(x) std::signbit(x)
++#  define k8sgn(x) ({ using namespace std; signbit(x); })
+ #else
+-#  define Vectors_SGN(x) signbit(x)
++#  define k8sgn(x) (signbit(x))
+ #endif
+ 
+-#define k8ifpos(x,y,z) (Vectors_SGN(x)?(z):(y))
++#define k8ifpos(x,y,z) (k8sgn(x)?(z):(y))
+Index: src/test.cc
+===================================================================
+--- src/test.cc	(revision 28)
++++ src/test.cc	(working copy)
+@@ -2,9 +2,16 @@
+ #include "cctk_Arguments.h" 
+ #include "cctk_Parameters.h" 
+ #include "vectors.h"
++
+ #include <math.h>
+ #include <stdio.h>
+ 
++inline int my_signbit (CCTK_REAL const x)
++{
++  using namespace std;
++  return signbit(x);
++}
++
+ #define SCALARTEST(testname, vecexpr, scalarexpr)                       \
+ do {                                                                    \
+   if (verbose)                                                          \
+@@ -163,9 +170,9 @@
+   VECTEST("ksqrt",  ksqrt(av),          sqrt(a[i])          );
+ 
+   VECTEST("kifpos positive",
+-          kifpos(av, bv, cv), std::signbit(a[i]) ? c[i] : b[i]);
++          kifpos(av, bv, cv), my_signbit(a[i]) ? c[i] : b[i]);
+   VECTEST("kifpos negative",
+-          kifpos(bv, bv, cv), std::signbit(b[i]) ? c[i] : b[i]);
++          kifpos(bv, bv, cv), my_signbit(b[i]) ? c[i] : b[i]);
+   VECTEST("kifpos 0",  kifpos(vec_set1(0.),bv,cv),  b[i]);
+   VECTEST("kifpos -0", kifpos(vec_set1(-0.),bv,cv), c[i]);
+ 
+Index: src/vectors-4-SSE.h
+===================================================================
+--- src/vectors-4-SSE.h	(revision 28)
++++ src/vectors-4-SSE.h	(working copy)
+@@ -313,9 +313,9 @@
+ #  define k4ifpos(x,y,z) (_mm_blendv_ps(y,z,x))
+ #else
+ #  ifdef __cplusplus
+-#    define Vectors_SGN(x) std::signbit(x)
++#    define k4sgn(x) ({ using namespace std; signbit(x); })
+ #  else
+-#    define Vectors_SGN(x) signbit(x)
++#    define k4sgn(x) (signbit(x))
+ #  endif
+ #  define k4ifpos(x,y,z)                                                \
+   ({                                                                    \
+@@ -325,9 +325,9 @@
+     CCTK_REAL4_VEC const y=yy;                                          \
+     CCTK_REAL4_VEC const zz=(z_);                                       \
+     CCTK_REAL4_VEC const z=zz;                                          \
+-    vec4_set(Vectors_SGN(vec4_elt0(x)) ? vec4_elt0(z) : vec4_elt0(y),   \
+-             Vectors_SGN(vec4_elt1(x)) ? vec4_elt1(z) : vec4_elt1(y),   \
+-             Vectors_SGN(vec4_elt2(x)) ? vec4_elt2(z) : vec4_elt2(y),   \
+-             Vectors_SGN(vec4_elt3(x)) ? vec4_elt3(z) : vec4_elt3(y));  \
++    vec4_set(k4sgn(vec4_elt0(x)) ? vec4_elt0(z) : vec4_elt0(y),   \
++             k4sgn(vec4_elt1(x)) ? vec4_elt1(z) : vec4_elt1(y),   \
++             k4sgn(vec4_elt2(x)) ? vec4_elt2(z) : vec4_elt2(y),   \
++             k4sgn(vec4_elt3(x)) ? vec4_elt3(z) : vec4_elt3(y));  \
+   })
+ #endif
+Index: src/vectors-8-DoubleHummer.h
+===================================================================
+--- src/vectors-8-DoubleHummer.h	(revision 28)
++++ src/vectors-8-DoubleHummer.h	(working copy)
+@@ -211,4 +211,4 @@
+ #define k8pow(x,a) K8REPL2(pow,x,a)
+ #define k8sqrt(x)  K8REPL(sqrt,x)
+ 
+-#define k8ifpos(x,y,z) fpsel(y,z,x)
++#define k8ifpos(x,y,z) (__fpsel(x,z,y))
+Index: src/vectors-8-SSE2.h
+===================================================================
+--- src/vectors-8-SSE2.h	(revision 28)
++++ src/vectors-8-SSE2.h	(working copy)
+@@ -235,9 +235,9 @@
+   })
+ #else
+ #  ifdef __cplusplus
+-#    define Vectors_SGN(x) std::signbit(x)
++#    define k8sgn(x) ({ using namespace std; signbit(x); })
+ #  else
+-#    define Vectors_SGN(x) signbit(x)
++#    define k4sgn(x) (signbit(x))
+ #  endif
+ #  define k8ifpos(x_,y_,z_)                                             \
+   ({                                                                    \
+@@ -247,7 +247,7 @@
+     CCTK_REAL8_VEC const y=yy;                                          \
+     CCTK_REAL8_VEC const zz=(z_);                                       \
+     CCTK_REAL8_VEC const z=zz;                                          \
+-    vec8_set(Vectors_SGN(vec8_elt0(x)) ? vec8_elt0(z) : vec8_elt0(y),   \
+-             Vectors_SGN(vec8_elt1(x)) ? vec8_elt1(z) : vec8_elt1(y));  \
++    vec8_set(k8sgn(vec8_elt0(x)) ? vec8_elt0(z) : vec8_elt0(y),   \
++             k8sgn(vec8_elt1(x)) ? vec8_elt1(z) : vec8_elt1(y));  \
+   })
+ #endif
+Index: src/vectors-8-VSX.h
+===================================================================
+--- src/vectors-8-VSX.h	(revision 28)
++++ src/vectors-8-VSX.h	(working copy)
+@@ -109,5 +109,5 @@
+ #define k8pow(x,a) K8REPL2(pow,x,a)
+ #define k8sqrt(x)  K8REPL(sqrt,x)
+ 
+-#define k8ifpos(x,y,z) \
+-  vec_sel(vec_sra(vec_convert((x), &(vector long long*)0, 63), (y), (z))
++#define k8ifpos(x,y,z)                                                  \
++  (vec_sel((y), (z), vec_sra(vec_convert((x), &(vector long long*)0), 63)))
+Index: src/vectors-4-default.h
+===================================================================
+--- src/vectors-4-default.h	(revision 28)
++++ src/vectors-4-default.h	(working copy)
+@@ -85,9 +85,9 @@
+ #define k4sqrt(x)   (sqrtf(x))
+ 
+ #ifdef __cplusplus
+-#  define Vectors_SGN(x) std::signbit(x)
++#  define k4sgn(x) ({ using namespace std; signbit(x); })
+ #else
+-#  define Vectors_SGN(x) signbit(x)
++#  define k4sgn(x) (signbit(x))
+ #endif
+ 
+-#define k4ifpos(x,y,z) (Vectors_SGN(x)?(z):(y))
++#define k4ifpos(x,y,z) (k4sgn(x)?(z):(y))

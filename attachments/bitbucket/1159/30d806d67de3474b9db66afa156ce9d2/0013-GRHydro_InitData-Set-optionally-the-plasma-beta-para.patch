@@ -1,0 +1,136 @@
+From b88a9ad660e4ef4fdc94334a89ee55b3da9baa98 Mon Sep 17 00:00:00 2001
+From: Bruno Coutinho Mundim <bcmsma@astro.rit.edu>
+Date: Thu, 25 Oct 2012 17:36:05 -0500
+Subject: [PATCH 13/13] GRHydro_InitData: Set optionally the plasma beta
+ parameter at the sonic point.
+
+---
+ param.ccl                  |    9 +++++++++
+ src/GRHydro_BondiM_new.F90 |   45 ++++++++++++++++++++++++++++++++++++--------
+ 2 files changed, 46 insertions(+), 8 deletions(-)
+
+diff --git a/param.ccl b/param.ccl
+index 483f85b..67e51e1 100644
+--- a/param.ccl
++++ b/param.ccl
+@@ -277,6 +277,15 @@ CCTK_REAL bondi_bmag "B_0 parameter for magnetized Bondi"
+   0:* :: "Anything positive"
+ } 0.01
+ 
++CCTK_BOOLEAN set_bondi_beta_sonicpt "Set plasma beta parameter instead of bondi_bmag"
++{
++} no
++
++CCTK_REAL  bondi_beta_sonicpt "Plasma beta parameter at the sonic point. Calculate bondi_bmag afterwards."
++{
++  (0:* :: "positive"
++} 1.0
++
+ # For Poloidal Magnetic field test:
+ 
+ CCTK_REAL poloidal_A_b  "Vector potential strength"
+diff --git a/src/GRHydro_BondiM_new.F90 b/src/GRHydro_BondiM_new.F90
+index d03a1c2..9483385 100644
+--- a/src/GRHydro_BondiM_new.F90
++++ b/src/GRHydro_BondiM_new.F90
+@@ -60,12 +60,13 @@ subroutine GRHydro_BondiM_Iso(CCTK_ARGUMENTS)
+   CCTK_REAL :: ONEmTINY, tiny
+   PARAMETER (N_points=100000,ONEmTINY=0.999999d0,tiny=1.0d-12)
+   CCTK_REAL :: M, Msq, Mdot, rs, gam, rmin_bondi, rmax_bondi, cs_sq,cs,vs_sq,vs,rhos,gtemp,hs, Kval, Qdot
++  CCTK_REAL :: psonic, riso_s
+   CCTK_REAL :: logrmin,dlogr,rhotmp,utmp,vtmp,rspher
+   CCTK_REAL :: r_bondi(N_points), logr_bondi(N_points), rho_bondi(N_points), u_bondi(N_points), v_bondi(N_points)
+   CCTK_REAL :: drhodr, det, rhocheck, rhocheck2, riso, rnew, rsch, ucheck
+   CCTK_REAL :: uiso, uisocheck, vcheck, ucheck2, vcheck2, xhat,yhat, zhat, xp, yp, zp
+   CCTK_REAL :: f,df,ddf,a,b,c,rsm,roverm,dudr,uisocheck2,auiso,buiso
+-  CCTK_REAL :: bondi_bsmooth
++  CCTK_REAL :: bondi_bsmooth, bmag
+ 
+   character(400) :: debug_message
+ 
+@@ -74,10 +75,16 @@ subroutine GRHydro_BondiM_Iso(CCTK_ARGUMENTS)
+   Msq  = M*M
+   Mdot = mdot_sonicpt_bondi
+   rs = r_sonicpt_bondi
++  riso_s = 0.5d0*(rs-M+sqrt(rs*(rs-2.0d0*M)))
+   gam = gl_gamma
+ 
+-  write(debug_message,'(a,4f22.14)') "Bondi_pars: ",M,mdot_sonicpt_bondi, &
+-                                                    r_sonicpt_bondi,gl_gamma
++  write(debug_message,'(a,2f22.14)') "Bondi_pars: M, mdot_sonicpt_bondi,",&
++                                                  M,mdot_sonicpt_bondi
++  call CCTK_INFO(debug_message)
++  write(debug_message,'(a,2f22.14)') "Bondi_pars: r_sonicpt_bondi,gl_gamma", &
++                                                    r_sonicpt_bondi,gl_gamma 
++  call CCTK_INFO(debug_message)
++  write(debug_message,'(a,f22.14)') "Bondi_pars: riso_s", riso_s
+   call CCTK_INFO(debug_message)
+ 
+   rmin_bondi = M * bondi_rmin(1)
+@@ -98,12 +105,17 @@ subroutine GRHydro_BondiM_Iso(CCTK_ARGUMENTS)
+   hs     =  1. / ( 1. - cs_sq / (gam - 1.) )
+   Kval      = hs * cs_sq * rhos**(-gtemp) / gam 
+   Qdot   = hs * hs * ( 1. - 3. * vs_sq ) 
++  ! Get the pressure value psonic at the sonic point
++  psonic = Kval * rhos**gam
+   
+   logrmin = log10(rmin_bondi)
+   dlogr = (log10(rmax_bondi) - logrmin)/(1.*(N_points-1))
+ 
+-  write(debug_message,'(a,8f22.14)') "More pars: ",cs,vs,rhos,hs,Kval,Qdot,&
+-                                                   logrmin,dlogr
++  write(debug_message,'(a,4f22.14)') "Bondi pars: cs,vs,rhos,hs",cs,vs,rhos,hs
++  call CCTK_INFO(debug_message)
++  write(debug_message,'(a,2f22.14)') "Bondi pars: Kval,Qdot ",Kval,Qdot
++  call CCTK_INFO(debug_message)
++  write(debug_message,'(a,2f22.14)') "Bondi pars: logrmin,dlogr",logrmin,dlogr
+   call CCTK_INFO(debug_message)
+ 
+   rhotmp=1.0d30
+@@ -122,6 +134,7 @@ subroutine GRHydro_BondiM_Iso(CCTK_ARGUMENTS)
+ !!$  rhotmp = -1.  !!$ start with guess
+   rhotmp=rhos      !!$ start with value at sonic point!
+ 
++
+   do i=imin,N_points
+      rspher = r_bondi(i) 
+      call find_bondi_solution( rspher, rhotmp, utmp, vtmp, rs, rhos, M, Mdot, Kval, gam, Qdot )
+@@ -203,6 +216,22 @@ subroutine GRHydro_BondiM_Iso(CCTK_ARGUMENTS)
+ 
+ 
+ 
++ ! Note that: B^r(t,r) = bondi_bmag M^2 / ( sqrt(\Lambda) \lambda r^2 )
++ ! according to eq. 82 of PRD82 084031 (2010). Assuming Schwarzschild 
++ ! coordinates B^r = bondi_bmag M^2/r^2 sqrt(1-2M/r). We can show that
++ ! b^\mu b_\mu = (B^r)^2 and from the definition of plasma beta parameter
++ ! we can find that bondi_bmag = sqrt(2P/\beta) r^2/M 1/sqrt(1-2M/r) 
++ if(set_bondi_beta_sonicpt.ne.0) then
++  bmag = sqrt(2.0d0*psonic/bondi_beta_sonicpt)*rs**2/M &
++              /sqrt(1.0d0-2.0d0*M/rs)
++ else
++  bmag = bondi_bmag
++ end if 
++ write(debug_message,'(a,2f22.14)')'Bondi pars: rs, psonic',rs, psonic
++ call CCTK_INFO(debug_message)
++ write(debug_message,'(a,2f22.14)')'Bondi pars: bondi_bmag,bondi_beta_sonicpt',&
++                                                bmag,bondi_beta_sonicpt
++ call CCTK_INFO(debug_message)
+ 
+   do i=1,nx
+      do j=1,ny
+@@ -261,9 +290,9 @@ subroutine GRHydro_BondiM_Iso(CCTK_ARGUMENTS)
+            
+            det=SPATIAL_DETERMINANT(gxx(i,j,k),gxy(i,j,k),gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k))
+ 
+-           Bvecx(i,j,k) = bondi_bsmooth*bondi_bmag*M**2*xhat/sqrt(det)/riso**2
+-           Bvecy(i,j,k) = bondi_bsmooth*bondi_bmag*M**2*yhat/sqrt(det)/riso**2
+-           Bvecz(i,j,k) = bondi_bsmooth*bondi_bmag*M**2*zhat/sqrt(det)/riso**2
++           Bvecx(i,j,k) = bondi_bsmooth*bmag*M**2*xhat/sqrt(det)/riso**2
++           Bvecy(i,j,k) = bondi_bsmooth*bmag*M**2*yhat/sqrt(det)/riso**2
++           Bvecz(i,j,k) = bondi_bsmooth*bmag*M**2*zhat/sqrt(det)/riso**2
+ 
+            call Prim2ConGenM(GRHydro_eos_handle,gxx(i,j,k),gxy(i,j,k), &
+                           gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k), &
+-- 
+1.7.10.4
+

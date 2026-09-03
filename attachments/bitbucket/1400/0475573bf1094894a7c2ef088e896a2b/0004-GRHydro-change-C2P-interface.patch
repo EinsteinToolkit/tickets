@@ -1,0 +1,34 @@
+From ac9ca68cfafd420f389b4293640af36668c3d29f Mon Sep 17 00:00:00 2001
+From: Christian David Ott <cott@zwicky-b.(none)>
+Date: Mon, 25 Mar 2013 23:03:27 -0700
+Subject: [PATCH 04/24] GRHydro: change C2P interface
+
+---
+ src/Con2Prim_fortran_interfaces.F90 |    4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/Con2Prim_fortran_interfaces.F90 b/src/Con2Prim_fortran_interfaces.F90
+index 4f8a4bf..aac868b 100644
+--- a/src/Con2Prim_fortran_interfaces.F90
++++ b/src/Con2Prim_fortran_interfaces.F90
+@@ -6,7 +6,8 @@ module Con2Prim_fortran_interfaces
+   interface
+ 
+      subroutine Con2Prim_pt(&
+-          handle, &
++	  cctk_iteration,ii,jj,kk,&
++	  handle, &
+           dens, &
+           sx, sy, sz, &
+           tau, &
+@@ -23,6 +24,7 @@ module Con2Prim_fortran_interfaces
+           GRHydro_reflevel, GRHydro_C2P_failed)
+        
+        implicit none
++       CCTK_INT  cctk_iteration, ii, jj, kk
+        CCTK_INT  handle
+        CCTK_REAL dens
+        CCTK_REAL sx, sy, sz
+-- 
+1.7.10.4
+

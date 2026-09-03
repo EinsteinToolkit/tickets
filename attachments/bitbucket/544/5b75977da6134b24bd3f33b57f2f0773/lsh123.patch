@@ -1,0 +1,123 @@
+Subject: Enable optimisation in Fortran array index calculations
+From: Erik Schnetter <eschnetter@perimeterinstitute.ca>
+Date: 2011-08-28 17:00
+
+In Fortran, Cactus passes all grid functions as arguments to routines,
+and the size of the grid functions are declared in
+DECLARE_CCTK_ARGUMENTS. In these declarations, Cactus assumes that the
+size of each grid variable group can be different, and the compiler
+thus does not see that all grid functions have (locally) the same
+array shape. The compiler can thus not simplify array index
+calculations. This is probably only relevant in short loops accessing
+grid functions from multiple groups (GRHydro?).
+
+The attached patch passes three additional integer arguments
+(cctk_lsh[123]) which contain the shape of grid functions, and uses
+these to declare grid functions.
+
+This patch is quite old, but was never applied. It comes from a time
+when g77 didn't support declaring array shapes via an integer array
+(since this is not allowed in Fortran 77). If this is now possible,
+one could use the array cctk_lsh instead of passing three extra
+integer arguments.
+
+
+Index: lib/sbin/GridFuncStuff.pl
+===================================================================
+--- lib/sbin/GridFuncStuff.pl	(revision 4716)
++++ lib/sbin/GridFuncStuff.pl	(working copy)
+@@ -381,19 +381,37 @@
+         {
+ # FIXME: quick hack to shorten argument names
+ #          $type .= "${sep}cctkv$dim$group";
+-          $type .= "${sep}X$dim$group";
+-          $sep = ',';
+-          if($block eq 'PRIVATE')
++          if ($gtype ne 'GF')
+           {
+-# FIXME: quick hack to shorten argument names
+-#            $arguments{"cctkv$dim$group"} = "(STORAGESIZE($thorn\::$group, $dim))";
+-            $arguments{"X$dim$group"} = "(STORAGESIZE($thorn\::$group, $dim))";
++            $type .= "${sep}X$dim$group";
+           }
+           else
+           {
++            my $dim1=$dim+1;
++            if ($dim<3)
++            {
++              $type .= "${sep}cctk_lsh$dim1";
++            }
++            else
++            {
++              $type .= "${sep}cctk_lsh($dim1)";
++            }
++          }
++          $sep = ',';
++          if ($gtype ne 'GF')
++          {
++            if($block eq 'PRIVATE')
++            {
+ # FIXME: quick hack to shorten argument names
++#            $arguments{"cctkv$dim$group"} = "(STORAGESIZE($thorn\::$group, $dim))";
++              $arguments{"X$dim$group"} = "(STORAGESIZE($thorn\::$group, $dim))";
++            }
++            else
++            {
++# FIXME: quick hack to shorten argument names
+ #            $arguments{"cctkv$dim$group"} = "(STORAGESIZE($imp\::$group, $dim))";
+-            $arguments{"X$dim$group"} = "(STORAGESIZE($imp\::$group, $dim))";
++              $arguments{"X$dim$group"} = "(STORAGESIZE($imp\::$group, $dim))";
++            }
+           }
+         }
+         if(defined($vararraysize) && $compactgroup == 0)
+Index: src/include/cctk.h
+===================================================================
+--- src/include/cctk.h	(revision 4716)
++++ src/include/cctk.h	(working copy)
+@@ -37,7 +37,8 @@
+ cctk_dim,cctk_gsh,cctk_lsh,cctk_lbnd,cctk_ubnd,cctk_lssh,cctk_from,cctk_to,\
+ cctk_bbox,cctk_delta_time,cctk_time,cctk_delta_space,cctk_origin_space,\
+ cctk_levfac,cctk_levoff,cctk_levoffdenom,cctk_timefac,cctk_convlevel,\
+-cctk_convfac,cctk_nghostzones,cctk_iteration,cctkGH
++cctk_convfac,cctk_nghostzones,cctk_iteration,cctkGH,\
++cctk_lsh1,cctk_lsh2,cctk_lsh3
+ 
+ #define _DECLARE_CCTK_ARGUMENTS _DECLARE_CCTK_FARGUMENTS
+ #define _DECLARE_CCTK_FARGUMENTS &&\
+@@ -62,7 +63,10 @@
+         CCTK_DECLARE(INTEGER,cctk_convfac,)&&\
+         CCTK_DECLARE(INTEGER,cctk_nghostzones,(cctk_dim))&&\
+         CCTK_DECLARE(INTEGER,cctk_iteration,)&&\
+-        CCTK_DECLARE(CCTK_POINTER,cctkGH,)&&
++        CCTK_DECLARE(CCTK_POINTER,cctkGH,)&&\
++        CCTK_DECLARE(INTEGER,cctk_lsh1,)&&\
++        CCTK_DECLARE(INTEGER,cctk_lsh2,)&&\
++        CCTK_DECLARE(INTEGER,cctk_lsh3,)&&
+ 
+ #define CCTK_WARN(a,b) CCTK_Warn(a,__LINE__,__FORTRANFILE__,CCTK_THORNSTRING,b)
+ 
+@@ -339,7 +481,10 @@
+                             &((xGH)->cctk_convfac),\
+                             (xGH)->cctk_nghostzones,\
+                             &((xGH)->cctk_iteration),\
+-                            &(xGH)
++                            &(xGH),\
++                            &(xGH)->cctk_lsh[0],\
++                            &(xGH)->cctk_lsh[1],\
++                            &(xGH)->cctk_lsh[2]
+ #define _CCTK_C2F_PROTO     int *,\
+                             int *,\
+                             int *,int *, int *, int *, int *,int *,int *,\
+@@ -353,7 +498,10 @@
+                             int *,\
+                             int *,\
+                             int *,\
+-                            cGH **
++                            cGH **,\
++                            int *,\
++                            int *,\
++                            int *
+ 
+ #define CCTK_EQUALS(a,b) (CCTK_Equals((a),(b)))
+ 

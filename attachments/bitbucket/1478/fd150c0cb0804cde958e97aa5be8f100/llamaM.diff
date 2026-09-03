@@ -1,0 +1,167 @@
+Index: GRHydro_Prim2ConM.F90
+===================================================================
+--- GRHydro_Prim2ConM.F90	(revision 586)
++++ GRHydro_Prim2ConM.F90	(working copy)
+@@ -452,15 +452,44 @@
+ 
+   implicit none
+   
++  TARGET gaa, gab, gac, gbb, gbc, gcc
++  TARGET gxx, gxy, gxz, gyy, gyz, gzz
++  TARGET lvel, vel
++  TARGET lBvec, Bvec
++  
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+   CCTK_INT :: i, j, k
+   CCTK_REAL :: det
+   CCTK_REAL :: maxtau0
++  
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
+ 
+   maxtau0 = -1.0d60
+   
++  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++    g11 => gaa
++    g12 => gab
++    g13 => gac
++    g22 => gbb
++    g23 => gbc
++    g33 => gcc
++    vup => lvel
++    Bprim => lBvec
++  else
++    g11 => gxx
++    g12 => gxy
++    g13 => gxz
++    g22 => gyy
++    g23 => gyz
++    g33 => gzz
++    vup => vel
++    Bprim => Bvec
++  end if  
++  
+   if(evolve_temper.ne.1) then
+ 
+   !$OMP PARALLEL DO PRIVATE(k,j,i,det), REDUCTION(MAX:maxtau0)
+@@ -468,17 +497,17 @@
+     do j = 1,cctk_lsh(2)
+       do i = 1,cctk_lsh(1)
+         
+-         det = SPATIAL_DETERMINANT(gxx(i,j,k),gxy(i,j,k),gxz(i,j,k), \
+-              gyy(i,j,k),gyz(i,j,k),gzz(i,j,k))
++        det = SPATIAL_DETERMINANT(g11(i,j,k),g12(i,j,k),g13(i,j,k),\
++             g22(i,j,k),g23(i,j,k),g33(i,j,k))
+ 
+-        call prim2conM(GRHydro_eos_handle,gxx(i,j,k),&
+-             gxy(i,j,k),gxz(i,j,k),&
+-             gyy(i,j,k),gyz(i,j,k),gzz(i,j,k),&
+-             det, dens(i,j,k),sx(i,j,k),sy(i,j,k),sz(i,j,k),&
+-             tau(i,j,k),Bconsx(i,j,k),Bconsy(i,j,k),Bconsz(i,j,k),&
+-             rho(i,j,k),velx(i,j,k),vely(i,j,k),velz(i,j,k),&
+-             eps(i,j,k),press(i,j,k),Bvecx(i,j,k), &
+-             Bvecy(i,j,k), Bvecz(i,j,k), w_lorentz(i,j,k))
++        call prim2conM(GRHydro_eos_handle,g11(i,j,k),&
++                   g12(i,j,k),g13(i,j,k),&
++                   g22(i,j,k),g23(i,j,k),g33(i,j,k),&
++		   det, dens(i,j,k),sx(i,j,k),sy(i,j,k),sz(i,j,k),&
++                   tau(i,j,k),Bconsx(i,j,k),Bconsy(i,j,k),Bconsz(i,j,k),&
++      		   rho(i,j,k),vup(i,j,k,1),vup(i,j,k,2),vup(i,j,k,3),&
++	           eps(i,j,k),press(i,j,k),Bprim(i,j,k,1), &
++        	   Bprim(i,j,k,2), Bprim(i,j,k,3), w_lorentz(i,j,k))
+ 
+         if(evolve_entropy.ne.0) then
+           entropycons(i,j,k) = sqrt(det)*entropy(i,j,k)*w_lorentz(i,j,k)
+@@ -509,18 +538,18 @@
+     do j = 1,cctk_lsh(2)
+       do i = 1,cctk_lsh(1)
+         
+-         det = SPATIAL_DETERMINANT(gxx(i,j,k),gxy(i,j,k),gxz(i,j,k), \
+-              gyy(i,j,k),gyz(i,j,k),gzz(i,j,k))
++        det = SPATIAL_DETERMINANT(g11(i,j,k),g12(i,j,k),g13(i,j,k),\
++             g22(i,j,k),g23(i,j,k),g33(i,j,k))
+ 
+          call prim2conM_hot(GRHydro_eos_handle,GRHydro_reflevel,&
+               i,j,k,x(i,j,k),y(i,j,k),z(i,j,k),&
+-              gxx(i,j,k),gxy(i,j,k),gxz(i,j,k),&
+-              gyy(i,j,k),gyz(i,j,k),gzz(i,j,k),&
++              g11(i,j,k),g12(i,j,k),g13(i,j,k),&
++              g22(i,j,k),g23(i,j,k),g33(i,j,k),&
+               det, dens(i,j,k),sx(i,j,k),sy(i,j,k),sz(i,j,k),&
+               tau(i,j,k),Bconsx(i,j,k),Bconsy(i,j,k),Bconsz(i,j,k),&
+-              rho(i,j,k),velx(i,j,k),vely(i,j,k),velz(i,j,k),&
+-              eps(i,j,k),press(i,j,k),Bvecx(i,j,k), &
+-              Bvecy(i,j,k), Bvecz(i,j,k), w_lorentz(i,j,k), temperature(i,j,k), Y_e(i,j,k))
++              rho(i,j,k),vup(i,j,k,1),vup(i,j,k,2),vup(i,j,k,3),&
++              eps(i,j,k),press(i,j,k),Bprim(i,j,k,1), &
++              Bprim(i,j,k,2), Bprim(i,j,k,3), w_lorentz(i,j,k), temperature(i,j,k), Y_e(i,j,k))
+ 
+       end do
+     end do
+@@ -740,27 +769,56 @@
+ 
+   implicit none
+   
++  TARGET gaa, gab, gac, gbb, gbc, gcc
++  TARGET gxx, gxy, gxz, gyy, gyz, gzz
++  TARGET lvel, vel
++  TARGET lBvec, Bvec
++  
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
+   
+   CCTK_INT :: i, j, k
+   CCTK_REAL :: det
+   
++  CCTK_INT :: GRHydro_UseGeneralCoordinates
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
++  CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
++  
++  if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++    g11 => gaa
++    g12 => gab
++    g13 => gac
++    g22 => gbb
++    g23 => gbc
++    g33 => gcc
++    vup => lvel
++    Bprim => lBvec
++  else
++    g11 => gxx
++    g12 => gxy
++    g13 => gxz
++    g22 => gyy
++    g23 => gyz
++    g33 => gzz
++    vup => vel
++    Bprim => Bvec
++  end if
++  
+   !$OMP PARALLEL DO PRIVATE(k,j,i,det)
+   do k = 1,cctk_lsh(3)
+     do j = 1,cctk_lsh(2)
+       do i = 1,cctk_lsh(1)
+         
+-        det = SPATIAL_DETERMINANT(gxx(i,j,k),gxy(i,j,k),gxz(i,j,k),\
+-             gyy(i,j,k),gyz(i,j,k),gzz(i,j,k))
++        det = SPATIAL_DETERMINANT(g11(i,j,k),g12(i,j,k),g13(i,j,k),\
++             g22(i,j,k),g23(i,j,k),g33(i,j,k))
+ 
+-        call prim2conpolytypeM(GRHydro_eos_handle,gxx(i,j,k),gxy(i,j,k),&
+-             gxz(i,j,k),gyy(i,j,k),gyz(i,j,k),gzz(i,j,k),&
++        call prim2conpolytypeM(GRHydro_eos_handle,g11(i,j,k),g12(i,j,k),&
++             g13(i,j,k),g22(i,j,k),g23(i,j,k),g33(i,j,k),&
+              det, dens(i,j,k),sx(i,j,k),sy(i,j,k),sz(i,j,k),&
+              tau(i,j,k),Bconsx(i,j,k),Bconsy(i,j,k),Bconsz(i,j,k),&
+-             rho(i,j,k),velx(i,j,k),vely(i,j,k),velz(i,j,k),&
+-             eps(i,j,k),press(i,j,k),Bvecx(i,j,k), Bvecy(i,j,k), &
+-             Bvecz(i,j,k), w_lorentz(i,j,k))
++             rho(i,j,k),vup(i,j,k,1),vup(i,j,k,2),vup(i,j,k,3),&
++             eps(i,j,k),press(i,j,k),Bprim(i,j,k,1), Bprim(i,j,k,2), &
++             Bprim(i,j,k,3), w_lorentz(i,j,k))
+ 
+       end do
+     end do

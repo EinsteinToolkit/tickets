@@ -1,0 +1,174 @@
+From 7289ca9ed7c707d09891c8be43ac830aeb2a4f92 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Fri, 15 Mar 2013 22:28:51 -0700
+Subject: [PATCH 11/11] GRHydro: support reconstruct_Wv in TVD reconstructor
+
+---
+ src/GRHydro_TVDReconstruct_drv.F90 |  115 +++++++++++++++++++++++++++++++++---
+ 1 file changed, 107 insertions(+), 8 deletions(-)
+
+diff --git a/src/GRHydro_TVDReconstruct_drv.F90 b/src/GRHydro_TVDReconstruct_drv.F90
+index 8ab09ba..47605ec 100644
+--- a/src/GRHydro_TVDReconstruct_drv.F90
++++ b/src/GRHydro_TVDReconstruct_drv.F90
+@@ -50,6 +50,8 @@ subroutine GRHydro_TVDReconstruct_drv(CCTK_ARGUMENTS)
+   
+   ! save memory when MP is not used
+   ! TARGET as to be before DECLARE_CCTK_ARGUMENTS for gcc 4.1
++  TARGET gaa, gab, gac, gbb, gbc, gcc
++  TARGET gxx, gxy, gxz, gyy, gyz, gzz
+   TARGET vel, lvel
+   TARGET Bvec, lBvec
+ 
+@@ -67,14 +69,32 @@ subroutine GRHydro_TVDReconstruct_drv(CCTK_ARGUMENTS)
+ 
+   CCTK_INT :: ierr
+ 
++  ! variables used when reconstruct_Wv == true
++  CCTK_REAL :: inv_w                                 ! 1/Lorentz factor
++  CCTK_REAL, DIMENSION(:,:,:,:), ALLOCATABLE :: wvel ! vel*w_lorentz
++  CCTK_REAL :: agxx,agxy,agxz,agyy,agyz,agzz         ! metric components
++
+   ! save memory when MP is not used
+   CCTK_INT :: GRHydro_UseGeneralCoordinates
+   CCTK_REAL, DIMENSION(:,:,:,:), POINTER :: vup, Bprim
++  CCTK_REAL, DIMENSION(:,:,:), POINTER :: g11, g12, g13, g22, g23, g33
+ 
+   if (GRHydro_UseGeneralCoordinates(cctkGH).ne.0) then
++    g11 => gaa
++    g12 => gab
++    g13 => gac
++    g22 => gbb
++    g23 => gbc
++    g33 => gcc
+     vup => lvel
+     Bprim => lBvec
+   else
++    g11 => gxx
++    g12 => gxy
++    g13 => gxz
++    g22 => gyy
++    g23 => gyz
++    g33 => gzz
+     vup => vel
+     Bprim => Bvec
+   end if
+@@ -83,6 +103,29 @@ subroutine GRHydro_TVDReconstruct_drv(CCTK_ARGUMENTS)
+   if (ierr .ne. 0) then
+     call CCTK_WARN(0, "Allocation problems with trivial_rp")
+   end if
++
++  !!$ reconstruct w^i = w_lorentz*v^i to ensure slower than light
++  !!$ speeds?
++  if (reconstruct_Wv .ne. 0) then
++    ! all velocity like quantities are now w_lorentz*velocity. We will convert
++    ! back to ordinary velocity at the end, using w_lorentz = sqrt(1 + g_{ij}
++    ! w^i w^j). 
++    allocate(wvel(cctk_ash(1),cctk_ash(2),cctk_ash(3),3),STAT=ierr)
++    if (ierr .ne. 0) then
++      call CCTK_WARN(0, "Allocation problems with wvel")
++    end if
++    !$OMP PARALLEL DO PRIVATE(i,j,k)
++    do k=1,cctk_lsh(3)
++      do j=1,cctk_lsh(2)
++        do i=1,cctk_lsh(1)
++          wvel(i,j,k,1) = vup(i,j,k,1) * w_lorentz(i,j,k)
++          wvel(i,j,k,2) = vup(i,j,k,2) * w_lorentz(i,j,k)
++          wvel(i,j,k,3) = vup(i,j,k,3) * w_lorentz(i,j,k)
++        end do
++      end do
++    end do
++    !$OMP END PARALLEL DO
++  end if
+   
+   call SpaceMask_GetTypeBits(type_bitsx, "Hydro_RiemannProblemX")
+   call SpaceMask_GetStateBits(trivialx, "Hydro_RiemannProblemX", &
+@@ -184,14 +227,69 @@ subroutine GRHydro_TVDReconstruct_drv(CCTK_ARGUMENTS)
+       call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
+            rho, rhoplus, rhominus, trivial_rp, hydro_excision_mask)
+ 
+-      call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
+-           vup(:,:,:,1), velxplus, velxminus, trivial_rp, hydro_excision_mask)
+-      call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
+-           vup(:,:,:,2), velyplus, velyminus, trivial_rp, hydro_excision_mask)
+-      call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
+-           vup(:,:,:,3), velzplus, velzminus, trivial_rp, hydro_excision_mask)
+-      call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
+-           eps, epsplus, epsminus, trivial_rp, hydro_excision_mask)
++      if (reconstruct_Wv.ne.0) then
++        call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
++             wvel(:,:,:,1), velxplus, velxminus, trivial_rp, hydro_excision_mask)
++        call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
++             wvel(:,:,:,2), velyplus, velyminus, trivial_rp, hydro_excision_mask)
++        call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
++             wvel(:,:,:,3), velzplus, velzminus, trivial_rp, hydro_excision_mask)
++        ! divide out the Loretnz factor obtained from w_lorentz =
++        ! sqrt(1+g_{ij} w^i w^j) for both the
++        ! plus and minus quantities this should by construction ensure
++        ! that any Lorentz factor calculated from them later on is
++        ! physical (ie. > 1.d0)
++        ! constraint transport needs to be able to average fluxes in the directions
++        ! other that flux_direction, which in turn need the primitives on interfaces
++        !$OMP PARALLEL DO PRIVATE(i,j,k,inv_w,agxx,agxy,agxz,agyy,agyz,agzz)
++        do k = GRHydro_stencil, nz - GRHydro_stencil + 1 + transport_constraints*(1-zoffset)
++          do j = GRHydro_stencil, ny - GRHydro_stencil + 1 + transport_constraints*(1-yoffset)
++            do i = GRHydro_stencil, nx - GRHydro_stencil + 1 + transport_constraints*(1-xoffset)
++              agxx = 0.5d0*( g11(i,j,k) + g11(i-xoffset,j-yoffset,k-zoffset) )
++              agxy = 0.5d0*( g12(i,j,k) + g12(i-xoffset,j-yoffset,k-zoffset) )
++              agxz = 0.5d0*( g13(i,j,k) + g13(i-xoffset,j-yoffset,k-zoffset) )
++              agyy = 0.5d0*( g22(i,j,k) + g22(i-xoffset,j-yoffset,k-zoffset) )
++              agyz = 0.5d0*( g23(i,j,k) + g23(i-xoffset,j-yoffset,k-zoffset) )
++              agzz = 0.5d0*( g33(i,j,k) + g33(i-xoffset,j-yoffset,k-zoffset) )
++              inv_w = 1d0/sqrt( 1.d0 + agxx*velxminus(i,j,k)*velxminus(i,j,k) &
++                                     + agyy*velyminus(i,j,k)*velyminus(i,j,k) &
++                                     + agzz*velzminus(i,j,k)*velzminus(i,j,k) &
++                                + 2.d0*agxy*velxminus(i,j,k)*velyminus(i,j,k) &
++                                + 2.d0*agxz*velxminus(i,j,k)*velzminus(i,j,k) &
++                                + 2.d0*agyz*velyminus(i,j,k)*velzminus(i,j,k) )
++              velxminus(i,j,k) = velxminus(i,j,k)*inv_w
++              velyminus(i,j,k) = velyminus(i,j,k)*inv_w
++              velzminus(i,j,k) = velzminus(i,j,k)*inv_w
++              
++              agxx = 0.5d0*( g11(i,j,k) + g11(i+xoffset,j+yoffset,k+zoffset) )
++              agxy = 0.5d0*( g12(i,j,k) + g12(i+xoffset,j+yoffset,k+zoffset) )
++              agxz = 0.5d0*( g13(i,j,k) + g13(i+xoffset,j+yoffset,k+zoffset) )
++              agyy = 0.5d0*( g22(i,j,k) + g22(i+xoffset,j+yoffset,k+zoffset) )
++              agyz = 0.5d0*( g23(i,j,k) + g23(i+xoffset,j+yoffset,k+zoffset) )
++              agzz = 0.5d0*( g33(i,j,k) + g33(i+xoffset,j+yoffset,k+zoffset) )
++              inv_w = 1d0/sqrt( 1.d0 + agxx*velxplus(i,j,k)*velxplus(i,j,k) &
++                                     + agyy*velyplus(i,j,k)*velyplus(i,j,k) &
++                                     + agzz*velzplus(i,j,k)*velzplus(i,j,k) &
++                                + 2.d0*agxy*velxplus(i,j,k)*velyplus(i,j,k) &
++                                + 2.d0*agxz*velxplus(i,j,k)*velzplus(i,j,k) &
++                                + 2.d0*agyz*velyplus(i,j,k)*velzplus(i,j,k) )
++              velxplus(i,j,k) = velxplus(i,j,k)*inv_w
++              velyplus(i,j,k) = velyplus(i,j,k)*inv_w
++              velzplus(i,j,k) = velzplus(i,j,k)*inv_w
++            end do
++          end do
++        end do
++        !$OMP END PARALLEL DO
++      else
++        call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
++             vup(:,:,:,1), velxplus, velxminus, trivial_rp, hydro_excision_mask)
++        call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
++             vup(:,:,:,2), velyplus, velyminus, trivial_rp, hydro_excision_mask)
++        call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
++             vup(:,:,:,3), velzplus, velzminus, trivial_rp, hydro_excision_mask)
++      end if
++        call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
++             eps, epsplus, epsminus, trivial_rp, hydro_excision_mask)
+       if(evolve_mhd.ne.0) then
+          call tvdreconstruct(nx, ny, nz, xoffset, yoffset, zoffset, &
+               Bprim(:,:,:,1), Bvecxplus, Bvecxminus, trivial_rp, hydro_excision_mask)
+@@ -270,6 +368,7 @@ subroutine GRHydro_TVDReconstruct_drv(CCTK_ARGUMENTS)
+ !!$ TVD ends.
+ 
+   deallocate(trivial_rp)
++  ! Fortran 90 will automatically deallocate wvel for us
+ 
+ end subroutine GRHydro_TVDReconstruct_drv
+ 
+-- 
+1.7.10.4
+

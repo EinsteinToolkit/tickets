@@ -1,0 +1,110 @@
+Index: lib/sim-sync.py
+===================================================================
+--- lib/sim-sync.py	(revision 1459)
++++ lib/sim-sync.py	(working copy)
+@@ -103,18 +103,7 @@
+     local_sourcedir = simlib.BuildPath(local_sourcebasedir, source_name)
+     DefineDatabase.Set('SOURCEDIR', local_sourcedir)
+     localsshsetup = DefineDatabase.SubAll(machineEntry.localsshsetup)
+-    sshcmd  = machineEntry.sshcmd
+-    sshopts = machineEntry.sshopts
+-    sshcmd = "%s %s" % (sshcmd, sshopts)
+-    trampoline = simlib.GetTrampoline(ioMachine)
+-    if trampoline:
+-        tentry = simenv.ConfigurationDatabase.GetMachine(trampoline)
+-        trampoline_sourcebasedir = simlib.GetSourceBaseDir(tentry)
+-        trampoline_sourcedir = os.path.join(trampoline_sourcebasedir, source_name)
+-        DefineDatabase.Set('SOURCEDIR', trampoline_sourcedir)
+-        sshcmd = DefineDatabase.SubAll(sshcmd)
+-        DefineDatabase.Set('SOURCEDIR', local_sourcedir)
+-    sshcmd = simlib.GetSSHCommand(trampoline, sshcmd)
++    sshcmd = simlib.GetSSHCommand(ioMachine, 'RSYNC')
+     sshcmd = DefineDatabase.SubAll(sshcmd)
+     
+     # If there is more than one explicit path given only accept top-level directories
+@@ -156,9 +145,8 @@
+     cmd = "%s %s" % (cmd, " ".join(rsyncfiles))
+     cmd = "%s %s" % (cmd, fullpath)
+         
+-    mkdirssh = "%s@%s" % (machineEntry.user, machineEntry.hostname)
+     mkdirpath = "%s%s%s" % (sourcebasedir, os.sep, local_suffix)
+-    mkdircmd = "%s %s mkdir -p %s" % (sshcmd, mkdirssh, mkdirpath)
++    mkdircmd = simlib.GetSSHCommand(ioMachine, "mkdir -p %s" % (mkdirpath))
+ 
+     cmd = "cd '%s' && { %s; } && %s && %s" % (local_sourcedir, localsshsetup, mkdircmd, cmd)
+     
+Index: lib/simlib.py
+===================================================================
+--- lib/simlib.py	(revision 1460)
++++ lib/simlib.py	(working copy)
+@@ -428,9 +428,9 @@
+ # ignore sshsetup and friends, and have to assume that
+ # trampolines work without it. (Maybe we should ensure here
+ # that these entries are indeed empty.)
+-def GetSSHCommand(machine, cmd, other_opts='', remotePath=None):
++def GetSSHCommand(machine, cmd_, other_opts='', remotePath=None):
+     if not machine:
+-        return cmd
++        return cmd_
+     
+     DefineDatabase = simsubs.DefineDatabase()
+     
+@@ -443,29 +443,43 @@
+     hostname = entry.hostname
+     DefineDatabase.Set('USER', user)
+ 
++    cmd = cmd_
+     if remotePath != None:
+         cmd = "cd %s && %s" % (remotePath, cmd)
+ 
+-    cmd = "%s %s %s %s@%s %s" % (sshcmd, sshopts, other_opts, user, hostname, QuoteSafe(cmd))
+-    cmd = DefineDatabase.SubAll(cmd)
+-
+     trampoline = GetTrampoline(machine)
+     if trampoline and not simenv.ConfigurationDatabase.HasMachineEntry(trampoline):
+         fatal('Unknown trampoline "%s" specified for machine "%s"' % (trampoline, machine))
+-    
++
+     if trampoline:
+-        tentry = simenv.ConfigurationDatabase.GetMachine(trampoline)
+-        local_sourcebasedir = GetLocalSourceBaseDir()
+-        sourcename = GetDirSuffix(local_sourcebasedir)
+-        if (sourcename == None):
+-            sourcename = ''
+-        sourcebasedir = GetSourceBaseDir(tentry)
+-        sourcedir = os.path.join(sourcebasedir, sourcename)
+-        DefineDatabase.Set('SOURCEDIR', sourcedir)
+-        cmd = DefineDatabase.SubAll(cmd)
+-    
+-    return GetSSHCommand(trampoline, cmd, other_opts)
++        tsshcmd = GetSSHCommand(trampoline, 'nc %h %p 2\>/dev/null', other_opts)
++        # not quite the nice English way because sshcmd could actually be
++        # something else than ssh, however, '-t' for ssh does not work here
++        tsshcmd = tsshcmd.replace(' -t ', ' ')
++        # We have to remove any quotes. It might break without, but it for
++        # sure will with them
++        tsshcmd = tsshcmd.replace('\'', '')
++        # When using this command for rsync, put the proxy command in "
++        # otherwise, escape whitespace because we cannot use quotes there
++        # And yes: we cannot do this trick for the rsync case, we need two
++        # cases here.
++        if (cmd_ == 'RSYNC'):
++            tsshcmd = '"'+tsshcmd+'"'
++        else:
++            tsshcmd = tsshcmd.replace(' ', '\ ')
++        sshopts += " -o ProxyCommand=" + tsshcmd
+ 
++    # First the pure ssh command
++    cmd = "%s %s %s" % (sshcmd, sshopts, other_opts)
++    if (cmd_ != 'RSYNC'):
++        # Add user and host
++        cmd = "%s %s@%s" % (cmd, user, hostname)
++        if (cmd_ != ''):
++            # Add specified command, but quote it
++            cmd = "%s %s" % (cmd, QuoteSafe(cmd_))
++    cmd = DefineDatabase.SubAll(cmd)
++    return cmd
++
+ def ExecuteCommand(command, output=False):
+ 
+     sys.stdout.flush()

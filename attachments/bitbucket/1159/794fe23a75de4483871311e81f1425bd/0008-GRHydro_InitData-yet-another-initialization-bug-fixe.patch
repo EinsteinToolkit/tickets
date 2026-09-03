@@ -1,0 +1,34 @@
+From d337b1d42ce2e7dccbd70337138bcc9f8c8f7153 Mon Sep 17 00:00:00 2001
+From: Bruno Coutinho Mundim <bcmsma@astro.rit.edu>
+Date: Mon, 8 Oct 2012 13:36:23 -0500
+Subject: [PATCH 08/13] GRHydro_InitData: yet another initialization bug fixed
+ in bondiM.
+
+---
+ src/GRHydro_BondiM_new.F90 |    3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/GRHydro_BondiM_new.F90 b/src/GRHydro_BondiM_new.F90
+index 1c61374..346bc19 100644
+--- a/src/GRHydro_BondiM_new.F90
++++ b/src/GRHydro_BondiM_new.F90
+@@ -201,7 +201,6 @@ subroutine GRHydro_BondiM_Iso(CCTK_ARGUMENTS)
+ 
+ 
+ 
+-  bondi_bsmooth = 1.0d0
+ 
+   do i=1,nx
+      do j=1,ny
+@@ -216,6 +215,8 @@ subroutine GRHydro_BondiM_Iso(CCTK_ARGUMENTS)
+            yhat = yp/riso
+            zhat = zp/riso
+            roverm = riso/M
++
++           bondi_bsmooth = 1.0d0
+            
+            if(roverm > ONEmTINY) then
+               rsch = 0.25 * ( 2.*riso + M)**2 / riso
+-- 
+1.7.10.4
+

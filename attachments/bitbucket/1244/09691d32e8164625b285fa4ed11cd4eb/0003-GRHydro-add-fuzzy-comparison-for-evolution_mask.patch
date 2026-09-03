@@ -1,0 +1,27 @@
+From 28ee8667637c83e747af4f50d956fe449f602504 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Sat, 26 Jan 2013 11:24:23 -0800
+Subject: [PATCH 03/11] GRHydro: add fuzzy comparison for evolution_mask
+
+evolution_mask is every only set to 0d0 or 1d0 (explicitly) right now.
+Should this change, this tests needs to be amended.
+---
+ src/GRHydro_Con2Prim.F90 |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/GRHydro_Con2Prim.F90 b/src/GRHydro_Con2Prim.F90
+index b1e4c5f..5af9518 100644
+--- a/src/GRHydro_Con2Prim.F90
++++ b/src/GRHydro_Con2Prim.F90
+@@ -2283,7 +2283,7 @@ subroutine check_GRHydro_C2P_failed(CCTK_ARGUMENTS)
+ 
+           ! do not collapse conditions since Fortran does not guarantee an order
+           if (check_evolution_mask.ne.0) then
+-            if (evolution_mask(i,j,k).eq.0d0) then 
++            if (abs(evolution_mask(i,j,k)).le.0.5d0) then 
+               cycle
+             end if
+           end if
+-- 
+1.7.10.4
+

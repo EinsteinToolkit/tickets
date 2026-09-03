@@ -1,0 +1,37 @@
+# HG changeset patch
+# Parent 3dfb99d3e7b937d81030bd6fe0533638f7b93e37
+
+diff -r 3dfb99d3e7b9 Carpet/CarpetInterp2/src/fasterp.cc
+--- a/Carpet/CarpetInterp2/src/fasterp.cc	Fri Jan 27 15:49:02 2012 -0800
++++ b/Carpet/CarpetInterp2/src/fasterp.cc	Sat Feb 04 17:06:25 2012 -0800
+@@ -1071,9 +1071,7 @@
+     DECLARE_CCTK_PARAMETERS;
+     
+     // Check regridding epoch
+-    if (regridding_epoch != (reflevel == -1 ?
+-                             Carpet::regridding_epoch :
+-                             Carpet::level_regridding_epochs.AT(reflevel)))
++    if (outofdate())
+     {
+       if (reflevel == -1) {
+         CCTK_VWarn (CCTK_WARN_ABORT, __LINE__, __FILE__, CCTK_THORNSTRING,
+diff -r 3dfb99d3e7b9 Carpet/CarpetInterp2/src/fasterp.hh
+--- a/Carpet/CarpetInterp2/src/fasterp.hh	Fri Jan 27 15:49:02 2012 -0800
++++ b/Carpet/CarpetInterp2/src/fasterp.hh	Sat Feb 04 17:06:25 2012 -0800
+@@ -317,6 +317,16 @@
+     {
+       return recv_descr.npoints;
+     }
++
++    bool
++    outofdate ()
++      const
++    {
++      return 
++        regridding_epoch != (reflevel == -1 ?
++                             Carpet::regridding_epoch :
++                             Carpet::level_regridding_epochs.AT(reflevel));
++    }
+   };
+   
+   

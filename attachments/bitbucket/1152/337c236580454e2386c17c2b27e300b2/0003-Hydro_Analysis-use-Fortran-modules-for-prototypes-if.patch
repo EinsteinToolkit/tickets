@@ -1,0 +1,40 @@
+From b50b4ebd926e94e5025d97b823322a71b935427e Mon Sep 17 00:00:00 2001
+From: Roland Haas <roland.haas@physics.gatech.edu>
+Date: Tue, 14 Feb 2012 21:06:08 -0800
+Subject: [PATCH 03/12] Hydro_Analysis: use Fortran modules for prototypes if
+ available
+
+---
+ configuration.ccl          |    3 +++
+ src/GRHydro_Separation.F90 |    4 ++++
+ 2 files changed, 7 insertions(+)
+
+diff --git a/configuration.ccl b/configuration.ccl
+index 6909099..6f104d8 100644
+--- a/configuration.ccl
++++ b/configuration.ccl
+@@ -2,3 +2,6 @@
+ 
+ REQUIRES LoopControl
+ 
++OPTIONAL Fortran
++{
++}
+diff --git a/src/GRHydro_Separation.F90 b/src/GRHydro_Separation.F90
+index 6dc434c..8175f9d 100644
+--- a/src/GRHydro_Separation.F90
++++ b/src/GRHydro_Separation.F90
+@@ -24,6 +24,10 @@
+ 
+ subroutine Hydro_Analysis_FindSeparation(CCTK_ARGUMENTS)
+ 
++#ifdef HAVE_CAPABILITY_Fortran
++  use util_Table
++#endif
++
+   implicit none
+ 
+   DECLARE_CCTK_ARGUMENTS
+-- 
+1.7.10.4
+

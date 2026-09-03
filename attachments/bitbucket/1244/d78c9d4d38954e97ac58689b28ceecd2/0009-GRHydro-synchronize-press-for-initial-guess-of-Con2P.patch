@@ -1,0 +1,76 @@
+From e998fcc1f7b76768a10b09bfbd29bcdbd91f69c7 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Fri, 1 Feb 2013 19:08:10 -0800
+Subject: [PATCH 09/11] GRHydro: synchronize press for initial guess of
+ Con2Prim
+
+since the Polytype (!) con2prim routine uses it for its initial guess
+then continues to iterate over rho
+
+Do not sync variables not used for initial guess. This affects only runs
+with sync_only_conservatives=yes.
+---
+ schedule.ccl |   26 +++++++++++++-------------
+ 1 file changed, 13 insertions(+), 13 deletions(-)
+
+diff --git a/schedule.ccl b/schedule.ccl
+index 013ed60..8227855 100644
+--- a/schedule.ccl
++++ b/schedule.ccl
+@@ -1268,9 +1268,9 @@ else
+ 	 LANG: Fortran
+ 	 OPTIONS: LEVEL
+ #         SYNC: HydroBase::w_lorentz      # not used as initial guess and hence not needed!
+-#         SYNC: HydroBase::press          # not used as initial guess and hence not needed!
+-#         SYNC: HydroBase::vel
+-#         SYNC: HydroBase::Bvec
++         SYNC: HydroBase::press          # con2prim_ptPolytype uses this for its initial guess
++#         SYNC: HydroBase::vel            # not needed; lvel is used as initial guess instead
++#         SYNC: HydroBase::Bvec           # not needed; lBvec is used as initial guess instead
+ #         SYNC: hydrobase::entropy        # not used as initial guess and hence not needed!
+ #         SYNC: hydrobase::Y_e            # not used as initial guess and hence not needed!
+ #         SYNC: GRHydro_tracers           # not used as initial guess and hence not needed!
+@@ -1287,10 +1287,10 @@ else
+       {
+ 	 LANG: Fortran
+ 	 OPTIONS: LEVEL
+-         SYNC: HydroBase::w_lorentz
+-         SYNC: HydroBase::press
+-#         SYNC: HydroBase::vel
+-#         SYNC: HydroBase::Bvec
++#         SYNC: HydroBase::w_lorentz   # don't need that since computed in Con2Prim which runs in postregrid!
++         SYNC: HydroBase::press          # con2prim_ptPolytype uses this for its initial guess
++#         SYNC: HydroBase::vel         # not needed; obtained from lvel everywhere in post regrid after Con2Prim
++#         SYNC: HydroBase::Bvec        # not needed; obtained from lBvec everywhere in post regrid after Con2Prim
+          SYNC: hydrobase::entropy
+          SYNC: hydrobase::Y_e
+          SYNC: GRHydro_tracers
+@@ -1310,7 +1310,7 @@ else
+ 	 LANG: Fortran
+ 	 OPTIONS: LEVEL
+ #         SYNC: HydroBase::w_lorentz      # not used as initial guess and hence not needed!
+-#         SYNC: HydroBase::press          # not used as initial guess and hence not needed!
++         SYNC: HydroBase::press          # con2prim_ptPolytype uses this for its initial guess
+ #         SYNC: hydrobase::entropy        # not used as initial guess and hence not needed!
+ #         SYNC: hydrobase::Y_e            # not used as initial guess and hence not needed!
+ #         SYNC: lvel
+@@ -1329,11 +1329,11 @@ else
+       {
+ 	 LANG: Fortran
+ 	 OPTIONS: LEVEL
+-         SYNC: HydroBase::w_lorentz      # not used as initial guess and hence not needed!
+-         SYNC: HydroBase::press          # not used as initial guess and hence not needed!
+-         SYNC: hydrobase::entropy        # not used as initial guess and hence not needed!
+-         SYNC: hydrobase::Y_e            # not used as initial guess and hence not needed!
+-         SYNC: GRHydro_tracers           # not used as initial guess and hence not needed!
++#         SYNC: HydroBase::w_lorentz      # don't need that since computed in Con2Prim which runs in postregrid!
++         SYNC: HydroBase::press          # con2prim_ptPolytype uses this for its initial guess
++         SYNC: hydrobase::entropy
++         SYNC: hydrobase::Y_e
++         SYNC: GRHydro_tracers
+ 	 SYNC: HydroBase::rho
+ 	 SYNC: HydroBase::eps
+ 	 SYNC: HydroBase::vel
+-- 
+1.7.10.4
+

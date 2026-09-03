@@ -1,0 +1,400 @@
+Index: lib/make/cctk_Config.h.in
+===================================================================
+--- lib/make/cctk_Config.h.in	(revision 5073)
++++ lib/make/cctk_Config.h.in	(working copy)
+@@ -159,15 +159,15 @@
+ #ifdef CCODE
+ 
+ /* CCTK C/C++ Integer datatypes */
+-#undef CCTK_INT8
+-#undef CCTK_INT4
+-#undef CCTK_INT2
+-#undef CCTK_INT1
++#undef CCTK_INT8_TYPE
++#undef CCTK_INT4_TYPE
++#undef CCTK_INT2_TYPE
++#undef CCTK_INT1_TYPE
+ 
+ /* CCTK C/C++ Float datatypes */
+-#undef CCTK_REAL16
+-#undef CCTK_REAL8
+-#undef CCTK_REAL4
++#undef CCTK_REAL16_TYPE
++#undef CCTK_REAL8_TYPE
++#undef CCTK_REAL4_TYPE
+ 
+ /* Disable 'restrict' for compiler versions known to be buggy */
+ /* Note that at the time of writing this comment (2013-10-19), only
+Index: lib/make/configure.in
+===================================================================
+--- lib/make/configure.in	(revision 5073)
++++ lib/make/configure.in	(working copy)
+@@ -1064,59 +1064,59 @@
+ 
+ case "x$ac_cv_sizeof_long_long" in
+     'x8')
+-      CCTK_INT8='long long' ;;
++      CCTK_INT8_TYPE='long long' ;;
+     'x4')
+-      CCTK_INT4='long long' ;;
++      CCTK_INT4_TYPE='long long' ;;
+     'x2')
+-      CCTK_INT2='long long' ;;
++      CCTK_INT2_TYPE='long long' ;;
+ esac
+ 
+ case "x$ac_cv_sizeof_long_int" in
+     'x8')
+-      CCTK_INT8='long int' ;;
++      CCTK_INT8_TYPE='long int' ;;
+     'x4')
+-      CCTK_INT4='long int' ;;
++      CCTK_INT4_TYPE='long int' ;;
+     'x2')
+-      CCTK_INT2='long int' ;;
++      CCTK_INT2_TYPE='long int' ;;
+ esac
+ 
+ case "x$ac_cv_sizeof_int" in
+     'x8')
+-      CCTK_INT8='int' ;;
++      CCTK_INT8_TYPE='int' ;;
+     'x4')
+-      CCTK_INT4='int' ;;
++      CCTK_INT4_TYPE='int' ;;
+     'x2')
+-      CCTK_INT2='int' ;;
++      CCTK_INT2_TYPE='int' ;;
+ esac
+ 
+ case "x$ac_cv_sizeof_short_int" in
+     'x8')
+-      CCTK_INT8='short int' ;;
++      CCTK_INT8_TYPE='short int' ;;
+     'x4')
+-      CCTK_INT4='short int' ;;
++      CCTK_INT4_TYPE='short int' ;;
+     'x2')
+-      CCTK_INT2='short int' ;;
++      CCTK_INT2_TYPE='short int' ;;
+ esac
+ 
+-CCTK_INT1='signed char'
++CCTK_INT1_TYPE='signed char'
+ 
+-if test -n "$CCTK_INT8" ; then
+-  AC_DEFINE_UNQUOTED(CCTK_INT8, $CCTK_INT8)
++if test -n "$CCTK_INT8_TYPE" ; then
++  AC_DEFINE_UNQUOTED(CCTK_INT8_TYPE, $CCTK_INT8_TYPE)
+   AC_DEFINE(HAVE_CCTK_INT8)
+ fi
+ 
+-if test -n "$CCTK_INT4" ; then
+-  AC_DEFINE_UNQUOTED(CCTK_INT4, $CCTK_INT4)
++if test -n "$CCTK_INT4_TYPE" ; then
++  AC_DEFINE_UNQUOTED(CCTK_INT4_TYPE, $CCTK_INT4_TYPE)
+   AC_DEFINE(HAVE_CCTK_INT4)
+ fi
+ 
+-if test -n "$CCTK_INT2" ; then
+-  AC_DEFINE_UNQUOTED(CCTK_INT2, $CCTK_INT2)
++if test -n "$CCTK_INT2_TYPE" ; then
++  AC_DEFINE_UNQUOTED(CCTK_INT2_TYPE, $CCTK_INT2_TYPE)
+   AC_DEFINE(HAVE_CCTK_INT2)
+ fi
+ 
+-if test -n "$CCTK_INT1" ; then
+-  AC_DEFINE_UNQUOTED(CCTK_INT1, $CCTK_INT1)
++if test -n "$CCTK_INT1_TYPE" ; then
++  AC_DEFINE_UNQUOTED(CCTK_INT1_TYPE, $CCTK_INT1_TYPE)
+   AC_DEFINE(HAVE_CCTK_INT1)
+ fi
+ 
+@@ -1123,29 +1123,29 @@
+ # Float types
+ case "x$ac_cv_sizeof_long_double" in
+     'x16')
+-      CCTK_REAL16='long double' ;;
++      CCTK_REAL16_TYPE='long double' ;;
+     'x8')
+-      CCTK_REAL8='long double' ;;
++      CCTK_REAL8_TYPE='long double' ;;
+     'x4')
+-      CCTK_REAL4='long double' ;;
++      CCTK_REAL4_TYPE='long double' ;;
+ esac
+ 
+ case "x$ac_cv_sizeof_double" in
+     'x16')
+-      CCTK_REAL16='double' ;;
++      CCTK_REAL16_TYPE='double' ;;
+     'x8')
+-      CCTK_REAL8='double' ;;
++      CCTK_REAL8_TYPE='double' ;;
+     'x4')
+-      CCTK_REAL4='double' ;;
++      CCTK_REAL4_TYPE='double' ;;
+ esac
+ 
+ case "x$ac_cv_sizeof_float" in
+     'x16')
+-      CCTK_REAL16='float' ;;
++      CCTK_REAL16_TYPE='float' ;;
+     'x8')
+-      CCTK_REAL8='float' ;;
++      CCTK_REAL8_TYPE='float' ;;
+     'x4')
+-      CCTK_REAL4='float' ;;
++      CCTK_REAL4_TYPE='float' ;;
+ esac
+ 
+ if test "x$DISABLE_REAL16" != 'xyes' -a "x$DISABLE_REAL16" != 'xno' -a "x$DISABLE_REAL16" != 'x'; then
+@@ -1152,20 +1152,20 @@
+     AC_ERROR([Didn't recognise setting of DISABLE_REAL16=\"$DISABLE_REAL16\"; should be either \"yes\" or \"no\" or \"\" (empty)])
+ fi
+ 
+-if test -n "$CCTK_REAL16" -a \( "x$F77" = 'xnone' -o \( "x$cctk_cv_have_fortran_real16" = 'xyes' -a "x$cctk_cv_have_fortran_complex32" = 'xyes' \) \) -a "x$DISABLE_REAL16" != 'xyes' ; then
+-  AC_DEFINE_UNQUOTED(CCTK_REAL16, $CCTK_REAL16)
++if test -n "$CCTK_REAL16_TYPE" -a \( "x$F77" = 'xnone' -o \( "x$cctk_cv_have_fortran_real16" = 'xyes' -a "x$cctk_cv_have_fortran_complex32" = 'xyes' \) \) -a "x$DISABLE_REAL16" != 'xyes' ; then
++  AC_DEFINE_UNQUOTED(CCTK_REAL16_TYPE, $CCTK_REAL16_TYPE)
+   AC_DEFINE(HAVE_CCTK_REAL16)
+   AC_DEFINE_UNQUOTED(CCTK_REAL16_KIND, $REAL16_KIND)
+   AC_DEFINE_UNQUOTED(CCTK_COMPLEX32_KIND, $COMPLEX32_KIND)
+ fi
+ 
+-if test -n "$CCTK_REAL8" -a \( "x$F77" = 'xnone' -o \( "x$cctk_cv_have_fortran_real8" -a "x$cctk_cv_have_fortran_complex16" = 'xyes' \) \); then
+-  AC_DEFINE_UNQUOTED(CCTK_REAL8, $CCTK_REAL8)
++if test -n "$CCTK_REAL8_TYPE" -a \( "x$F77" = 'xnone' -o \( "x$cctk_cv_have_fortran_real8" -a "x$cctk_cv_have_fortran_complex16" = 'xyes' \) \); then
++  AC_DEFINE_UNQUOTED(CCTK_REAL8_TYPE, $CCTK_REAL8_TYPE)
+   AC_DEFINE(HAVE_CCTK_REAL8)
+ fi
+ 
+-if test -n "$CCTK_REAL4" -a \( "x$F77" = 'xnone' -o \( "x$cctk_cv_have_fortran_real4" = 'xyes' -a "x$cctk_cv_have_fortran_complex8" = 'xyes' \) \); then
+-  AC_DEFINE_UNQUOTED(CCTK_REAL4, $CCTK_REAL4)
++if test -n "$CCTK_REAL4_TYPE" -a \( "x$F77" = 'xnone' -o \( "x$cctk_cv_have_fortran_real4" = 'xyes' -a "x$cctk_cv_have_fortran_complex8" = 'xyes' \) \); then
++  AC_DEFINE_UNQUOTED(CCTK_REAL4_TYPE, $CCTK_REAL4_TYPE)
+   AC_DEFINE(HAVE_CCTK_REAL4)
+ fi
+ 
+Index: lib/make/force-reconfigure
+===================================================================
+--- lib/make/force-reconfigure	(revision 5073)
++++ lib/make/force-reconfigure	(working copy)
+@@ -41,3 +41,4 @@
+ 28 Feb 2013: Add variable XARGS
+ 20 May 2013: Auto-configure static_assert
+ 16 Jun 2013: Auto-configure __builtin_assume_aligned
++07 Feb 2014: Change CCTK_REAL8 etc. from #define to typedef
+Index: src/include/cctk_Types.h
+===================================================================
+--- src/include/cctk_Types.h	(revision 5076)
++++ src/include/cctk_Types.h	(working copy)
+@@ -14,9 +14,7 @@
+ /* Make sure that cctk_config.h is available in case someone includes
+  * this by hand.
+  */
+-#ifndef _CCTK_CONFIG_H_
+ #include "cctk_Config.h"
+-#endif
+ 
+ /* Define stuff for C. */
+ #ifdef CCODE
+@@ -34,6 +32,18 @@
+ #define HAVE_CCTK_CHAR 1
+ #define HAVE_CCTK_STRING 1
+ 
++/* Floating point types */
++
++#ifdef HAVE_CCTK_REAL16
++typedef CCTK_REAL16_TYPE CCTK_REAL16;
++#endif
++#ifdef HAVE_CCTK_REAL8
++typedef CCTK_REAL8_TYPE CCTK_REAL8;
++#endif
++#ifdef HAVE_CCTK_REAL4
++typedef CCTK_REAL4_TYPE CCTK_REAL4;
++#endif
++
+ /* Declarations for complex types */
+ 
+ #ifdef __cplusplus
+@@ -50,7 +60,7 @@
+ #endif
+ 
+ #ifdef HAVE_CCTK_REAL8
+-#define HAVE_CCTK_COMPLEX16 1
++#  define HAVE_CCTK_COMPLEX16 1
+ #  ifdef __cplusplus
+ typedef std::complex<CCTK_REAL8> CCTK_COMPLEX16;
+ #  else
+@@ -71,9 +81,24 @@
+ typedef unsigned char CCTK_BYTE;
+ #define HAVE_CCTK_BYTE 1
+ 
++/* Integer types */
++
++#ifdef HAVE_CCTK_INT8
++typedef CCTK_INT8_TYPE CCTK_INT8;
++#endif
++#ifdef HAVE_CCTK_INT4
++typedef CCTK_INT4_TYPE CCTK_INT4;
++#endif
++#ifdef HAVE_CCTK_INT2
++typedef CCTK_INT2_TYPE CCTK_INT2;
++#endif
++#ifdef HAVE_CCTK_INT1
++typedef CCTK_INT1_TYPE CCTK_INT1;
++#endif
++
+ #endif /* CCODE */
+ 
+-/* Define stuff for fortran. */
++/* Define stuff for Fortran. */
+ #ifdef FCODE
+ 
+ #define CCTK_POINTER          integer*SIZEOF_CHAR_P
+@@ -94,34 +119,34 @@
+ #define HAVE_CCTK_STRING 1
+ 
+ #ifdef HAVE_CCTK_INT8
+-#define CCTK_INT8 INTEGER*8
++#  define CCTK_INT8 INTEGER*8
+ #endif
+ #ifdef HAVE_CCTK_INT4
+-#define CCTK_INT4 INTEGER*4
++#  define CCTK_INT4 INTEGER*4
+ #endif
+ #ifdef HAVE_CCTK_INT2
+-#define CCTK_INT2 INTEGER*2
++#  define CCTK_INT2 INTEGER*2
+ #endif
+ #ifdef HAVE_CCTK_INT1
+-#define CCTK_INT1 INTEGER*1
++#  define CCTK_INT1 INTEGER*1
+ #endif
+ 
+ #ifdef HAVE_CCTK_REAL16
+-#define CCTK_REAL16 REAL*CCTK_REAL16_KIND
+-#define HAVE_CCTK_COMPLEX32 1
+-#define CCTK_COMPLEX32  COMPLEX*CCTK_COMPLEX32_KIND
++#  define CCTK_REAL16 REAL*CCTK_REAL16_KIND
++#  define HAVE_CCTK_COMPLEX32 1
++#  define CCTK_COMPLEX32  COMPLEX*CCTK_COMPLEX32_KIND
+ #endif
+ 
+ #ifdef HAVE_CCTK_REAL8
+-#define CCTK_REAL8  REAL*8
+-#define HAVE_CCTK_COMPLEX16 1
+-#define CCTK_COMPLEX16  COMPLEX*16
++#  define CCTK_REAL8  REAL*8
++#  define HAVE_CCTK_COMPLEX16 1
++#  define CCTK_COMPLEX16  COMPLEX*16
+ #endif
+ 
+ #ifdef HAVE_CCTK_REAL4
+-#define CCTK_REAL4  REAL*4
+-#define HAVE_CCTK_COMPLEX8 1
+-#define CCTK_COMPLEX8   COMPLEX*8
++#  define CCTK_REAL4  REAL*4
++#  define HAVE_CCTK_COMPLEX8 1
++#  define CCTK_COMPLEX8   COMPLEX*8
+ #endif
+ 
+ /* Should be unsigned, but Fortran doesn't have that */
+@@ -134,60 +159,58 @@
+ 
+ /* Floating point precision */
+ #ifdef CCTK_REAL_PRECISION_16
+-#define CCTK_REAL_PRECISION 16
+-#define CCTK_REAL CCTK_REAL16
++#  define CCTK_REAL_PRECISION 16
++#  define CCTK_REAL CCTK_REAL16
+ #endif
+ 
+ #ifdef CCTK_REAL_PRECISION_8
+-#define CCTK_REAL_PRECISION 8
+-#define CCTK_REAL CCTK_REAL8
++#  define CCTK_REAL_PRECISION 8
++#  define CCTK_REAL CCTK_REAL8
+ #endif
+ 
+ #ifdef CCTK_REAL_PRECISION_4
+-#define CCTK_REAL_PRECISION 4
+-#define CCTK_REAL CCTK_REAL4
++#  define CCTK_REAL_PRECISION 4
++#  define CCTK_REAL CCTK_REAL4
+ #endif
+ 
+ /* Integer precision */
+ 
+ #ifdef CCTK_INTEGER_PRECISION_8
+-#define CCTK_INTEGER_PRECISION 8
+-#define CCTK_INT CCTK_INT8
++#  define CCTK_INTEGER_PRECISION 8
++#  define CCTK_INT CCTK_INT8
+ #endif
+ 
+ #ifdef CCTK_INTEGER_PRECISION_4
+-#define CCTK_INTEGER_PRECISION 4
+-#define CCTK_INT CCTK_INT4
++#  define CCTK_INTEGER_PRECISION 4
++#  define CCTK_INT CCTK_INT4
+ #endif
+ 
+ #ifdef CCTK_INTEGER_PRECISION_2
+-#define CCTK_INTEGER_PRECISION 2
+-#define CCTK_INT CCTK_INT2
++#  define CCTK_INTEGER_PRECISION 2
++#  define CCTK_INT CCTK_INT2
+ #endif
+ 
+ #ifdef CCTK_INTEGER_PRECISION_1
+-#define CCTK_INTEGER_PRECISION 1
+-#define CCTK_INT CCTK_INT1
++#  define CCTK_INTEGER_PRECISION 1
++#  define CCTK_INT CCTK_INT1
+ #endif
+ 
+ /* Complex precision */
+ #ifdef CCTK_REAL_PRECISION_16
+-#define CCTK_COMPLEX_PRECISION 32
+-#define CCTK_COMPLEX CCTK_COMPLEX32
++#  define CCTK_COMPLEX_PRECISION 32
++#  define CCTK_COMPLEX CCTK_COMPLEX32
+ #endif
+ 
+ #ifdef CCTK_REAL_PRECISION_8
+-#define CCTK_COMPLEX_PRECISION 16
+-#define CCTK_COMPLEX CCTK_COMPLEX16
++#  define CCTK_COMPLEX_PRECISION 16
++#  define CCTK_COMPLEX CCTK_COMPLEX16
+ #endif
+ 
+ #ifdef CCTK_REAL_PRECISION_4
+-#define CCTK_COMPLEX_PRECISION 8
+-#define CCTK_COMPLEX CCTK_COMPLEX8
++#  define CCTK_COMPLEX_PRECISION 8
++#  define CCTK_COMPLEX CCTK_COMPLEX8
+ #endif
+ 
+-#endif /* CCODE */
+-
+ /* Determine whether we have a traditional or an ANSI cpp. */
+ #ifdef FCODE
+ /* The empty
+@@ -230,7 +253,7 @@
+   integer, parameter :: cctki_use_/**/nam = kind(nam)
+ #endif
+ 
+-#else /* F90CODE */
++#else /* #ifndef F90CODE */
+ 
+ /* Just declare it; FORTRAN 77 has no good way of marking it as used
+    within a block of declarations  */
+@@ -265,4 +288,6 @@
+ 
+ #endif /* HAVE_..._ATTRIBUTE_UNUSED */
+ 
++#endif /* CCODE */
++
+ #endif /*_CCTK_TYPES_H_ */

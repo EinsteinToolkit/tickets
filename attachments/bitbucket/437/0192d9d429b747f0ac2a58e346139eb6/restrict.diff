@@ -1,0 +1,192 @@
+Index: make/configure.in
+===================================================================
+--- make/configure.in	(revision 4701)
++++ make/configure.in	(working copy)
+@@ -874,14 +874,18 @@
+ CCTK_C_ATTRIBUTE_ALIGNED
+ CCTK_CXX_ATTRIBUTE_ALIGNED
+ 
+-## Find out whether the C compiler supports __attribute__((cold))
+-#CCTK_C_ATTRIBUTE_COLD
+-#CCTK_CXX_ATTRIBUTE_COLD
+-#
+-## Find out whether the C compiler supports __attribute__((hot))
+-#CCTK_C_ATTRIBUTE_HOT
+-#CCTK_CXX_ATTRIBUTE_HOT
++# Find out whether the C compiler supports __attribute__((cold))
++CCTK_C_ATTRIBUTE_COLD
++CCTK_CXX_ATTRIBUTE_COLD
+ 
++# Find out whether the C compiler supports __attribute__((hot))
++CCTK_C_ATTRIBUTE_HOT
++CCTK_CXX_ATTRIBUTE_HOT
++
++# Find out whether the C compiler supports __builtin_expect
++CCTK_C_BUILTIN_EXPECT
++CCTK_CXX_BUILTIN_EXPECT
++
+ CCTK_FORTRAN_REAL4
+ CCTK_FORTRAN_REAL8
+ CCTK_FORTRAN_REAL16
+Index: make/force-reconfigure
+===================================================================
+--- make/force-reconfigure	(revision 4701)
++++ make/force-reconfigure	(working copy)
+@@ -28,3 +28,4 @@
+ 21 Dec 2010: Add new options CPP_*_FLAGS and FPP_*_FLAGS
+ 04 Jan 2011: Add CCTK_ATTRIBUTE_ALIGNED
+ 30 Mar 2011: Add variables MAKE, TAR, GZIP_CMD, PATCH, GIT
++26 Apr 2011: Add CCTK_BUILTIN_EXPECT
+Index: make/cctk_Config.h.in
+===================================================================
+--- make/cctk_Config.h.in	(revision 4701)
++++ make/cctk_Config.h.in	(working copy)
+@@ -260,6 +260,14 @@
+ #  define CCTK_ATTRIBUTE_HOT
+ #endif
+ 
++/* Whether __builtin_expect exists. */
++#undef HAVE_CCTK_C_BUILTIN_EXPECT
++#ifdef HAVE_CCTK_C_BUILTIN_EXPECT
++#  define CCTK_BUILTIN_EXPECT(x,y) __builtin_expect(x,y)
++#else
++#  define CCTK_BUILTIN_EXPECT(x,y) (x)
++#endif
++
+ #endif /* ! defined __cplusplus */
+ /****************************************************************************/
+ 
+@@ -354,6 +362,14 @@
+ #  define CCTK_ATTRIBUTE_HOT
+ #endif
+ 
++/* Whether __builtin_expect exists. */
++#undef HAVE_CCTK_CXX_BUILTIN_EXPECT
++#ifdef HAVE_CCTK_CXX_BUILTIN_EXPECT
++#  define CCTK_BUILTIN_EXPECT(x,y) __builtin_expect(x,y)
++#else
++#  define CCTK_BUILTIN_EXPECT(x,y) (x)
++#endif
++
+ /* Some C++ compilers recognise the restrict keyword */
+ #undef HAVE_CCTK_CXX_RESTRICT
+ #undef CCTK_CXX_RESTRICT
+Index: make/aclocal.m4
+===================================================================
+--- make/aclocal.m4	(revision 4701)
++++ make/aclocal.m4	(working copy)
+@@ -377,11 +377,24 @@
+ [AC_CACHE_CHECK([for C restrict], cctk_cv_c_restrict,
+ [cctk_cv_c_restrict=no
+ for ac_kw in restrict __restrict__ __restrict; do
+-  AC_TRY_COMPILE(, [
+-double * $ac_kw foo;
+-void bar (void * $ac_kw arr[]);
+-struct tux { char * $ac_kw arr[3]; };
+-void func (void * arr[$ac_kw]);
++  AC_TRY_COMPILE([
++double * $ac_kw p1;
++double * $ac_kw p2[3];
++struct s1 { char * $ac_kw arr; };
++struct s2 { char * $ac_kw arr[3]; };
++void f1 (void * $ac_kw p);
++void f2 (void * $ac_kw p[]);
++void f3 (void * $ac_kw p[3]);
++/* void f4 (void * $ac_kw p[$ac_kw]); */
++/* void f5 (void * $ac_kw p[$ac_kw 3]); */
++void f1 (void * $ac_kw p) { }
++void f2 (void * $ac_kw p[]) { }
++void f3 (void * $ac_kw p[3]) { }
++/* void f4 (void * $ac_kw p[$ac_kw]) { } */
++/* void f5 (void * $ac_kw p[$ac_kw 3]) { } */
++], [
++double * $ac_kw v1;
++double * $ac_kw v2[3];
+ ], [cctk_cv_c_restrict=$ac_kw; break])
+ done
+ ])
+@@ -399,10 +412,24 @@
+ AC_LANG_SAVE
+ AC_LANG_CPLUSPLUS
+ for ac_kw in restrict __restrict__ __restrict; do
+-  AC_TRY_COMPILE(, [
+-double * $ac_kw foo;
+-void bar (void * $ac_kw arr[]);
+-struct tux { char * $ac_kw arr[3]; };
++  AC_TRY_COMPILE([
++double * $ac_kw p1;
++double * $ac_kw p2[3];
++struct s1 { char * $ac_kw arr; };
++struct s2 { char * $ac_kw arr[3]; };
++void f1 (void * $ac_kw p);
++void f2 (void * $ac_kw p[]);
++void f3 (void * $ac_kw p[3]);
++// void f4 (void * $ac_kw p[$ac_kw]);
++// void f5 (void * $ac_kw p[$ac_kw 3]);
++void f1 (void * $ac_kw p) { }
++void f2 (void * $ac_kw p[]) { }
++void f3 (void * $ac_kw p[3]) { }
++// void f4 (void * $ac_kw p[$ac_kw]) { }
++// void f5 (void * $ac_kw p[$ac_kw 3]) { }
++], [
++double * $ac_kw v1;
++double * $ac_kw v2[3];
+ ], [cctk_cv_cxx_restrict=$ac_kw; break])
+ done
+ AC_LANG_RESTORE
+@@ -635,7 +662,7 @@
+ [cctk_cv_have_cxx_member_attribute_const=no
+ AC_LANG_SAVE
+ AC_LANG_CPLUSPLUS
+-AC_TRY_COMPILE(, struct { double foo (double) __attribute__((__const__)); };, cctk_cv_have_cxx_member_attribute_const=yes, cctk_cv_have_cxx_member_attribute_const=no)
++AC_TRY_COMPILE(, struct bar { double foo (double) __attribute__((__const__)); };, cctk_cv_have_cxx_member_attribute_const=yes, cctk_cv_have_cxx_member_attribute_const=no)
+ AC_LANG_RESTORE
+ ])
+ if test "$cctk_cv_have_cxx_member_attribute_const" = "yes" ; then
+@@ -673,7 +700,7 @@
+ [cctk_cv_have_cxx_member_attribute_pure=no
+ AC_LANG_SAVE
+ AC_LANG_CPLUSPLUS
+-AC_TRY_COMPILE(, struct { double foo (double) __attribute__((__pure__)); };, cctk_cv_have_cxx_member_attribute_pure=yes, cctk_cv_have_cxx_member_attribute_pure=no)
++AC_TRY_COMPILE(, struct bar { double foo (double) __attribute__((__pure__)); };, cctk_cv_have_cxx_member_attribute_pure=yes, cctk_cv_have_cxx_member_attribute_pure=no)
+ AC_LANG_RESTORE
+ ])
+ if test "$cctk_cv_have_cxx_member_attribute_pure" = "yes" ; then
+@@ -711,7 +738,7 @@
+ [cctk_cv_have_cxx_member_attribute_noinline=no
+ AC_LANG_SAVE
+ AC_LANG_CPLUSPLUS
+-AC_TRY_COMPILE(, struct { double foo (double) __attribute__((__noinline__)); };, cctk_cv_have_cxx_member_attribute_noinline=yes, cctk_cv_have_cxx_member_attribute_noinline=no)
++AC_TRY_COMPILE(, struct bar { double foo (double) __attribute__((__noinline__)); };, cctk_cv_have_cxx_member_attribute_noinline=yes, cctk_cv_have_cxx_member_attribute_noinline=no)
+ AC_LANG_RESTORE
+ ])
+ if test "$cctk_cv_have_cxx_member_attribute_noinline" = "yes" ; then
+@@ -818,3 +845,28 @@
+    AC_DEFINE(HAVE_CCTK_CXX_ATTRIBUTE_HOT)
+ fi
+ ])
++
++
++
++AC_DEFUN(CCTK_C_BUILTIN_EXPECT,
++[AC_CACHE_CHECK([for C __builtin_expect], cctk_cv_have_c_builtin_expect,
++[cctk_cv_have_c_builtin_expect=no
++AC_TRY_COMPILE(, __builtin_expect(0,0);, cctk_cv_have_c_builtin_expect=yes, cctk_cv_have_c_builtin_expect=no)
++])
++if test "$cctk_cv_have_c_builtin_expect" = "yes" ; then
++   AC_DEFINE(HAVE_CCTK_C_BUILTIN_EXPECT)
++fi
++])
++
++AC_DEFUN(CCTK_CXX_BUILTIN_EXPECT,
++[AC_CACHE_CHECK([for CXX __builtin_expect], cctk_cv_have_cxx_builtin_expect,
++[cctk_cv_have_cxx_builtin_expect=no
++AC_LANG_SAVE
++AC_LANG_CPLUSPLUS
++AC_TRY_LINK(, __builtin_expect(0,0);, cctk_cv_have_cxx_builtin_expect=yes, cctk_cv_have_cxx_builtin_expect=no)
++AC_LANG_RESTORE
++])
++if test "$cctk_cv_have_cxx_builtin_expect" = "yes" ; then
++   AC_DEFINE(HAVE_CCTK_CXX_BUILTIN_EXPECT)
++fi
++])

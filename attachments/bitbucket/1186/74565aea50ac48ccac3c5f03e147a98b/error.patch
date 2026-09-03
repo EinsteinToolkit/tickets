@@ -1,0 +1,676 @@
+Index: lib/make/aclocal.m4
+===================================================================
+--- lib/make/aclocal.m4	(revision 4953)
++++ lib/make/aclocal.m4	(working copy)
+@@ -1011,6 +1011,56 @@
+ 
+ 
+ 
++AC_DEFUN(CCTK_C_ATTRIBUTE_FORMAT,
++[AC_CACHE_CHECK([for C __attribute__((__format__(printf(1, 2))))], cctk_cv_have_c_attribute_format,
++[cctk_cv_have_c_attribute_format=no
++AC_TRY_COMPILE(void xyzzy(const char*, ...) __attribute__((__format__(printf(1, 2))));, xyzzy("%d",42);, cctk_cv_have_c_attribute_format=yes, cctk_cv_have_c_attribute_format=no)
++])
++if test "$cctk_cv_have_c_attribute_format" = "yes" ; then
++   AC_DEFINE(HAVE_CCTK_C_ATTRIBUTE_FORMAT)
++fi
++])
++
++AC_DEFUN(CCTK_CXX_ATTRIBUTE_FORMAT,
++[AC_CACHE_CHECK([for CXX __attribute__((__format__))], cctk_cv_have_cxx_attribute_format,
++[cctk_cv_have_cxx_attribute_format=no
++AC_LANG_SAVE
++AC_LANG_CPLUSPLUS
++AC_TRY_COMPILE(void xyzzy(const char*, ...) __attribute__((__format__(printf(1, 2))));, xyzzy("%d",42);, cctk_cv_have_cxx_attribute_format=yes, cctk_cv_have_cxx_attribute_format=no)
++AC_LANG_RESTORE
++])
++if test "$cctk_cv_have_cxx_attribute_format" = "yes" ; then
++   AC_DEFINE(HAVE_CCTK_CXX_ATTRIBUTE_FORMAT)
++fi
++])
++
++
++
++AC_DEFUN(CCTK_C_ATTRIBUTE_NORETURN,
++[AC_CACHE_CHECK([for C __attribute__((__noreturn__))], cctk_cv_have_c_attribute_noreturn,
++[cctk_cv_have_c_attribute_noreturn=no
++AC_TRY_COMPILE(void xyzzy(void) __attribute__((__noreturn__));, xyzzy(), cctk_cv_have_c_attribute_noreturn=yes, cctk_cv_have_c_attribute_noreturn=no)
++])
++if test "$cctk_cv_have_c_attribute_noreturn" = "yes" ; then
++   AC_DEFINE(HAVE_CCTK_C_ATTRIBUTE_NORETURN)
++fi
++])
++
++AC_DEFUN(CCTK_CXX_ATTRIBUTE_NORETURN,
++[AC_CACHE_CHECK([for CXX __attribute__((__noreturn__))], cctk_cv_have_cxx_attribute_noreturn,
++[cctk_cv_have_cxx_attribute_noreturn=no
++AC_LANG_SAVE
++AC_LANG_CPLUSPLUS
++AC_TRY_COMPILE(void xyzzy(void) __attribute__((__noreturn__));, xyzzy(), cctk_cv_have_cxx_attribute_noreturn=yes, cctk_cv_have_cxx_attribute_noreturn=no)
++AC_LANG_RESTORE
++])
++if test "$cctk_cv_have_cxx_attribute_noreturn" = "yes" ; then
++   AC_DEFINE(HAVE_CCTK_CXX_ATTRIBUTE_NORETURN)
++fi
++])
++
++
++
+ AC_DEFUN(CCTK_C_BUILTIN_EXPECT,
+ [AC_CACHE_CHECK([for C __builtin_expect], cctk_cv_have_c_builtin_expect,
+ [cctk_cv_have_c_builtin_expect=no
+@@ -1036,6 +1086,31 @@
+ 
+ 
+ 
++AC_DEFUN(CCTK_C_BUILTIN_UNREACHABLE,
++[AC_CACHE_CHECK([for C __builtin_unreachable], cctk_cv_have_c_builtin_unreachable,
++[cctk_cv_have_c_builtin_unreachable=no
++AC_TRY_COMPILE(, __builtin_unreachable();, cctk_cv_have_c_builtin_unreachable=yes, cctk_cv_have_c_builtin_unreachable=no)
++])
++if test "$cctk_cv_have_c_builtin_unreachable" = "yes" ; then
++   AC_DEFINE(HAVE_CCTK_C_BUILTIN_UNREACHABLE)
++fi
++])
++
++AC_DEFUN(CCTK_CXX_BUILTIN_UNREACHABLE,
++[AC_CACHE_CHECK([for CXX __builtin_unreachable], cctk_cv_have_cxx_builtin_unreachable,
++[cctk_cv_have_cxx_builtin_unreachable=no
++AC_LANG_SAVE
++AC_LANG_CPLUSPLUS
++AC_TRY_LINK(, __builtin_unreachable();, cctk_cv_have_cxx_builtin_unreachable=yes, cctk_cv_have_cxx_builtin_unreachable=no)
++AC_LANG_RESTORE
++])
++if test "$cctk_cv_have_cxx_builtin_unreachable" = "yes" ; then
++   AC_DEFINE(HAVE_CCTK_CXX_BUILTIN_UNREACHABLE)
++fi
++])
++
++
++
+ dnl Check for a function that may be provided by cmath or math.h
+ AC_DEFUN(CCTK_CHECK_CXX_STDMATHFUNC,
+ [cctk_func=`echo $1 | sed 'y%./+-%__p_%'`
+Index: lib/make/cctk_Config.h.in
+===================================================================
+--- lib/make/cctk_Config.h.in	(revision 4953)
++++ lib/make/cctk_Config.h.in	(working copy)
+@@ -341,6 +341,22 @@
+ #  define CCTK_ATTRIBUTE_HOT
+ #endif
+ 
++/* Whether __attribute__((format(...))) exists. */
++#undef HAVE_CCTK_CXX_ATTRIBUTE_FORMAT
++#ifdef HAVE_CCTK_CXX_ATTRIBUTE_FORMAT
++#  define CCTK_ATTRIBUTE_FORMAT(archetype, format, firstarg) __attribute__((__format__(archetype, format, firstarg)))
++#else
++#  define CCTK_ATTRIBUTE_FORMAT(archetype, format, firstarg)
++#endif
++
++/* Whether __attribute__((noreturn)) exists. */
++#undef HAVE_CCTK_CXX_ATTRIBUTE_NORETURN
++#ifdef HAVE_CCTK_CXX_ATTRIBUTE_NORETURN
++#  define CCTK_ATTRIBUTE_NORETURN __attribute__((__noreturn__))
++#else
++#  define CCTK_ATTRIBUTE_NORETURN
++#endif
++
+ /* Whether __builtin_expect exists. */
+ #undef HAVE_CCTK_C_BUILTIN_EXPECT
+ #ifdef HAVE_CCTK_C_BUILTIN_EXPECT
+@@ -349,6 +365,14 @@
+ #  define CCTK_BUILTIN_EXPECT(x,y) (x)
+ #endif
+ 
++/* Whether __builtin_unreachable exists. */
++#undef HAVE_CCTK_C_BUILTIN_UNREACHABLE
++#ifdef HAVE_CCTK_C_BUILTIN_UNREACHABLE
++#  define CCTK_BUILTIN_UNREACHABLE() __builtin_unreachable()
++#else
++#  define CCTK_BUILTIN_UNREACHABLE() ((void)0)
++#endif
++
+ /* OpenMP collapse clause */
+ #if (defined CCTK_DISABLE_OMP_COLLAPSE ||                               \
+      (defined __IBMC__ && defined _ARCH_450D) ||                        \
+@@ -526,6 +550,22 @@
+ #  define CCTK_ATTRIBUTE_HOT
+ #endif
+ 
++/* Whether __attribute__((format(...))) exists. */
++#undef HAVE_CCTK_CXX_ATTRIBUTE_FORMAT
++#ifdef HAVE_CCTK_CXX_ATTRIBUTE_FORMAT
++#  define CCTK_ATTRIBUTE_FORMAT(archetype, format, firstarg) __attribute__((__format__(archetype, format, firstarg)))
++#else
++#  define CCTK_ATTRIBUTE_FORMAT(archetype, format, firstarg)
++#endif
++
++/* Whether __attribute__((noreturn)) exists. */
++#undef HAVE_CCTK_CXX_ATTRIBUTE_NORETURN
++#ifdef HAVE_CCTK_CXX_ATTRIBUTE_NORETURN
++#  define CCTK_ATTRIBUTE_NORETURN __attribute__((__noreturn__))
++#else
++#  define CCTK_ATTRIBUTE_NORETURN
++#endif
++
+ /* Whether __builtin_expect exists. */
+ #undef HAVE_CCTK_CXX_BUILTIN_EXPECT
+ #ifdef HAVE_CCTK_CXX_BUILTIN_EXPECT
+@@ -534,6 +574,14 @@
+ #  define CCTK_BUILTIN_EXPECT(x,y) (x)
+ #endif
+ 
++/* Whether __builtin_unreachable exists. */
++#undef HAVE_CCTK_CXX_BUILTIN_UNREACHABLE
++#ifdef HAVE_CCTK_CXX_BUILTIN_UNREACHABLE
++#  define CCTK_BUILTIN_UNREACHABLE() __builtin_unreachable()
++#else
++#  define CCTK_BUILTIN_UNREACHABLE() ((void)0)
++#endif
++
+ /* Some C++ compilers recognise the restrict keyword */
+ #undef HAVE_CCTK_CXX_RESTRICT
+ #undef CCTK_CXX_RESTRICT
+Index: lib/make/configure.in
+===================================================================
+--- lib/make/configure.in	(revision 4953)
++++ lib/make/configure.in	(working copy)
+@@ -908,10 +908,22 @@
+ CCTK_C_ATTRIBUTE_HOT
+ CCTK_CXX_ATTRIBUTE_HOT
+ 
++# Find out whether the C compiler supports __attribute__((format(...)))
++CCTK_C_ATTRIBUTE_FORMAT
++CCTK_CXX_ATTRIBUTE_FORMAT
++
++# Find out whether the C compiler supports __attribute__((noreturn))
++CCTK_C_ATTRIBUTE_NORETURN
++CCTK_CXX_ATTRIBUTE_NORETURN
++
+ # Find out whether the C compiler supports __builtin_expect
+ CCTK_C_BUILTIN_EXPECT
+ CCTK_CXX_BUILTIN_EXPECT
+ 
++# Find out whether the C compiler supports __builtin_unreachable
++CCTK_C_BUILTIN_UNREACHABLE
++CCTK_CXX_BUILTIN_UNREACHABLE
++
+ if test "x$REAL16_KIND" = 'x'; then
+   REAL16_KIND=16
+ fi
+Index: src/comm/CactusDefaultComm.c
+===================================================================
+--- src/comm/CactusDefaultComm.c	(revision 4953)
++++ src/comm/CactusDefaultComm.c	(working copy)
+@@ -377,7 +377,6 @@
+   }
+ #endif
+   exit (retval);
+-  return (0);
+ }
+ 
+ 
+@@ -436,7 +435,6 @@
+   /*abort();*/
+ #endif
+   exit (retval);
+-  return (retval);
+ }
+ 
+ 
+Index: src/include/CommOverloadables.h
+===================================================================
+--- src/include/CommOverloadables.h	(revision 4953)
++++ src/include/CommOverloadables.h	(working copy)
+@@ -40,9 +40,14 @@
+ #undef RETURN_TYPE
+ #endif
+ 
++#ifdef ATTRIBUTES
++#undef ATTRIBUTES
++#endif
++
+ #define RETURN_TYPE int
+ #define ARGUMENTS const cGH *GH, const char *group
+ #define USE_ARGUMENTS GH = GH; group = group;
++#define ATTRIBUTES
+ OVERLOADABLE(SyncGroup)
+ 
+ OVERLOADABLE(EnableGroupStorage)
+@@ -77,6 +82,8 @@
+ #define USE_ARGUMENTS GH = GH; retval = retval;
+ #undef RETURN_TYPE
+ #define RETURN_TYPE int
++#undef ATTRIBUTES
++#define ATTRIBUTES CCTK_ATTRIBUTE_NORETURN
+ OVERLOADABLE(Exit)
+ OVERLOADABLE(Abort)
+ 
+@@ -86,6 +93,8 @@
+ #define USE_ARGUMENTS config = config; convergence_level = convergence_level;
+ #undef RETURN_TYPE
+ #define RETURN_TYPE cGH *
++#undef ATTRIBUTES
++#define ATTRIBUTES
+ OVERLOADABLE(SetupGH)
+ 
+ #undef ARGUMENTS
+@@ -159,6 +168,7 @@
+ #undef ARGUMENTS
+ #undef USE_ARGUMENTS
+ #undef RETURN_TYPE
++#undef ATTRIBUTES
+ 
+ #undef OVERLOADABLE_CALL
+ #undef OVERLOADABLE_PREFIX
+Index: src/include/IOOverloadables.h
+===================================================================
+--- src/include/IOOverloadables.h	(revision 4953)
++++ src/include/IOOverloadables.h	(working copy)
+@@ -37,9 +37,14 @@
+ #undef RETURN_TYPE
+ #endif
+ 
++#ifdef ATTRIBUTES
++#undef ATTRIBUTES
++#endif
++
+ #define ARGUMENTS const cGH *GH
+ #define USE_ARGUMENTS GH = GH;
+ #define RETURN_TYPE int
++#define ATTRIBUTES
+ OVERLOADABLE(OutputGH)
+ 
+ #undef ARGUMENTS
+@@ -54,6 +59,7 @@
+ #undef ARGUMENTS
+ #undef USE_ARGUMENTS
+ #undef RETURN_TYPE
++#undef ATTRIBUTES
+ 
+ #undef OVERLOADABLE_CALL
+ #undef OVERLOADABLE_PREFIX
+Index: src/include/MainOverloadables.h
+===================================================================
+--- src/include/MainOverloadables.h	(revision 4953)
++++ src/include/MainOverloadables.h	(working copy)
+@@ -38,9 +38,14 @@
+ #undef RETURN_TYPE
+ #endif
+ 
++#ifdef ATTRIBUTES
++#undef ATTRIBUTES
++#endif
++
+ #define ARGUMENTS tFleshConfig *config
+ #define USE_ARGUMENTS config = config
+ #define RETURN_TYPE int
++#define ATTRIBUTES
+ 
+ OVERLOADABLE(Initialise)
+ OVERLOADABLE(Evolve)
+@@ -67,6 +72,7 @@
+ #undef ARGUMENTS
+ #undef USE_ARGUMENTS
+ #undef RETURN_TYPE
++#undef ATTRIBUTES
+ 
+ #undef OVERLOADABLE_CALL
+ #undef OVERLOADABLE_PREFIX
+Index: src/include/OverloadMacros.h
+===================================================================
+--- src/include/OverloadMacros.h	(revision 4953)
++++ src/include/OverloadMacros.h	(working copy)
+@@ -77,7 +77,7 @@
+ #define _OVERLOADABLE_PROTOTYPE(prefix, dummy_prefix, name)   __OVERLOADABLE_PROTOTYPE(prefix, dummy_prefix, name)
+ 
+ #define __OVERLOADABLE_PROTOTYPE(prefix, dummy_prefix, name)       \
+-extern RETURN_TYPE (*prefix##name)(ARGUMENTS);
++extern RETURN_TYPE (*prefix##name)(ARGUMENTS) ATTRIBUTES;
+ 
+ /* This macro defines a dummy function */
+ #define OVERLOADABLE_DUMMY(name)   _OVERLOADABLE_DUMMY(OVERLOADABLE_PREFIX, OVERLOADABLE_DUMMY_PREFIX, name)
+@@ -97,7 +97,7 @@
+ #define _OVERLOADABLE_DUMMYPROTOTYPE(prefix, dummy_prefix, name)   __OVERLOADABLE_DUMMYPROTOTYPE(prefix, dummy_prefix, name)
+ 
+ #define __OVERLOADABLE_DUMMYPROTOTYPE(prefix, dummy_prefix, name)        \
+-RETURN_TYPE dummy_prefix##name(ARGUMENTS);
++RETURN_TYPE dummy_prefix##name(ARGUMENTS) ATTRIBUTES;
+ 
+ 
+ /* This macro initialises the function to the dummy if it
+Index: src/include/cctk_WarnLevel.h
+===================================================================
+--- src/include/cctk_WarnLevel.h	(revision 4953)
++++ src/include/cctk_WarnLevel.h	(working copy)
+@@ -11,6 +11,8 @@
+ #ifndef _CCTK_WARNLEVEL_H_
+ #define _CCTK_WARNLEVEL_H_
+ 
++#include <cctk_Config.h>
++
+ #ifdef CCODE
+ 
+ #ifdef __cplusplus 
+@@ -28,24 +30,28 @@
+                 const char *file, 
+                 const char *thorn, 
+                 const char *format, ...)
+-#ifdef __GNUC__
+-__attribute__ ((format (printf, 5, 6)))
+-#endif
+-;
++  CCTK_ATTRIBUTE_FORMAT(printf, 5, 6);
++
++void CCTK_Error(int line, 
++                const char *file, 
++                const char *thorn, 
++                const char *message)
++  CCTK_ATTRIBUTE_NORETURN;
++
++void CCTK_VError(int line, 
++                 const char *file, 
++                 const char *thorn, 
++                 const char *format, ...)
++  CCTK_ATTRIBUTE_FORMAT(printf, 4, 5)
++  CCTK_ATTRIBUTE_NORETURN;
+ int CCTK_VParamWarn (const char *thorn,
+                      const char *format,
+                      ...)
+-#ifdef __GNUC__
+-__attribute__ ((format (printf, 2, 3)))
+-#endif
+-;
++  CCTK_ATTRIBUTE_FORMAT(printf, 2, 3);
+ int CCTK_ParamWarn(const char *thorn, const char *message);
+ int CCTK_Info(const char *thorn, const char *message);
+ int CCTK_VInfo(const char *thorn, const char *format, ...)
+-#ifdef __GNUC__
+-__attribute__ ((format (printf, 2, 3)))
+-#endif
+-;
++  CCTK_ATTRIBUTE_FORMAT(printf, 2, 3);
+ 
+ /* prototypes for warn/info callback routines */
+ 
+Index: src/include/cctk_core.h
+===================================================================
+--- src/include/cctk_core.h	(revision 4953)
++++ src/include/cctk_core.h	(working copy)
+@@ -66,6 +66,7 @@
+         CCTK_DECLARE(INTEGER,cctk_ash3,)&&
+ 
+ #define CCTK_WARN(a,b) CCTK_Warn(a,__LINE__,__FORTRANFILE__,CCTK_THORNSTRING,b)
++#define CCTK_ERROR(b) CCTK_Error(__LINE__,__FORTRANFILE__,CCTK_THORNSTRING,b)
+ 
+ #define CCTK_CoordRegisterSystem(a,b,c) CCTKi_CoordRegisterSystem(a,b,CCTK_THORNSTRING,c)
+ 
+@@ -346,6 +347,7 @@
+ #define CCTK_DELTA_TIME (cctk_delta_time/cctk_timefac)
+ 
+ #define CCTK_WARN(a,b) CCTK_Warn(a,__LINE__,__FILE__,CCTK_THORNSTRING,b)
++#define CCTK_ERROR(b) CCTK_Error(__LINE__,__FILE__,CCTK_THORNSTRING,b)
+ 
+ #define CCTK_MALLOC(s) CCTKi_Malloc(s,__LINE__,__FILE__)
+ #define CCTK_FREE(p) CCTKi_Free(p)
+@@ -355,11 +357,4 @@
+ #define CCTK_INFO(a) CCTK_Info(CCTK_THORNSTRING,(a))
+ #define CCTK_PARAMWARN(a) CCTK_ParamWarn(CCTK_THORNSTRING,(a))
+ 
+-/*
+-#define CCTK_MAKESTRING(x) CCTK_REALSTRING(x)
+-#define CCTK_REALSTRING(x) #x
+-#define CCTK_WARN(a,b) CCTK_Warn(a,CCTK_MAKESTRING(CCTK_THORN),b,__LINE__,__FILE__)
+-*/
+-
+-
+ #endif
+Index: src/main/WarnLevel.c
+===================================================================
+--- src/main/WarnLevel.c	(revision 4953)
++++ src/main/WarnLevel.c	(working copy)
+@@ -97,6 +97,9 @@
+                            (const int *level,
+                             const int *line,
+                             THREE_FORTSTRING_ARG);
++void CCTK_FCALL CCTK_FNAME (CCTK_Error)
++                           (const int *line,
++                            THREE_FORTSTRING_ARG);
+ void CCTK_FCALL CCTK_FNAME (CCTK_ParamWarn)
+                            (TWO_FORTSTRING_ARG);
+ int  CCTK_FCALL CCTK_FNAME (CCTK_MessageFormat)
+@@ -438,6 +441,26 @@
+ }
+ 
+ 
++void CCTK_Error (int line,
++                 const char *file,
++                 const char *thorn,
++                 const char *message)
++{
++  CCTK_Warn (0, line, file, thorn, message);
++}
++
++void CCTK_FCALL CCTK_FNAME (CCTK_Error)
++                           (const int *line,
++                            THREE_FORTSTRING_ARG)
++{
++  THREE_FORTSTRING_CREATE (file, thorn, message)
++  CCTK_Error (*line, file, thorn, message);
++  free (thorn);
++  free (message);
++  free (file);
++}
++
++
+ /*@@
+    @routine    CCTK_VWarn
+    @date       Sun Nov 14 00:23:29 1999
+@@ -558,7 +581,7 @@
+ 
+       if (highlight_warning_messages)
+       {
+-        bold_stderr(ON);
++        bold_stderr (ON);
+       }
+ 
+       if (level <= error_level || cctk_full_warnings)
+@@ -593,7 +616,7 @@
+ 
+       if (highlight_warning_messages)
+       {
+-        bold_stdout(ON);
++        bold_stdout (ON);
+       }
+ 
+       if (level <= error_level || cctk_full_warnings)
+@@ -611,7 +634,7 @@
+ 
+       if (highlight_warning_messages)
+       {
+-        bold_stdout(OFF);
++        bold_stdout (OFF);
+       }
+ 
+       fprintf (stdout, " ");
+@@ -633,6 +656,115 @@
+ }
+ 
+ 
++void CCTK_VError (int line,
++                  const char *file,
++                  const char *thorn,
++                  const char *format,
++                  ...)
++{
++  const CCTK_INT *cctk_full_warnings_ptr, *highlight_warning_messages_ptr;
++  CCTK_INT cctk_full_warnings, highlight_warning_messages;
++  int param_type;
++  int myproc;
++  va_list ap;
++
++  /* Necessary for wrapping up the final message */
++
++  int msg_size;
++  char *message = NULL;
++  char hostname[MAXNAMELEN+1];
++
++  /* Start generating message only if the warbcallback list is not NULL */
++  if(warncallbacks)
++  {
++    va_start(ap,format);
++    msg_size = Util_vsnprintf(NULL, 0, format, ap);
++    va_end(ap);
++
++    /* Empty string is ok */
++    if(msg_size >= 0)
++    {
++      message = (char *)malloc(msg_size+1);
++    }
++    
++    /* Try to print in the allocated space. */
++    if(message)
++    {
++      va_start(ap,format);
++      Util_vsnprintf(message,msg_size+1,format,ap);
++      va_end(ap);
++    } 
++
++    /* call the callback function */
++    CCTKi_WarnCallbacksCall(0,line,file,thorn,message);
++
++    /* free the memory allocated for temp messsage */
++    free (message);
++  }  
++
++  myproc = CCTK_MyProc(NULL);
++  Util_GetHostName (hostname, MAXNAMELEN);
++
++  cctk_full_warnings_ptr =
++    CCTK_ParameterGet ("cctk_full_warnings", "Cactus", &param_type);
++  /* Default to yes */
++  cctk_full_warnings =
++    cctk_full_warnings_ptr && *cctk_full_warnings_ptr;
++
++  highlight_warning_messages_ptr =
++    CCTK_ParameterGet ("highlight_warning_messages", "Cactus", &param_type);
++  /* Default to no */
++  highlight_warning_messages =
++    ! highlight_warning_messages_ptr || *highlight_warning_messages_ptr;
++
++  /* print to stderr */
++  if (highlight_warning_messages)
++  {
++    bold_stderr (ON);
++  }
++
++  fprintf (stderr, "ERROR in thorn %s processor %d host %s\n"
++           "  (line %d of %s): \n"
++           "  ->",
++           thorn, myproc, hostname, line, file);
++
++  if (highlight_warning_messages)
++  {
++    bold_stderr (OFF);
++  }
++
++  fprintf (stderr, " ");
++  va_start (ap, format);
++  vfprintf (stderr, format, ap);
++  va_end (ap);
++  fprintf (stderr, "\n");
++
++  /* print to stdout */
++  if (highlight_warning_messages)
++  {
++    bold_stdout (ON);
++  }
++
++  fprintf (stdout, "ERROR in thorn %s processor %d host %s\n"
++           "  (line %d of %s): \n"
++           "  ->",
++           thorn, myproc, hostname, line, file);
++
++  if (highlight_warning_messages)
++  {
++    bold_stdout (OFF);
++  }
++
++  fprintf (stdout, " ");
++  va_start (ap, format);
++  vfprintf (stdout, format, ap);
++  va_end (ap);
++  fprintf (stdout, "\n");
++
++  CCTK_Abort (NULL, 0);
++}
++
++
+  /*@@
+    @routine    CCTK_ParameterLevel
+    @date       Wed Feb 21 2001
+Index: arrangements/EinsteinAnalysis/AHFinderDirect/src/driver/initial_guess.cc
+===================================================================
+--- arrangements/EinsteinAnalysis/AHFinderDirect/src/driver/initial_guess.cc	(revision 1573)
++++ arrangements/EinsteinAnalysis/AHFinderDirect/src/driver/initial_guess.cc	(working copy)
+@@ -171,7 +171,7 @@
+    then return initial_guess__coord_sphere;
+ else if (STRING_EQUAL(initial_guess_method_string, "coordinate ellipsoid"))
+    then return initial_guess__coord_ellipsoid;
+-else	CCTK_VWarn(FATAL_ERROR, __LINE__, __FILE__, CCTK_THORNSTRING,
++else	CCTK_VError(__LINE__, __FILE__, CCTK_THORNSTRING,
+ "\n"
+ "   decode_initial_guess_method():\n"
+ "        unknown initial_guess_method_string=\"%s\"!",
+Index: arrangements/EinsteinAnalysis/AHFinderDirect/src/driver/setup.cc
+===================================================================
+--- arrangements/EinsteinAnalysis/AHFinderDirect/src/driver/setup.cc	(revision 1573)
++++ arrangements/EinsteinAnalysis/AHFinderDirect/src/driver/setup.cc	(working copy)
+@@ -788,9 +788,9 @@
+    then return method__test_expansion_Jacobians;
+ else if (STRING_EQUAL(method_string, "find horizons"))
+    then return method__find_horizons;
+-else	CCTK_VWarn(FATAL_ERROR, __LINE__, __FILE__, CCTK_THORNSTRING,
+-		   "decode_method(): unknown method_string=\"%s\"!",
+-		   method_string);				/*NOTREACHED*/
++else	CCTK_VError(__LINE__, __FILE__, CCTK_THORNSTRING,
++		    "decode_method(): unknown method_string=\"%s\"!",
++		    method_string);				/*NOTREACHED*/
+ }
+ 	  }
+ 
+@@ -814,7 +814,7 @@
+    then return verbose_level__algorithm_details;
+ else if (STRING_EQUAL(verbose_level_string, "algorithm debug"))
+    then return verbose_level__algorithm_debug;
+-else	CCTK_VWarn(FATAL_ERROR, __LINE__, __FILE__, CCTK_THORNSTRING,
++else	CCTK_VError(__LINE__, __FILE__, CCTK_THORNSTRING,
+ "decode_verbose_level(): unknown verbose_level_string=\"%s\"!",
+ 		   verbose_level_string);			/*NOTREACHED*/
+ }
+Index: arrangements/EinsteinAnalysis/AHFinderDirect/src/gr/misc-gr.cc
+===================================================================
+--- arrangements/EinsteinAnalysis/AHFinderDirect/src/gr/misc-gr.cc	(revision 1573)
++++ arrangements/EinsteinAnalysis/AHFinderDirect/src/gr/misc-gr.cc	(working copy)
+@@ -56,7 +56,7 @@
+ else if (STRING_EQUAL(Jacobian_compute_method_string,
+ 		      "symbolic differentiation"))
+    then return Jacobian__symbolic_diff;
+-else	CCTK_VWarn(FATAL_ERROR, __LINE__, __FILE__, CCTK_THORNSTRING,
++else	CCTK_VError(__LINE__, __FILE__, CCTK_THORNSTRING,
+ "\n"
+ "   decode_Jacobian_compute_method():\n"
+ "        unknown Jacobian_compute_method_string=\"%s\"!",
+@@ -95,9 +95,9 @@
+ 	return "g_ij not positive definite!";
+ 	break;
+ default:
+-	CCTK_VWarn(FATAL_ERROR, __LINE__, __FILE__, CCTK_THORNSTRING,
+-		   "expansion_status_string(): unknown status=(int)%d!",
+-		   status);					/*NOTREACHED*/
++	CCTK_VError(__LINE__, __FILE__, CCTK_THORNSTRING,
++		    "expansion_status_string(): unknown status=(int)%d!",
++		    status);					/*NOTREACHED*/
+ 	}
+ }
+ 

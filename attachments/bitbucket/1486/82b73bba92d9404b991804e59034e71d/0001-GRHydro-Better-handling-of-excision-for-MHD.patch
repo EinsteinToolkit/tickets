@@ -1,0 +1,180 @@
+From 2f24f0300f85fe6b8db4b34667649e34d17faaa3 Mon Sep 17 00:00:00 2001
+From: Christian Reisswig <reisswig@tapir.caltech.edu>
+Date: Fri, 16 Aug 2013 12:32:18 -0700
+Subject: [PATCH 1/2] GRHydro: Better handling of excision for MHD.
+
+---
+ src/GRHydro_Con2PrimM.F90   | 51 +++++++--------------------------------------
+ src/GRHydro_UpdateMask.F90  | 25 ++++++++++++++++++++++
+ src/GRHydro_UpdateMaskM.F90 |  2 ++
+ 3 files changed, 35 insertions(+), 43 deletions(-)
+
+diff --git a/src/GRHydro_Con2PrimM.F90 b/src/GRHydro_Con2PrimM.F90
+index 79000ef..8a5c93b 100644
+--- a/src/GRHydro_Con2PrimM.F90
++++ b/src/GRHydro_Con2PrimM.F90
+@@ -164,10 +164,6 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+            !do not compute if in atmosphere region!
+            if (atmosphere_mask(i,j,k) .gt. 0) cycle
+            
+-           !do not compute if in atmosphere or in excised region
+-           !if ((atmosphere_mask(i,j,k) .ne. 0) .or. &
+-           !     (hydro_excision_mask(i,j,k) .ne. 0)) cycle
+-           
+            epsnegative = 0
+            
+            sdet = sdetg(i,j,k)
+@@ -192,43 +188,6 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+               
+            endif
+            
+-           ! In excised region, set to atmosphere!    
+-           if (GRHydro_enable_internal_excision /= 0 .and. (hydro_excision_mask(i,j,k) .gt. 0)) then
+-              SET_ATMO_MIN(dens(i,j,k), sdet*GRHydro_rho_min, r(i,j,k)) !sqrt(det)*GRHydro_rho_min !/(1.d0+GRHydro_atmo_tolerance)
+-              SET_ATMO_MIN(rho(i,j,k), GRHydro_rho_min, r(i,j,k)) !GRHydro_rho_min
+-              scon(i,j,k,:) = 0.d0
+-              vup(i,j,k,:) = 0.d0
+-              w_lorentz(i,j,k) = 1.d0
+-              
+-              if(evolve_temper.ne.0) then
+-              ! set hot atmosphere values
+-                temperature(i,j,k) = grhydro_hot_atmo_temp
+-                y_e(i,j,k) = grhydro_hot_atmo_Y_e
+-                y_e_con(i,j,k) = y_e(i,j,k) * dens(i,j,k)
+-                keytemp = 1
+-                call EOS_Omni_press(GRHydro_eos_handle,keytemp,GRHydro_eos_rf_prec,n,&
+-                   rho(i,j,k),eps(i,j,k),temperature(i,j,k),y_e(i,j,k),&
+-                   press(i,j,k),keyerr,anyerr)
+-              else
+-                keytemp = 0
+-                call EOS_Omni_press(GRHydro_polytrope_handle,keytemp,GRHydro_eos_rf_prec,n,&
+-                   rho(i,j,k),eps(i,j,k),xtemp,xye,press(i,j,k),keyerr,anyerr)
+-                call EOS_Omni_EpsFromPress(GRHydro_polytrope_handle,keytemp,GRHydro_eos_rf_prec,n,&
+-                   rho(i,j,k),eps(i,j,k),xtemp,xye,press(i,j,k),eps(i,j,k),keyerr,anyerr)
+-              endif
+-
+-              !!$ tau does need to take into account the existing B-field
+-              !!$ with w_lorentz=1, we find tau = sqrtdet*(rho (1+eps+b^2/2)) - dens  [Press drops out]
+-              tau(i,j,k)  = sdet * (rho(i,j,k)*(1.0+eps(i,j,k)+b2/2.0)) - dens(i,j,k)
+-              
+-              if(tau(i,j,k).le.sdet*b2*0.5d0)then
+-                tau(i,j,k) = GRHydro_tau_min + sdet*b2*0.5d0
+-              endif
+-               
+-              cycle
+-           
+-           endif
+-           
+            if(evolve_Y_e.ne.0) then
+               Y_e(i,j,k) = max(min(Y_e_con(i,j,k) / dens(i,j,k),GRHydro_Y_e_max),&
+                  GRHydro_Y_e_min)
+@@ -239,8 +198,8 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+            2.0*(g12(i,j,k)*Bprim(i,j,k,1)*Bprim(i,j,k,2)+g13(i,j,k)*Bprim(i,j,k,1)*Bprim(i,j,k,3)+ &
+            g23(i,j,k)*Bprim(i,j,k,2)*Bprim(i,j,k,3))
+ 
+-       
+-           if ( dens(i,j,k) .le. sdet*GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance) ) then
++           
++           if ( (GRHydro_enable_internal_excision /= 0 .and. (hydro_excision_mask(i,j,k) .gt. 0)) .or. (dens(i,j,k) .le. sdet*GRHydro_rho_min*(1.d0+GRHydro_atmo_tolerance))) then
+               
+               !call CCTK_WARN(1,"Con2Prim: Resetting to atmosphere")
+               !write(warnline,"(3i5,1P10E15.6)") i,j,k,x(i,j,k),y(i,j,k),z(i,j,k)
+@@ -256,6 +215,10 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+               vup(i,j,k,:) = 0.d0
+               w_lorentz(i,j,k) = 1.d0
+               
++              Bprim(i,j,k,:) = 0.0d0
++              Bcons(i,j,k,:) = 0.0d0
++              b2 = 0
++              
+               if(evolve_temper.ne.0) then
+               ! set hot atmosphere values
+                 temperature(i,j,k) = grhydro_hot_atmo_temp
+@@ -294,6 +257,8 @@ subroutine Conservative2PrimitiveM(CCTK_ARGUMENTS)
+            end if
+ 
+ 
++           
++           
+            if(evolve_temper.eq.0) then
+             
+ 
+diff --git a/src/GRHydro_UpdateMask.F90 b/src/GRHydro_UpdateMask.F90
+index 9e7e8a1..aa7d340 100644
+--- a/src/GRHydro_UpdateMask.F90
++++ b/src/GRHydro_UpdateMask.F90
+@@ -10,6 +10,7 @@
+ #include "cctk.h"
+ #include "cctk_Parameters.h"
+ #include "cctk_Arguments.h"
++#include "cctk_Functions.h"
+ 
+ #include "GRHydro_Macros.h"
+ #include "SpaceMask.h"
+@@ -30,12 +31,24 @@ subroutine GRHydroUpdateAtmosphereMask(CCTK_ARGUMENTS)
+   
+   DECLARE_CCTK_ARGUMENTS
+   DECLARE_CCTK_PARAMETERS
++  DECLARE_CCTK_FUNCTIONS
+ 
+   CCTK_INT :: i,j,k
+   CCTK_REAL :: frac
++  logical :: evolve_Bvec
++  logical :: evolve_Avec
+ 
+   frac = CCTK_DELTA_TIME
+ 
++  evolve_Bvec = .false.
++  evolve_Avec = .false.
++
++  if (CCTK_EQUALS(Bvec_evolution_method,"GRHydro")) then
++     evolve_Bvec = .true.
++  elseif  (CCTK_EQUALS(Bvec_evolution_method,"GRHydro_Avec") .or. CCTK_EQUALS(Bvec_evolution_method,"GRHydro_Avec_centered")) then
++     evolve_Avec = .true.
++  endif
++
+   if(evolve_temper.ne.1.and.evolve_Y_e.ne.1) then
+      !$OMP PARALLEL DO PRIVATE(k,j,i)
+      do k = 1+GRHydro_stencil, cctk_lsh(3)-GRHydro_stencil
+@@ -48,6 +61,12 @@ subroutine GRHydroUpdateAtmosphereMask(CCTK_ARGUMENTS)
+                  densrhs(i,j,k) = 0.0d0
+                  srhs(i,j,k,:)   = 0.0d0
+                  taurhs(i,j,k)  = 0.0d0
++                 
++                 if (evolve_Bvec) then
++                    Bconsrhs(i,j,k,:) = 0.0d0
++                 endif
++                 
++                 ! TODO: Need to set Avecrhs and Aphirhs to zero for centered / or staggered case if vector potential is evolved
+ 
+                  ! Set real-valued mask! This will be sync'ed and right after syncing translated to
+                  ! our standard integer based mask (so that atmosphere_mask is still valid!).
+@@ -70,6 +89,12 @@ subroutine GRHydroUpdateAtmosphereMask(CCTK_ARGUMENTS)
+                  densrhs(i,j,k) = 0.0d0
+                  srhs(i,j,k,:)   = 0.0d0
+                  taurhs(i,j,k)  = 0.0d0
++                 
++                 if (evolve_Bvec) then
++                    Bconsrhs(i,j,k,:) = 0.0d0
++                 endif
++
++                 ! TODO: Need to set Avecrhs and Aphirhs to zero for centered / or staggered case if vector potential is evolved
+ 
+                  ! Set real-valued mask! This will be sync'ed and right after syncing translated to
+                  ! our standard integer based mask (so that atmosphere_mask is still valid!).
+diff --git a/src/GRHydro_UpdateMaskM.F90 b/src/GRHydro_UpdateMaskM.F90
+index baed006..8042087 100644
+--- a/src/GRHydro_UpdateMaskM.F90
++++ b/src/GRHydro_UpdateMaskM.F90
+@@ -115,6 +115,8 @@ subroutine GRHydro_AtmosphereResetM(CCTK_ARGUMENTS)
+           vup(i,j,k,3) = 0.0d0
+           sdet = sdetg(i,j,k)
+ 
++          Bprim(i,j,k,:) = 0.0d0
++          
+           if(evolve_temper.ne.0) then
+ 
+              ! set the temperature to be relatively low
+-- 
+1.8.4.3
+

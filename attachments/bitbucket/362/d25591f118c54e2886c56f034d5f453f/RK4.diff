@@ -1,0 +1,58 @@
+Index: src/RK4.c
+===================================================================
+--- src/RK4.c	(revision 144)
++++ src/RK4.c	(working copy)
+@@ -86,8 +86,8 @@
+ #endif
+ 
+   static CCTK_INT scratchspace_firstindex = -99;
+-  CCTK_INT index, var, scratchstep, alphaindex, scratchindex;
+-  CCTK_INT totalsize, singlearraysize;
++  CCTK_INT index, var;
++  CCTK_INT totalsize;
+   CCTK_REAL alpha, beta;
+   CCTK_REAL * restrict UpdateVar;
+   CCTK_REAL * restrict OldVar;
+@@ -96,6 +96,11 @@
+ 
+   CCTK_INT arrayscratchlocation;
+ 
++  /* Keep a running total of alpha as we perform the substeps, so that
++     we know the "real" alpha (including round-off errors) when we
++     calculate the final result. */
++  static CCTK_REAL sum_alpha;
++
+   totalsize = 1;
+   for (arraydim = 0; arraydim < cctk_dim; arraydim++)
+   {
+@@ -126,6 +131,12 @@
+       beta  = 1.0 / 6.0;
+   }
+ 
++  if (MoL_Intermediate_Steps == (*MoL_Intermediate_Step))
++  {
++    sum_alpha = 0.0;
++  }
++  sum_alpha += alpha;
++
+   /* FIXME */
+ 
+ #ifdef MOLDOESCOMPLEX
+@@ -197,7 +208,7 @@
+ #pragma omp parallel for
+       for (index = 0; index < totalsize; index++)
+       {
+-        UpdateVar[index] += ScratchVar[index] - 4.0 / 3.0 * OldVar[index];
++        UpdateVar[index] += ScratchVar[index] - (sum_alpha - 1.0) * OldVar[index];
+       }
+     }
+ 
+@@ -276,7 +287,7 @@
+         UpdateVar[index] += ScratchVar[index] - 4.0 / 3.0 * OldVar[index];
+       }
+     }
+-    arrayscratchlocation +=  arraytotalsize;
++    arrayscratchlocation += arraytotalsize;
+   }
+ 
+   return;

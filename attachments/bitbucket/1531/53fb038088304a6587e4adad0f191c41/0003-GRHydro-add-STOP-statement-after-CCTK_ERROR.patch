@@ -1,0 +1,38 @@
+From 75492f530d13da5d30be098267fb5f0ffe82c0e8 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Sat, 26 Oct 2013 17:46:35 -0700
+Subject: [PATCH 03/36] GRHydro: add STOP statement after CCTK_ERROR
+
+this is to let the compiler know that CCTK_ERROR never returns.
+---
+ src/GRHydro_HLLE.F90    | 1 +
+ src/GRHydro_HLLE_AM.F90 | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/src/GRHydro_HLLE.F90 b/src/GRHydro_HLLE.F90
+index 941b7e6..16d7c4b 100644
+--- a/src/GRHydro_HLLE.F90
++++ b/src/GRHydro_HLLE.F90
+@@ -529,6 +529,7 @@ subroutine GRHydro_HLLE(CCTK_ARGUMENTS)
+                            etaY(i,j-1,k+1, vup, eos_c))
+             else
+               call CCTK_ERROR("Flux direction not x,y,z")
++              STOP
+             end if
+             
+             ! modify eigenvalues of Roe's matrix by computed H viscosity
+diff --git a/src/GRHydro_HLLE_AM.F90 b/src/GRHydro_HLLE_AM.F90
+index a9d6050..c6ed049 100644
+--- a/src/GRHydro_HLLE_AM.F90
++++ b/src/GRHydro_HLLE_AM.F90
+@@ -433,6 +433,7 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+ 
+           else
+             call CCTK_ERROR("Flux direction not x,y,z")
++            STOP
+           end if
+        
+    
+-- 
+1.9.0
+

@@ -1,0 +1,460 @@
+Index: src/nuc_eos/readtable.F90
+===================================================================
+--- src/nuc_eos/readtable.F90	(revision 37)
++++ src/nuc_eos/readtable.F90	(working copy)
+@@ -7,9 +7,9 @@
+ ! all variables in the module. 
+ 
+   use eosmodule
+-  use hdf5 
+ 
+   implicit none
++# include "hdf5_stubs.h"
+ 
+   DECLARE_CCTK_PARAMETERS
+ 
+@@ -18,9 +18,10 @@
+   character(len=100) message
+ 
+ ! HDF5 vars
+-  integer(HID_T) file_id,dset_id,dspace_id
+-  integer(HSIZE_T) dims1(1), dims3(3)
+-  integer error,rank,accerr
++  CCTK_INT file_id,dset_id,dspace_id
++  CCTK_INT dims1(1), dims3(3)
++  CCTK_INT error
++  integer rank,accerr
+   integer i,j,k
+ 
+   real*8 amu_cgs_andi
+@@ -29,35 +30,33 @@
+ 
+ !  write(*,*) "Reading Nuclear EOS Table"
+ 
+-  call h5open_f(error)
++  call eos_omni_h5fopen (file_id, error, trim(adjustl(eos_filename)))
+ 
+-  call h5fopen_f (trim(adjustl(eos_filename)), H5F_ACC_RDONLY_F, file_id, error)
+-
+ !  write(6,*) trim(adjustl(eos_filename))
+ 
+ ! read scalars
+   dims1(1)=1
+-  call h5dopen_f(file_id, "pointsrho", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_INTEGER, nrho, dims1, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "pointsrho")
++  call eos_omni_h5dread_int_scalar(dset_id, nrho, dims1, error)
++  call eos_omni_h5dclose(dset_id,error)
+ 
+   if(error.ne.0) then
+      call CCTK_WARN (0, "Could not read EOS table file")
+   endif
+ 
+   dims1(1)=1
+-  call h5dopen_f(file_id, "pointstemp", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_INTEGER, ntemp, dims1, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "pointstemp")
++  call eos_omni_h5dread_int_scalar(dset_id, ntemp, dims1, error)
++  call eos_omni_h5dclose(dset_id,error)
+ 
+   if(error.ne.0) then
+      call CCTK_WARN (0, "Could not read EOS table file")
+   endif
+ 
+   dims1(1)=1
+-  call h5dopen_f(file_id, "pointsye", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_INTEGER, nye, dims1, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "pointsye")
++  call eos_omni_h5dread_int_scalar(dset_id, nye, dims1, error)
++  call eos_omni_h5dclose(dset_id,error)
+ 
+   if(error.ne.0) then
+      call CCTK_WARN (0, "Could not read EOS table file")
+@@ -92,131 +91,131 @@
+   dims3(1)=nrho
+   dims3(2)=ntemp
+   dims3(3)=nye
+-  call h5dopen_f(file_id, "logpress", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,1), dims3, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "logpress")
++  call eos_omni_h5dread_real_3(dset_id, alltables(:,:,:,1), dims3, error)
++  call eos_omni_h5dclose(dset_id,error)
+   accerr=accerr+error
+-  call h5dopen_f(file_id, "logenergy", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,2), dims3, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "logenergy")
++  call eos_omni_h5dread_real_3(dset_id, alltables(:,:,:,2), dims3, error)
++  call eos_omni_h5dclose(dset_id,error)
+   accerr=accerr+error
+-  call h5dopen_f(file_id, "entropy", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,3), dims3, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "entropy")
++  call eos_omni_h5dread_real_3(dset_id, alltables(:,:,:,3), dims3, error)
++  call eos_omni_h5dclose(dset_id,error)
+   accerr=accerr+error
+-  call h5dopen_f(file_id, "munu", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,4), dims3, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "munu")
++  call eos_omni_h5dread_real_3(dset_id, alltables(:,:,:,4), dims3, error)
++  call eos_omni_h5dclose(dset_id,error)
+   accerr=accerr+error
+-  call h5dopen_f(file_id, "cs2", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,5), dims3, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "cs2")
++  call eos_omni_h5dread_real_3(dset_id, alltables(:,:,:,5), dims3, error)
++  call eos_omni_h5dclose(dset_id,error)
+   accerr=accerr+error
+-  call h5dopen_f(file_id, "dedt", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,6), dims3, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "dedt")
++  call eos_omni_h5dread_real_3(dset_id, alltables(:,:,:,6), dims3, error)
++  call eos_omni_h5dclose(dset_id,error)
+   accerr=accerr+error
+-  call h5dopen_f(file_id, "dpdrhoe", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,7), dims3, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "dpdrhoe")
++  call eos_omni_h5dread_real_3(dset_id, alltables(:,:,:,7), dims3, error)
++  call eos_omni_h5dclose(dset_id,error)
+   accerr=accerr+error
+-  call h5dopen_f(file_id, "dpderho", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,8), dims3, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "dpderho")
++  call eos_omni_h5dread_real_3(dset_id, alltables(:,:,:,8), dims3, error)
++  call eos_omni_h5dclose(dset_id,error)
+   accerr=accerr+error
+ 
+ ! chemical potentials
+-  call h5dopen_f(file_id, "muhat", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,9), dims3, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "muhat")
++  call eos_omni_h5dread_real_3(dset_id, alltables(:,:,:,9), dims3, error)
++  call eos_omni_h5dclose(dset_id,error)
+   accerr=accerr+error
+ 
+-  call h5dopen_f(file_id, "mu_e", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,10), dims3, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "mu_e")
++  call eos_omni_h5dread_real_3(dset_id, alltables(:,:,:,10), dims3, error)
++  call eos_omni_h5dclose(dset_id,error)
+   accerr=accerr+error
+ 
+-  call h5dopen_f(file_id, "mu_p", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,11), dims3, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "mu_p")
++  call eos_omni_h5dread_real_3(dset_id, alltables(:,:,:,11), dims3, error)
++  call eos_omni_h5dclose(dset_id,error)
+   accerr=accerr+error
+ 
+-  call h5dopen_f(file_id, "mu_n", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,12), dims3, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "mu_n")
++  call eos_omni_h5dread_real_3(dset_id, alltables(:,:,:,12), dims3, error)
++  call eos_omni_h5dclose(dset_id,error)
+   accerr=accerr+error
+ 
+ ! compositions
+-  call h5dopen_f(file_id, "Xa", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,13), dims3, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "Xa")
++  call eos_omni_h5dread_real_3(dset_id, alltables(:,:,:,13), dims3, error)
++  call eos_omni_h5dclose(dset_id,error)
+   accerr=accerr+error
+ 
+-  call h5dopen_f(file_id, "Xh", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,14), dims3, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "Xh")
++  call eos_omni_h5dread_real_3(dset_id, alltables(:,:,:,14), dims3, error)
++  call eos_omni_h5dclose(dset_id,error)
+   accerr=accerr+error
+ 
+-  call h5dopen_f(file_id, "Xn", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,15), dims3, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "Xn")
++  call eos_omni_h5dread_real_3(dset_id, alltables(:,:,:,15), dims3, error)
++  call eos_omni_h5dclose(dset_id,error)
+   accerr=accerr+error
+ 
+-  call h5dopen_f(file_id, "Xp", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,16), dims3, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "Xp")
++  call eos_omni_h5dread_real_3(dset_id, alltables(:,:,:,16), dims3, error)
++  call eos_omni_h5dclose(dset_id,error)
+   accerr=accerr+error
+ 
+ 
+ ! average nucleus
+-  call h5dopen_f(file_id, "Abar", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,17), dims3, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "Abar")
++  call eos_omni_h5dread_real_3(dset_id, alltables(:,:,:,17), dims3, error)
++  call eos_omni_h5dclose(dset_id,error)
+   accerr=accerr+error
+ 
+-  call h5dopen_f(file_id, "Zbar", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,18), dims3, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "Zbar")
++  call eos_omni_h5dread_real_3(dset_id, alltables(:,:,:,18), dims3, error)
++  call eos_omni_h5dclose(dset_id,error)
+   accerr=accerr+error
+ 
+ ! Gamma
+-  call h5dopen_f(file_id, "gamma", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, alltables(:,:,:,19), dims3, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "gamma")
++  call eos_omni_h5dread_real_3(dset_id, alltables(:,:,:,19), dims3, error)
++  call eos_omni_h5dclose(dset_id,error)
+   accerr=accerr+error
+ 
+   allocate(logrho(nrho))
+   dims1(1)=nrho
+-  call h5dopen_f(file_id, "logrho", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, logrho, dims1, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "logrho")
++  call eos_omni_h5dread_real_1(dset_id, logrho, dims1, error)
++  call eos_omni_h5dclose(dset_id,error)
+   accerr=accerr+error
+ 
+   allocate(logtemp(ntemp))
+   dims1(1)=ntemp
+-  call h5dopen_f(file_id, "logtemp", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, logtemp, dims1, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "logtemp")
++  call eos_omni_h5dread_real_1(dset_id, logtemp, dims1, error)
++  call eos_omni_h5dclose(dset_id,error)
+   accerr=accerr+error
+ 
+   allocate(ye(nye))
+   dims1(1)=nye
+-  call h5dopen_f(file_id, "ye", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, ye, dims1, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "ye")
++  call eos_omni_h5dread_real_1(dset_id, ye, dims1, error)
++  call eos_omni_h5dclose(dset_id,error)
+   accerr=accerr+error
+ 
+ 
+-  call h5dopen_f(file_id, "energy_shift", dset_id, error)
+-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, energy_shift, dims1, error)
+-  call h5dclose_f(dset_id,error)
++  call eos_omni_h5dopen(file_id, dset_id, error, "energy_shift")
++  call eos_omni_h5dread_real_scalar(dset_id, energy_shift, dims1, error)
++  call eos_omni_h5dclose(dset_id,error)
+   accerr=accerr+error
+   
+   if(accerr.ne.0) then
+     call CCTK_WARN (0, "Problem reading EOS table file")
+   endif
+ 
+-  call h5fclose_f (file_id,error)
++  call eos_omni_h5fclose (file_id,error)
+ 
+   if(do_energy_shift.ne.1) then
+      energy_shift = 0.0d0
+Index: src/nuc_eos/make.code.defn
+===================================================================
+--- src/nuc_eos/make.code.defn	(revision 37)
++++ src/nuc_eos/make.code.defn	(working copy)
+@@ -1,6 +1,6 @@
+ SRCS = eosmodule.F90 nuc_eos.F90 bisection.F90 \
+        findtemp.F90 findrho.F90 linterp_many.F90 readtable.F90 \
+-       linterp.F
++       linterp.F hdf5_stubs.c
+ 
+ SUBDIRS = 
+ 
+Index: src/nuc_eos/hdf5_stubs.c
+===================================================================
+--- src/nuc_eos/hdf5_stubs.c	(revision 0)
++++ src/nuc_eos/hdf5_stubs.c	(revision 0)
+@@ -0,0 +1,111 @@
++/* minimal C wrappers to HDF5 for EOS_Omni */
++/* Author: Roland Haas
++ * Copyright: LGPL
++ */ 
++#include <stdlib.h>
++#include <assert.h>
++// some macros to fix compatibility issues as long
++// as 1.8.0 is in beta phase
++#define H5_USE_16_API 1
++#include <hdf5.h>
++
++#include "cctk.h"
++
++/* 
++ * External interface
++ */
++void CCTK_FCALL CCTK_FNAME(eos_omni_h5fopen)(CCTK_INT *file_id, CCTK_INT *error, ONE_FORTSTRING_ARG);
++void CCTK_FCALL CCTK_FNAME(eos_omni_h5dopen)(const CCTK_INT *file_id, CCTK_INT *dset_id, CCTK_INT *error, ONE_FORTSTRING_ARG);
++void CCTK_FCALL CCTK_FNAME(eos_omni_h5dread_real_scalar)(const CCTK_INT *dset_id, CCTK_REAL *buf, CCTK_INT *dims, CCTK_INT *error);
++void CCTK_FCALL CCTK_FNAME(eos_omni_h5dread_real_1)(const CCTK_INT *dset_id, CCTK_REAL *buf, CCTK_INT *dims, CCTK_INT *error);
++void CCTK_FCALL CCTK_FNAME(eos_omni_h5dread_real_3)(const CCTK_INT *dset_id, CCTK_REAL *buf, CCTK_INT *dims, CCTK_INT *error);
++void CCTK_FCALL CCTK_FNAME(eos_omni_h5dread_int_scalar)(const CCTK_INT *dset_id, CCTK_INT *buf, CCTK_INT *dims, CCTK_INT *error);
++void CCTK_FCALL CCTK_FNAME(eos_omni_h5dclose)(const CCTK_INT *dset_id, CCTK_INT *error);
++void CCTK_FCALL CCTK_FNAME(eos_omni_h5fclose)(const CCTK_INT *file_id, CCTK_INT *error);
++
++/*
++ * implementations
++ */
++
++/*
++ * open the hdf5 file for reading 
++ */
++void CCTK_FCALL CCTK_FNAME(eos_omni_h5fopen)(CCTK_INT *file_id, CCTK_INT *error, ONE_FORTSTRING_ARG)
++{
++  ONE_FORTSTRING_CREATE(filename);
++  hid_t retval;
++
++  retval = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
++  assert(retval == (CCTK_INT)retval); /* try to make sure that the hdf5 handle fits into CCTK_INT */
++  *file_id = (CCTK_INT)retval;
++  *error = *file_id < 0 ? -1 : 0;
++
++  free(filename);
++}
++
++void CCTK_FCALL CCTK_FNAME(eos_omni_h5fclose)(const CCTK_INT *file_id, CCTK_INT *error)
++{
++  *error = (CCTK_INT)H5Fclose(*file_id);
++}
++
++/*
++ * open and close datasets
++ */
++void CCTK_FCALL CCTK_FNAME(eos_omni_h5dopen)(const CCTK_INT *file_id, CCTK_INT *dset_id, CCTK_INT *error, ONE_FORTSTRING_ARG)
++{
++  ONE_FORTSTRING_CREATE(datasetname);
++  hid_t retval;
++
++  retval = H5Dopen(*file_id, datasetname);
++  assert(retval == (CCTK_INT)retval); /* try to make sure that the hdf5 handle fits into CCTK_INT */
++  *dset_id = (CCTK_INT)retval;
++  *error = *dset_id < 0 ? -1 : 0;
++
++  free(datasetname);
++}
++
++void CCTK_FCALL CCTK_FNAME(eos_omni_h5dclose)(const CCTK_INT *dset_id, CCTK_INT *error)
++{
++  herr_t retval;
++  retval = H5Dclose(*dset_id);
++  assert(retval == (CCTK_INT)retval); /* try to make sure that the hdf5 error fits into CCTK_INT */
++  *error = (CCTK_INT)retval;
++}
++
++/*
++ * various copies of the same code to read in real scalars, 1d arrays, 3d arrays. 
++ */
++void CCTK_FCALL CCTK_FNAME(eos_omni_h5dread_real_scalar)(const CCTK_INT *dset_id, CCTK_REAL *buf, CCTK_INT *dims, CCTK_INT *error)
++{
++  herr_t retval;
++  retval = H5Dread(*dset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, buf);
++  assert(retval == (CCTK_INT)retval); /* try to make sure that the hdf5 error fits into CCTK_INT */
++  *error = (CCTK_INT)retval;
++}
++
++void CCTK_FCALL CCTK_FNAME(eos_omni_h5dread_real_1)(const CCTK_INT *dset_id, CCTK_REAL *buf, CCTK_INT *dims, CCTK_INT *error)
++{
++  herr_t retval;
++  retval = H5Dread(*dset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, buf);
++  assert(retval == (CCTK_INT)retval); /* try to make sure that the hdf5 error fits into CCTK_INT */
++  *error = (CCTK_INT)retval;
++}
++
++void CCTK_FCALL CCTK_FNAME(eos_omni_h5dread_real_3)(const CCTK_INT *dset_id, CCTK_REAL *buf, CCTK_INT *dims, CCTK_INT *error)
++{
++  herr_t retval;
++  retval = H5Dread(*dset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, buf);
++  assert(retval == (CCTK_INT)retval); /* try to make sure that the hdf5 error fits into CCTK_INT */
++  *error = (CCTK_INT)retval;
++}
++
++/*
++ * read in a single integer
++ */
++void CCTK_FCALL CCTK_FNAME(eos_omni_h5dread_int_scalar)(const CCTK_INT *dset_id, CCTK_INT *buf, CCTK_INT *dims, CCTK_INT *error)
++{
++  herr_t retval;
++  retval = H5Dread(*dset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, buf);
++  assert(retval == (CCTK_INT)retval); /* try to make sure that the hdf5 error fits into CCTK_INT */
++  *error = (CCTK_INT)retval;
++}
+Index: src/nuc_eos/hdf5_stubs.h
+===================================================================
+--- src/nuc_eos/hdf5_stubs.h	(revision 0)
++++ src/nuc_eos/hdf5_stubs.h	(revision 0)
+@@ -0,0 +1,50 @@
++/* minimal set of stubs to get readtable to work with C HDF5 interface
++ * this is *NOT* generic. It makes all kinds of assumptions on HDF5 datatypes
++ * and maps all integer types to int (more or less)
++ */
++
++INTERFACE
++SUBROUTINE eos_omni_h5fopen(file_id, error, filename)
++  CCTK_INT, INTENT(OUT)  :: file_id
++  CCTK_INT, INTENT(OUT)  :: error
++  CHARACTER(LEN=*), INTENT(IN) :: filename
++END SUBROUTINE 
++SUBROUTINE eos_omni_h5dopen(file_id, dset_id, error, datasetname)
++  CCTK_INT, INTENT(IN) :: file_id
++  CCTK_INT, INTENT(OUT)  :: dset_id
++  CCTK_INT, INTENT(OUT)  :: error
++  CHARACTER(LEN=*), INTENT(IN) :: datasetname
++END SUBROUTINE 
++SUBROUTINE eos_omni_h5dread_int_scalar(dset_id, buf, dims, error)
++  CCTK_INT, INTENT(IN) :: dset_id
++  CCTK_INT, INTENT(INOUT) :: buf
++  CCTK_INT, dimension(*), INTENT(IN) :: dims
++  CCTK_INT, INTENT(OUT) :: error
++END SUBROUTINE 
++SUBROUTINE eos_omni_h5dread_real_scalar(dset_id, buf, dims, error)
++  CCTK_INT, INTENT(IN) :: dset_id
++  CCTK_INT, dimension(*), INTENT(IN) :: dims
++  CCTK_REAL, INTENT(INOUT) :: buf
++  CCTK_INT, INTENT(OUT) :: error
++END SUBROUTINE 
++SUBROUTINE eos_omni_h5dread_real_1(dset_id, buf, dims, error)
++  CCTK_INT, INTENT(IN) :: dset_id
++  CCTK_INT, dimension(*), INTENT(IN) :: dims
++  CCTK_REAL, DIMENSION(dims(1)), INTENT(INOUT) :: buf
++  CCTK_INT, INTENT(OUT) :: error
++END SUBROUTINE 
++SUBROUTINE eos_omni_h5dread_real_3(dset_id, buf, dims, error)
++  CCTK_INT, INTENT(IN) :: dset_id
++  CCTK_INT, dimension(*), INTENT(IN) :: dims
++  CCTK_REAL, DIMENSION(dims(1),dims(2),dims(3)), INTENT(INOUT) :: buf
++  CCTK_INT, INTENT(OUT) :: error
++END SUBROUTINE 
++SUBROUTINE eos_omni_h5dclose(dset_id, error)
++  CCTK_INT, INTENT(IN) :: dset_id
++  CCTK_INT, INTENT(OUT)  :: error
++END SUBROUTINE 
++SUBROUTINE eos_omni_h5fclose(file_id, error)
++  CCTK_INT, INTENT(IN) :: file_id
++  CCTK_INT, INTENT(OUT)  :: error
++END SUBROUTINE 
++END INTERFACE

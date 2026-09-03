@@ -1,0 +1,35 @@
+Index: cctk_Config.h.in
+===================================================================
+--- cctk_Config.h.in	(revision 4702)
++++ cctk_Config.h.in	(working copy)
+@@ -80,6 +80,8 @@
+ #undef HAVE_MALLINFO
+ #undef HAVE_MALLOPT
+ #undef HAVE_M_MMAP_THRESHOLD_VALUE
++#undef HAVE_SCHED_H
++#undef HAVE_SCHED_GETAFFINITY
+ 
+ #undef TIME_WITH_SYS_TIME
+ 
+Index: configure.in
+===================================================================
+--- configure.in	(revision 4702)
++++ configure.in	(working copy)
+@@ -685,6 +685,7 @@
+ #endif])
+ CCTK_CHECK_HEADERS(signal.h)
+ CCTK_CHECK_HEADERS(malloc.h)
++CCTK_CHECK_HEADERS(sched.h)
+ 
+ AC_HEADER_TIME
+ 
+@@ -783,7 +784,9 @@
+   AC_MSG_RESULT(no)
+ fi
+ 
++CCTK_CHECK_FUNCS(sched_getaffinity)
+ 
++
+ # Check if we have __int64
+ AC_MSG_CHECKING([if __int64 is defined])
+ AC_CACHE_VAL(cctk_cv_have___int64,

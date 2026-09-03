@@ -1,0 +1,25 @@
+From fc04fb88c421cf22c0fda51837660b0da3a383bc Mon Sep 17 00:00:00 2001
+From: Bruno Coutinho Mundim <bcmsma@astro.rit.edu>
+Date: Fri, 28 Sep 2012 01:28:02 -0500
+Subject: [PATCH 06/13] GRHydro_InitData: Force mag field to go to zero at the
+ puncture.
+
+---
+ src/GRHydro_BondiM_new.F90 |    1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/GRHydro_BondiM_new.F90 b/src/GRHydro_BondiM_new.F90
+index 325e158..9d4b661 100644
+--- a/src/GRHydro_BondiM_new.F90
++++ b/src/GRHydro_BondiM_new.F90
+@@ -238,6 +238,7 @@ subroutine GRHydro_BondiM_Iso(CCTK_ARGUMENTS)
+                  rho(i,j,k) = rhocheck+drhodr*riso*(riso-M)/M
+               else 
+                  rho(i,j,k) = (rhocheck-drhodr*M/4.0)*(1.-cos(2.*M_PI*riso/M))/2.0
++                 bondi_bmag = bondi_bmag*8.0d0*riso**3 
+               endif
+               utmp = Kval * rho(i,j,k)**( gam ) / (gam - 1.)
+ 
+-- 
+1.7.10.4
+

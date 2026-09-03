@@ -1,0 +1,240 @@
+From a931595b7d1054180b2ef713859991e67ab9cc63 Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Sat, 26 Oct 2013 17:47:28 -0700
+Subject: [PATCH 02/36] GRHydro: remove divergence cleaning code from Avec
+ evolution
+
+---
+ src/GRHydro_HLLE_AM.F90 | 125 +-----------------------------------------------
+ 1 file changed, 2 insertions(+), 123 deletions(-)
+
+diff --git a/src/GRHydro_HLLE_AM.F90 b/src/GRHydro_HLLE_AM.F90
+index ee52311..a9d6050 100644
+--- a/src/GRHydro_HLLE_AM.F90
++++ b/src/GRHydro_HLLE_AM.F90
+@@ -53,9 +53,6 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+   CCTK_REAL :: Bvecxlowp,Bvecxlowm,Bvecylowp,Bvecylowm,Bveczlowp,Bveczlowm
+   CCTK_REAL :: pressstarp,pressstarm,velxlowp,velxlowm,velylowp,velylowm,velzlowp,velzlowm
+ 
+-  CCTK_REAL :: psidcp, psidcm, psidcf, psidcdiff, psidcfp, psidcfm
+-  CCTK_REAL :: charmax_dc, charmin_dc, charpm_dc
+-
+   CCTK_INT :: type_bits, trivial
+   CCTK_REAL :: xtemp
+ 
+@@ -118,7 +115,7 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+   ! constraint transport needs to be able to average fluxes in the directions
+   ! other that flux_direction
+ 
+-  !$OMP PARALLEL DO PRIVATE(k,j,i,f1,lamminus,lamplus,cons_p,cons_m,fplus,fminus,qdiff,psidcf,psidcp,psidcm,prim_p,prim_m,&
++  !$OMP PARALLEL DO PRIVATE(k,j,i,f1,lamminus,lamplus,cons_p,cons_m,fplus,fminus,qdiff,prim_p,prim_m,&
+   !$OMP avg_betax,avg_betay,avg_betaz,avg_beta,avg_alp,&
+   !$OMP gxxh,gxyh,gxzh,gyyh,gyzh,gzzh,avg_det,sdet,uxxh,uxyh,uxzh,uyyh,uyzh,uzzh,&
+   !$OMP vxtp,vxtm,vytp,vytm,vztp,vztm,&
+@@ -127,7 +124,7 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+   !$OMP velzlowp,velzlowm,Bveczlowp,Bveczlowm,&
+   !$OMP bdotvp,bdotvm,b2p,b2m,v2p,v2m,wp,wm,&
+   !$OMP bxlowp,bxlowm,bylowp,bylowm,bzlowp,bzlowm,&
+-  !$OMP rhoenth_p,rhoenth_m,ab0p,ab0m,vA2p,vA2m,pressstarp,pressstarm,usendh,psidcdiff,psidcfp,psidcfm,charmin,charmax,chartop,charpm,m,xtemp)
++  !$OMP rhoenth_p,rhoenth_m,ab0p,ab0m,vA2p,vA2m,pressstarp,pressstarm,usendh,charmin,charmax,chartop,charpm,m,xtemp)
+   do k = GRHydro_stencil, cctk_lsh(3) - GRHydro_stencil + transport_constraints*(1-zoffset)
+     do j = GRHydro_stencil, cctk_lsh(2) - GRHydro_stencil + transport_constraints*(1-yoffset)
+       do i = GRHydro_stencil, cctk_lsh(1) - GRHydro_stencil + transport_constraints*(1-xoffset)
+@@ -141,11 +138,6 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+         fminus = 0.d0
+         qdiff = 0.d0
+ 
+-        if(clean_divergence.ne.0) then
+-           psidcp = 0.d0
+-           psidcm = 0.d0
+-        endif
+-        
+ !!$        Set the left (p for plus) and right (m_i for minus, i+1) states
+         
+         cons_p(1)   = densplus(i,j,k) 
+@@ -188,11 +180,6 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+         prim_m(9) = Bvecyminus(i+xoffset,j+yoffset,k+zoffset) 
+         prim_m(10)= Bveczminus(i+xoffset,j+yoffset,k+zoffset) 
+           
+-        if(clean_divergence.ne.0) then
+-           psidcp = psidcplus(i,j,k)
+-           psidcm = psidcminus(i+xoffset,j+yoffset,k+zoffset)
+-        endif
+-
+ !!$        Calculate various metric terms here.
+ !!$        Note also need the average of the lapse at the 
+ !!$        left and right points.
+@@ -277,12 +264,6 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+                  f1(1),f1(2),f1(3),f1(4),f1(5),f1(6),f1(7),f1(8),&
+                  vxtp,vytp,vztp,pressstarp,bxlowp,bylowp,bzlowp,ab0p,wp, &
+                  avg_det,avg_alp,avg_beta)
+-            if(clean_divergence.ne.0) then
+-               f1(6)=f1(6) + 1.0d0*sdet*uxxh*psidcp - cons_p(6)*avg_betax/avg_alp
+-               f1(7)=f1(7) + 1.0d0*sdet*uxyh*psidcp - cons_p(6)*avg_betay/avg_alp
+-               f1(8)=f1(8) + 1.0d0*sdet*uxzh*psidcp - cons_p(6)*avg_betaz/avg_alp
+-               psidcf = cons_p(6)/sdet-psidcp*avg_betax/avg_alp
+-            endif
+ 
+           else if (flux_direction == 2) then
+             call num_x_fluxM(cons_p(1),cons_p(3),cons_p(4),cons_p(2),cons_p(5),&
+@@ -290,12 +271,6 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+                  f1(1),f1(3),f1(4),f1(2),f1(5),f1(7),f1(8),f1(6),&
+                  vytp,vztp,vxtp,pressstarp,bylowp,bzlowp,bxlowp,ab0p,wp, &
+                  avg_det,avg_alp,avg_beta)
+-            if(clean_divergence.ne.0) then
+-               f1(6)=f1(6) + 1.0d0*sdet*uxyh*psidcp - cons_p(7)*avg_betax/avg_alp
+-               f1(7)=f1(7) + 1.0d0*sdet*uyyh*psidcp - cons_p(7)*avg_betay/avg_alp
+-               f1(8)=f1(8) + 1.0d0*sdet*uyzh*psidcp - cons_p(7)*avg_betaz/avg_alp
+-               psidcf = cons_p(7)/sdet-psidcp*avg_betay/avg_alp
+-            endif
+ 
+           else if (flux_direction == 3) then
+             call num_x_fluxM(cons_p(1),cons_p(4),cons_p(2),cons_p(3),cons_p(5),&
+@@ -303,12 +278,6 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+                  f1(1),f1(4),f1(2),f1(3),f1(5),f1(8),f1(6),f1(7), &
+                  vztp,vxtp,vytp,pressstarp,bzlowp,bxlowp,bylowp,ab0p,wp, &
+                  avg_det,avg_alp,avg_beta)
+-            if(clean_divergence.ne.0) then
+-               f1(6)=f1(6) + 1.0d0*sdet*uxzh*psidcp - cons_p(8)*avg_betax/avg_alp
+-               f1(7)=f1(7) + 1.0d0*sdet*uyzh*psidcp - cons_p(8)*avg_betay/avg_alp
+-               f1(8)=f1(8) + 1.0d0*sdet*uzzh*psidcp - cons_p(8)*avg_betaz/avg_alp
+-               psidcf = cons_p(8)/sdet-psidcp*avg_betaz/avg_alp
+-            endif
+             
+           else
+             call CCTK_ERROR("Flux direction not x,y,z")
+@@ -337,10 +306,6 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+           qdiff(7) = cons_m(7) - cons_p(7)
+           qdiff(8) = cons_m(8) - cons_p(8)
+ 
+-          if (clean_divergence.ne.0) then
+-             psidcdiff = psidcm - psidcp
+-          endif
+-
+ !!$        Eigenvalues and fluxes either side of the cell interface
+           
+           if (flux_direction == 1) then
+@@ -384,17 +349,6 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+                  vxtm,vytm,vztm,pressstarm,bxlowm,bylowm,bzlowm,ab0m,wm, &
+                  avg_det,avg_alp,avg_beta)
+ 
+-            if(clean_divergence.ne.0) then
+-               fminus(6)=fminus(6) + 1.0d0*sdet*uxxh*psidcm - cons_m(6)*avg_betax/avg_alp
+-               fminus(7)=fminus(7) + 1.0d0*sdet*uxyh*psidcm - cons_m(6)*avg_betay/avg_alp
+-               fminus(8)=fminus(8) + 1.0d0*sdet*uxzh*psidcm - cons_m(6)*avg_betaz/avg_alp
+-               fplus(6)=fplus(6) + 1.0d0*sdet*uxxh*psidcp - cons_p(6)*avg_betax/avg_alp
+-               fplus(7)=fplus(7) + 1.0d0*sdet*uxyh*psidcp - cons_p(6)*avg_betay/avg_alp
+-               fplus(8)=fplus(8) + 1.0d0*sdet*uxzh*psidcp - cons_p(6)*avg_betaz/avg_alp
+-               psidcfp = cons_p(6)/sdet-avg_betax*psidcp/avg_alp
+-               psidcfm = cons_m(6)/sdet-avg_betax*psidcm/avg_alp
+-            endif
+-
+           else if (flux_direction == 2) then
+             if(evolve_temper.ne.1) then
+               call eigenvaluesM(GRHydro_eos_handle,&
+@@ -436,17 +390,6 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+                  vytm,vztm,vxtm,pressstarm,bylowm,bzlowm,bxlowm,ab0m,wm, &
+                  avg_det,avg_alp,avg_beta)
+ 
+-            if(clean_divergence.ne.0) then
+-               fminus(6)=fminus(6) + 1.0d0*sdet*uxyh*psidcm - cons_m(7)*avg_betax/avg_alp
+-               fminus(7)=fminus(7) + 1.0d0*sdet*uyyh*psidcm - cons_m(7)*avg_betay/avg_alp
+-               fminus(8)=fminus(8) + 1.0d0*sdet*uyzh*psidcm - cons_m(7)*avg_betaz/avg_alp
+-               fplus(6)=fplus(6) + 1.0d0*sdet*uxyh*psidcp - cons_p(7)*avg_betax/avg_alp
+-               fplus(7)=fplus(7) + 1.0d0*sdet*uyyh*psidcp - cons_p(7)*avg_betay/avg_alp
+-               fplus(8)=fplus(8) + 1.0d0*sdet*uyzh*psidcp - cons_p(7)*avg_betaz/avg_alp
+-               psidcfp = cons_p(7)/sdet-avg_betay*psidcp/avg_alp
+-               psidcfm = cons_m(7)/sdet-avg_betay*psidcm/avg_alp
+-            endif
+-
+           else if (flux_direction == 3) then
+             if(evolve_temper.ne.1) then
+               call eigenvaluesM(GRHydro_eos_handle,&
+@@ -488,17 +431,6 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+                  vztm,vxtm,vytm,pressstarm,bzlowm,bxlowm,bylowm,ab0m,wm, &
+                  avg_det,avg_alp,avg_beta)
+ 
+-            if(clean_divergence.ne.0) then
+-               fminus(6)=fminus(6) + 1.0d0*sdet*uxzh*psidcm - cons_m(8)*avg_betax/avg_alp
+-               fminus(7)=fminus(7) + 1.0d0*sdet*uyzh*psidcm - cons_m(8)*avg_betay/avg_alp
+-               fminus(8)=fminus(8) + 1.0d0*sdet*uzzh*psidcm - cons_m(8)*avg_betaz/avg_alp
+-               fplus(6)=fplus(6) + 1.0d0*sdet*uxzh*psidcp - cons_p(8)*avg_betax/avg_alp
+-               fplus(7)=fplus(7) + 1.0d0*sdet*uyzh*psidcp - cons_p(8)*avg_betay/avg_alp
+-               fplus(8)=fplus(8) + 1.0d0*sdet*uzzh*psidcp - cons_p(8)*avg_betaz/avg_alp
+-               psidcfp = cons_p(8)/sdet-avg_betaz*psidcp/avg_alp
+-               psidcfm = cons_m(8)/sdet-avg_betaz*psidcm/avg_alp
+-            endif
+-
+           else
+             call CCTK_ERROR("Flux direction not x,y,z")
+           end if
+@@ -533,55 +465,6 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+              
+           end do
+ 
+-          if(clean_divergence.ne.0) then
+-
+-           psidcdiff = psidcm - psidcp
+-           select case(whichpsidcspeed)
+-             case(0)
+-               if (HLLE) then
+-                 psidcf = (charmax * psidcfp - charmin * psidcfm + &
+-                           charmax * charmin * psidcdiff) / charpm
+-               else if (LLF) then
+-                 psidcf = 0.5d0 * (psidcfp + psidcfm - chartop * psidcdiff)
+-               end if
+-             case(1)
+-             !!$ Wavespeeds for psidc are +/-c, not Fast Magnetosonic?
+-             !!$ psidcf = 0.5d0 * (1.d0 * psidcfp - (-1.d0) * psidcfm + &
+-             !!$      1.d0 * (-1.d0) * psidcdiff) 
+-
+-             !!$ The fastest speed for psidc comes from the condition
+-             !!$ that the normal vector to the characteristic hypersurface
+-             !!$ be spacelike (Eq. 60 of Anton et al.)
+-
+-             charmax_dc = sqrt(usendh) - avg_beta/avg_alp
+-             charmin_dc = -1.d0*sqrt(usendh) - avg_beta/avg_alp
+-             charpm_dc = charmax_dc - charmin_dc
+-
+-             psidcf = (charmax_dc * psidcfp - charmin_dc * psidcfm + &
+-                       charmax_dc * charmin_dc * psidcdiff) / charpm_dc
+-
+-             if(decouple_normal_Bfield .ne. 0) then ! same expression for HLLE and LLF
+-               !!$ B^i field decouples from the others and has same propagation
+-               !!$ speed as divergence -null direction,  
+-               !!$ \pm sqrt(g^{xx}} - beta^x/alpha
+-               f1(5+flux_direction) = (charmax_dc * fplus(5+flux_direction) &
+-                                     - charmin_dc * fminus(5+flux_direction) + &
+-                  charmax_dc * charmin_dc * qdiff(5+flux_direction)) / charpm_dc
+-             end if
+-             case(2)
+-             charmax = setcharmax
+-             charmin = setcharmin
+-               if (HLLE) then
+-                 psidcf = (charmax * psidcfp - charmin * psidcfm + &
+-                           charmax * charmin * psidcdiff) / charpm
+-               else if (LLF) then
+-                 chartop = max(-charmin,charmax)
+-                 psidcf = 0.5d0 * (psidcfp + psidcfm - chartop * psidcdiff)
+-               end if
+-           end select
+-          endif
+-
+-
+         end if !!! The end of the SpaceMask check for a trivial RP.
+             
+         densflux(i, j, k) = f1(1)
+@@ -602,10 +485,6 @@ subroutine GRHydro_HLLE_AM(CCTK_ARGUMENTS)
+            Aveczflux(i,j,k) = 0.d0
+         end if
+ 
+-        if(clean_divergence.ne.0) then
+-           psidcflux(i,j,k) = psidcf
+-        endif
+-
+         if(evolve_Y_e.ne.0) then
+            if (densflux(i, j, k) > 0.d0) then
+               Y_e_con_flux(i, j, k) = &
+-- 
+1.9.0
+

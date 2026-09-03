@@ -1,0 +1,35 @@
+Index: src/util/git-get-localdir.pl
+===================================================================
+--- src/util/git-get-localdir.pl	(revision 221)
++++ src/util/git-get-localdir.pl	(working copy)
+@@ -22,6 +22,10 @@
+ my $silencer = $silent ? '> /dev/null 2>&1' : '';
+ 
+ 
++# Abort gracefully if simfactory is not found
++if (not -x "${CCTK_HOME}/bin/sim") {
++    warn "Could not find simfactory in '${CCTK_HOME}/bin/sim'. Local git repository will not be used.";
++}
+ 
+ # Obtain local machine name
+ my $machine = `cd ${CCTK_HOME} && ${CCTK_HOME}/bin/sim whoami`;
+Index: src/util/git-lock.pl
+===================================================================
+--- src/util/git-lock.pl	(revision 221)
++++ src/util/git-lock.pl	(working copy)
+@@ -6,6 +6,7 @@
+ 
+ use strict;
+ use Cwd;
++use POSIX;
+ #use Fcntl ':flock';
+ use sigtrap qw(die normal-signals);
+ 
+@@ -32,6 +33,7 @@
+ my $waittime = 0.01;
+ my $maxwaittime = 10;
+ while (! (mkdir $lockdir)) {
++    die if $! != EEXIST;
+     # Wait some time
+     my $unit = $waittime==1 ? "second" : "seconds";
+     print "Git repository is busy; waiting $waittime $unit...\n";

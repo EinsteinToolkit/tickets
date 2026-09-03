@@ -1,0 +1,25 @@
+From 4cf38ec43c8ccf9317341ff5247ce314e95ba75a Mon Sep 17 00:00:00 2001
+From: Roland Haas <rhaas@tapir.caltech.edu>
+Date: Thu, 24 Apr 2014 00:09:13 -0700
+Subject: [PATCH 3/3] Carpet: fix use of + vs. | in DEBUG code
+
+---
+ Carpet/CarpetLib/src/dh.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Carpet/CarpetLib/src/dh.cc b/Carpet/CarpetLib/src/dh.cc
+index 47180b1..3e38819 100644
+--- a/Carpet/CarpetLib/src/dh.cc
++++ b/Carpet/CarpetLib/src/dh.cc
+@@ -1234,7 +1234,7 @@ regrid (bool const do_init)
+               ibset all_fine_boundary_combined;
+               for (int c = 0; c < h.components(rl); ++ c) {
+                 full_dboxes const & box = full_level.AT(c);
+-                all_fine_boundary_combined +=
++                all_fine_boundary_combined |=
+                   box.exterior.shift(-idir,2) & all_fine_boundary[dir][face];
+               } // for c
+               ASSERT_rl (all_fine_boundary_combined == all_fine_boundary[dir][face],
+-- 
+1.9.2
+

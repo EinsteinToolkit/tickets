@@ -1,0 +1,110 @@
+Index: param.ccl
+===================================================================
+--- param.ccl	(revision 63)
++++ param.ccl	(working copy)
+@@ -4,11 +4,16 @@
+ 
+ USES KEYWORD initial_data_setup_method
+ 
++SHARES: IO
++
++USES STRING filereader_ID_vars
++
+ RESTRICTED:
+ 
+ KEYWORD initial_hydro "The hydro initial data"
+ {
+   "zero" :: "hydro variables are set to vacuum (without atmosphere)"
++  "read from file" :: "Read the initial data using the file reader.  Note that this only allows you to read the data from a file, it does not actually do it.  You still have to programme the file reader accordingly."
+ } "zero"
+ 
+ KEYWORD evolution_method "The hydro evolution method"
+@@ -34,7 +39,7 @@
+ {
+   "none" :: "inactive"
+   "one"  :: "initially set to one"
+-  "read from file" :: "do nothing, filereader will provide data"
++  "read from file" :: "Read the initial data using the file reader.  Note that this only allows you to read the data from a file, it does not actually do it.  You still have to programme the file reader accordingly."
+ } "none"
+ 
+ KEYWORD Y_e_evolution_method "Evolution method for Y_e"
+@@ -58,21 +63,21 @@
+ {
+   "none" :: "inactive"
+   "zero" :: "initially set to zero"
+-  "read from file" :: "do nothing, filereader will provide data"
++  "read from file" :: "Read the initial data using the file reader.  Note that this only allows you to read the data from a file, it does not actually do it.  You still have to programme the file reader accordingly."
+ } "none"
+ 
+ KEYWORD initial_Avec "Initial value for Avec"
+ {
+   "none" :: "inactive"
+   "zero" :: "initially set to zero"
+-  "read from file" :: "do nothing, filereader will provide data"
++  "read from file" :: "Read the initial data using the file reader.  Note that this only allows you to read the data from a file, it does not actually do it.  You still have to programme the file reader accordingly."
+ } "none"
+ 
+ KEYWORD initial_Aphi "Initial value for Aphi"
+ {
+   "none" :: "inactive"
+   "zero" :: "initially set to zero"
+-  "read from file" :: "do nothing, filereader will provide data"
++  "read from file" :: "Read the initial data using the file reader.  Note that this only allows you to read the data from a file, it does not actually do it.  You still have to programme the file reader accordingly."
+ } "none"
+ 
+ KEYWORD Bvec_evolution_method "Evolution method for Bvec"
+@@ -91,14 +96,14 @@
+ {
+   "none"  :: "inactive"
+   "zero"  :: "initially set to zero"
+-  "read from file" :: "do nothing, filereader will provide data"
++  "read from file" :: "Read the initial data using the file reader.  Note that this only allows you to read the data from a file, it does not actually do it.  You still have to programme the file reader accordingly."
+ } "none"
+ 
+ KEYWORD initial_entropy "Initial value for entropy"
+ {
+   "none"  :: "inactive"
+   "zero"  :: "initially set to zero"
+-  "read from file" :: "do nothing, filereader will provide data"
++  "read from file" :: "Read the initial data using the file reader.  Note that this only allows you to read the data from a file, it does not actually do it.  You still have to programme the file reader accordingly."
+ } "none"
+ 
+ 
+Index: src/make.code.defn
+===================================================================
+--- src/make.code.defn	(revision 63)
++++ src/make.code.defn	(working copy)
+@@ -1,7 +1,7 @@
+ # Main make.code.defn file for thorn HydroBase
+ 
+ # Source files in this directory
+-SRCS = StartUp.c Initialisation.c
++SRCS = StartUp.c Initialisation.c ParamCheck.c
+ 
+ # Subdirectories containing source files
+ SUBDIRS = 
+Index: schedule.ccl
+===================================================================
+--- schedule.ccl	(revision 63)
++++ schedule.ccl	(working copy)
+@@ -114,6 +114,20 @@
+   LANG: C
+ } "Startup banner"
+ 
++if(CCTK_EQUALS(initial_hydro, "read from file") ||
++   CCTK_EQUALS(initial_Aphi, "read from file") ||
++   CCTK_EQUALS(initial_Avec, "read from file") ||
++   CCTK_EQUALS(initial_Bvec, "read from file") ||
++   CCTK_EQUALS(initial_Y_e, "read from file") ||
++   CCTK_EQUALS(initial_temperature, "read from file") ||
++   CCTK_EQUALS(initial_entropy, "read from file"))
++{
++schedule HydroBase_ParamCheck AT PARAMCHECK
++{
++  LANG: C
++} "check that hydrobase parameters are consistent"
++}
++
+ schedule group HydroBase_RHS in MoL_CalcRHS
+ {
+ } "Groups for scheduling tasks for calculating RHS of hydro variables"

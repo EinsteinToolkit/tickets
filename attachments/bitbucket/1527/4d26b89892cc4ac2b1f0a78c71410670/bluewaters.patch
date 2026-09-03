@@ -1,0 +1,13 @@
+Index: simfactory/mdb/runscripts/bluewaters.run
+===================================================================
+--- simfactory.orig/mdb/runscripts/bluewaters.run	2014-01-22 19:48:46.339049565 -0800
++++ simfactory/mdb/runscripts/bluewaters.run	2014-01-22 19:48:46.335049540 -0800
+@@ -47,7 +47,7 @@
+ 
+ echo "Starting:"
+ export CACTUS_STARTTIME=$(date +%s)
+-aprun -n @NUM_PROCS@ -N @(min(@NODE_PROCS@, @NUM_PROCS@))@ @EXECUTABLE@ -L 3 @PARFILE@
++aprun -cc numa_node -n @NUM_PROCS@ -N @(min(@NODE_PROCS@, @NUM_PROCS@))@ -d @NUM_THREADS@ @EXECUTABLE@ -L 3 @PARFILE@
+ echo "Stopping:"
+ date
+ 

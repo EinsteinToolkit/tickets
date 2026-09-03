@@ -1,0 +1,31 @@
+Index: sim-sync.py
+===================================================================
+--- sim-sync.py	(revision 1469)
++++ sim-sync.py	(working copy)
+@@ -89,6 +89,8 @@
+     DefineDatabase.Set('USER', machineEntry.user)
+     
+     sourcebasedir = DefineDatabase.SubAll(machineEntry.sourcebasedir)
++    # expand simfactory defines to shell variables
++    sourcebasedir = re.sub(r"@ENV\(([^]]+)\)@", r"${\1}", sourcebasedir)
+     
+     # There need to be two define databases, one for the local and
+     # another for the remote system. Currently, USER is for the
+@@ -147,7 +149,7 @@
+     else:
+         rsyncoptions.append('--filter \'merge %s/etc/filter.rules\'' % simenv.BASE_PATH)
+ 
+-    fullpath = "%s@%s:%s%s%s" % (machineEntry.user, machineEntry.hostname, sourcebasedir, os.sep, local_suffix)
++    fullpath = "%s@%s:%s%s%s" % (machineEntry.user, machineEntry.hostname, simlib.QuoteSafe(sourcebasedir), os.sep, local_suffix)
+     
+     arguments = " ".join(simlib.GetArguments())
+     
+@@ -158,7 +160,7 @@
+         
+     mkdirssh = "%s@%s" % (machineEntry.user, machineEntry.hostname)
+     mkdirpath = "%s%s%s" % (sourcebasedir, os.sep, local_suffix)
+-    mkdircmd = "%s %s mkdir -p %s" % (sshcmd, mkdirssh, mkdirpath)
++    mkdircmd = "%s %s mkdir -p %s" % (sshcmd, mkdirssh, simlib.QuoteSafe(mkdirpath))
+ 
+     cmd = "cd '%s' && { %s; } && %s && %s" % (local_sourcedir, localsshsetup, mkdircmd, cmd)
+     

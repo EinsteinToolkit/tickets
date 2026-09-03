@@ -1,0 +1,38 @@
+Index: lib/sim.py
+===================================================================
+--- lib/sim.py	(revision 1190)
++++ lib/sim.py	(working copy)
+@@ -127,7 +127,7 @@
+         info("defs.local: %s" % simenv.udb)
+         
+         #normalize restarts.
+-        restartlib.CleanupRestarts()
++        #restartlib.CleanupRestarts()
+     
+     if simenv.OptionsManager.HasOption("remote"):
+         remoteMachine = simenv.OptionsManager.GetOption("remote")
+Index: lib/restartlib.py
+===================================================================
+--- lib/restartlib.py	(revision 1190)
++++ lib/restartlib.py	(working copy)
+@@ -235,6 +235,7 @@
+ 
+             ret = restart.loadFromRestartId(active_id)
+             if ret > 0:
++                info("Cleaning up restart id %d in simulation %s" % (active_id, sim))
+                 restart.finish()
+                 restart.done()
+ 
+Index: lib/sim-manage.py
+===================================================================
+--- lib/sim-manage.py	(revision 1190)
++++ lib/sim-manage.py	(working copy)
+@@ -164,7 +164,7 @@
+     if ret == -1:
+         fatal("unable to load simulation %s for execution" % simulationName)
+                 
+-    restart.run()
++    restart.run(simulationName)
+     restart.done()
+     
+     
