@@ -4,7 +4,7 @@
 
 Report bugs, request enhancements, and track work for the Einstein Toolkit.
 
-**[Browse GitHub Issues](https://github.com/EinsteinToolkit/tickets/issues)** · **[Open a new issue](https://github.com/EinsteinToolkit/tickets/issues/new)**
+**[Browse Issues](https://github.com/EinsteinToolkit/tickets/issues)** · **[Open a new issue](https://github.com/EinsteinToolkit/tickets/issues/new)**
 
 </div>
 
